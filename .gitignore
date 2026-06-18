@@ -1,0 +1,66 @@
+node_modules/
+dist/
+build/
+dist-releases/
+.tmp/
+.pnpm-store/
+.env
+.env.*
+config.yaml
+config.local.yaml
+*.local.yaml
+*.local.md
+*.local.json
+.DS_Store
+.venv/
+.claude/
+/Docs/
+AGENTS.md
+.archive/
+*.cast
+*.mp4
+segments/
+dejavu-fonts-ttf-2.37/
+*.tgz
+.codex/
+.zig-cache/
+.junie/
+hitgrid_*.txt
+buffer_dump/
+GUI_Plan.md
+crash-diag.log
+tmp_repos/
+experiments/
+gui_legacy/
+
+# OpenTUI fork: never-compiled zig vendor and benchmark assets
+opentui-src/forked/core/zig/vendor/
+opentui-src/forked/core/benchmark/
+
+# VSCode extension build artifacts
+vscode/node_modules/
+vscode/out/
+
+# GUI build artifacts (gui/ itself is now tracked)
+gui/node_modules/
+gui/out/
+gui/dist/
+
+# VSCode extension package artifacts
+vscode/*.vsix
+
+# Astro docs site build/cache artifacts
+docs-site/.astro/
+docs-site/node_modules/
+docs-site/dist/
+
+# Remote model-registry signing private key — never commit
+swarmflow-registry-key*.pem
+test/
+external/*
+.history/
+.codegraph/
+plan.md
+docs*/ro
+**.png**
+!external/opentui/

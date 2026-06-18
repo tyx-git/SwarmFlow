@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SwarmFlow</title>
+    <script>
+      // Set theme class before paint to avoid flash.
+      try {
+        const stored = localStorage.getItem('swarmflow:theme')
+        const dark = stored ? stored === 'dark' : true
+        document.documentElement.classList.toggle('dark', dark)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      } catch {
+        document.documentElement.classList.add('dark')
+      }
+    </script>
+  </head>
+  <body class="h-full antialiased">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

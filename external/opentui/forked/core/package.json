@@ -1,0 +1,42 @@
+{
+  "name": "@opentui/core",
+  "module": "index.ts",
+  "main": "index.ts",
+  "types": "index.ts",
+  "type": "module",
+  "version": "0.4.1",
+  "description": "Local SwarmFlow fork of OpenTUI core",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "import": "./index.ts",
+      "require": "./index.ts",
+      "types": "./index.ts"
+    },
+    "./testing": {
+      "import": "./testing.ts",
+      "require": "./testing.ts",
+      "types": "./testing.ts"
+    },
+    "./runtime-plugin": {
+      "import": "./runtime-plugin.ts",
+      "require": "./runtime-plugin.ts",
+      "types": "./runtime-plugin.ts"
+    },
+    "./runtime-plugin-support": {
+      "import": "./runtime-plugin-support.ts",
+      "require": "./runtime-plugin-support.ts",
+      "types": "./runtime-plugin-support.ts"
+    },
+    "./runtime-plugin-support/configure": {
+      "import": "./runtime-plugin-support-configure.ts",
+      "require": "./runtime-plugin-support-configure.ts",
+      "types": "./runtime-plugin-support-configure.ts"
+    },
+    "./parser.worker": {
+      "import": "./lib/tree-sitter/parser.worker.ts",
+      "require": "./lib/tree-sitter/parser.worker.ts",
+      "types": "./lib/tree-sitter/parser.worker.ts"
+    }
+  }
+}
