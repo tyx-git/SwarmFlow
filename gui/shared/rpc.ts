@@ -15,8 +15,6 @@
 
 /** IPC 事件推送：主进程 → 渲染器 */
 export interface RpcEvent {
-
-export interface RpcEvent {
   readonly tabId: string
   readonly method: string
   readonly params?: unknown

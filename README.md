@@ -134,7 +134,7 @@ external/
 ```bash
 bun install         # 安装依赖
 bun run dev         # 运行 TUI
-bun run build       # 构建独立二进制
+bun run build       # 构建独立二进制 ps：暂时不完全支持
 bun test            # 运行测试
 bun run typecheck   # 类型检查
 ```

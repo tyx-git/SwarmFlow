@@ -1,15 +1,15 @@
 {
-  "name": "swarmflow-gui",
+  "name": "swarmflow",
   "private": true,
   "version": "0.0.1",
-  "description": "SwarmFlow desktop GUI (Electron + React + Tailwind v4)",
+  "description": "SwarmFlow desktop GUI (Tauri + React + Tailwind v4)",
   "type": "module",
-  "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "vite",
+    "build": "tsc -p tsconfig.web.json --noEmit && vite build",
+    "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "start": "electron-vite preview"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -34,12 +34,11 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@tauri-apps/cli": "^2.0.0",
     "@types/node": "^24.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.1",
-    "electron-vite": "^3.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.5.4",
     "vite": "^6.0.3"
