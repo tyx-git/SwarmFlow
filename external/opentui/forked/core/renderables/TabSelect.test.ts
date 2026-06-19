@@ -1,4 +1,4 @@
-﻿import { test, expect, describe, beforeEach, afterEach } from "bun:test"
+import { test, expect, describe, beforeEach, afterEach } from "bun:test"
 import {
   TabSelectRenderable,
   type TabSelectRenderableOptions,
@@ -106,7 +106,7 @@ describe("TabSelectRenderable", () => {
       tabSelect.focus()
       expect(tabSelect.getSelectedIndex()).toBe(0)
 
-      const handled = tabSelect.handleKeyPress(createKeyEvent({ name: "銋?, baseCode: 108 }))
+      const handled = tabSelect.handleKeyPress(createKeyEvent({ name: "ㅣ", baseCode: 108 }))
 
       expect(handled).toBe(true)
       expect(tabSelect.getSelectedIndex()).toBe(1)

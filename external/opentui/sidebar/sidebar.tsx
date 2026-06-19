@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -93,7 +93,7 @@ function LeftSidebarInner(props: SidebarProps): React.ReactNode {
           onToggleExpanded();
         }}
       >
-        <text fg={colors.dim} content={expanded ? "鈻?" : "鈻?"} />
+        <text fg={colors.dim} content={expanded ? "▾ " : "▸ "} />
         <SidebarTitle expanded={expanded} branding={branding} />
       </box>
 

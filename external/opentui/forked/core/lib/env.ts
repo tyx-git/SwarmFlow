@@ -1,4 +1,4 @@
-﻿import { singleton } from "./singleton.js"
+import { singleton } from "./singleton.js"
 
 /**
  * Environment variable registry

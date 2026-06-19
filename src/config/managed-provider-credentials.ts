@@ -5,7 +5,7 @@
  * 外部 shell 环境变量仅在初始化时作为导入候选。
  */
 
-import { EFFECTIVE_PROVIDER_SPECS } from "./providers/registry-effective.js";
+import { EFFECTIVE_PROVIDER_SPECS } from "../providers/registry-effective.js";
 
 /** 受管凭证的元数据：内部变量名 + 外部候选变量列表。 */
 export interface ManagedProviderCredentialSpec {

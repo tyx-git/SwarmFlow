@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, beforeAll, describe } from "bun:test"
 import { TreeSitterClient } from "./client.js"
 import { tmpdir } from "os"
 import { join } from "path"
@@ -453,7 +453,7 @@ describe("TreeSitterClient", () => {
   test("should handle Devanagari characters and highlight ranges after them correctly", async () => {
     await client.initialize()
 
-    const jsCode = 'const greeting = "啶ㄠぎ啶膏啶む";\nconst x = 42;'
+    const jsCode = 'const greeting = "नमस्ते";\nconst x = 42;'
     const result = await client.highlightOnce(jsCode, "javascript")
 
     expect(result.highlights).toBeDefined()
@@ -480,7 +480,7 @@ describe("TreeSitterClient", () => {
 
     expect(secondConst[0]).toBeGreaterThan(firstConst[1])
     const textBetween = jsCode.substring(firstConst[1], secondConst[0])
-    expect(textBetween).toContain("啶ㄠぎ啶膏啶む")
+    expect(textBetween).toContain("नमस्ते")
 
     const numberHighlight = result.highlights!.find((hl) => {
       const text = jsCode.substring(hl[0], hl[1])

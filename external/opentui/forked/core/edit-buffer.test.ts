@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { EditBuffer } from "./edit-buffer.js"
 import { resolveRenderLib } from "./zig.js"
 import { ManualClock } from "./testing/manual-clock.js"
@@ -43,7 +43,7 @@ describe("EditBuffer", () => {
     })
 
     it("should handle Unicode characters", () => {
-      const text = "Hello 涓栫晫 馃専"
+      const text = "Hello 世界 🌟"
       buffer.setText(text)
       expect(buffer.getText()).toBe(text)
     })
@@ -140,7 +140,7 @@ describe("EditBuffer", () => {
     })
 
     it("should handle Unicode grapheme movement correctly", () => {
-      buffer.setText("A馃専B")
+      buffer.setText("A🌟B")
 
       expect(buffer.getCursorPosition().col).toBe(0)
 
@@ -197,9 +197,9 @@ describe("EditBuffer", () => {
       buffer.setText("Hello")
 
       buffer.setCursorToLineCol(0, 5) // Move to end
-      buffer.insertText(" 涓栫晫 馃専")
+      buffer.insertText(" 世界 🌟")
 
-      expect(buffer.getText()).toBe("Hello 涓栫晫 馃専")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
     })
 
     it("should handle newline insertion", () => {
@@ -280,11 +280,11 @@ describe("EditBuffer", () => {
     })
 
     it("should handle deleteRange with Unicode characters", () => {
-      buffer.setText("Hello 涓栫晫 馃専")
+      buffer.setText("Hello 世界 🌟")
 
       buffer.deleteRange(0, 6, 0, 10)
 
-      expect(buffer.getText()).toBe("Hello  馃専")
+      expect(buffer.getText()).toBe("Hello  🌟")
     })
 
     it("should delete entire line", () => {
@@ -465,8 +465,8 @@ describe("EditBuffer", () => {
     })
 
     it("should handle word boundaries after CJK graphemes", () => {
-      // "浣? = 2 cols, " " = 1 col, "濂? = 2 cols
-      buffer.setText("浣?濂?)
+      // "你" = 2 cols, " " = 1 col, "好" = 2 cols
+      buffer.setText("你 好")
       buffer.setCursorToLineCol(0, 0)
 
       const nextBoundary = buffer.getNextWordBoundary()
@@ -478,8 +478,8 @@ describe("EditBuffer", () => {
     })
 
     it("should handle word boundaries after emoji", () => {
-      // "馃専" = 2 cols, " " = 1 col, "ok" = 2 cols
-      buffer.setText("馃専 ok")
+      // "🌟" = 2 cols, " " = 1 col, "ok" = 2 cols
+      buffer.setText("🌟 ok")
       buffer.setCursorToLineCol(0, 0)
 
       const nextBoundary = buffer.getNextWordBoundary()
@@ -723,14 +723,14 @@ describe("EditBuffer", () => {
     })
 
     it("should handle CJK characters correctly", () => {
-      buffer.setText("涓栫晫")
+      buffer.setText("世界")
       buffer.setCursorToLineCol(0, 2) // After first character (2 columns wide)
       buffer.insertText("X")
-      expect(buffer.getText()).toBe("涓朮鐣?)
+      expect(buffer.getText()).toBe("世X界")
     })
 
     it("should handle emoji correctly", () => {
-      buffer.setText("馃専")
+      buffer.setText("🌟")
       buffer.setCursorToLineCol(0, 0)
       buffer.moveCursorRight()
       const cursor = buffer.getCursorPosition()
@@ -738,11 +738,11 @@ describe("EditBuffer", () => {
     })
 
     it("should handle mixed width text correctly", () => {
-      buffer.setText("A涓栶煂烞")
+      buffer.setText("A世🌟B")
       buffer.setCursorToLineCol(0, 1) // After A
       buffer.moveCursorRight()
       const cursor = buffer.getCursorPosition()
-      expect(cursor.col).toBe(3) // A(1) + 涓?2)
+      expect(cursor.col).toBe(3) // A(1) + 世(2)
     })
   })
 
@@ -1331,8 +1331,8 @@ describe("EditBuffer History Management", () => {
     })
 
     it("should work correctly with Unicode text", () => {
-      buffer.replaceTextOwned("Hello 涓栫晫 馃専")
-      expect(buffer.getText()).toBe("Hello 涓栫晫 馃専")
+      buffer.replaceTextOwned("Hello 世界 🌟")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
       expect(buffer.canUndo()).toBe(true)
 
       buffer.undo()
@@ -1347,8 +1347,8 @@ describe("EditBuffer History Management", () => {
     })
 
     it("should work correctly with Unicode text", () => {
-      buffer.setTextOwned("Hello 涓栫晫 馃専")
-      expect(buffer.getText()).toBe("Hello 涓栫晫 馃専")
+      buffer.setTextOwned("Hello 世界 🌟")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
       expect(buffer.canUndo()).toBe(false)
     })
   })
@@ -1381,8 +1381,8 @@ describe("EditBuffer History Management", () => {
     })
 
     it("should work with Unicode text", () => {
-      buffer.setText("Unicode 涓栫晫 馃専")
-      expect(buffer.getText()).toBe("Unicode 涓栫晫 馃専")
+      buffer.setText("Unicode 世界 🌟")
+      expect(buffer.getText()).toBe("Unicode 世界 🌟")
       expect(buffer.canUndo()).toBe(false)
     })
 
@@ -1554,8 +1554,8 @@ describe("EditBuffer Clear Method", () => {
     })
 
     it("should clear Unicode text", () => {
-      buffer.setText("Hello 涓栫晫 馃専")
-      expect(buffer.getText()).toBe("Hello 涓栫晫 馃専")
+      buffer.setText("Hello 世界 🌟")
+      expect(buffer.getText()).toBe("Hello 世界 🌟")
 
       buffer.clear()
       expect(buffer.getText()).toBe("")
@@ -1767,7 +1767,7 @@ describe("EditBuffer Clear Method", () => {
     })
 
     it("should handle clear with wide characters", () => {
-      buffer.setText("A涓栶煂烞")
+      buffer.setText("A世🌟B")
       buffer.clear()
       expect(buffer.getText()).toBe("")
 

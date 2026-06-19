@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextBuffer } from "./text-buffer.js"
 import { TextBufferView } from "./text-buffer-view.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
@@ -211,12 +211,12 @@ describe("TextBufferView", () => {
     })
 
     it("should handle Unicode characters in selection", () => {
-      const styledText = stringToStyledText("Hello 涓栫晫 馃専")
+      const styledText = stringToStyledText("Hello 世界 🌟")
       buffer.setStyledText(styledText)
 
       view.setSelection(6, 12)
       const selectedText = view.getSelectedText()
-      expect(selectedText).toBe("涓栫晫 馃専")
+      expect(selectedText).toBe("世界 🌟")
     })
 
     it("should handle selection reset", () => {
@@ -487,7 +487,7 @@ describe("TextBufferView", () => {
     })
 
     it("should maintain stable char offsets with wide characters", () => {
-      const text = "A涓朆鐣孋" // A(1) 涓?2) B(1) 鐣?2) C(1) = 7 total width
+      const text = "A世B界C" // A(1) 世(2) B(1) 界(2) C(1) = 7 total width
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
 
@@ -506,7 +506,7 @@ describe("TextBufferView", () => {
     })
 
     it("should maintain stable selection with wrapped wide characters", () => {
-      const text = "涓栫晫涓栫晫涓栫晫" // 6 CJK characters = 12 display width
+      const text = "世界世界世界" // 6 CJK characters = 12 display width
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
 
@@ -516,7 +516,7 @@ describe("TextBufferView", () => {
       // Select first 3 CJK characters (6 display width)
       view.setSelection(0, 6)
       const selected = view.getSelectedText()
-      expect(selected).toBe("涓栫晫涓?)
+      expect(selected).toBe("世界世")
     })
 
     it("should handle tabs correctly in wrapped view", () => {
@@ -533,7 +533,7 @@ describe("TextBufferView", () => {
     })
 
     it("should handle emoji in wrapped view", () => {
-      const text = "馃専馃専馃専馃専馃専" // 5 emoji = 10 display width (assuming 2 each)
+      const text = "🌟🌟🌟🌟🌟" // 5 emoji = 10 display width (assuming 2 each)
       const styledText = stringToStyledText(text)
       buffer.setStyledText(styledText)
 

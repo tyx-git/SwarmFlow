@@ -1,29 +1,17 @@
-﻿/** @jsxImportSource @opentui/react */
-
-// =============================================================================
-// SwarmFlow GUI — OpenTUI 主界面布局
-// =============================================================================
-// 职责：主渲染区域布局（Tab 栏 / 侧边栏 / 主内容 / 输入区 / Overlay 层叠）
-// 层级结构：
-//   OpenTuiScreen
-//   ├── HorizontalTabBar（顶部 Tab 栏）
-//   ├── RightSidebar（右侧栏，可折叠）
-//   ├── PresentationPanel（主会话内容）
-//   ├── InputArea（底部输入框）
-//   └── ToastStack / Overlay 层（UpdateToast / CopyToast / AskPanel / OAuth 等）
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
 import type { InputRenderable, KeyBinding, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
-import type { PendingAskUi } from "../../../src/ask.js";
-import type { AgentQuestionItem } from "../../../src/ask.js";
-import type { CommandPickerState } from "../../../src/ui/command-picker.js";
-import type { CheckboxPickerState } from "../../../src/ui/checkbox-picker.js";
+import type { PendingAskUi } from "../../../../src/ask.js";
+import type { AgentQuestionItem } from "../../../../src/ask.js";
+import type { CommandPickerState } from "../../../../src/ui/command-picker.js";
+import type { CheckboxPickerState } from "../../../../src/ui/checkbox-picker.js";
 import type { PresentationEntry } from "../../presentation/types.js";
 import type { ComposerTokenVisuals } from "../../composer-tokens.js";
 import { createTextAttributes } from "@opentui/core";
 import { PresentationPanel } from "../../components/entry/presentation-panel.js";
-import { VERSION } from "../../../src/version.js";
+import { VERSION } from "../../../../src/version.js";
 import { GlowText } from "../glow-text.js";
 
 const ATTRS_BOLD = createTextAttributes({ bold: true });
@@ -31,7 +19,7 @@ import { DetailToolTab } from "../../components/entry/detail-tool-tab.js";
 import { DetailShellTab } from "../../components/entry/detail-shell-tab.js";
 import { InputArea } from "../../input/input-area.js";
 import { ScrollViewport } from "../primitives/scroll-viewport.js";
-import { osCapabilities } from "../../../src/platform/index.js";
+import { osCapabilities } from "../../../../src/platform/index.js";
 import type { TabState } from "../../sidebar/sidebar-tabs.js";
 import type { DisplayTheme } from "../theme/index.js";
 import type {
@@ -160,12 +148,12 @@ export interface OpenTuiScreenProps {
   activeShellDetail?: import("../../components/entry/detail-shell-tab.js").ShellDetailData | null;
   /** Stop a background shell from the detail tab. */
   onStopShell?: (shellId: string) => void;
-  /** Update toast state 鈥?null means hidden. */
+  /** Update toast state — null means hidden. */
   updateToast?: { phase: import("../overlays/update-toast.js").UpdateToastPhase; version?: string; error?: string } | null;
-  /** MCP connection failures 鈥?null means hidden. Dismissal (manual via Ctrl+L
+  /** MCP connection failures — null means hidden. Dismissal (manual via Ctrl+L
    * or auto-clear on recovery) is owned by the app; the screen just renders. */
   mcpFailures?: import("../overlays/mcp-toast.js").McpFailure[] | null;
-  /** Copy-on-select toast body 鈥?null means hidden. The ~2s auto-dismiss
+  /** Copy-on-select toast body — null means hidden. The ~2s auto-dismiss
    * timer is owned by the app; the screen just renders. */
   copyToast?: string | null;
   /** Called when user clicks "Restart" in the update toast. */
@@ -288,7 +276,7 @@ export function OpenTuiScreen({
   const pickerMaxVisible = computePickerMaxVisible(terminal.height, theme.layout);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const isDetailTab = activeTab?.kind === "detail-tool" || activeTab?.kind === "detail-shell";
-  // Detail entry lookup: live entries 鈫?frozenEntry fallback
+  // Detail entry lookup: live entries → frozenEntry fallback
   const detailEntry = activeTab?.kind === "detail-tool"
     ? (presentationEntries.find((entry) => activeTabId === `detail:${entry.id}`)
        ?? activeTab?.frozenEntry
@@ -306,7 +294,7 @@ export function OpenTuiScreen({
   const pickerContentWidth = terminal.width - effectiveSidebarWidth - 10;
 
   // Logo disappears once user sends the first message. Shown at every
-  // terminal size 鈥?the welcome stage is centered and clamped below, so it
+  // terminal size — the welcome stage is centered and clamped below, so it
   // stays readable on narrow terminals instead of being hidden outright.
   const hasUserMessage = presentationEntries.some((e) => e.kind === "user");
   const showLogoInScroll = !hasUserMessage;
@@ -316,11 +304,11 @@ export function OpenTuiScreen({
   // keeps the logo perfectly still. Sits slightly above optical center
   // (~40%), clamped so it never collides with the footer/input on
   // short terminals.
-  // Welcome stage: "swarmflow Here." headline + version路cwd + key hints.
+  // Welcome stage: "SwarmFlow." headline + version·cwd + key hints.
   // 4 lines total (headline, blank, meta, hints), centered at ~40% of
   // absolute terminal height so it never shifts when panels open.
   const welcomeCwd = shortenPath(process.cwd());
-  const welcomeMetaLine = `v${VERSION} 路 ${welcomeCwd}`;
+  const welcomeMetaLine = `v${VERSION} · ${welcomeCwd}`;
   const welcomeStageHeight = 4;
   const welcomeTop = Math.max(
     1,
@@ -330,7 +318,7 @@ export function OpenTuiScreen({
     ),
   );
 
-  // Shared InputArea element 鈥?rendered inside scrollbox for main view, outside for detail tabs
+  // Shared InputArea element — rendered inside scrollbox for main view, outside for detail tabs
   const inputAreaElement = (
     <InputArea
       inputRef={inputRef}
@@ -461,7 +449,7 @@ export function OpenTuiScreen({
       paddingLeft={1}
       paddingRight={0}
       gap={0}
-      // Background click-to-dismiss handler 鈥?opt out of the onMouseDown
+      // Background click-to-dismiss handler — opt out of the onMouseDown
       // pointer auto-detection so hovering empty screen edges stays an arrow.
       cursor="default"
       onMouseDown={onBackgroundMouseDown}
@@ -480,7 +468,7 @@ export function OpenTuiScreen({
         {/* Main content column */}
         <box flexDirection="column" flexGrow={1} gap={0}>
           {/*
-            Main conversation view 鈥?ALWAYS mounted. Hidden via Yoga
+            Main conversation view — ALWAYS mounted. Hidden via Yoga
             Display.None when a detail tab is active so its ScrollViewport
             keeps its scroll position and the InputArea keeps its composer
             text across tab switches. Mounting once also avoids re-projecting
@@ -512,7 +500,7 @@ export function OpenTuiScreen({
             </ScrollViewport>
           </box>
 
-          {/* Detail tabs 鈥?own scrollbox. Conditional render is fine here:
+          {/* Detail tabs — own scrollbox. Conditional render is fine here:
               detail views don't need cross-switch state (they always show the
               same single entry; nothing to "remember"). */}
           {detailEntry && activeTab?.kind === "detail-tool" ? (
@@ -550,7 +538,7 @@ export function OpenTuiScreen({
       {/* End content row */}
 
       {/*
-        Fixed footer 鈥?single mount point for input + overlays so they survive
+        Fixed footer — single mount point for input + overlays so they survive
         tab switches and don't fight over `inputRef`. Lifted out of the main
         scrollbox so it stays visible while the user is scrolling through
         history (previously it scrolled off the bottom edge with stickyScroll
@@ -603,7 +591,7 @@ export function OpenTuiScreen({
       ) : null}
 
       {/*
-        Welcome wordmark 鈥?absolutely positioned against terminal height,
+        Welcome wordmark — absolutely positioned against terminal height,
         OUTSIDE the conversation scrollbox. Decoupled from the viewport so
         opening a slash/command/picker panel (which grows the in-flow
         footer and shrinks the scrollbox) leaves it perfectly still. Gated
@@ -621,7 +609,7 @@ export function OpenTuiScreen({
           alignItems="center"
         >
           <GlowText
-            text="swarmflow Here."
+            text="SwarmFlow."
             fromColor={theme.colors.accent}
             toColor={theme.colors.accent}
           />
@@ -629,9 +617,9 @@ export function OpenTuiScreen({
           <text fg={theme.colors.dim} content={welcomeMetaLine} />
           <box flexDirection="row">
             <text fg={theme.colors.text} attributes={ATTRS_BOLD} content="/ " />
-            <text fg={theme.colors.dim} content="commands 路 " />
+            <text fg={theme.colors.dim} content="commands · " />
             <text fg={theme.colors.text} attributes={ATTRS_BOLD} content="@ " />
-            <text fg={theme.colors.dim} content="files 路 " />
+            <text fg={theme.colors.dim} content="files · " />
             <text fg={theme.colors.text} attributes={ATTRS_BOLD} content="/help " />
             <text fg={theme.colors.dim} content="shortcuts" />
           </box>

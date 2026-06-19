@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Exposes runtime-only modules (for example `@opentui/core`, `@opentui/solid`,
  * `solid-js`) to externally loaded plugins by rewriting matching imports to
  * virtual `opentui:runtime-module:*` ids.

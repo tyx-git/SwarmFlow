@@ -1,24 +1,24 @@
-﻿import { hasOAuthTokens } from "./auth/openai-oauth.js";
-import { hasGitHubTokens } from "./auth/github-copilot-oauth.js";
-import { isModelVisibleForCurrentPlan } from "./providers/copilot-models-cache.js";
+﻿import { hasOAuthTokens } from "../auth/openai-oauth.js";
+import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
+import { isModelVisibleForCurrentPlan } from "../providers/copilot-models-cache.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
-} from "./providers/presets.js";
+} from "../providers/presets.js";
 import {
   hasEnvApiKey,
   readModelEntries,
   runtimeModelName,
-} from "./models/selection.js";
-import { isManagedProvider, providerCredentialKind } from "./config/managed-provider-credentials.js";
-import { describeModel } from "./models/presentation.js";
+} from "../models/selection.js";
+import { isManagedProvider, providerCredentialKind } from "../config/managed-provider-credentials.js";
+import { describeModel } from "../models/presentation.js";
 import {
   currentCredentialKey,
   isCredentialConfigured,
   maskKey,
   resolveCredentialSlot,
-} from "./providers/credential-flow.js";
-import { loadGlobalSettings } from "./config/persistence.js";
+} from "../providers/credential-flow.js";
+import { loadGlobalSettings } from "../config/persistence.js";
 
 export type ModelPickerNodeKind =
   | "group"

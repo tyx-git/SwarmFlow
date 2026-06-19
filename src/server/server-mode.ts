@@ -150,14 +150,14 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
 
   // 模板
   const bundledDir = getBundledAssetsDir();
-  const bundledTemplates = join(bundledDir, "prompts", "templates");
+  const bundledTemplatesDir = join(bundledDir, "prompts", "templates");
   const bundledPrompts = join(bundledDir, "prompts");
   const promptsDirs: string[] = [];
   if (paths.promptsPath) promptsDirs.push(paths.promptsPath);
   promptsDirs.push(bundledPrompts);
 
   const agents = loadTemplates(
-    bundledTemplates,
+    bundledTemplatesDir,
     config,
     mcpManager as never,
     promptsDirs,

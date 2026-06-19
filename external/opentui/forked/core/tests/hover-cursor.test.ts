@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, test, afterEach } from "bun:test"
+import { beforeEach, describe, expect, test, afterEach } from "bun:test"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { BoxRenderable } from "../renderables/index.js"
 import { Renderable } from "../Renderable.js"
@@ -39,7 +39,7 @@ describe("mouse pointer style", () => {
   // Never touch the pointer while the terminal is unfocused: emitting a shape
   // change then would poison the terminal's recorded shape (it records but
   // doesn't repaint while unfocused), and an identical shape on focus regain is
-  // de-duplicated 鈥?the cursor sticks stale. Suppressing the change keeps the
+  // de-duplicated — the cursor sticks stale. Suppressing the change keeps the
   // recorded shape consistent so the first hover after refocus repaints cleanly.
   test("setMousePointer is suppressed while the terminal is unfocused", () => {
     ;(renderer as any)._terminalFocusState = false
@@ -108,7 +108,7 @@ describe("mouse pointer style", () => {
 
   // Regression: the native render loop only flushes the OSC 22 pointer escape
   // during a render tick, but a render tick's sync block hides the text cursor
-  // before the pointer section opens it 鈥?leaving the cursor invisible when
+  // before the pointer section opens it — leaving the cursor invisible when
   // only the pointer changed. So setMousePointer emits the OSC 22 directly
   // via writeOut() instead of requestRender(), bypassing the sync block.
   // This test guards that the pointer escape IS emitted (via writeOut, not
@@ -126,7 +126,7 @@ describe("mouse pointer style", () => {
   })
 
   // An element's own onMouseDown auto-resolves to a pointer, but an explicit
-  // cursor on the same element must win 鈥?otherwise a container that handles
+  // cursor on the same element must win — otherwise a container that handles
   // mouse-down for its own reasons (the full-screen click-to-dismiss/focus
   // background) turns every empty screen edge into a hand cursor.
   test("explicit cursor overrides the onMouseDown auto-pointer", () => {

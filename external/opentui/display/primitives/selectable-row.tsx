@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useState } from "react";
 

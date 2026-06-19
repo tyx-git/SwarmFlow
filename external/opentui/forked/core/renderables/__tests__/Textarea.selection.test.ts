@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { RGBA } from "../../lib/RGBA.js"
@@ -53,7 +53,7 @@ describe("Textarea - Selection Tests", () => {
 
     it("should keep the terminal cursor out of wide grapheme trailing cells", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "杩欐槸涓€涓ず渚嬪彞瀛?,
+        initialValue: "这是一个示例句子",
         width: 40,
         height: 3,
         selectable: true,

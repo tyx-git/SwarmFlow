@@ -1,4 +1,4 @@
-﻿// Testing utilities module exports
+// Testing utilities module exports
 export * from "./testing/test-renderer.js"
 export * from "./testing/mock-keys.js"
 export * from "./testing/mock-mouse.js"

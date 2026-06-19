@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextRenderable } from "./Text.js"
 import { RGBA } from "../lib/RGBA.js"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer.js"

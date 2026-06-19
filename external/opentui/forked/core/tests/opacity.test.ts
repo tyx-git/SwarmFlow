@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import type { RenderContext } from "../types.js"

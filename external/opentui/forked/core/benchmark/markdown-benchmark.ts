@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 import { MarkdownRenderable, SyntaxStyle, createCliRenderer, parseColor } from "../index.js"
 import { resolveRenderLib } from "../zig.js"

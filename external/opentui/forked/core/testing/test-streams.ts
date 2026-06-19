@@ -1,4 +1,4 @@
-﻿import { Readable, Writable } from "stream"
+import { Readable, Writable } from "stream"
 
 export class TestWriteStream extends Writable {
   public readonly isTTY = true

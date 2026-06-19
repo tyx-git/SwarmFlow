@@ -1,4 +1,4 @@
-﻿import type { TextRenderable } from "../renderables/Text.js"
+import type { TextRenderable } from "../renderables/Text.js"
 import type { TextBuffer, TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
 import { parseColor, type ColorInput } from "./RGBA.js"

@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import Yoga, { Align, Direction, Edge, FlexDirection, MeasureMode, Unit } from "../yoga.js"
 
 describe("native Yoga FFI facade", () => {

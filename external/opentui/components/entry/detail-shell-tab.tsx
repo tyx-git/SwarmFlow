@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
@@ -51,11 +51,11 @@ function DetailShellTabInner(
 
   return (
     <box flexDirection="column" flexGrow={1} width="100%">
-      <SectionHeader label={`鉂?${detail.command}`} color={colors.dim} paddingLeft={2} paddingBottom={0} />
+      <SectionHeader label={`❯ ${detail.command}`} color={colors.dim} paddingLeft={2} paddingBottom={0} />
       <box flexDirection="row" paddingLeft={2} paddingBottom={1} gap={1}>
         <text
           fg={running ? colors.green : colors.muted}
-          content={`${running ? "鈼? : "鈼?} ${statusBits.join(" 路 ")}`}
+          content={`${running ? "●" : "○"} ${statusBits.join(" · ")}`}
         />
         {running && onStop ? (
           <box
@@ -63,14 +63,14 @@ function DetailShellTabInner(
             flexShrink={0}
             onMouseDown={(e: any) => { e.stopPropagation(); e.preventDefault(); onStop(detail.id); }}
           >
-            <text fg="#e89090" content=" 鉁?stop " />
+            <text fg="#e89090" content=" ✕ stop " />
           </box>
         ) : null}
       </box>
       <ScrollViewport colors={colors} scrollRef={scrollRef} stickyScroll={true} stickyStart="bottom">
         <box flexDirection="column" paddingLeft={2} paddingRight={2}>
           {detail.logTruncated ? (
-            <text fg={colors.dim} content={`[Tail only 鈥?earlier output omitted. Full log: ${detail.logPath}]`} />
+            <text fg={colors.dim} content={`[Tail only — earlier output omitted. Full log: ${detail.logPath}]`} />
           ) : null}
           <text fg={colors.text} content={detail.logTail || "(no output yet)"} wrapMode="char" />
         </box>

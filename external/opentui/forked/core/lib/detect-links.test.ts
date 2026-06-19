@@ -1,4 +1,4 @@
-﻿import { test, expect, describe } from "bun:test"
+import { test, expect, describe } from "bun:test"
 import { detectLinks } from "./detect-links.js"
 import type { TextChunk } from "../text-buffer.js"
 import type { SimpleHighlight } from "./tree-sitter/types.js"

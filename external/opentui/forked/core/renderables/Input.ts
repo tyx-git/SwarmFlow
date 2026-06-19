@@ -1,4 +1,4 @@
-﻿import type { PasteEvent } from "../lib/KeyHandler.js"
+import type { PasteEvent } from "../lib/KeyHandler.js"
 import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
 import type { RenderContext } from "../types.js"
 import {

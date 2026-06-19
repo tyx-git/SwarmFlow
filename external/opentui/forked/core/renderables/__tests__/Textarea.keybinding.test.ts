@@ -1,4 +1,4 @@
-﻿import { Buffer } from "node:buffer"
+import { Buffer } from "node:buffer"
 import { describe, expect, it, afterAll, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
@@ -511,20 +511,20 @@ describe("Textarea - Keybinding Tests", () => {
       editor.focus()
 
       // Emoji (multi-byte UTF-8)
-      const emojiHandled = editor.handleKeyPress(createKeyEvent("馃専"))
+      const emojiHandled = editor.handleKeyPress(createKeyEvent("🌟"))
       expect(emojiHandled).toBe(true)
-      expect(editor.plainText).toBe("馃専")
+      expect(editor.plainText).toBe("🌟")
 
       // CJK characters (multi-byte UTF-8)
-      const cjkHandled = editor.handleKeyPress(createKeyEvent("涓?))
+      const cjkHandled = editor.handleKeyPress(createKeyEvent("世"))
       expect(cjkHandled).toBe(true)
-      expect(editor.plainText).toBe("馃専涓?)
+      expect(editor.plainText).toBe("🌟世")
 
       // Another emoji
       editor.insertText(" ")
-      const emoji2Handled = editor.handleKeyPress(createKeyEvent("馃憤"))
+      const emoji2Handled = editor.handleKeyPress(createKeyEvent("👍"))
       expect(emoji2Handled).toBe(true)
-      expect(editor.plainText).toBe("馃専涓?馃憤")
+      expect(editor.plainText).toBe("🌟世 👍")
     })
 
     it("should filter escape sequences when they have non-printable characters", async () => {
@@ -657,7 +657,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLine(9999)
       expect(editor.logicalCursor.col).toBe(11)
 
-      const handled = editor.handleKeyPress(createKeyEvent({ name: "銋?, baseCode: 97, ctrl: true }))
+      const handled = editor.handleKeyPress(createKeyEvent({ name: "ㅁ", baseCode: 97, ctrl: true }))
 
       expect(handled).toBe(true)
       expect(editor.logicalCursor.col).toBe(0)
@@ -1818,7 +1818,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should stop at CJK-ASCII boundary with ctrl+w", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鏃ユ湰瑾瀉bc",
+        initialValue: "日本語abc",
         width: 40,
         height: 10,
       })
@@ -1827,7 +1827,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLineEnd()
 
       currentMockInput.pressKey("w", { ctrl: true })
-      expect(editor.plainText).toBe("鏃ユ湰瑾?)
+      expect(editor.plainText).toBe("日本語")
 
       currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("")
@@ -1835,7 +1835,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should keep Hangul run grouped with ctrl+w", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "韰岇姢韸竧est",
+        initialValue: "테스트test",
         width: 40,
         height: 10,
       })
@@ -1844,7 +1844,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLineEnd()
 
       currentMockInput.pressKey("w", { ctrl: true })
-      expect(editor.plainText).toBe("韰岇姢韸?)
+      expect(editor.plainText).toBe("테스트")
 
       currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("")
@@ -1852,7 +1852,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should stop at CJK punctuation before ASCII with ctrl+w", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鏃ユ湰瑾炪€俛bc",
+        initialValue: "日本語。abc",
         width: 40,
         height: 10,
       })
@@ -1861,7 +1861,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLineEnd()
 
       currentMockInput.pressKey("w", { ctrl: true })
-      expect(editor.plainText).toBe("鏃ユ湰瑾炪€?)
+      expect(editor.plainText).toBe("日本語。")
 
       currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("")
@@ -1869,7 +1869,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should stop at compat ideograph boundary with ctrl+w", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鸠爛abc",
+        initialValue: "丽abc",
         width: 40,
         height: 10,
       })
@@ -1878,7 +1878,7 @@ describe("Textarea - Keybinding Tests", () => {
       editor.gotoLineEnd()
 
       currentMockInput.pressKey("w", { ctrl: true })
-      expect(editor.plainText).toBe("鸠爛")
+      expect(editor.plainText).toBe("丽")
 
       currentMockInput.pressKey("w", { ctrl: true })
       expect(editor.plainText).toBe("")
@@ -2351,7 +2351,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should move across CJK-ASCII boundary with ctrl+right and ctrl+left", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鏃ユ湰瑾瀉bc",
+        initialValue: "日本語abc",
         width: 40,
         height: 10,
       })
@@ -2374,7 +2374,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should move across CJK punctuation boundary with ctrl+right and ctrl+left", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鏃ユ湰瑾炪€俛bc",
+        initialValue: "日本語。abc",
         width: 40,
         height: 10,
       })
@@ -2397,7 +2397,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should move across compat ideograph boundary with ctrl+right and ctrl+left", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鸠爛abc",
+        initialValue: "丽abc",
         width: 40,
         height: 10,
       })
@@ -2420,7 +2420,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should select words across CJK-ASCII boundary with meta+shift+arrows", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鏃ユ湰瑾瀉bc",
+        initialValue: "日本語abc",
         width: 40,
         height: 10,
         selectable: true,
@@ -2430,15 +2430,15 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressArrow("right", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(6)
-      expect(editor.getSelectedText()).toBe("鏃ユ湰瑾?)
+      expect(editor.getSelectedText()).toBe("日本語")
 
       currentMockInput.pressArrow("right", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(9)
-      expect(editor.getSelectedText()).toBe("鏃ユ湰瑾瀉bc")
+      expect(editor.getSelectedText()).toBe("日本語abc")
 
       currentMockInput.pressArrow("left", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(6)
-      expect(editor.getSelectedText()).toBe("鏃ユ湰瑾?)
+      expect(editor.getSelectedText()).toBe("日本語")
 
       currentMockInput.pressArrow("left", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(0)
@@ -2447,7 +2447,7 @@ describe("Textarea - Keybinding Tests", () => {
 
     it("should select words across compat ideograph boundary with meta+shift+arrows", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "鸠爛abc",
+        initialValue: "丽abc",
         width: 40,
         height: 10,
         selectable: true,
@@ -2457,15 +2457,15 @@ describe("Textarea - Keybinding Tests", () => {
 
       currentMockInput.pressArrow("right", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(2)
-      expect(editor.getSelectedText()).toBe("鸠爛")
+      expect(editor.getSelectedText()).toBe("丽")
 
       currentMockInput.pressArrow("right", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(5)
-      expect(editor.getSelectedText()).toBe("鸠爛abc")
+      expect(editor.getSelectedText()).toBe("丽abc")
 
       currentMockInput.pressArrow("left", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(2)
-      expect(editor.getSelectedText()).toBe("鸠爛")
+      expect(editor.getSelectedText()).toBe("丽")
 
       currentMockInput.pressArrow("left", { meta: true, shift: true })
       expect(editor.logicalCursor.col).toBe(0)

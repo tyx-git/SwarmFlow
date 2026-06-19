@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Renderable } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { createCoreSlotRegistry, registerCorePlugin, SlotRenderable } from "../plugins/core-slot.js"

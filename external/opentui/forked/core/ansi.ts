@@ -1,4 +1,4 @@
-﻿export const ANSI = {
+export const ANSI = {
   switchToAlternateScreen: "\x1b[?1049h",
   switchToMainScreen: "\x1b[?1049l",
   reset: "\x1b[0m",

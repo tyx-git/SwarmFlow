@@ -1,10 +1,10 @@
-﻿import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
 import { buildLineDescriptors, materializeDescriptors } from "./file-modify-body.js";
 import type { ConversationPalette } from "../conversation-types.js";
-import type { FileModifyDisplayData, DiffHunk } from "../../../src/diff-hunk.js";
+import type { FileModifyDisplayData, DiffHunk } from "../../../../src/lib/diff-hunk.js";
 
-// Minimal palette 鈥?only dim/red/green/text are read by the builders.
+// Minimal palette — only dim/red/green/text are read by the builders.
 const COLORS = {
   background: "transparent",
   panel: "transparent",
@@ -31,7 +31,7 @@ const COLORS = {
 const WIDTH = 80;
 
 // ------------------------------------------------------------------
-// Serialization 鈥?turn an artifact into a plain, comparable shape.
+// Serialization — turn an artifact into a plain, comparable shape.
 // ------------------------------------------------------------------
 
 function ser(artifacts: ReturnType<typeof materializeDescriptors>): unknown {
@@ -122,7 +122,7 @@ describe("FileModifyBody virtualization: windowed == full slice", () => {
         [Math.floor(total / 3), Math.floor((2 * total) / 3)], // middle
         [-5, 10],              // clamp negative start
         [total - 3, total + 50], // clamp overshoot end
-        [total + 10, total + 20], // fully out of range 鈫?empty
+        [total + 10, total + 20], // fully out of range → empty
       ];
 
       for (const [a, b] of windows) {

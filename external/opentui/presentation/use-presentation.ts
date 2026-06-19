@@ -1,7 +1,7 @@
-﻿import { useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 
-import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
-import type { Session as TuiSession } from "../../src/ui/contracts.js";
+import type { ChildSessionSnapshot } from "../../../src/session-tree-types.js";
+import type { Session as TuiSession } from "../../../src/ui/contracts.js";
 
 import { useTranscriptModel } from "../transcript/use-transcript-model.js";
 import type { PresentationEntry } from "./types.js";
@@ -20,7 +20,7 @@ export function usePresentationEntries(
   const active = processing || childSessions.some((c) => c.running);
   const reconciledItems = useTranscriptModel({ session, selectedChildId, childSessions, active });
   const previousRef = useRef<PresentationEntry[]>([]);
-  // Read activeEntryId from session 鈥?changes propagate via log revision bump
+  // Read activeEntryId from session — changes propagate via log revision bump
   const activeEntryId = session.activeLogEntryId ?? null;
 
   const presentationItems = useMemo(() => {

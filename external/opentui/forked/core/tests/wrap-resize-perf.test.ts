@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { TextBuffer } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { stringToStyledText } from "../lib/styled-text.js"
@@ -6,12 +6,12 @@ import { stringToStyledText } from "../lib/styled-text.js"
 /**
  * These tests verify algorithmic complexity rather than absolute performance.
  * By comparing ratios of execution times for different input sizes, we can
- * detect O(n虏) regressions regardless of the machine's speed.
+ * detect O(n²) regressions regardless of the machine's speed.
  *
  * For O(n) algorithms: doubling input size should roughly double the time (ratio ~2)
- * For O(n虏) algorithms: doubling input size should quadruple the time (ratio ~4)
+ * For O(n²) algorithms: doubling input size should quadruple the time (ratio ~4)
  *
- * We use a threshold that allows for CI variance while still catching O(n虏) behavior.
+ * We use a threshold that allows for CI variance while still catching O(n²) behavior.
  * The threshold is set to catch quadratic complexity (ratio ~4) while allowing
  * linear complexity with noise (ratio ~2-3.5).
  */

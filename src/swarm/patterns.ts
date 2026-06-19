@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import { AgentRole, Swarm拓扑 } from "./types.js";
+import { AgentRole, SwarmTopology } from "./types.js";
 import type { SwarmPattern } from "./types.js";
 
 // ------------------------------------------------------------------
@@ -23,7 +23,7 @@ import type { SwarmPattern } from "./types.js";
 export const FAN_OUT_FAN_IN: SwarmPattern = {
   name: "fan-out-fan-in",
   description: "Distribute work to parallel workers, then merge results",
-  topology: Swarm拓扑.Star,
+  topology: SwarmTopology.Star,
   stages: [
     {
       role: AgentRole.Scout,
@@ -55,7 +55,7 @@ export const FAN_OUT_FAN_IN: SwarmPattern = {
 export const PIPELINE: SwarmPattern = {
   name: "pipeline",
   description: "Sequential stages in a chain — each feeds into the next",
-  topology: Swarm拓扑.Chain,
+  topology: SwarmTopology.Chain,
   stages: [
     {
       role: AgentRole.Scout,
@@ -90,7 +90,7 @@ export const PIPELINE: SwarmPattern = {
 export const ENSEMBLE: SwarmPattern = {
   name: "ensemble",
   description: "Multiple agents solve independently, vote on best result",
-  topology: Swarm拓扑.Star,
+  topology: SwarmTopology.Star,
   stages: [
     {
       role: AgentRole.Worker,
@@ -116,7 +116,7 @@ export const ENSEMBLE: SwarmPattern = {
 export const DEBATE: SwarmPattern = {
   name: "debate",
   description: "Agents argue different perspectives, then synthesize",
-  topology: Swarm拓扑.Mesh,
+  topology: SwarmTopology.Mesh,
   stages: [
     {
       role: AgentRole.Scout,
@@ -147,7 +147,7 @@ export const DEBATE: SwarmPattern = {
 export const EXPLORATORY: SwarmPattern = {
   name: "exploratory",
   description: "Parallel scouts investigate different areas",
-  topology: Swarm拓扑.Star,
+  topology: SwarmTopology.Star,
   stages: [
     {
       role: AgentRole.Scout,

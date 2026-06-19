@@ -1,16 +1,17 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 /**
- * Unified file-modify body 鈥?renders identically during streaming and after completion.
+ * Unified file-modify body — renders identically during streaming and after completion.
  *
- * Input: FileModifyDisplayData (shared type from src/diff-hunk.ts)
+ * Input: FileModifyDisplayData (shared type from src/lib/diff-hunk.ts)
  *
  * Modes:
- *   replace 鈥?DiffHunk[]: contextBefore + red lines + green lines + contextAfter, with 鈰? *   append  鈥?DiffHunk[]: 鈰?top + green lines (no 鈰?bottom)
- *   write   鈥?writeLines: syntax-highlighted code lines with line numbers (no 鈰?
+ *   replace — DiffHunk[]: contextBefore + red lines + green lines + contextAfter, with ⋮
+ *   append  — DiffHunk[]: ⋮ top + green lines (no ⋮ bottom)
+ *   write   — writeLines: syntax-highlighted code lines with line numbers (no ⋮)
  *
  * Two-pass rendering (perf): a cheap structural pass turns the data into
- * `LineDescriptor[]` (line numbers, signs, ellipsis, raw payload text 鈥?NO
+ * `LineDescriptor[]` (line numbers, signs, ellipsis, raw payload text — NO
  * syntax highlighting), and an expensive `materializeDescriptor` pass builds
  * the highlighted `StyledText` only for the lines actually displayed. The
  * detail tab drives a scroll-window so a 400-line streaming write only
@@ -22,7 +23,7 @@ import React, { useMemo } from "react";
 
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
 import { highlightToChunks } from "../../forked/patch-opentui-markdown.js";
-import type { FileModifyDisplayData } from "../../../src/diff-hunk.js";
+import type { FileModifyDisplayData } from "../../../../src/lib/diff-hunk.js";
 import type { ConversationPalette } from "../conversation-types.js";
 import { SelectableRow } from "../../display/primitives/selectable-row.js";
 import {
@@ -44,7 +45,7 @@ const DELETION_BG = "#6a3232";
 const DEFAULT_MAX_VISIBLE = 25;
 
 // ------------------------------------------------------------------
-// Line descriptor 鈥?cheap structural representation (no highlighting)
+// Line descriptor — cheap structural representation (no highlighting)
 // ------------------------------------------------------------------
 
 /**
@@ -52,7 +53,7 @@ const DEFAULT_MAX_VISIBLE = 25;
  * number + sign / ellipsis glyph) are cheap to build for every row; the
  * `payloadText` is highlighted lazily in `materializeDescriptor` only when the
  * row is actually shown. Each descriptor renders to exactly one terminal row
- * (callers use `wrapMode="none"`), so descriptor index == row index 鈥?the
+ * (callers use `wrapMode="none"`), so descriptor index == row index — the
  * scroll-window math relies on this.
  */
 export interface LineDescriptor {
@@ -125,7 +126,7 @@ function truncateChunks(
           result.push({ ...chunk, text: truncText });
         }
       }
-      result.push(createChunk("鈥?, { fg: ellipsisFg }));
+      result.push(createChunk("…", { fg: ellipsisFg }));
       return result;
     }
   }
@@ -140,14 +141,14 @@ function ellipsisDescriptor(numW: number, dimFg: RGBA): LineDescriptor {
   return {
     prefixChunks: [
       createChunk(numW ? `${lineNumBlank(numW)} ` : "", { fg: dimFg }),
-      createChunk("鈰?, { fg: dimFg }),
+      createChunk("⋮", { fg: dimFg }),
     ],
     payloadText: null,
   };
 }
 
 // ------------------------------------------------------------------
-// Descriptor builders (cheap 鈥?no syntax highlighting)
+// Descriptor builders (cheap — no syntax highlighting)
 // ------------------------------------------------------------------
 
 function buildReplaceDescriptors(
@@ -178,14 +179,14 @@ function buildReplaceDescriptors(
     const isFirst = i === 0;
     const isLast = i === data.hunks.length - 1;
 
-    // 鈰?top: only if there are hidden lines above
+    // ⋮ top: only if there are hidden lines above
     if (isFirst) {
       const firstDisplayLine = hunk.startLine - hunk.contextBefore.length;
       if (firstDisplayLine > 1) {
         descriptors.push(ellipsisDescriptor(numW, dimFg));
       }
     } else {
-      // Between hunks: only show 鈰?if there are hidden lines between them
+      // Between hunks: only show ⋮ if there are hidden lines between them
       const prevHunk = data.hunks[i - 1];
       const prevHunkEnd = prevHunk.startLine + prevHunk.deletions.length + prevHunk.contextAfter.length;
       const currHunkStart = hunk.startLine - hunk.contextBefore.length;
@@ -258,7 +259,7 @@ function buildReplaceDescriptors(
       });
     }
 
-    // 鈰?bottom: only if there are hidden lines below
+    // ⋮ bottom: only if there are hidden lines below
     if (isLast) {
       const lastDisplayLine = afterStartLine + hunk.contextAfter.length - 1;
       if (data.totalLineCount > 0 && lastDisplayLine < data.totalLineCount) {
@@ -288,7 +289,7 @@ function buildAppendDescriptors(
 
   const descriptors: LineDescriptor[] = [];
 
-  // 鈰?top: always (there's existing file content above)
+  // ⋮ top: always (there's existing file content above)
   descriptors.push(ellipsisDescriptor(numW, dimFg));
 
   for (let idx = 0; idx < lines.length; idx++) {
@@ -306,7 +307,7 @@ function buildAppendDescriptors(
     });
   }
 
-  // No 鈰?bottom 鈥?append content IS the end of the file
+  // No ⋮ bottom — append content IS the end of the file
 
   return descriptors;
 }
@@ -324,8 +325,8 @@ function buildWriteDescriptors(
 
   const numW = Math.max(String(lines.length).length, 2);
 
-  // No 鈰?鈥?write shows the full file content
-  // No brightness boost 鈥?this is neutral file content, not a diff addition
+  // No ⋮ — write shows the full file content
+  // No brightness boost — this is neutral file content, not a diff addition
   return lines.map((line, idx) => ({
     prefixChunks: [createChunk(`${lineNumStr(idx + 1, numW)} `, { fg: dimFg })],
     payloadText: line,
@@ -334,7 +335,7 @@ function buildWriteDescriptors(
   }));
 }
 
-/** Cheap structural pass 鈥?turns display data into row descriptors (no highlighting). */
+/** Cheap structural pass — turns display data into row descriptors (no highlighting). */
 export function buildLineDescriptors(
   data: FileModifyDisplayData,
   colors: ConversationPalette,
@@ -346,7 +347,7 @@ export function buildLineDescriptors(
   }
 }
 
-/** Expensive pass 鈥?highlights one descriptor and builds its final StyledText row. */
+/** Expensive pass — highlights one descriptor and builds its final StyledText row. */
 export function materializeDescriptor(
   desc: LineDescriptor,
   contentWidth: number,
@@ -361,7 +362,7 @@ export function materializeDescriptor(
 }
 
 /**
- * Full materialize (all rows) 鈥?used by tests as the equivalence oracle for
+ * Full materialize (all rows) — used by tests as the equivalence oracle for
  * the windowed render: `materializeRange(descs, a, b)` must byte-match
  * `materializeAll(descs).slice(a, b)`.
  */

@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { EventEmitter } from "events"
 import { createSlotRegistry, SlotRegistry } from "../plugins/registry.js"
 import type { Plugin } from "../plugins/types.js"

@@ -1,4 +1,4 @@
-﻿import { postWorkerMessage } from "./worker.js"
+import { postWorkerMessage } from "./worker.js"
 
 postWorkerMessage({ type: "WAITING_FOR_MESSAGE" })
 

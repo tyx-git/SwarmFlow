@@ -1,4 +1,4 @@
-﻿import { test, expect, describe, mock, beforeEach } from "bun:test"
+import { test, expect, describe, mock, beforeEach } from "bun:test"
 import { TerminalConsole, ConsolePosition } from "./console.js"
 import { MouseEvent } from "./renderer.js"
 import { ManualClock } from "./testing/manual-clock.js"
@@ -327,7 +327,7 @@ describe("TerminalConsole", () => {
       terminalConsole["_selectionStart"] = { line: 0, col: 0 }
       terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
 
-      terminalConsole["handleKeyPress"]({ name: "銋?, baseCode: 99, ctrl: true, shift: true, meta: false } as any)
+      terminalConsole["handleKeyPress"]({ name: "ㅊ", baseCode: 99, ctrl: true, shift: true, meta: false } as any)
 
       expect(onCopy).toHaveBeenCalledWith("Hello")
     })

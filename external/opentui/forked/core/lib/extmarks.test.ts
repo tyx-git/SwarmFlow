@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, afterEach } from "bun:test"
+import { describe, expect, it, afterEach } from "bun:test"
 import { TextareaRenderable } from "../renderables/Textarea.js"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../testing/test-renderer.js"
 import { type ExtmarksController } from "./extmarks.js"
@@ -479,10 +479,10 @@ describe("ExtmarksController", () => {
 
       textarea.focus()
       textarea.cursorOffset = 0
-      textarea.insertText("頃滉竴")
+      textarea.insertText("한글")
 
       const extmark = extmarks.get(id)
-      expect(textarea.plainText).toBe("頃滉竴abc")
+      expect(textarea.plainText).toBe("한글abc")
       expect(extmark?.start).toBe(5)
       expect(extmark?.end).toBe(7)
     })
@@ -497,10 +497,10 @@ describe("ExtmarksController", () => {
 
       textarea.focus()
       textarea.cursorOffset = 0
-      textarea.insertChar("頃?)
+      textarea.insertChar("한")
 
       const extmark = extmarks.get(id)
-      expect(textarea.plainText).toBe("頃渁bc")
+      expect(textarea.plainText).toBe("한abc")
       expect(extmark?.start).toBe(3)
       expect(extmark?.end).toBe(5)
     })
@@ -515,10 +515,10 @@ describe("ExtmarksController", () => {
 
       textarea.focus()
       textarea.cursorOffset = 0
-      textarea.insertText("頃淺n旮€")
+      textarea.insertText("한\n글")
 
       const extmark = extmarks.get(id)
-      expect(textarea.plainText).toBe("頃淺n旮€abc")
+      expect(textarea.plainText).toBe("한\n글abc")
       expect(extmark?.start).toBe(6)
       expect(extmark?.end).toBe(8)
     })
@@ -558,7 +558,7 @@ describe("ExtmarksController", () => {
     })
 
     it("should adjust extmark positions by display width after backspacing multi-width text before extmark", async () => {
-      await setup("頃滉竴abc")
+      await setup("한글abc")
 
       const id = extmarks.create({
         start: 4,
@@ -570,13 +570,13 @@ describe("ExtmarksController", () => {
       currentMockInput.pressBackspace()
 
       const extmark = extmarks.get(id)
-      expect(textarea.plainText).toBe("頃渁bc")
+      expect(textarea.plainText).toBe("한abc")
       expect(extmark?.start).toBe(2)
       expect(extmark?.end).toBe(5)
     })
 
     it("should adjust extmark positions by display width after deleting multi-width text before extmark", async () => {
-      await setup("頃渁bc")
+      await setup("한abc")
 
       const id = extmarks.create({
         start: 2,

@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";

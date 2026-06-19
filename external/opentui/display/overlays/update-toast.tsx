@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -37,20 +37,20 @@ export function UpdateToast({
   let bodyLine2: string | undefined;
   if (isFailed) {
     bodyLine1 = version ? `Couldn't download v${version}.` : "Update download failed.";
-    bodyLine2 = "Check your proxy / network, then run `swarmflow update`.";
+    bodyLine2 = "Check your proxy / network, then run `fermi update`.";
   } else if (isReady) {
-    bodyLine1 = "A new version of swarmflow downloaded.";
+    bodyLine1 = "A new version of Fermi downloaded.";
     bodyLine2 = undefined;
   } else {
-    bodyLine1 = "A new version of swarmflow detected.";
+    bodyLine1 = "A new version of Fermi detected.";
     bodyLine2 = phase === "downloading"
       ? "Downloading update..."
-      : "Run `swarmflow update` to install.";
+      : "Run `fermi update` to install.";
   }
 
   return (
     <ToastFrame
-      title={isFailed ? " Update failed " : " New swarmflow "}
+      title={isFailed ? " Update failed " : " New Fermi "}
       titleColor={isFailed ? colors.red : colors.accent}
       borderColor={colors.dim}
       theme={theme}

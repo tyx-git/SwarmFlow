@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { SyntaxStyle } from "./syntax-style.js"
 import { RGBA } from "./lib/RGBA.js"
 import type { StyleDefinition, ThemeTokenStyle } from "./syntax-style.js"
@@ -594,12 +594,12 @@ describe("NativeSyntaxStyle", () => {
     })
 
     it("should handle style names with unicode characters", () => {
-      const id = style.registerStyle("鍏抽敭瀛?, {
+      const id = style.registerStyle("关键字", {
         fg: RGBA.fromValues(1, 0, 0, 1),
       })
 
       expect(id).toBeGreaterThan(0)
-      expect(style.resolveStyleId("鍏抽敭瀛?)).toBe(id)
+      expect(style.resolveStyleId("关键字")).toBe(id)
     })
 
     it("should handle style names with special characters", () => {

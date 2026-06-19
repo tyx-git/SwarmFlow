@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import {
   mergeKeyBindings,
   getKeyBindingKey,
@@ -47,7 +47,7 @@ describe("keybinding.internal", () => {
     it("should fall back to baseCode when the parsed name differs", () => {
       const map = buildKeyBindingsMap([{ name: "c", ctrl: true, action: "copy" as const }])
 
-      const action = getKeyBindingAction(map, { name: "銋?, baseCode: 99, ctrl: true })
+      const action = getKeyBindingAction(map, { name: "ㅊ", baseCode: 99, ctrl: true })
 
       expect(action).toBe("copy")
     })
@@ -55,10 +55,10 @@ describe("keybinding.internal", () => {
     it("should prefer a direct name match over the baseCode fallback", () => {
       const map = buildKeyBindingsMap([
         { name: "c", ctrl: true, action: "copy" as const },
-        { name: "銋?, ctrl: true, action: "insert" as const },
+        { name: "ㅊ", ctrl: true, action: "insert" as const },
       ])
 
-      const action = getKeyBindingAction(map, { name: "銋?, baseCode: 99, ctrl: true })
+      const action = getKeyBindingAction(map, { name: "ㅊ", baseCode: 99, ctrl: true })
 
       expect(action).toBe("insert")
     })
@@ -66,7 +66,7 @@ describe("keybinding.internal", () => {
 
   describe("matchesKeyBinding", () => {
     it("should match a binding by baseCode when available", () => {
-      expect(matchesKeyBinding({ name: "銋?, baseCode: 99, ctrl: true }, { name: "c", ctrl: true })).toBe(true)
+      expect(matchesKeyBinding({ name: "ㅊ", baseCode: 99, ctrl: true }, { name: "c", ctrl: true })).toBe(true)
     })
   })
 

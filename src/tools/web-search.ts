@@ -103,22 +103,22 @@ function cleanResultText(text: string): string {
 
 function truncateResultText(text: string, limit: number): string {
   if (text.length <= limit) return text;
-  if (limit <= 1) return "—;
+  if (limit <= 1) return "…";
 
   const lookaheadEnd = Math.min(text.length, limit + SOFT_TRUNCATE_LOOKAHEAD_CHARS);
   for (let i = limit; i < lookaheadEnd; i++) {
     if (/\s/.test(text[i])) {
-      return text.slice(0, i).trimEnd() + "—;
+      return text.slice(0, i).trimEnd() + "…";
     }
   }
 
   for (let i = limit - 1; i > 0; i--) {
     if (/\s/.test(text[i])) {
-      return text.slice(0, i).trimEnd() + "—;
+      return text.slice(0, i).trimEnd() + "…";
     }
   }
 
-  return text.slice(0, limit - 1).trimEnd() + "—;
+  return text.slice(0, limit - 1).trimEnd() + "…";
 }
 
 function firstNonEmptyLine(text: string): string {
@@ -164,7 +164,7 @@ function normalizeHighlights(highlights: string[]): { highlights: string[]; omit
     const next = truncateResultText(excerpt, remaining);
     visible.push(next);
     remaining -= next.length;
-    if (next.endsWith("—)) break;
+    if (next.endsWith("…")) break;
   }
 
   return {

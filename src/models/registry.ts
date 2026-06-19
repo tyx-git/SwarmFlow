@@ -12,8 +12,8 @@
  * 缺失字段导致构建时验证器失败，而不是在运行时静默失败。
  */
 
-import factoryModelsRaw from "../assets/model-registry/models.json" with { type: "json" };
-import factoryProvidersRaw from "../assets/model-registry/providers.json" with { type: "json" };
+import factoryModelsRaw from "../../assets/model-registry/models.json" with { type: "json" };
+import factoryProvidersRaw from "../../assets/model-registry/providers.json" with { type: "json" };
 import {
   type SealedSchema,
   type ThinkingEncryption,
@@ -23,7 +23,7 @@ import {
   SEALED_SCHEMA_OPENROUTER_CHAT,
   isAnthropicFamilyModel,
   isOpenAIFamilyModel,
-} from "./lib/thinking-artifact.js";
+} from "../lib/thinking-artifact.js";
 
 // ------------------------------------------------------------------
 // ModelSpec — 每个模型一个对象

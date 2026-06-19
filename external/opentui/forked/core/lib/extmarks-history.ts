@@ -1,4 +1,4 @@
-﻿import type { Extmark } from "./extmarks.js"
+import type { Extmark } from "./extmarks.js"
 
 export interface ExtmarksSnapshot {
   extmarks: Map<number, Extmark>

@@ -1,9 +1,9 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-export const WORKING_SPINNER_FRAMES = ["鉅?, "鉅?, "鉅?, "鉅?, "鉅?, "鉅?, "鉅?, "鉅?, "鉅?, "鉅?] as const;
+export const WORKING_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 export const WORKING_SPINNER_INTERVAL = 80;
 
-export const ASKING_SPINNER_FRAMES = ["鈼?, "鈼?] as const;
+export const ASKING_SPINNER_FRAMES = ["◉", "◎"] as const;
 export const ASKING_SPINNER_INTERVAL = 700;
 
 export function useSpinner(

@@ -1,4 +1,4 @@
-﻿import type { ColorInput } from "./RGBA.js"
+import type { ColorInput } from "./RGBA.js"
 
 export interface BorderCharacters {
   topLeft: string
@@ -38,56 +38,56 @@ export function parseBorderStyle(value: unknown, fallback: BorderStyle = "single
 
 export const BorderChars: Record<BorderStyle, BorderCharacters> = {
   single: {
-    topLeft: "鈹?,
-    topRight: "鈹?,
-    bottomLeft: "鈹?,
-    bottomRight: "鈹?,
-    horizontal: "鈹€",
-    vertical: "鈹?,
-    topT: "鈹?,
-    bottomT: "鈹?,
-    leftT: "鈹?,
-    rightT: "鈹?,
-    cross: "鈹?,
+    topLeft: "┌",
+    topRight: "┐",
+    bottomLeft: "└",
+    bottomRight: "┘",
+    horizontal: "─",
+    vertical: "│",
+    topT: "┬",
+    bottomT: "┴",
+    leftT: "├",
+    rightT: "┤",
+    cross: "┼",
   },
   double: {
-    topLeft: "鈺?,
-    topRight: "鈺?,
-    bottomLeft: "鈺?,
-    bottomRight: "鈺?,
-    horizontal: "鈺?,
-    vertical: "鈺?,
-    topT: "鈺?,
-    bottomT: "鈺?,
-    leftT: "鈺?,
-    rightT: "鈺?,
-    cross: "鈺?,
+    topLeft: "╔",
+    topRight: "╗",
+    bottomLeft: "╚",
+    bottomRight: "╝",
+    horizontal: "═",
+    vertical: "║",
+    topT: "╦",
+    bottomT: "╩",
+    leftT: "╠",
+    rightT: "╣",
+    cross: "╬",
   },
   rounded: {
-    topLeft: "鈺?,
-    topRight: "鈺?,
-    bottomLeft: "鈺?,
-    bottomRight: "鈺?,
-    horizontal: "鈹€",
-    vertical: "鈹?,
-    topT: "鈹?,
-    bottomT: "鈹?,
-    leftT: "鈹?,
-    rightT: "鈹?,
-    cross: "鈹?,
+    topLeft: "╭",
+    topRight: "╮",
+    bottomLeft: "╰",
+    bottomRight: "╯",
+    horizontal: "─",
+    vertical: "│",
+    topT: "┬",
+    bottomT: "┴",
+    leftT: "├",
+    rightT: "┤",
+    cross: "┼",
   },
   heavy: {
-    topLeft: "鈹?,
-    topRight: "鈹?,
-    bottomLeft: "鈹?,
-    bottomRight: "鈹?,
-    horizontal: "鈹?,
-    vertical: "鈹?,
-    topT: "鈹?,
-    bottomT: "鈹?,
-    leftT: "鈹?,
-    rightT: "鈹?,
-    cross: "鈺?,
+    topLeft: "┏",
+    topRight: "┓",
+    bottomLeft: "┗",
+    bottomRight: "┛",
+    horizontal: "━",
+    vertical: "┃",
+    topT: "┳",
+    bottomT: "┻",
+    leftT: "┣",
+    rightT: "┫",
+    cross: "╋",
   },
 }
 
@@ -115,7 +115,7 @@ export interface BoxDrawOptions {
   bottomTitleAlignment?: "left" | "center" | "right"
   /** Custom color for the left title text (defaults to borderColor) */
   titleColor?: ColorInput
-  /** Vertical divider position as a ratio (0鈥?) of box width */
+  /** Vertical divider position as a ratio (0–1) of box width */
   dividerRatio?: number
   /** Title text displayed after the divider on the top border */
   dividerTitle?: string

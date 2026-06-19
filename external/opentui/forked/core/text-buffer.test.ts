@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -94,11 +94,11 @@ describe("TextBuffer", () => {
     })
 
     it("should handle Unicode characters correctly", () => {
-      const styledText = stringToStyledText("Hello 涓栫晫 馃専")
+      const styledText = stringToStyledText("Hello 世界 🌟")
       buffer.setStyledText(styledText)
 
       const plainText = buffer.getPlainText()
-      expect(plainText).toBe("Hello 涓栫晫 馃専")
+      expect(plainText).toBe("Hello 世界 🌟")
     })
 
     it("should handle styled text with colors and attributes", () => {
@@ -194,7 +194,7 @@ describe("TextBuffer", () => {
     })
 
     it("should handle Unicode characters correctly", () => {
-      const styledText = stringToStyledText("Hello 涓栫晫 馃専")
+      const styledText = stringToStyledText("Hello 世界 🌟")
       buffer.setStyledText(styledText)
 
       expect(buffer.length).toBe(13)
@@ -455,8 +455,8 @@ describe("TextBuffer", () => {
 
     it("should append unicode content", () => {
       buffer.setText("Hello ")
-      buffer.append("涓栫晫 馃専")
-      expect(buffer.getPlainText()).toBe("Hello 涓栫晫 馃専")
+      buffer.append("世界 🌟")
+      expect(buffer.getPlainText()).toBe("Hello 世界 🌟")
     })
 
     it("should handle streaming chunks", () => {

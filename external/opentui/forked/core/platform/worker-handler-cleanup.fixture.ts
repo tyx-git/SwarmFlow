@@ -1,4 +1,4 @@
-﻿import { postWorkerMessage, setWorkerMessageHandler } from "./worker.js"
+import { postWorkerMessage, setWorkerMessageHandler } from "./worker.js"
 
 const cleanupFirst = setWorkerMessageHandler(() => {})
 const cleanupSecond = setWorkerMessageHandler(() => {})

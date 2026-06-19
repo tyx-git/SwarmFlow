@@ -1,4 +1,4 @@
-﻿import type { OptimizedBuffer } from "../buffer.js"
+import type { OptimizedBuffer } from "../buffer.js"
 
 function toU8(value: number): number {
   return Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 255)
@@ -330,9 +330,9 @@ export class VignetteEffect {
     }
 
     // Use colorMatrix with zero matrix to apply attenuation
-    // colorMatrix blends: result = original + (transformed - original) 脳 strength
+    // colorMatrix blends: result = original + (transformed - original) × strength
     // With zero matrix: transformed = 0
-    // Result = original + (0 - original) 脳 attenuation = original 脳 (1 - attenuation)
+    // Result = original + (0 - original) × attenuation = original × (1 - attenuation)
     buffer.colorMatrix(VignetteEffect.zeroMatrix, this.precomputedAttenuationCellMask!, 1.0, 3)
   }
 }
@@ -556,7 +556,7 @@ export class CloudsEffect {
 
     // Use native colorMatrix with zero matrix to apply attenuation
     // Zero matrix: transformed = 0 (black)
-    // Result = original + (0 - original) 脳 attenuation = original 脳 (1 - attenuation)
+    // Result = original + (0 - original) × attenuation = original × (1 - attenuation)
     const zeroMatrix = new Float32Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     buffer.colorMatrix(zeroMatrix, cellMask, 1.0, 2) // target = 2 (background only)
   }
@@ -764,7 +764,7 @@ export class CRTRollingBarEffect {
         // Normalize distance to 0-1 range across the whole effect
         const normalizedDist = distFromCenter / (totalEffectHeight / 2)
         // Cosine falloff: 1 at center, 0 at edge
-        // cos(0) = 1, cos(蟺/2) = 0
+        // cos(0) = 1, cos(π/2) = 0
         barFactor = Math.cos((normalizedDist * Math.PI) / 2)
       }
 

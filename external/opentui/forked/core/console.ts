@@ -1,4 +1,4 @@
-﻿import { EventEmitter } from "events"
+import { EventEmitter } from "events"
 import { Console } from "node:console"
 import fs from "node:fs"
 import path from "node:path"

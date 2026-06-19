@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useMemo } from "react";
 
@@ -37,7 +37,7 @@ function SystemEntryInner(
 
   if (severity === "no_reply") {
     const fullGradient = theme.branding.logoGradient;
-    // Use brighter portion of gradient 鈥?skip the darkest tail
+    // Use brighter portion of gradient — skip the darkest tail
     const gradient = useMemo(() => fullGradient.slice(0, 5), [fullGradient]);
     const gradientLabel = useMemo(
       () => buildGradientLabel(NO_REPLY_LABEL, gradient),

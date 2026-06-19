@@ -1,4 +1,4 @@
-﻿import { TextAttributes } from "./types.js"
+import { TextAttributes } from "./types.js"
 import { Renderable } from "./Renderable.js"
 
 export function createTextAttributes({
@@ -73,8 +73,8 @@ export function visualizeRenderableTree(renderable: Renderable, maxDepth: number
 
       children.forEach((child, index) => {
         const childIsLast = index === lastChildIndex
-        const connector = childIsLast ? "鈹斺攢鈹€ " : "鈹溾攢鈹€ "
-        const childPrefix = parentPrefix + (isLastChild ? "    " : "鈹?  ")
+        const connector = childIsLast ? "└── " : "├── "
+        const childPrefix = parentPrefix + (isLastChild ? "    " : "│   ")
         const childLines = buildTreeLines(child, childPrefix + connector, childPrefix, childIsLast, depth + 1)
         lines.push(...childLines)
       })

@@ -1,4 +1,4 @@
-﻿import { EditBuffer } from "./edit-buffer.js"
+import { EditBuffer } from "./edit-buffer.js"
 
 const buffer = EditBuffer.create("unicode")
 buffer.on("content-changed", () => {})

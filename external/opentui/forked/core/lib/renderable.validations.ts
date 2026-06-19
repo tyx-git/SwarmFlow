@@ -1,4 +1,4 @@
-﻿import type { RenderableOptions, Renderable } from "../Renderable.js"
+import type { RenderableOptions, Renderable } from "../Renderable.js"
 import type { PositionTypeString, OverflowString } from "./yoga.options.js"
 
 export function validateOptions(id: string, options: RenderableOptions<Renderable>): void {

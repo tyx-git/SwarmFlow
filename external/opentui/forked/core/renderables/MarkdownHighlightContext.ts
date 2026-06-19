@@ -1,4 +1,4 @@
-﻿import type { OnHighlightCallback } from "./Code.js"
+import type { OnHighlightCallback } from "./Code.js"
 import { getTreeSitterClient, type TreeSitterClient } from "../lib/tree-sitter/index.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 

@@ -1,17 +1,11 @@
-﻿// =============================================================================
-// SwarmFlow GUI — OpenTUI 运行时引导
-// =============================================================================
-// 职责：初始化 Config、Session、CommandRegistry、MCP、Skills、Hooks
-// 流程：加载设置 → 构建 Config → 加载 MCP/Templates/Skills → 创建 Session → 恢复模型选择 → 注册命令
-
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { Config, resolveAssetPaths, getBundledAssetsDir } from "../src/config.js";
-import { Agent } from "../src/agents/agent.js";
-import { Session } from "../src/session.js";
-import { loadTemplates } from "../src/templates/loader.js";
-import { loadSkillsMulti } from "../src/skills/loader.js";
+import { Config, resolveAssetPaths, getBundledAssetsDir } from "../../src/config/config.js";
+import { Agent } from "../../src/agents/agent.js";
+import { Session } from "../../src/session.js";
+import { loadTemplates } from "../../src/templates/loader.js";
+import { loadSkillsMulti } from "../../src/skills/loader.js";
 import {
   SessionStore,
   loadGlobalSettings,
@@ -20,19 +14,19 @@ import {
   loadModelSelectionState,
   parseSettingsOverrides,
   settingsToConfigInputs,
-} from "../src/persistence.js";
-import { loadDotenv } from "../src/dotenv.js";
-import { getSwarmflowHomeDir } from "../src/home-path.js";
+} from "../../src/config/persistence.js";
+import { loadDotenv } from "../../src/lifecycle/dotenv.js";
+import { getSwarmflowHomeDir } from "../../src/lib/home-path.js";
 import {
   buildDefaultRegistry,
   registerSkillCommands,
-} from "../src/commands.js";
-import type { CommandRegistry } from "../src/commands.js";
-import type { PersistedModelSelection } from "../src/model-selection.js";
-import { applyPersistedModelSelectionToSession } from "../src/model-restore.js";
+} from "../../src/commands/commands.js";
+import type { CommandRegistry } from "../../src/commands/commands.js";
+import type { PersistedModelSelection } from "../../src/models/selection.js";
+import { applyPersistedModelSelectionToSession } from "../../src/models/restore.js";
 import {
   hasAnyManagedCredential,
-} from "../src/managed-provider-credentials.js";
+} from "../../src/config/managed-provider-credentials.js";
 
 function identifyPrimaryAgent(
   agents: Record<string, Agent>,
@@ -71,7 +65,7 @@ async function refreshActiveOpenAICodexToken(session: Session): Promise<void> {
   if (session.primaryAgent?.modelConfig?.provider !== "openai-codex") return;
 
   try {
-    const { ensureFreshToken } = await import("../src/auth/openai-oauth.js");
+    const { ensureFreshToken } = await import("../../src/auth/openai-oauth.js");
     await ensureFreshToken();
     session.reloadCurrentModelConfig();
   } catch (err) {
@@ -110,7 +104,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   const projectPath = opts?.projectPath ?? process.cwd();
   const store = new SessionStore({ projectPath, baseDir: homeDir });
 
-  // 鈹€鈹€ Load settings (global + local merge) 鈹€鈹€
+  // ── Load settings (global + local merge) ──
   const globalSettings = loadGlobalSettings(homeDir);
   const localSettings = loadLocalSettings(projectPath, store.projectDir);
   let settings = mergeSettings(globalSettings, localSettings);
@@ -125,11 +119,11 @@ export async function bootstrapOpenTuiRuntime(opts?: {
 
   if (!hasProviders) {
     throw new Error(
-      "No providers configured. Run `swarmflow init` first, then retry the OpenTUI prototype.",
+      "No providers configured. Run `fermi init` first, then retry the OpenTUI prototype.",
     );
   }
 
-  // 鈹€鈹€ Build Config 鈹€鈹€
+  // ── Build Config ──
   const paths = resolveAssetPaths({
     templatesFlag: opts?.templates,
     projectPath,
@@ -155,12 +149,12 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     modelState,
   );
 
-  // 鈹€鈹€ MCP client (connect eagerly, await lazily on first turn) 鈹€鈹€
+  // ── MCP client (connect eagerly, await lazily on first turn) ──
   let mcpManager: unknown = null;
   let mcpReadyPromise: Promise<void> | undefined;
   if (config.mcpServerConfigs.length > 0) {
     try {
-      const { MCPClientManager } = await import("../src/mcp-client.js");
+      const { MCPClientManager } = await import("../../src/clients/mcp-client.js");
       mcpManager = new MCPClientManager(config.mcpServerConfigs);
       mcpReadyPromise = (mcpManager as any).connectAll().catch(() => {});
     } catch {
@@ -170,9 +164,9 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     }
   }
 
-  // 鈹€鈹€ Templates 鈹€鈹€
+  // ── Templates ──
   const bundledDir = getBundledAssetsDir();
-  const bundledTemplates = join(bundledDir, "agent_templates");
+  const bundledTemplates = join(bundledDir, "prompts", "templates");
   const bundledPrompts = join(bundledDir, "prompts");
   const promptsDirs: string[] = [];
   if (paths.promptsPath) promptsDirs.push(paths.promptsPath);
@@ -189,7 +183,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   );
   const primary = identifyPrimaryAgent(agents);
 
-  // 鈹€鈹€ Skills (four-layer: bundled > global > project > workspace) 鈹€鈹€
+  // ── Skills (four-layer: bundled > global > project > workspace) ──
   const bundledSkills = join(bundledDir, "skills");
   const skillRoots: string[] = [];
   if (existsSync(bundledSkills) && statSync(bundledSkills).isDirectory()) {
@@ -198,7 +192,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   skillRoots.push(...paths.skillRoots);
   const skills = loadSkillsMulti(skillRoots);
 
-  // 鈹€鈹€ Session 鈹€鈹€
+  // ── Session ──
   const contextBudgetPercent = settings.context_budget_percent ?? 100;
   const session = new Session({
     primaryAgent: primary as never,
@@ -225,16 +219,16 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     });
   }
 
-  // 鈹€鈹€ Hooks (global > project > workspace) 鈹€鈹€
+  // ── Hooks (global > project > workspace) ──
   try {
-    const { loadHooksMulti } = await import("../src/hooks/index.js");
+    const { loadHooksMulti } = await import("../../src/hooks/index.js");
     const hooksLoaded = loadHooksMulti(paths.hookRoots);
     if (hooksLoaded.length > 0) {
       session.hookRuntime.setHooks(hooksLoaded);
     }
   } catch { /* hooks module optional */ }
 
-  // 鈹€鈹€ Restore model selection 鈹€鈹€
+  // ── Restore model selection ──
   // Priority: settings.default_model > state/model-selection.json
   try {
     if (effectiveModelConfigName) {
@@ -254,17 +248,17 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     );
   }
 
-  // 鈹€鈹€ Apply settings to session 鈹€鈹€
+  // ── Apply settings to session ──
   session.applySettings(settings, modelState);
   await refreshActiveOpenAICodexToken(session);
 
-  // 鈹€鈹€ Shiki syntax highlighter (disable with SWARMFLOW_SHIKI=0) 鈹€鈹€
+  // ── Shiki syntax highlighter (disable with FERMI_SHIKI=0) ──
   if (opts?.initHighlighter !== false) {
-    if (process.env.SWARMFLOW_SHIKI !== "0") {
+    if (process.env.FERMI_SHIKI !== "0") {
       import("./forked/shiki-highlighter.js").then(async ({ initShikiHighlighter }) => {
         await initShikiHighlighter();
       }).catch(() => {
-        // Shiki unavailable 鈥?silently fall back to hljs.
+        // Shiki unavailable — silently fall back to hljs.
         import("./forked/patch-opentui-markdown.js").then(({ setUseShikiHighlighter }) => {
           setUseShikiHighlighter(false);
         });

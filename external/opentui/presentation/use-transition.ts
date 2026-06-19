@@ -1,10 +1,10 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Smoothly transitions a numeric value toward a target over `durationMs`.
- * Returns the current interpolated value (0鈥? range for typical use).
+ * Returns the current interpolated value (0–1 range for typical use).
  *
- * Uses ease-out for rising (0鈫?) and ease-in for falling (1鈫?)
+ * Uses ease-out for rising (0→1) and ease-in for falling (1→0)
  * to give a responsive "light up" and natural "fade away" feel.
  */
 export function useTransition(target: number, durationMs: number): number {

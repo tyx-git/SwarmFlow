@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -75,7 +75,7 @@ export function StatPanel({
 
   let body: React.ReactNode;
   if (data === null) {
-    body = <text fg={colors.dim} content="Scanning all sessions 鈥? />;
+    body = <text fg={colors.dim} content="Scanning all sessions …" />;
   } else {
     const cachedPct = data.cumulativeInput > 0
       ? `(${((data.cumulativeCacheRead / data.cumulativeInput) * 100).toFixed(1)}%)`

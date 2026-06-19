@@ -1,4 +1,4 @@
-﻿import { EventEmitter } from "events"
+import { EventEmitter } from "events"
 import { createDebounce, clearDebounceScope, DebounceController } from "../debounce.js"
 import { ProcessQueue } from "../queue.js"
 import type {
@@ -210,7 +210,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return OTUI_TREE_SITTER_WORKER_PATH
     }
 
-    // swarmflow: in a bun --compile single-file binary, import.meta lives under
+    // Fermi: in a bun --compile single-file binary, import.meta lives under
     // /$bunfs/; resolve the worker next to the executable instead.
     const moduleDir = import.meta.dirname
     if (isBunfsPath(moduleDir)) {

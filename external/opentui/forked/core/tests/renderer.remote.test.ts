@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 
 type RendererFactory = "test" | "direct-process-memory" | "cli-custom-memory" | "cli-custom-feed"
 

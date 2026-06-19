@@ -1,4 +1,4 @@
-﻿import { test, expect } from "bun:test"
+import { test, expect } from "bun:test"
 import { InternalKeyHandler, KeyEvent } from "./KeyHandler.js"
 import { type ParseKeypressOptions, parseKeypress } from "./parse.keypress.js"
 import { decodePasteBytes } from "./paste.js"

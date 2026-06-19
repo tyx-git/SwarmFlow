@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { EditBuffer } from "./edit-buffer.js"
 import { EditorView } from "./editor-view.js"
 import { RGBA } from "./lib/RGBA.js"
@@ -416,7 +416,7 @@ describe("EditorView", () => {
 
   describe("Unicode edge cases", () => {
     it("should handle emoji with wrapping", () => {
-      buffer.setText("馃専".repeat(20))
+      buffer.setText("🌟".repeat(20))
 
       view.setWrapMode("char")
       view.setViewportSize(10, 10)
@@ -425,7 +425,7 @@ describe("EditorView", () => {
     })
 
     it("should handle CJK characters with wrapping", () => {
-      buffer.setText("娴嬭瘯鏂囧瓧澶勭悊鍔熻兘")
+      buffer.setText("测试文字处理功能")
 
       view.setWrapMode("char")
       view.setViewportSize(10, 10)
@@ -435,7 +435,7 @@ describe("EditorView", () => {
     })
 
     it("should handle mixed ASCII and wide characters", () => {
-      buffer.setText("AB娴嬭瘯CD鏂囧瓧EF")
+      buffer.setText("AB测试CD文字EF")
 
       view.setWrapMode("char")
       view.setViewportSize(8, 10)
@@ -444,7 +444,7 @@ describe("EditorView", () => {
     })
 
     it("should navigate visual cursor correctly through emoji and CJK", () => {
-      buffer.setText("(emoji 馃専 and CJK 涓栫晫)")
+      buffer.setText("(emoji 🌟 and CJK 世界)")
 
       let cursor = view.getVisualCursor()
       expect(cursor.visualRow).toBe(0)
@@ -475,7 +475,7 @@ describe("EditorView", () => {
     })
 
     it("should handle vertical navigation through emoji cells correctly", () => {
-      buffer.setText("1234567890123456789\n(emoji 馃専 and CJK 涓栫晫)\n1234567890123456789")
+      buffer.setText("1234567890123456789\n(emoji 🌟 and CJK 世界)\n1234567890123456789")
 
       buffer.setCursorToLineCol(0, 7)
       let cursor = view.getVisualCursor()
@@ -512,8 +512,8 @@ describe("EditorView", () => {
   })
 
   describe("cursor movement around multi-cell graphemes", () => {
-    // These tests verify that the cursor correctly handles multi-cell graphemes like emojis (馃専)
-    // and CJK characters (涓栫晫). Multi-cell graphemes occupy 2 visual columns but are treated
+    // These tests verify that the cursor correctly handles multi-cell graphemes like emojis (🌟)
+    // and CJK characters (世界). Multi-cell graphemes occupy 2 visual columns but are treated
     // as a single logical unit for cursor movement and deletion.
     //
     // Key behaviors:
@@ -523,7 +523,7 @@ describe("EditorView", () => {
     // - Logical column positions mark grapheme boundaries (skipping intermediate cell positions)
 
     it("should understand logical vs visual cursor positions", () => {
-      buffer.setText("a馃専b")
+      buffer.setText("a🌟b")
 
       buffer.setCursorToLineCol(0, 0)
       expect(view.getVisualCursor().visualCol).toBe(0)
@@ -549,8 +549,8 @@ describe("EditorView", () => {
       expect(buffer.getCursorPosition().col).toBe(4)
     })
 
-    it("should move cursor correctly around emoji (馃専) with visual positions", () => {
-      buffer.setText("a馃専b")
+    it("should move cursor correctly around emoji (🌟) with visual positions", () => {
+      buffer.setText("a🌟b")
 
       buffer.setCursorToLineCol(0, 1)
       let visualCursor = view.getVisualCursor()
@@ -573,8 +573,8 @@ describe("EditorView", () => {
       expect(visualCursor.visualCol).toBe(1)
     })
 
-    it("should move cursor correctly around CJK characters (涓栫晫) with visual positions", () => {
-      buffer.setText("a涓栫晫b")
+    it("should move cursor correctly around CJK characters (世界) with visual positions", () => {
+      buffer.setText("a世界b")
 
       buffer.setCursorToLineCol(0, 0)
       expect(view.getVisualCursor().visualCol).toBe(0)
@@ -602,7 +602,7 @@ describe("EditorView", () => {
     })
 
     it("should handle backspace correctly after emoji", () => {
-      buffer.setText("a馃専b")
+      buffer.setText("a🌟b")
 
       buffer.setCursorToLineCol(0, 3)
       expect(view.getVisualCursor().visualCol).toBe(3)
@@ -613,13 +613,13 @@ describe("EditorView", () => {
     })
 
     it("should handle backspace correctly after CJK character", () => {
-      buffer.setText("涓栫晫")
+      buffer.setText("世界")
 
       buffer.setCursorToLineCol(0, 4)
       expect(view.getVisualCursor().visualCol).toBe(4)
 
       buffer.deleteCharBackward()
-      expect(buffer.getText()).toBe("涓?)
+      expect(buffer.getText()).toBe("世")
       expect(view.getVisualCursor().visualCol).toBe(2)
 
       buffer.deleteCharBackward()
@@ -628,7 +628,7 @@ describe("EditorView", () => {
     })
 
     it("should treat multi-cell graphemes as single units for cursor movement", () => {
-      buffer.setText("馃専涓栫晫馃帀")
+      buffer.setText("🌟世界🎉")
 
       buffer.setCursorToLineCol(0, 0)
       expect(view.getVisualCursor().visualCol).toBe(0)
@@ -659,21 +659,21 @@ describe("EditorView", () => {
     })
 
     it("should handle backspace through mixed multi-cell graphemes", () => {
-      buffer.setText("a馃専b涓朿")
+      buffer.setText("a🌟b世c")
 
       buffer.setCursorToLineCol(0, 7)
       expect(view.getVisualCursor().visualCol).toBe(7)
 
       buffer.deleteCharBackward()
-      expect(buffer.getText()).toBe("a馃専b涓?)
+      expect(buffer.getText()).toBe("a🌟b世")
       expect(view.getVisualCursor().visualCol).toBe(6)
 
       buffer.deleteCharBackward()
-      expect(buffer.getText()).toBe("a馃専b")
+      expect(buffer.getText()).toBe("a🌟b")
       expect(view.getVisualCursor().visualCol).toBe(4)
 
       buffer.deleteCharBackward()
-      expect(buffer.getText()).toBe("a馃専")
+      expect(buffer.getText()).toBe("a🌟")
       expect(view.getVisualCursor().visualCol).toBe(3)
 
       buffer.deleteCharBackward()
@@ -686,7 +686,7 @@ describe("EditorView", () => {
     })
 
     it("should handle delete key correctly before multi-cell graphemes", () => {
-      buffer.setText("a馃専b")
+      buffer.setText("a🌟b")
 
       buffer.setCursorToLineCol(0, 1)
       expect(view.getVisualCursor().visualCol).toBe(1)
@@ -703,7 +703,7 @@ describe("EditorView", () => {
     })
 
     it("should handle line start and end with multi-cell graphemes", () => {
-      buffer.setText("馃専涓栫晫馃帀")
+      buffer.setText("🌟世界🎉")
 
       buffer.setCursorToLineCol(0, 0)
       expect(view.getVisualCursor().visualCol).toBe(0)
@@ -918,7 +918,7 @@ describe("EditorView", () => {
 
     describe("with multi-byte characters", () => {
       it("should handle emoji in visual SOL/EOL", () => {
-        buffer.setText("Hello 馃専 World")
+        buffer.setText("Hello 🌟 World")
         buffer.setCursorToLineCol(0, 8) // After emoji
 
         const sol = view.getVisualSOL()
@@ -931,7 +931,7 @@ describe("EditorView", () => {
       })
 
       it("should handle CJK characters in visual SOL/EOL", () => {
-        buffer.setText("娴嬭瘯鏂囧瓧")
+        buffer.setText("测试文字")
         buffer.setCursorToLineCol(0, 2) // Middle
 
         const sol = view.getVisualSOL()
@@ -945,7 +945,7 @@ describe("EditorView", () => {
       })
 
       it("should handle wrapped emoji correctly", () => {
-        buffer.setText("馃専馃専馃専馃専馃専馃専馃専馃専馃専馃専") // 10 emoji
+        buffer.setText("🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟") // 10 emoji
         view.setWrapMode("char")
         view.setViewportSize(10, 10)
 
@@ -974,7 +974,7 @@ describe("EditorView", () => {
       })
 
       it("should handle mixed ASCII and CJK with wrapping", () => {
-        buffer.setText("AB娴嬭瘯CD鏂囧瓧EF") // Mixed width chars
+        buffer.setText("AB测试CD文字EF") // Mixed width chars
         view.setWrapMode("char")
         view.setViewportSize(8, 10)
 

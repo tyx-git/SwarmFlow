@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { RGBA } from "../../lib/RGBA.js"
@@ -231,7 +231,7 @@ describe("Textarea - Rendering Tests", () => {
     it("should render with tab indicator correctly", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "Line 1\tTabbed\nLine 2\t\tDouble tab",
-        tabIndicator: "鈫?,
+        tabIndicator: "→",
         tabIndicatorColor: RGBA.fromValues(0.5, 0.5, 0.5, 1),
         width: 40,
         height: 10,
@@ -373,9 +373,9 @@ describe("Textarea - Rendering Tests", () => {
 
       editor.focus()
       editor.gotoLine(9999) // Move to end
-      editor.insertText(" 馃専")
+      editor.insertText(" 🌟")
 
-      expect(editor.plainText).toBe("Hello 馃専")
+      expect(editor.plainText).toBe("Hello 🌟")
     })
 
     it("should handle CJK characters", async () => {
@@ -387,14 +387,14 @@ describe("Textarea - Rendering Tests", () => {
 
       editor.focus()
       editor.gotoLine(9999) // Move to end
-      editor.insertText(" 涓栫晫")
+      editor.insertText(" 世界")
 
-      expect(editor.plainText).toBe("Hello 涓栫晫")
+      expect(editor.plainText).toBe("Hello 世界")
     })
 
     it("should handle emoji cursor movement", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "A馃専B",
+        initialValue: "A🌟B",
         width: 40,
         height: 10,
       })

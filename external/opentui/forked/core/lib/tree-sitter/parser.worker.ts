@@ -1,4 +1,4 @@
-﻿import type { Edit, QueryCapture, Range } from "web-tree-sitter"
+import type { Edit, QueryCapture, Range } from "web-tree-sitter"
 import { mkdir } from "fs/promises"
 import { fileURLToPath } from "url"
 import treeSitterWasm from "web-tree-sitter/tree-sitter.wasm" with { type: "file" }

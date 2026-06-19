@@ -5,7 +5,7 @@
  * 使现有调用者（composer、图片附件流程）无需了解平台层。
  */
 
-import { clipboard } from "./platform/index.js";
+import { clipboard } from "../platform/index.js";
 
 /** 剪贴板图片读取结果 */
 export interface ClipboardImageResult {

@@ -1,14 +1,14 @@
-﻿import type { DisplayThemeTokens } from "./types.js";
+import type { DisplayThemeTokens } from "./types.js";
 
 /**
  * Dark mode token palette. Designed to render on a transparent background
- * inside a dark terminal 鈥?text is light gray, surfaces are slightly raised
+ * inside a dark terminal — text is light gray, surfaces are slightly raised
  * cool grays, accent is light blue.
  */
 export const DARK_TOKENS: DisplayThemeTokens = {
   colors: {
     userBg: "#2a2632",
-    userWash: "#8ab4f83a",      // accent @ ~23% 鈥?faint scannable wash
+    userWash: "#8ab4f83a",      // accent @ ~23% — faint scannable wash
     border: "#2a2630",
     scrollbarThumb: "#d0d6e0",
     scrollbarTrack: "#454a54",
@@ -47,21 +47,21 @@ export const DARK_TOKENS: DisplayThemeTokens = {
   },
   branding: {
     // ANSI Shadow figlet. Rendered in a single uniform accent color via
-    // LogoBlock (home wordmark). `logoGradient` below is separate 鈥?still
+    // LogoBlock (home wordmark). `logoGradient` below is separate — still
     // consumed by the sidebar wordmark + system entries, so it is left
     // intact and is intentionally NOT used for the home logo anymore.
     logoLines: [
-      "鈻堚枅鈻堚枅鈻堚枅鈻堚晽鈻堚枅鈻堚枅鈻堚枅鈻堚晽鈻堚枅鈻堚枅鈻堚枅鈺?鈻堚枅鈻堚晽   鈻堚枅鈻堚晽鈻堚枅鈺?,
-      "鈻堚枅鈺斺晲鈺愨晲鈺愨暆鈻堚枅鈺斺晲鈺愨晲鈺愨暆鈻堚枅鈺斺晲鈺愨枅鈻堚晽鈻堚枅鈻堚枅鈺?鈻堚枅鈻堚枅鈺戔枅鈻堚晳",
-      "鈻堚枅鈻堚枅鈻堚晽  鈻堚枅鈻堚枅鈻堚晽  鈻堚枅鈻堚枅鈻堚枅鈺斺暆鈻堚枅鈺斺枅鈻堚枅鈻堚晹鈻堚枅鈺戔枅鈻堚晳",
-      "鈻堚枅鈺斺晲鈺愨暆  鈻堚枅鈺斺晲鈺愨暆  鈻堚枅鈺斺晲鈺愨枅鈻堚晽鈻堚枅鈺戔暁鈻堚枅鈺斺暆鈻堚枅鈺戔枅鈻堚晳",
-      "鈻堚枅鈺?    鈻堚枅鈻堚枅鈻堚枅鈻堚晽鈻堚枅鈺? 鈻堚枅鈺戔枅鈻堚晳 鈺氣晲鈺?鈻堚枅鈺戔枅鈻堚晳",
-      "鈺氣晲鈺?    鈺氣晲鈺愨晲鈺愨晲鈺愨暆鈺氣晲鈺? 鈺氣晲鈺濃暁鈺愨暆     鈺氣晲鈺濃暁鈺愨暆",
+      "███████╗███████╗██████╗ ███╗   ███╗██╗",
+      "██╔════╝██╔════╝██╔══██╗████╗ ████║██║",
+      "█████╗  █████╗  ██████╔╝██╔████╔██║██║",
+      "██╔══╝  ██╔══╝  ██╔══██╗██║╚██╔╝██║██║",
+      "██║     ███████╗██║  ██║██║ ╚═╝ ██║██║",
+      "╚═╝     ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝",
     ],
     // Single-hue luminance ramp (accent blue). NOT used by the home logo
-    // (uniform accent) 鈥?kept for sidebar wordmark + system entries.
+    // (uniform accent) — kept for sidebar wordmark + system entries.
     logoGradient: ["#cdddfd", "#b3cbfb", "#9bbaf9", "#8ab4f8", "#7398d6", "#5e7cb3", "#4c6691"],
-    sidebarWordmark: "swarmflow",
+    sidebarWordmark: "SWARMFLOW",
     sidebarGradientIndices: [0, 1, 3, 5, 6],
   },
   markdown: {

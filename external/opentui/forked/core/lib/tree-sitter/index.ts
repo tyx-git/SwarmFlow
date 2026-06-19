@@ -1,4 +1,4 @@
-﻿import { destroySingleton, getSingleton, singleton } from "../singleton.js"
+import { destroySingleton, getSingleton, singleton } from "../singleton.js"
 import { TreeSitterClient } from "./client.js"
 import type { TreeSitterClientOptions } from "./types.js"
 import { getDataPaths } from "../data-paths.js"

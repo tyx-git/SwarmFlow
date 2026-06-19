@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { SelectRenderable, type SelectRenderableOptions, SelectRenderableEvents, type SelectOption } from "./Select.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer.js"
 import { KeyEvent } from "../lib/KeyHandler.js"
@@ -432,7 +432,7 @@ describe("SelectRenderable", () => {
 
       select.focus()
 
-      const handled = select.handleKeyPress(createKeyEvent({ name: "銋?, baseCode: 106 }))
+      const handled = select.handleKeyPress(createKeyEvent({ name: "ㅓ", baseCode: 106 }))
 
       expect(handled).toBe(true)
       expect(select.getSelectedIndex()).toBe(2)

@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, test, expect } from "bun:test"
+import { afterEach, describe, test, expect } from "bun:test"
 import { createTestRenderer as baseCreateTestRenderer, type TestRenderer } from "../../testing/test-renderer.js"
 import { TextBufferRenderable } from "../TextBufferRenderable.js"
 import { LineNumberRenderable } from "../LineNumberRenderable.js"
@@ -44,46 +44,46 @@ This is an interactive text editor powered by EditBuffer and EditorView.
 \t\t\tMultiple tabs
 
 Emojis:
-馃懇馃徑鈥嶐煉? 馃懆鈥嶐煈┾€嶐煈р€嶐煈? 馃彸锔忊€嶐煂? 馃嚭馃嚫  馃嚛馃嚜  馃嚡馃嚨  馃嚠馃嚦
+👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵  🇮🇳
 
 NAVIGATION:
-  鈥?Arrow keys to move cursor
-  鈥?Home/End for line navigation
-  鈥?Ctrl+A/Ctrl+E for buffer start/end
-  鈥?Alt+F/Alt+B for word forward/backward
-  鈥?Alt+Left/Alt+Right for word forward/backward
+  • Arrow keys to move cursor
+  • Home/End for line navigation
+  • Ctrl+A/Ctrl+E for buffer start/end
+  • Alt+F/Alt+B for word forward/backward
+  • Alt+Left/Alt+Right for word forward/backward
 
 SELECTION:
-  鈥?Shift+Arrow keys to select
-  鈥?Shift+Home/End to select to line start/end
-  鈥?Alt+Shift+F/B to select word forward/backward
-  鈥?Alt+Shift+Left/Right to select word forward/backward
+  • Shift+Arrow keys to select
+  • Shift+Home/End to select to line start/end
+  • Alt+Shift+F/B to select word forward/backward
+  • Alt+Shift+Left/Right to select word forward/backward
 
 EDITING:
-  鈥?Type any text to insert
-  鈥?Backspace/Delete to remove text
-  鈥?Enter to create new lines
-  鈥?Ctrl+D to delete current line
-  鈥?Ctrl+K to delete to line end
-  鈥?Alt+D to delete word forward
-  鈥?Alt+Backspace or Ctrl+W to delete word backward
+  • Type any text to insert
+  • Backspace/Delete to remove text
+  • Enter to create new lines
+  • Ctrl+D to delete current line
+  • Ctrl+K to delete to line end
+  • Alt+D to delete word forward
+  • Alt+Backspace or Ctrl+W to delete word backward
 
 UNDO/REDO:
-  鈥?Ctrl+Z to undo
-  鈥?Ctrl+Shift+Z or Ctrl+Y to redo
+  • Ctrl+Z to undo
+  • Ctrl+Shift+Z or Ctrl+Y to redo
 
 VIEW:
-  鈥?Shift+W to toggle wrap mode (word/char/none)
-  鈥?Shift+L to toggle line numbers
+  • Shift+W to toggle wrap mode (word/char/none)
+  • Shift+L to toggle line numbers
 
 FEATURES:
-  鉁?Grapheme-aware cursor movement
-  鉁?Unicode (emoji 馃専 and CJK 涓栫晫, 浣犲ソ涓栫晫, 涓枃, 頃滉竴)
-  鉁?Incremental editing
-  鉁?Text wrapping and viewport management
-  鉁?Undo/redo support
-  鉁?Word-based navigation and deletion
-  鉁?Text selection with shift keys
+  ✓ Grapheme-aware cursor movement
+  ✓ Unicode (emoji 🌟 and CJK 世界, 你好世界, 中文, 한글)
+  ✓ Incremental editing
+  ✓ Text wrapping and viewport management
+  ✓ Undo/redo support
+  ✓ Word-based navigation and deletion
+  ✓ Text selection with shift keys
 
 Press ESC to return to main menu`
 
@@ -509,10 +509,12 @@ describe("LineNumberRenderable", () => {
 
     // Check that left border is NOT colored (should be white border)
     const leftBorderChar = getChar(0, line2Y)
-    expect(leftBorderChar).toBe(0x2502) // Vertical line character 鈹?
+    expect(leftBorderChar).toBe(0x2502) // Vertical line character │
+
     // Check that right border is NOT colored (should be white border)
     const rightBorderChar = getChar(29, line2Y)
-    expect(rightBorderChar).toBe(0x2502) // Vertical line character 鈹?
+    expect(rightBorderChar).toBe(0x2502) // Vertical line character │
+
     // Check that gutter area (inside padding) has green background
     const gutterBg = getBgColor(4, line2Y)
     expect(gutterBg.r).toBeCloseTo(0x2d / 255, 2)
@@ -631,7 +633,7 @@ describe("LineNumberRenderable", () => {
     const lineSigns = new Map<number, any>()
     lineSigns.set(1, { after: "+" }) // Line 2: Added
     lineSigns.set(3, { after: "-" }) // Line 4: Removed
-    lineSigns.set(0, { before: "鈿狅笍" }) // Line 1: Warning
+    lineSigns.set(0, { before: "⚠️" }) // Line 1: Warning
 
     const lineNumberRenderable = new LineNumberRenderable(renderer, {
       target: textRenderable,
@@ -651,13 +653,13 @@ describe("LineNumberRenderable", () => {
     const frame = captureCharFrame()
 
     // Check that signs are present
-    expect(frame).toContain("鈿狅笍") // Warning emoji before line 1
+    expect(frame).toContain("⚠️") // Warning emoji before line 1
     expect(frame).toContain("+") // Plus after line 2
     expect(frame).toContain("-") // Minus after line 4
 
     // Verify structure: should have emoji, line number, and +/- signs
     const lines = frame.split("\n")
-    expect(lines[0]).toMatch(/鈿狅笍.*1/) // Line 1 has warning before number
+    expect(lines[0]).toMatch(/⚠️.*1/) // Line 1 has warning before number
     expect(lines[1]).toMatch(/2.*\+/) // Line 2 has + after number
     expect(lines[3]).toMatch(/4.*-/) // Line 4 has - after number
   })
@@ -677,7 +679,7 @@ describe("LineNumberRenderable", () => {
 
     const lineSigns = new Map<number, any>()
     lineSigns.set(1, { after: " +", afterColor: "#22c55e" }) // Bright green plus
-    lineSigns.set(0, { before: "鉂?, beforeColor: "#ef4444" }) // Bright red error
+    lineSigns.set(0, { before: "❌", beforeColor: "#ef4444" }) // Bright red error
 
     const lineNumberRenderable = new LineNumberRenderable(renderer, {
       target: textRenderable,
@@ -1838,7 +1840,7 @@ describe("LineNumberRenderable", () => {
       showCursor: true,
       cursorColor: "#4ECDC4",
       placeholder: t`${fg("#333333")("Enter")} ${cyan(bold("text"))} ${fg("#333333")("here...")}`,
-      tabIndicator: "鈫?,
+      tabIndicator: "→",
       tabIndicatorColor: "#30363D",
     })
 
@@ -1892,8 +1894,8 @@ describe("LineNumberRenderable", () => {
       const lines = frame.split("\n")
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
-        if (line.startsWith(" 鈹?)) {
-          if (!line.trimEnd().endsWith("鈹?)) {
+        if (line.startsWith(" │")) {
+          if (!line.trimEnd().endsWith("│")) {
             throw new Error(`${frameName}: Line ${i} missing right border: "${line}"`)
           }
         }

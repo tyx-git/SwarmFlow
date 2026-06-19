@@ -1,4 +1,4 @@
-﻿import type { RGBA } from "./lib/RGBA.js"
+import type { RGBA } from "./lib/RGBA.js"
 import type { EventEmitter } from "events"
 import type { Selection } from "./lib/selection.js"
 import type { Renderable } from "./Renderable.js"

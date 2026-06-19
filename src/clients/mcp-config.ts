@@ -10,7 +10,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { MCPServerConfig } from "./config/config.js";
+import type { MCPServerConfig } from "../config/config.js";
 
 /** 解析 ${ENV_VAR} 形式的环境变量占位符。 */
 function resolveEnv(value: string): string {

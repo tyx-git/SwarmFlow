@@ -1,4 +1,4 @@
-﻿// Core exports without 3D dependencies.
+// Core exports without 3D dependencies.
 //
 // Explicit re-exports for symbols that downstream pre-bundled chunks
 // (notably @opentui/react/chunk-pr7s7hvy.js) `extends`. Bun

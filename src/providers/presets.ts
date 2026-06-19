@@ -13,11 +13,11 @@ import {
   modelSpecIds,
   providerModelEffectiveId,
   providerModelKey,
-} from "./models/registry.js";
+} from "../models/registry.js";
 import {
   EFFECTIVE_MODEL_SPECS,
   EFFECTIVE_PROVIDER_SPECS,
-} from "./providers/registry-effective.js";
+} from "../providers/registry-effective.js";
 
 export interface ProviderPresetModel {
   /** `/model` 和 init 选项使用的稳定选择器。 */

@@ -1,4 +1,4 @@
-﻿import { afterEach, expect, spyOn, test } from "bun:test"
+import { afterEach, expect, spyOn, test } from "bun:test"
 import { CliRenderEvents } from "../renderer.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { ManualClock } from "./manual-clock.js"

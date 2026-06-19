@@ -1,4 +1,4 @@
-﻿import {
+import {
   getCharacterPositions,
   measureText,
   renderFontToFrameBuffer,

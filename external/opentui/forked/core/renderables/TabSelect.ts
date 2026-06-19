@@ -1,4 +1,4 @@
-﻿import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { OptimizedBuffer } from "../buffer.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import type { KeyEvent } from "../lib/KeyHandler.js"
@@ -172,7 +172,7 @@ export class TabSelectRenderable extends Renderable {
       if (isSelected && this._showUnderline && contentHeight >= 2) {
         const underlineY = contentY + 1
         const underlineBg = isSelected ? this._selectedBackgroundColor : bgColor
-        this.frameBuffer.drawText("鈻?.repeat(actualTabWidth), tabX, underlineY, nameColor, underlineBg)
+        this.frameBuffer.drawText("▬".repeat(actualTabWidth), tabX, underlineY, nameColor, underlineBg)
       }
     }
 
@@ -193,7 +193,7 @@ export class TabSelectRenderable extends Renderable {
 
   private truncateText(text: string, maxWidth: number): string {
     if (text.length <= maxWidth) return text
-    return text.substring(0, Math.max(0, maxWidth - 1)) + "鈥?
+    return text.substring(0, Math.max(0, maxWidth - 1)) + "…"
   }
 
   private renderScrollArrowsToFrameBuffer(
@@ -208,11 +208,11 @@ export class TabSelectRenderable extends Renderable {
     const hasMoreRight = this.scrollOffset + this.maxVisibleTabs < this._options.length
 
     if (hasMoreLeft) {
-      this.frameBuffer.drawText("鈥?, contentX, contentY, parseColor("#AAAAAA"))
+      this.frameBuffer.drawText("‹", contentX, contentY, parseColor("#AAAAAA"))
     }
 
     if (hasMoreRight) {
-      this.frameBuffer.drawText("鈥?, contentX + contentWidth - 1, contentY, parseColor("#AAAAAA"))
+      this.frameBuffer.drawText("›", contentX + contentWidth - 1, contentY, parseColor("#AAAAAA"))
     }
   }
 

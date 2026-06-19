@@ -1,4 +1,4 @@
-﻿import { parseColor } from "./lib/RGBA.js"
+import { parseColor } from "./lib/RGBA.js"
 import { type Clock, type TimerHandle } from "./lib/clock.js"
 import type { ThemeMode } from "./types.js"
 

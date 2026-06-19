@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, afterEach } from "bun:test"
+import { describe, it, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 
@@ -205,7 +205,7 @@ describe("TextareaRenderable - Visual Line Navigation", () => {
         wrapMode: "char",
       })
 
-      textarea.setText("馃専馃専馃専馃専馃専馃専馃専馃専馃専馃専")
+      textarea.setText("🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟")
 
       // First visual line
       textarea.editBuffer.setCursor(0, 2)

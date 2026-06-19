@@ -1,4 +1,4 @@
-﻿export function isValidDirectoryName(name: string): boolean {
+export function isValidDirectoryName(name: string): boolean {
   if (!name || typeof name !== "string") {
     return false
   }

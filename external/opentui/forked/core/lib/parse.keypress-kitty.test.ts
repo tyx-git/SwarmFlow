@@ -1,4 +1,4 @@
-﻿import { test, expect } from "bun:test"
+import { test, expect } from "bun:test"
 import { parseKeypress, type ParseKeypressOptions } from "./parse.keypress.js"
 
 test("parseKeypress - Kitty keyboard protocol disabled by default", () => {
@@ -220,16 +220,16 @@ test("parseKeypress - Kitty keyboard num lock", () => {
 
 test("parseKeypress - Kitty keyboard unicode character", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
-  const result = parseKeypress("\x1b[233u", options)! // 茅
-  expect(result.name).toBe("茅")
-  expect(result.sequence).toBe("茅")
+  const result = parseKeypress("\x1b[233u", options)! // é
+  expect(result.name).toBe("é")
+  expect(result.sequence).toBe("é")
 })
 
 test("parseKeypress - Kitty keyboard emoji", () => {
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
-  const result = parseKeypress("\x1b[128512u", options)! // 馃榾
-  expect(result.name).toBe("馃榾")
-  expect(result.sequence).toBe("馃榾")
+  const result = parseKeypress("\x1b[128512u", options)! // 😀
+  expect(result.name).toBe("😀")
+  expect(result.sequence).toBe("😀")
 })
 
 test("parseKeypress - Kitty keyboard invalid codepoint", () => {
@@ -681,16 +681,16 @@ test("parseKeypress - Kitty sequences are NOT filtered by terminal response filt
   expect(complex?.repeated).toBe(true)
 
   // Unicode characters
-  const unicode = parseKeypress("\x1b[233u", options) // 茅
+  const unicode = parseKeypress("\x1b[233u", options) // é
   expect(unicode).not.toBeNull()
   expect(unicode?.source).toBe("kitty")
-  expect(unicode?.name).toBe("茅")
+  expect(unicode?.name).toBe("é")
 
   // Emoji
-  const emoji = parseKeypress("\x1b[128512u", options) // 馃榾
+  const emoji = parseKeypress("\x1b[128512u", options) // 😀
   expect(emoji).not.toBeNull()
   expect(emoji?.source).toBe("kitty")
-  expect(emoji?.name).toBe("馃榾")
+  expect(emoji?.name).toBe("😀")
 })
 
 test("parseKeypress - Kitty keyboard shift+letter without shifted codepoint", () => {
@@ -706,7 +706,7 @@ test("parseKeypress - Kitty keyboard shift+Cyrillic without shifted codepoint", 
   const options: ParseKeypressOptions = { useKittyKeyboard: true }
 
   const result = parseKeypress("\x1b[1072;2u", options)!
-  expect(result.name).toBe("邪")
+  expect(result.name).toBe("а")
   expect(result.shift).toBe(true)
-  expect(result.sequence).toBe("袗")
+  expect(result.sequence).toBe("А")
 })

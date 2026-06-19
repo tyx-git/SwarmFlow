@@ -1,4 +1,4 @@
-﻿import type { SyntaxStyle } from "@opentui/core";
+import type { SyntaxStyle } from "@opentui/core";
 
 import type { PresentationEntry } from "../presentation/types.js";
 import type {

@@ -1,4 +1,4 @@
-﻿import { readFileSync, writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { basename } from "node:path"
 
 type ScenarioResult = {

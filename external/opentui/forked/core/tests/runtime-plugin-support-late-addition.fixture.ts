@@ -1,4 +1,4 @@
-﻿import { plugin as registerPlugin } from "bun"
+import { plugin as registerPlugin } from "bun"
 import { ensureRuntimePluginSupport } from "../runtime-plugin-support-configure.js"
 
 registerPlugin.clearAll()

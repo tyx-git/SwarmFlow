@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse, MockTreeSitterClient } from "../testing.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
@@ -1488,7 +1488,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     scrollBox.verticalScrollBar.scrollPosition = maxScroll
     ;(scrollBox as any)._hasManualScroll = true
 
-    // Add one line 鈥?triggers recalculateBarProps which sees scrollTop >= newMaxScrollTop - 1
+    // Add one line — triggers recalculateBarProps which sees scrollTop >= newMaxScrollTop - 1
     scrollBox.add(new TextRenderable(testRenderer, { id: "line-50", content: "Line 50" }))
     await renderOnce()
 

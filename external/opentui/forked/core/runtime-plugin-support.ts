@@ -1,4 +1,4 @@
-﻿import { ensureRuntimePluginSupport } from "./runtime-plugin-support-configure.js"
+import { ensureRuntimePluginSupport } from "./runtime-plugin-support-configure.js"
 
 export { ensureRuntimePluginSupport }
 export {

@@ -1,4 +1,4 @@
-﻿import type { ConversationEntry } from "../../src/ui/contracts.js";
+import type { ConversationEntry } from "../../../src/ui/contracts.js";
 
 export interface ReconciledConversationEntry {
   id: string;

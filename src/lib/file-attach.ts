@@ -17,15 +17,15 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { context } from "./primitives/context.js";
-import { SafePathError, safePath, toPosixPath } from "./security/path.js";
-import { getSensitiveFileReadReason } from "./security/sensitive-files.js";
+import { context } from "../primitives/context.js";
+import { SafePathError, safePath, toPosixPath } from "../security/path.js";
+import { getSensitiveFileReadReason } from "../security/sensitive-files.js";
 import {
   isProjectedDocumentPath,
   loadProjectedDocumentView,
   projectedDocumentLabel,
-} from "./context/document-projection.js";
-import { EXCLUDE_DIRS } from "./tools/shared.js";
+} from "../context/document-projection.js";
+import { EXCLUDE_DIRS } from "../tools/shared.js";
 
 // ------------------------------------------------------------------
 // Constants

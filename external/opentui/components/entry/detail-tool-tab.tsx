@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useEffect, useRef, useState } from "react";
 import { useRenderer } from "@opentui/react";
@@ -44,7 +44,7 @@ function DetailToolTabInner(
   windowRef.current = window;
 
   // Virtualization: track the live scroll offset each frame and only re-window
-  // (鈫?re-materialize visible rows) when the visible range actually moves.
+  // (→ re-materialize visible rows) when the visible range actually moves.
   useEffect(() => {
     if (!usesFmd) return;
     const cb = async (): Promise<void> => {

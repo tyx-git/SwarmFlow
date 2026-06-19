@@ -1,4 +1,4 @@
-﻿import { expect, test } from "bun:test"
+import { expect, test } from "bun:test"
 import { mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -33,10 +33,10 @@ test("patched markdown renderer does not treat synthetic thematic break as front
 |---|
 | Alice |
 ---
-### UI 鍙岃建
-- **OpenTUI**锛圽`opentui-src/\`锛夆€斺€?缁堢鐣岄潰
+### UI 双轨
+- **OpenTUI**（\`opentui-src/\`）—— 终端界面
 ---
-### 鎶€鏈爤
+### 技术栈
 TypeScript`
 
     const md = new MarkdownRenderable(renderer, {
@@ -69,13 +69,13 @@ TypeScript`
 
     const rendered = captureCharFrame()
 
-    expect(rendered).toContain("UI 鍙岃建")
-    expect(rendered).toContain("- OpenTUI锛坥pentui-src/锛夆€斺€?缁堢鐣岄潰")
-    expect(rendered).toContain("鎶€鏈爤")
-    expect(rendered).not.toContain("### UI 鍙岃建")
+    expect(rendered).toContain("UI 双轨")
+    expect(rendered).toContain("- OpenTUI（opentui-src/）—— 终端界面")
+    expect(rendered).toContain("技术栈")
+    expect(rendered).not.toContain("### UI 双轨")
     expect(rendered).not.toContain("**OpenTUI**")
     expect(rendered).not.toContain("`opentui-src/`")
-    expect(rendered).not.toContain("### 鎶€鏈爤")
+    expect(rendered).not.toContain("### 技术栈")
   } finally {
     renderer.destroy()
     await treeSitterClient.destroy()
@@ -145,7 +145,7 @@ test("patched markdown renderer keeps coalesced spacing after tables", async () 
     const lines = captureCharFrame()
       .split("\n")
       .map((line) => line.trimEnd())
-    const tableBottom = lines.findIndex((line) => line.includes("鈹?))
+    const tableBottom = lines.findIndex((line) => line.includes("└"))
     const heading = lines.findIndex((line) => line.trim() === "Heading")
 
     expect(tableBottom).toBeGreaterThanOrEqual(0)
@@ -160,7 +160,7 @@ test("patched markdown renderer keeps one separator before a tight fenced code b
   // Regression for the monkeypatch coalescer: a paragraph immediately followed by a fenced
   // code block (no blank line in source) must still render exactly one separator row. The
   // patched buildRenderableTokens wins at runtime, so it must carry the in-tree
-  // `currentIsSeparate` rule 鈥?otherwise this collapses to zero rows in the real app.
+  // `currentIsSeparate` rule — otherwise this collapses to zero rows in the real app.
   await import("./patch-opentui-markdown.js")
 
   const {
@@ -186,7 +186,7 @@ test("patched markdown renderer keeps one separator before a tight fenced code b
       default: { fg: RGBA.fromValues(1, 1, 1, 1) },
     })
 
-    // No blank line between the paragraph and the fence 鈥?the "tight" case.
+    // No blank line between the paragraph and the fence — the "tight" case.
     const markdown = "Before\n```js\nconst value = 1\n```"
 
     const md = new MarkdownRenderable(renderer, {
@@ -223,7 +223,7 @@ test("patched markdown renderer keeps one separator before a tight fenced code b
     // The fenced code block renders as a bordered box; its top border is the first row of
     // the block. Exactly one blank separator row between the paragraph and that border means
     // the box top sits at before + 2 (before + 1 would mean the separator collapsed).
-    const codeBoxTop = lines.findIndex((line) => line.includes("鈺?))
+    const codeBoxTop = lines.findIndex((line) => line.includes("╭"))
 
     expect(before).toBeGreaterThanOrEqual(0)
     expect(codeBoxTop).toBe(before + 2)
@@ -306,7 +306,7 @@ test("patched top-level markdown renderer avoids stale spacing when a streaming 
 
     const md = new MarkdownRenderable(renderer, {
       id: "patched-markdown-top-level-streaming-table",
-      content: "### 鎬荤粨\n\n| A | B |\n| 1 | 2 |",
+      content: "### 总结\n\n| A | B |\n| 1 | 2 |",
       syntaxStyle,
       treeSitterClient,
       streaming: true,
@@ -340,7 +340,7 @@ test("patched top-level markdown renderer avoids stale spacing when a streaming 
 
     const headingBefore = md._blockStates[0]?.renderable
 
-    md.content = "### 鎬荤粨\n\n| A | B |\n|---|---|\n| 1 | 2 |"
+    md.content = "### 总结\n\n| A | B |\n|---|---|\n| 1 | 2 |"
     await renderOnce()
 
     expect(md._blockStates.map((state) => state.token.type)).toEqual(["heading", "table"])
@@ -351,8 +351,8 @@ test("patched top-level markdown renderer avoids stale spacing when a streaming 
       .split("\n")
       .map((line) => line.trimEnd())
 
-    const heading = lines.findIndex((line) => line.trim() === "鎬荤粨")
-    const tableTop = lines.findIndex((line) => line.includes("鈹?))
+    const heading = lines.findIndex((line) => line.trim() === "总结")
+    const tableTop = lines.findIndex((line) => line.includes("┌"))
 
     expect(heading).toBeGreaterThanOrEqual(0)
     expect(tableTop).toBe(heading + 2)

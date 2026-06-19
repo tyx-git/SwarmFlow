@@ -1,4 +1,4 @@
-﻿import { Writable } from "stream"
+import { Writable } from "stream"
 import { EventEmitter } from "events"
 
 export type CapturedOutput = {

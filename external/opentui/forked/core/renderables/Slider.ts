@@ -1,4 +1,4 @@
-﻿import { type RenderableOptions, Renderable } from "../Renderable.js"
+import { type RenderableOptions, Renderable } from "../Renderable.js"
 import { type RenderContext } from "../types.js"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { OptimizedBuffer } from "../buffer.js"
@@ -6,7 +6,7 @@ import { OptimizedBuffer } from "../buffer.js"
 const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
 const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
 const verticalUnitsPerCell = 8
-const verticalEighthBlocks = ["鈻?, "鈻?, "鈻?, "鈻?, "鈻?, "鈻?, "鈻?, "鈻?] as const
+const verticalEighthBlocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const
 
 export interface SliderOptions extends RenderableOptions<SliderRenderable> {
   orientation: "vertical" | "horizontal"
@@ -298,13 +298,13 @@ export class SliderRenderable extends Renderable {
       let char = " "
 
       if (coverage >= 2) {
-        char = "鈻?
+        char = "█"
       } else {
         const isLeftHalf = thumbStartInCell === virtualCellStart
         if (isLeftHalf) {
-          char = "鈻?
+          char = "▌"
         } else {
-          char = "鈻?
+          char = "▐"
         }
       }
 
@@ -351,7 +351,7 @@ export class SliderRenderable extends Renderable {
   ): { char: string; foregroundColor: RGBA; backgroundColor: RGBA } {
     if (coverageUnits >= verticalUnitsPerCell || (!startsInsideCell && !endsInsideCell)) {
       return {
-        char: "鈻?,
+        char: "█",
         foregroundColor: this._foregroundColor,
         backgroundColor: this._backgroundColor,
       }
@@ -361,7 +361,7 @@ export class SliderRenderable extends Renderable {
 
     if (startsInsideCell) {
       return {
-        char: verticalEighthBlocks[thumbEighths - 1] ?? "鈻?,
+        char: verticalEighthBlocks[thumbEighths - 1] ?? "█",
         foregroundColor: this._foregroundColor,
         backgroundColor: this._backgroundColor,
       }
@@ -369,7 +369,7 @@ export class SliderRenderable extends Renderable {
 
     const trackEighths = 8 - thumbEighths
     return {
-      char: verticalEighthBlocks[trackEighths - 1] ?? "鈻?,
+      char: verticalEighthBlocks[trackEighths - 1] ?? "█",
       foregroundColor: this._backgroundColor,
       backgroundColor: this._foregroundColor,
     }
@@ -390,7 +390,7 @@ export class SliderRenderable extends Renderable {
     const thumbRatio = viewportSize / contentSize
     const calculatedUnits = Math.round(trackUnits * thumbRatio)
     // Floor at 2 units (one virtual half-cell, since getVirtualThumbSize divides by 4)
-    // to mirror the horizontal path's half-cell minimum 鈥?not a full cell. Otherwise a
+    // to mirror the horizontal path's half-cell minimum — not a full cell. Otherwise a
     // tiny vertical thumb is forced to a whole cell, breaking sub-cell symmetry with
     // horizontal and contradicting the sub-cell rendering this slider already supports.
     const minimumUnits = Math.max(2, Math.round(this._minThumbSize * verticalUnitsPerCell))

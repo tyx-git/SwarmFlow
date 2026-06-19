@@ -28,11 +28,11 @@ import {
 import { gunzipSync, gzipSync } from "node:zlib";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { LogIdAllocator, type LogEntry, type LogEntryType, type TuiDisplayKind } from "./context/log-entry.js";
-import type { ChildSessionMetaRecord } from "./session-tree-types.js";
-import { parseJsonc } from "./lib/jsonc.js";
-import type { MCPServerConfig } from "./config/config.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { LogIdAllocator, type LogEntry, type LogEntryType, type TuiDisplayKind } from "../context/log-entry.js";
+import type { ChildSessionMetaRecord } from "../session-tree-types.js";
+import { parseJsonc } from "../lib/jsonc.js";
+import type { MCPServerConfig } from "../config/config.js";
 
 // ------------------------------------------------------------------
 // 常量
@@ -577,7 +577,7 @@ export interface LogSessionMeta {
   /** 子会话元数据记录 */
   childSessions?: ChildSessionMetaRecord[];
   /** 根会话的冻结收件箱（关闭时持久化，用于快照/恢复） */
-  inbox?: import("./session-tree-types.js").MessageEnvelope[];
+  inbox?: import("../session-tree-types.js").MessageEnvelope[];
 }
 
 /** 自定义/本地提供商下的单个模型（解析后的运行时形状） */

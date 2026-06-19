@@ -1,4 +1,4 @@
-﻿import { EventEmitter } from "events"
+import { EventEmitter } from "events"
 import Yoga, { Direction, Display, Edge, FlexDirection, type Node as YogaNode } from "./yoga.js"
 import { OptimizedBuffer } from "./buffer.js"
 import type { KeyEvent, PasteEvent } from "./lib/KeyHandler.js"
@@ -1613,7 +1613,7 @@ export abstract class Renderable extends BaseRenderable {
     // An explicit cursor on the element itself wins over the onMouseDown
     // auto-detection below, so a container that handles mouse-down for its own
     // reasons (e.g. a full-screen click-to-dismiss/focus background) can opt out
-    // of the pointer by setting cursor="default" 鈥?otherwise hovering empty
+    // of the pointer by setting cursor="default" — otherwise hovering empty
     // screen edges would show a hand.
     if (renderable.cursor) return renderable.cursor
     if (renderable._mouseListeners["down"]) return "pointer"

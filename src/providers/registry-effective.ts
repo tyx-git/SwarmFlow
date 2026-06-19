@@ -14,8 +14,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { VERSION } from "./version.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { VERSION } from "../version.js";
 import {
   FACTORY_MODEL_SPECS,
   FACTORY_PROVIDER_SPECS,
@@ -26,7 +26,7 @@ import {
   loadModelSpecs,
   loadProviderSpecs,
   modelSpecIds,
-} from "./models/registry.js";
+} from "../models/registry.js";
 
 // ------------------------------------------------------------------
 // 最小 semver 比较 — 仅用于门控（数字 major.minor.patch；

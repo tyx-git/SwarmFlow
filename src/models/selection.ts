@@ -5,18 +5,18 @@
  * 以及思考级别的验证。
  */
 
-import { hasOAuthTokens } from "./auth/openai-oauth.js";
-import { hasGitHubTokens } from "./auth/github-copilot-oauth.js";
+import { hasOAuthTokens } from "../auth/openai-oauth.js";
+import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
 import {
   PROVIDER_PRESETS,
   buildProviderPresetRawConfig,
   findProviderPreset,
   findProviderPresetModel,
-} from "./providers/presets.js";
-import { isManagedProvider } from "./config/managed-provider-credentials.js";
-import { describeModel } from "./models/presentation.js";
-import { getThinkingLevels, getTierEligibleThinkingLevels } from "./config/config.js";
-import type { AgentModelEntry, ModelTierEntry } from "./config/persistence.js";
+} from "../providers/presets.js";
+import { isManagedProvider } from "../config/managed-provider-credentials.js";
+import { describeModel } from "../models/presentation.js";
+import { getThinkingLevels, getTierEligibleThinkingLevels } from "../config/config.js";
+import type { AgentModelEntry, ModelTierEntry } from "../config/persistence.js";
 
 /** 模型条目接口 */
 export type ModelEntryLike = {

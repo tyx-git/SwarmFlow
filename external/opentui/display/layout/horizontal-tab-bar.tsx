@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useState } from "react";
 
@@ -41,7 +41,7 @@ function TabButton({
   const label = formatTabLabel(tab, maxWidth);
   const fg = isActive ? colors.accent : hovered ? colors.accent : colors.accentDim;
   const totalWidth = Bun.stringWidth(label) + (tab.closeable ? 2 : 0);
-  const indicator = isActive ? "鈹€".repeat(totalWidth) : " ".repeat(totalWidth);
+  const indicator = isActive ? "─".repeat(totalWidth) : " ".repeat(totalWidth);
 
   return (
     <box
@@ -61,7 +61,7 @@ function TabButton({
               onClose();
             }}
           >
-            <text fg={fg} content="鉁?" />
+            <text fg={fg} content="✕ " />
           </box>
         ) : null}
       </box>

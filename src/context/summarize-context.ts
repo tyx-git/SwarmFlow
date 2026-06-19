@@ -11,8 +11,8 @@ import {
   type ActiveContextGroup,
   type ActiveContextView,
   type SummaryOrigin,
-} from "./context/active-context.js";
-import { createSummary, type LogEntry } from "./context/log-entry.js";
+} from "../context/active-context.js";
+import { createSummary, type LogEntry } from "../context/log-entry.js";
 
 /** 摘要上下文操作——指定要摘要的范围和内容 */
 export interface SummarizeContextOperation {

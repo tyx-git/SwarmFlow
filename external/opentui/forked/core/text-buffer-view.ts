@@ -1,4 +1,4 @@
-﻿import { RGBA } from "./lib/RGBA.js"
+import { RGBA } from "./lib/RGBA.js"
 import { resolveRenderLib, type LineInfo, type RenderLib, type TextBufferViewHandle } from "./zig.js"
 import type { TextBuffer } from "./text-buffer.js"
 

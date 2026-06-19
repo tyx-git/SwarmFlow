@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { ManualClock } from "../testing/manual-clock.js"
 import type { Clock, TimerHandle } from "./clock.js"
@@ -244,7 +244,7 @@ describe("StdinParser", () => {
       const raw = String.fromCharCode(byte)
       const sp = special[byte]
       if (sp) {
-        cases.push([`0x${byte.toString(16).padStart(2, "0")} 鈫?${sp[0]}`, [byte], [k(sp[0], { raw, ...sp[1] })]])
+        cases.push([`0x${byte.toString(16).padStart(2, "0")} → ${sp[0]}`, [byte], [k(sp[0], { raw, ...sp[1] })]])
       } else {
         const letter = String.fromCharCode(byte + 96)
         cases.push([
@@ -254,7 +254,7 @@ describe("StdinParser", () => {
         ])
       }
     }
-    cases.push(["0x7f 鈫?backspace", [0x7f], [k("backspace", { raw: "\x7f" })]])
+    cases.push(["0x7f → backspace", [0x7f], [k("backspace", { raw: "\x7f" })]])
 
     table(cases)
   })
@@ -325,7 +325,7 @@ describe("StdinParser", () => {
     ]
     table(tildeF.map(([name, num]) => [`${name} (CSI ${num}~)`, `\x1b[${num}~`, [k(name, { raw: `\x1b[${num}~` })]]))
 
-    // ESC O letter (SS3) form 鈥?F1-F4
+    // ESC O letter (SS3) form — F1-F4
     table([
       ["f1 (SS3)", "\x1bOP", [k("f1", { raw: "\x1bOP" })]],
       ["f2 (SS3)", "\x1bOQ", [k("f2", { raw: "\x1bOQ" })]],
@@ -458,7 +458,7 @@ describe("StdinParser", () => {
     test("meta+lowercase letters", () => {
       const p = createParser()
       try {
-        // Push all ESC+letter pairs at once 鈥?each should produce meta+key
+        // Push all ESC+letter pairs at once — each should produce meta+key
         for (const ch of "acdeghijklmoqrstuvwxyz".split("")) {
           p.push(Buffer.from(`\x1b${ch}`))
         }
@@ -503,12 +503,12 @@ describe("StdinParser", () => {
       }
     })
 
-    table([["double-ESC + [A 鈫?meta+up", "\x1b\x1b[A", [k("up", { raw: "\x1b\x1b[A", meta: true })]]])
+    table([["double-ESC + [A → meta+up", "\x1b\x1b[A", [k("up", { raw: "\x1b\x1b[A", meta: true })]]])
 
     test("meta+uppercase sets shift", () => {
       const p = createParser()
       try {
-        // ESC + uppercase letter 鈫?meta + shift + name (uppercase preserved in parseKeypress)
+        // ESC + uppercase letter → meta + shift + name (uppercase preserved in parseKeypress)
         // Excluding B and F which map to arrow keys
         p.push(Buffer.from("\x1bA"))
         const s = snap(p)
@@ -747,28 +747,28 @@ describe("StdinParser", () => {
 
   describe("UTF-8 handling", () => {
     table([
-      ["2-byte (茅)", "\u00e9", [k("\u00e9")]],
-      ["3-byte (涓?", "\u4e2d", [k("\u4e2d")]],
-      ["4-byte (馃憤)", "馃憤", [k("馃憤")]],
-      ["multiple utf-8 chars", "鏃ユ湰瑾?, [k("鏃?), k("鏈?), k("瑾?)]],
+      ["2-byte (é)", "\u00e9", [k("\u00e9")]],
+      ["3-byte (中)", "\u4e2d", [k("\u4e2d")]],
+      ["4-byte (👍)", "👍", [k("👍")]],
+      ["multiple utf-8 chars", "日本語", [k("日"), k("本"), k("語")]],
     ])
 
     test("2-byte split at byte boundary", () => {
-      const bytes = Buffer.from("茅")
+      const bytes = Buffer.from("é")
       expect(bytes.length).toBe(2)
       const p = createParser()
       try {
         p.push(bytes.subarray(0, 1))
         expect(snap(p)).toEqual([])
         p.push(bytes.subarray(1))
-        expect(snap(p)).toEqual([k("茅")])
+        expect(snap(p)).toEqual([k("é")])
       } finally {
         p.destroy()
       }
     })
 
     test("3-byte split at every boundary", () => {
-      const bytes = Buffer.from("涓?)
+      const bytes = Buffer.from("中")
       expect(bytes.length).toBe(3)
       for (let split = 1; split < bytes.length; split++) {
         const p = createParser()
@@ -776,7 +776,7 @@ describe("StdinParser", () => {
           p.push(bytes.subarray(0, split))
           expect(snap(p)).toEqual([])
           p.push(bytes.subarray(split))
-          expect(snap(p)).toEqual([k("涓?)])
+          expect(snap(p)).toEqual([k("中")])
         } finally {
           p.destroy()
         }
@@ -784,7 +784,7 @@ describe("StdinParser", () => {
     })
 
     test("4-byte split at every boundary", () => {
-      const bytes = Buffer.from("馃憤")
+      const bytes = Buffer.from("👍")
       expect(bytes.length).toBe(4)
       for (let split = 1; split < bytes.length; split++) {
         const p = createParser()
@@ -792,7 +792,7 @@ describe("StdinParser", () => {
           p.push(bytes.subarray(0, split))
           expect(snap(p)).toEqual([])
           p.push(bytes.subarray(split))
-          expect(snap(p)).toEqual([k("馃憤")])
+          expect(snap(p)).toEqual([k("👍")])
         } finally {
           p.destroy()
         }
@@ -805,7 +805,7 @@ describe("StdinParser", () => {
         p.push(Uint8Array.from([0xc0, 0x41]))
         const s = snap(p)
         expect(s).toHaveLength(2)
-        // 0xC0 - 128 = 0x40 = '@', treated as ESC + '@' 鈫?legacy path
+        // 0xC0 - 128 = 0x40 = '@', treated as ESC + '@' → legacy path
         expect(s[0]!.type).toBe("key")
         expect(s[1]).toEqual(k("a", { raw: "A", shift: true }))
       } finally {
@@ -821,7 +821,7 @@ describe("StdinParser", () => {
         p.push(Buffer.from("x")) // not a continuation byte
         const s = snap(p)
         expect(s).toEqual([
-          k("i", { raw: "\x1bi", meta: true }), // 0xe9 鈫?legacy: 0xe9-128=0x69='i', ESC prefix
+          k("i", { raw: "\x1bi", meta: true }), // 0xe9 → legacy: 0xe9-128=0x69='i', ESC prefix
           k("x"),
         ])
       } finally {
@@ -841,7 +841,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("high byte 0xFF on timeout 鈫?meta+backspace", () => {
+    test("high byte 0xFF on timeout → meta+backspace", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Uint8Array.from([0xff]))
@@ -1074,7 +1074,7 @@ describe("StdinParser", () => {
         parser.push(Buffer.from("\x1b[118;5"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        // Stays pending 鈥?not flushed
+        // Stays pending — not flushed
         expect(snap(parser)).toEqual([])
         parser.push(Buffer.from(";3u"))
         expect(snap(parser)).toEqual([k("v", { ctrl: true, raw: "\x1b[118;5;3u" })])
@@ -1684,8 +1684,8 @@ describe("StdinParser", () => {
     test("paste with UTF-8 content", () => {
       const p = createParser()
       try {
-        p.push(Buffer.from("\x1b[200~鏃ユ湰瑾烉煈峔x1b[201~"))
-        expect(snap(p)).toEqual([paste("鏃ユ湰瑾烉煈?)])
+        p.push(Buffer.from("\x1b[200~日本語👍\x1b[201~"))
+        expect(snap(p)).toEqual([paste("日本語👍")])
       } finally {
         p.destroy()
       }
@@ -1693,13 +1693,13 @@ describe("StdinParser", () => {
 
     test("paste with UTF-8 split across chunks", () => {
       const p = createParser()
-      const emoji = Buffer.from("馃憤")
+      const emoji = Buffer.from("👍")
       try {
         p.push(Buffer.from("\x1b[200~"))
         p.push(emoji.subarray(0, 2))
         p.push(emoji.subarray(2))
         p.push(Buffer.from("\x1b[201~"))
-        expect(snap(p)).toEqual([paste("馃憤")])
+        expect(snap(p)).toEqual([paste("👍")])
       } finally {
         p.destroy()
       }
@@ -2037,7 +2037,7 @@ describe("StdinParser", () => {
     test("ESC inside OSC restarts parsing", () => {
       const p = createParser()
       try {
-        // ESC ] ... ESC ESC [ A 鈥?the first ESC after OSC body starts ST check,
+        // ESC ] ... ESC ESC [ A — the first ESC after OSC body starts ST check,
         // but second ESC byte is not \, so sawEsc resets. Then ESC starts escape.
         // Actually: \x1b]foo has sawEsc=false. Then \x1b sets sawEsc=true.
         // Then [ is not \, so sawEsc resets to false and [ is consumed as content.
@@ -2092,7 +2092,7 @@ describe("StdinParser", () => {
         Buffer.from("\x1b[I"),
         Buffer.from("\x1b]4;0;#fff\x07"),
         Buffer.from("\x1b[200~paste\x1b[201~"),
-        Buffer.from("馃憤"),
+        Buffer.from("👍"),
       ])
       assertChunkInvariant(stream)
     })
@@ -2121,7 +2121,7 @@ describe("StdinParser", () => {
 
     const comboAtoms: Array<[label: string, input: ChunkInput]> = [
       ["ascii", "xy"],
-      ["utf8", "馃憤"],
+      ["utf8", "👍"],
       ["arrow", "\x1b[A"],
       ["sgr", "\x1b[<64;10;5M"],
       ["x10", x10bytes(0, 0, 0)],
@@ -2394,7 +2394,7 @@ describe("StdinParser", () => {
       const disagreeingClock: Clock = {
         now(): number {
           if (insideTimerCallback) {
-            // Report 1ms less than the timeout requires 鈥?this is the
+            // Report 1ms less than the timeout requires — this is the
             // race condition that kept bytes stuck before the fix.
             return TEST_TIMEOUT_MS - 1
           }
@@ -2426,7 +2426,7 @@ describe("StdinParser", () => {
         parser.push(Buffer.from("\x1b"))
         expect(snap(parser)).toEqual([])
 
-        // Fire the timer 鈥?now() will report timeoutMs - 1 elapsed, but the
+        // Fire the timer — now() will report timeoutMs - 1 elapsed, but the
         // timeout callback still force-flushes without re-checking elapsed time.
         inner.advance(TEST_TIMEOUT_MS)
 

@@ -5,7 +5,7 @@
  * 从 stdout 读取 JSON 输出，执行超时限制。
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { osCapabilities } from "../platform/index.js";
 import type { HookManifest, HookPayload, HookOutput } from "./types.js";
 
@@ -30,7 +30,7 @@ export async function runHookCommand(
 
   return new Promise<HookRunResult>((resolve) => {
     const env: Record<string, string | undefined> = { ...process.env, ...manifest.env };
-    let child;
+    let child: ChildProcess;
     try {
       // 仅在真正需要时才通过 cmd.exe 路由。带有显式本机可执行文件扩展名
       //（.exe/.com）的命令会在每个平台上直接生成（argv 数组，无 shell）；

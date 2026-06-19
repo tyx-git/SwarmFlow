@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach } from "bun:test"
 import { DiffRenderable } from "./Diff.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { RGBA } from "../lib/RGBA.js"
@@ -160,7 +160,7 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(splitFrame).toContain("2 - Short")
   expect(splitFrame).toContain("2 + More text")
 
-  // First wrapMode toggle: none 鈫?word
+  // First wrapMode toggle: none → word
   diffRenderable.wrapMode = "word"
   await settleDiffHighlighting(diffRenderable, mockClient, renderOnce)
   const splitWrapFrame = captureFrame()
@@ -198,7 +198,7 @@ test("DiffRenderable - line number alignment and gutter heights in split view wi
   expect(leftGutter.height).toBe(leftVisualLines)
   expect(rightGutter.height).toBe(rightVisualLines)
 
-  // Second wrapMode toggle: word 鈫?none 鈫?word
+  // Second wrapMode toggle: word → none → word
   diffRenderable.wrapMode = "none"
   await renderOnce()
   diffRenderable.wrapMode = "word"

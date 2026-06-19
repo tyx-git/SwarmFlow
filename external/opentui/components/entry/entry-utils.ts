@@ -1,7 +1,3 @@
-﻿// =============================================================================
-// SwarmFlow GUI — Entry 工具函数
-// =============================================================================
-
 export function formatElapsed(ms: number): string {
   const seconds = ms / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;

@@ -1,16 +1,9 @@
-﻿/** @jsxImportSource @opentui/react */
-
-// =============================================================================
-// SwarmFlow GUI — 工具操作条目渲染
-// =============================================================================
-// 职责：渲染工具调用的参数、结果、状态条
-// 工具类型：Read/Edit/Write/List/Bash/Glob 等
-// 特性：流式输出（shimmer）、可点击文件路径（打开文件）、diff 展开/折叠
+/** @jsxImportSource @opentui/react */
 
 import React, { useEffect, useRef, useState } from "react";
 import path from "node:path";
 
-import { browser, osCapabilities } from "../../../src/platform/index.js";
+import { browser, osCapabilities } from "../../../../src/platform/index.js";
 
 import { RGBA, createTextAttributes } from "@opentui/core";
 
@@ -25,12 +18,11 @@ import type { DisplayTheme } from "../../display/theme/index.js";
 
 const BAR_COLOR = "#66635c";
 
-// 流式工具输出最多显示 10 行（后续折叠）
 const TOOL_STREAM_MAX_LINES = 10;
 
 // Tool call arg / result body two-tier dim palette (matches AgentRows done state).
-const ARG_COLOR = "#7a8098";    // L=54 鈥?brighter: tool args, path, suffix, event timeout
-const RESULT_COLOR = "#5a6078"; // L=41 鈥?darker:  tool result body content
+const ARG_COLOR = "#7a8098";    // L=54 — brighter: tool args, path, suffix, event timeout
+const RESULT_COLOR = "#5a6078"; // L=41 — darker:  tool result body content
 const PATH_TOOL_NAMES = new Set(["Read", "Edit", "Write", "List"]);
 
 function openFile(filePath: string): void {
@@ -146,7 +138,7 @@ function ToolOperationEntryInner(
   // as a square-outlined "record" icon, so the win32 osCapabilities
   // profile substitutes U+2B24 BLACK LARGE CIRCLE which stays a clean
   // filled circle in Cascadia Mono / Consolas.
-  const indicator = active ? "鈥? : osCapabilities.toolIndicatorGlyph;
+  const indicator = active ? "›" : osCapabilities.toolIndicatorGlyph;
 
   const indicatorColor = active
     ? toolNameColor
@@ -169,7 +161,7 @@ function ToolOperationEntryInner(
     && entry.state !== "error";
 
   // Fallback: legacy streaming body for non-file-modify tools
-  // (file-modify tools should never show raw section labels 鈥?they use FileModifyBody or InlineResult)
+  // (file-modify tools should never show raw section labels — they use FileModifyBody or InlineResult)
   const isFileModifyTool = entry.toolStreamMode === "replace"
     || entry.toolStreamMode === "append"
     || entry.toolStreamMode === "write";
@@ -220,7 +212,7 @@ function ToolOperationEntryInner(
       </box>
       {hasBody ? (
         <box flexDirection="row" paddingLeft={3} alignItems="flex-start">
-          <text fg={barColor} content="鈹? flexShrink={0} />
+          <text fg={barColor} content="└" flexShrink={0} />
           <box
             flexDirection="column"
             flexGrow={1}

@@ -6,20 +6,20 @@ import { existsSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readOAuthAccessToken, hasOAuthTokens } from "./auth/openai-oauth.js";
-import { loadGitHubTokens, hasGitHubTokens } from "./auth/github-copilot-oauth.js";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { getProviderDefaultBaseUrl } from "./providers/defaults.js";
+import { readOAuthAccessToken, hasOAuthTokens } from "../auth/openai-oauth.js";
+import { loadGitHubTokens, hasGitHubTokens } from "../auth/github-copilot-oauth.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { getProviderDefaultBaseUrl } from "../providers/defaults.js";
 import {
   findProviderPreset,
   findProviderPresetModel,
   PROVIDER_PRESETS,
-} from "./providers/presets.js";
+} from "../providers/presets.js";
 import {
   MANAGED_PROVIDER_CREDENTIAL_SPECS,
   isManagedProvider,
-} from "./config/managed-provider-credentials.js";
-import type { AgentModelEntry, LocalProviderConfig, ModelTierEntry } from "./config/persistence.js";
+} from "../config/managed-provider-credentials.js";
+import type { AgentModelEntry, LocalProviderConfig, ModelTierEntry } from "../config/persistence.js";
 import {
   type SealedSchema,
   type ThinkingEncryption,
@@ -27,11 +27,11 @@ import {
   resolveSealedSchema,
   resolveThinkingEncryption,
   resolveTransportProtocol,
-} from "./lib/thinking-artifact.js";
-import { LEGACY_EXTENDED_CACHE_IDS } from "./models/registry.js";
-import { EFFECTIVE_MODEL_TABLES } from "./providers/registry-effective.js";
+} from "../lib/thinking-artifact.js";
+import { LEGACY_EXTENDED_CACHE_IDS } from "../models/registry.js";
+import { EFFECTIVE_MODEL_TABLES } from "../providers/registry-effective.js";
 
-export { SWARMFLOW_HOME_DIR } from "./lib/home-path.js";
+export { SWARMFLOW_HOME_DIR } from "../lib/home-path.js";
 
 // ------------------------------------------------------------------
 // 数据接口定义
@@ -553,9 +553,9 @@ export function getBundledAssetsDir(): string {
     return dirname(process.execPath);
   }
 
-  // 开发模式下此文件位于 src/ 下。旧版 tsc 构建会编译到 dist/config.js。
+  // 开发模式下此文件位于 src/config/ 下。旧版 tsc 构建会编译到 dist/config.js。
   // 两种布局都将内置资源保持在项目根目录。
-  return join(dirname(thisFile), "..");
+  return join(dirname(thisFile), "..", "..");
 }
 
 // ------------------------------------------------------------------

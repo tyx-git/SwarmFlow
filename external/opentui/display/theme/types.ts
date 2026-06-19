@@ -1,4 +1,4 @@
-﻿import type { SyntaxStyle } from "@opentui/core";
+import type { SyntaxStyle } from "@opentui/core";
 
 export type ThemeMode = "dark" | "light";
 
@@ -12,7 +12,7 @@ export type DeepPartial<T> = {
 
 export interface DisplayThemeColorTokens {
   userBg: string;
-  /** Faint accent wash behind user messages 鈥?a scannable anchor while
+  /** Faint accent wash behind user messages — a scannable anchor while
    * scrolling without the weight of the old solid surface. Expect an
    * #RRGGBBAA accent at very low alpha. */
   userWash: string;

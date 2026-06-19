@@ -1,4 +1,4 @@
-﻿import { test, expect, afterEach } from "bun:test"
+import { test, expect, afterEach } from "bun:test"
 import { Writable } from "stream"
 import { createCliRenderer, CliRenderer, CliRenderEvents } from "../renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
@@ -1022,7 +1022,7 @@ test("full feed teardown after successful setup does not throw", async () => {
     stdin,
     stdout,
   })
-  // Exercises the full drain 鈫?destroyRenderer 鈫?drain 鈫?detach 鈫?close path.
+  // Exercises the full drain → destroyRenderer → drain → detach → close path.
   expect(() => renderer.destroy()).not.toThrow()
 })
 

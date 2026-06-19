@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 // These scenarios cover common box patterns such as split borders, prompt/toast
 // layouts, and full-frame panels so drawBox is measured on realistic trees, not

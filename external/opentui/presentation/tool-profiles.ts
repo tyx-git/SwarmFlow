@@ -1,4 +1,4 @@
-﻿import path from "node:path";
+import path from "node:path";
 
 import type { ToolCategory } from "./types.js";
 

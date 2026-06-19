@@ -1,4 +1,4 @@
-﻿import { test, expect, describe, spyOn } from "bun:test"
+import { test, expect, describe, spyOn } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "../testing/test-renderer.js"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"

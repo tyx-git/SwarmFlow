@@ -11,8 +11,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { normalizeModelId } from "./config/config.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { normalizeModelId } from "../config/config.js";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;

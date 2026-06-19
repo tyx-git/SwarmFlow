@@ -1,4 +1,4 @@
-﻿export interface LogicalCursorPosition {
+export interface LogicalCursorPosition {
   row: number;
   col: number;
 }

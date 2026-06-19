@@ -34,10 +34,10 @@ import {
 import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 
-import { binaryAsset, osCapabilities } from "./platform/index.js";
-import { binaryAssetForPlatform } from "./platform/binary-asset/index.js";
-import { currentPlatform, type SupportedPlatform } from "./platform/detect.js";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
+import { binaryAsset, osCapabilities } from "../platform/index.js";
+import { binaryAssetForPlatform } from "../platform/binary-asset/index.js";
+import { currentPlatform, type SupportedPlatform } from "../platform/detect.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
 
 const GITHUB_REPO = "tyx-git/SwarmFlow";
 const CACHE_FILE = ".update-check.json";

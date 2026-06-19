@@ -1,4 +1,4 @@
-﻿import path from "node:path"
+import path from "node:path"
 
 export const extensionToFiletype: Map<string, string> = new Map([
   ["astro", "astro"],

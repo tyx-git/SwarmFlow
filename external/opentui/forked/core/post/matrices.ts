@@ -1,4 +1,4 @@
-﻿// Standard sepia transformation matrix (4x4 RGBA with alpha identity)
+// Standard sepia transformation matrix (4x4 RGBA with alpha identity)
 export const SEPIA_MATRIX = new Float32Array([
   0.393,
   0.769,

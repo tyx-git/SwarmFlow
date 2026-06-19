@@ -1,4 +1,4 @@
-﻿import { plugin as registerBunPlugin } from "bun"
+import { plugin as registerBunPlugin } from "bun"
 import { createRuntimePlugin, type CreateRuntimePluginOptions, type RuntimeModuleEntry } from "./runtime-plugin.js"
 
 const runtimePluginSupportInstalledKey = "__opentuiCoreRuntimePluginSupportInstalled__"

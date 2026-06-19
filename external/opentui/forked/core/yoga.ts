@@ -1,4 +1,4 @@
-﻿import {
+import {
   resolveRenderLib,
   type NativeYogaDirtiedCallback,
   type NativeYogaMeasureCallback,

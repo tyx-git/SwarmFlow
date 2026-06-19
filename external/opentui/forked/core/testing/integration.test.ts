@@ -1,4 +1,4 @@
-﻿import { describe, test, expect } from "bun:test"
+import { describe, test, expect } from "bun:test"
 import { createMockMouse, MouseButtons } from "./mock-mouse.js"
 import { MouseParser } from "../lib/parse.mouse.js"
 

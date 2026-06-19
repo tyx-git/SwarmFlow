@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 // This benchmark targets render/layout bookkeeping in wrapper-heavy trees,
 // scrollbox culling, and scrollbar-heavy paths that exercise Renderable

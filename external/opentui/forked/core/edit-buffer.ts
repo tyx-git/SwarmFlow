@@ -1,4 +1,4 @@
-﻿import {
+import {
   resolveRenderLib,
   type EditBufferHandle,
   type LogicalCursor,

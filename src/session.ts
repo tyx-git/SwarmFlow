@@ -5495,15 +5495,15 @@ export class Session {
       for (let j = 0; j < q.options.length; j++) {
         const opt = q.options[j];
         const isSelected = answer?.selectedOptionIndex === j;
-        const marker = isSelected ? "鈼? : "鈼?;
+        const marker = isSelected ? "●" : "○?";
         const desc = opt.description ? ` —${opt.description}` : "";
         lines.push(`  ${marker} ${opt.label}${desc}`);
       }
       if (answer && q.options[answer.selectedOptionIndex]?.kind === "custom_input") {
-        lines.push(`  ✓${answer.answerText}`);
+        lines.push(`  ✎ ${answer.answerText}`);
       }
       if (answer?.note) {
-        lines.push(`  馃摑 ${answer.note}`);
+        lines.push(`  📝 ${answer.note}`);
       }
     }
     return lines.join("\n");

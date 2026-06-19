@@ -1,4 +1,4 @@
-﻿import {
+import {
   dlopen,
   ffiBool,
   toArrayBuffer,
@@ -109,15 +109,15 @@ const localNativeCandidates = [
 
 let targetLibPath: string | undefined = localNativeCandidates.find((candidate) => existsSync(candidate))
 
-// Platform-arch targets we publish prebuilt native packages for 鈥?mirrors
+// Platform-arch targets we publish prebuilt native packages for — mirrors
 // package.json optionalDependencies. Gating the import on this set (rather
 // than catching every error) means a target that genuinely has no prebuilt
 // (darwin-x64) falls straight through to the friendly "not supported"
 // error, WITHOUT masking real load failures on a supported target: a
 // corrupt/missing native lib, bad export, or dlopen error now surfaces its
 // actual stack instead of being mislabeled "unsupported platform". (On a
-// supported target with the optional package uninstalled 鈥?e.g.
-// `--omit=optional` and no local build 鈥?the import's own not-found error
+// supported target with the optional package uninstalled — e.g.
+// `--omit=optional` and no local build — the import's own not-found error
 // propagates, which is more honest than the generic platform message.)
 const PREBUILT_NATIVE_TARGETS = new Set(["darwin-arm64", "linux-x64", "linux-arm64", "win32-x64", "win32-arm64"])
 const nativeTarget = `${process.platform}-${process.arch}`

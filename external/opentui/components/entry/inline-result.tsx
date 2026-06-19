@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useMemo } from "react";
 
@@ -79,12 +79,12 @@ function truncateStyledText(st: StyledText, maxWidth: number, ellipsisFg: RGBA):
     }
   }
 
-  // Should not reach here (total > maxWidth but couldn't fit ellipsis 鈥?very narrow)
+  // Should not reach here (total > maxWidth but couldn't fit ellipsis — very narrow)
   newChunks.push(createChunk(ELLIPSIS, { fg: ellipsisFg }));
   return new StyledText(newChunks);
 }
 
-/** Truncate a plain string to fit within maxWidth, appending "鈥?. */
+/** Truncate a plain string to fit within maxWidth, appending "…". */
 function truncateString(s: string, maxWidth: number): string {
   const total = chunkDisplayWidth(s);
   if (total <= maxWidth) return s;
@@ -167,7 +167,7 @@ function InlineResultInner(
       const pushSeparator = () => {
         elements.push(
           <box key={`sep-${elementKey++}`} flexDirection="row" width="100%">
-            <text fg={colors.dim} content={`${LINE_PREFIX}鈰甡} />
+            <text fg={colors.dim} content={`${LINE_PREFIX}⋮`} />
           </box>,
         );
       };
@@ -198,19 +198,20 @@ function InlineResultInner(
           const nextIsChanged = hi < hunks.length - 1 && hunks[hi + 1].isChanged;
 
           if (isFirst) {
-            // Leading context: 鈰?then last CONTEXT_LINES
+            // Leading context: ⋮ then last CONTEXT_LINES
             pushSeparator();
             const start = Math.max(0, n - CONTEXT_LINES);
             for (let j = start; j < n; j++) pushArtifact(hunk.artifacts[j]);
           } else if (isLast) {
-            // Trailing context: first CONTEXT_LINES then 鈰?            const end = Math.min(n, CONTEXT_LINES);
+            // Trailing context: first CONTEXT_LINES then ⋮
+            const end = Math.min(n, CONTEXT_LINES);
             for (let j = 0; j < end; j++) pushArtifact(hunk.artifacts[j]);
             pushSeparator();
           } else if (n <= CONTEXT_LINES * 2) {
             // Between two changed hunks, small gap: show all
             for (const a of hunk.artifacts) pushArtifact(a);
           } else {
-            // Between two changed hunks, large gap: first N + 鈰?+ last N
+            // Between two changed hunks, large gap: first N + ⋮ + last N
             for (let j = 0; j < CONTEXT_LINES; j++) pushArtifact(hunk.artifacts[j]);
             pushSeparator();
             for (let j = n - CONTEXT_LINES; j < n; j++) pushArtifact(hunk.artifacts[j]);
@@ -218,7 +219,8 @@ function InlineResultInner(
           continue;
         }
 
-        // If first hunk is changed, add leading 鈰?        if (isFirst) pushSeparator();
+        // If first hunk is changed, add leading ⋮
+        if (isFirst) pushSeparator();
 
         // Changed hunk: truncate at MAX_LINES_PER_HUNK
         const visible = hunk.artifacts.slice(0, MAX_LINES_PER_HUNK);
@@ -241,7 +243,8 @@ function InlineResultInner(
           );
         }
 
-        // If last hunk is changed, add trailing 鈰?        if (isLast) pushSeparator();
+        // If last hunk is changed, add trailing ⋮
+        if (isLast) pushSeparator();
       }
 
       return (
@@ -323,7 +326,7 @@ function InlineResultInner(
     );
   }
 
-  // Plain text inline result (no toolMetadata) 鈥?result body uses the
+  // Plain text inline result (no toolMetadata) — result body uses the
   // two-tier dim palette (darker than tool call args).
   const textColor = data.dim ? colors.dim : "#5a6078";
   const lines = data.text.split("\n");

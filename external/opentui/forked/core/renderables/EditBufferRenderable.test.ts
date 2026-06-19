@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable } from "./Box.js"
 import { EditBufferRenderableEvents, isEditBufferRenderable } from "./EditBufferRenderable.js"
 import { InputRenderable } from "./Input.js"

@@ -1,4 +1,4 @@
-﻿import { mkdir, readFile, writeFile } from "fs/promises"
+import { mkdir, readFile, writeFile } from "fs/promises"
 import * as path from "path"
 
 export interface DownloadResult {

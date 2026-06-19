@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ActivityPhase } from "../display/types.js";
 
 export function useTurnTimer(phase: ActivityPhase): number {

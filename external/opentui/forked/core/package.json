@@ -5,7 +5,7 @@
   "types": "index.ts",
   "type": "module",
   "version": "0.4.1",
-  "description": "Local SwarmFlow fork of OpenTUI core",
+  "description": "Local Fermi fork of OpenTUI core",
   "license": "MIT",
   "exports": {
     ".": {

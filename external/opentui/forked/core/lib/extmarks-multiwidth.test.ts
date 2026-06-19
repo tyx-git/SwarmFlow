@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, afterEach } from "bun:test"
+import { describe, expect, it, afterEach } from "bun:test"
 
 import { TextareaRenderable } from "../renderables/Textarea.js"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../testing/test-renderer.js"
@@ -43,9 +43,9 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
   describe("Basic Multi-width Highlighting", () => {
     it("should correctly highlight text AFTER multi-width characters", async () => {
-      // Text: "鍓嶅悗绔垎绂?@git-committer"
+      // Text: "前后端分离 @git-committer"
       // Chinese chars are multi-width, @ onwards should highlight correctly
-      await setup("鍓嶅悗绔垎绂?@git-committer")
+      await setup("前后端分离 @git-committer")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("mention", {
@@ -58,7 +58,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       const text = textarea.plainText
 
       // Calculate CORRECT display-width offsets
-      // "鍓? = 2 cols, "鍚? = 2 cols, "绔? = 2 cols, "鍒? = 2 cols, "绂? = 2 cols, " " = 1 col
+      // "前" = 2 cols, "后" = 2 cols, "端" = 2 cols, "分" = 2 cols, "离" = 2 cols, " " = 1 col
       // Total before "@": 10 + 1 = 11 display-width columns
       let displayOffset = 0
       const atJsIndex = text.indexOf("@")
@@ -88,7 +88,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
     })
 
     it("should correctly highlight text BEFORE multi-width characters", async () => {
-      await setup("hello 鍓嶅悗绔垎绂?)
+      await setup("hello 前后端分离")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("test", {
@@ -112,7 +112,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
     })
 
     it("should correctly highlight BETWEEN multi-width characters", async () => {
-      await setup("鍓嶅悗 test 绔垎绂?)
+      await setup("前后 test 端分离")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("test", {
@@ -121,8 +121,8 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       textarea.syntaxStyle = style
 
-      // "鍓嶅悗 test 绔垎绂?
-      // Offsets: 鍓?0, 鍚?1, space=2, t=3, e=4, s=5, t=6, space=7, 绔?8, 鍒?9, 绂?10
+      // "前后 test 端分离"
+      // Offsets: 前=0, 后=1, space=2, t=3, e=4, s=5, t=6, space=7, 端=8, 分=9, 离=10
       const testStart = 3
       const testEnd = 7
 
@@ -144,7 +144,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
     })
 
     it("should correctly highlight the multi-width characters themselves", async () => {
-      await setup("hello 鍓嶅悗绔垎绂?world")
+      await setup("hello 前后端分离 world")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("test", {
@@ -153,8 +153,8 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       textarea.syntaxStyle = style
 
-      // "hello 鍓嶅悗绔垎绂?world"
-      // Offsets: h=0,e=1,l=2,l=3,o=4,space=5,鍓?6,鍚?7,绔?8,鍒?9,绂?10,space=11,w=12...
+      // "hello 前后端分离 world"
+      // Offsets: h=0,e=1,l=2,l=3,o=4,space=5,前=6,后=7,端=8,分=9,离=10,space=11,w=12...
       const chineseStart = 6
       const chineseEnd = 11
 
@@ -169,7 +169,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
       if (highlights.length > 0) {
         const lineText = textarea.plainText.split("\n")[0]
         const actualHighlightedText = lineText.substring(highlights[0].start, highlights[0].end)
-        expect(actualHighlightedText).toBe("鍓嶅悗绔垎绂?)
+        expect(actualHighlightedText).toBe("前后端分离")
       }
 
       expect(highlights.length).toBe(1)
@@ -178,7 +178,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
   describe("Complex Multi-width Scenarios", () => {
     it("should handle emoji and multi-width characters together", async () => {
-      await setup("鍓嶅悗 馃専 test")
+      await setup("前后 🌟 test")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("test", {
@@ -207,7 +207,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
     })
 
     it("should handle multiple highlights with multi-width characters", async () => {
-      await setup("鍓嶅悗绔?@user1 鍒嗙 @user2 end")
+      await setup("前后端 @user1 分离 @user2 end")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("mention", {
@@ -248,16 +248,16 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
   describe("Cursor Movement with Multi-width Characters", () => {
     it("should correctly position cursor after multi-width characters", async () => {
-      await setup("鍓嶅悗 test")
+      await setup("前后 test")
 
       textarea.focus()
       textarea.cursorOffset = 0
 
-      // Text: "鍓嶅悗 test"
-      // "鍓? = display width 2, "鍚? = display width 2, " " = display width 1
+      // Text: "前后 test"
+      // "前" = display width 2, "后" = display width 2, " " = display width 1
       // After 3 arrow right presses from position 0:
-      //   Press 1: move to display-width 2 (after "鍓?)
-      //   Press 2: move to display-width 4 (after "鍚?)
+      //   Press 1: move to display-width 2 (after "前")
+      //   Press 2: move to display-width 4 (after "后")
       //   Press 3: move to display-width 5 (after " ")
 
       for (let i = 0; i < 3; i++) {
@@ -266,7 +266,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
 
       const cursorPos = textarea.cursorOffset
 
-      // Cursor should be at display-width offset 5 (after "鍓嶅悗 ")
+      // Cursor should be at display-width offset 5 (after "前后 ")
       expect(cursorPos).toBe(5)
     })
   })
@@ -274,7 +274,7 @@ describe("ExtmarksController - Multi-width Graphemes", () => {
   describe("Visual vs Byte Offset Issues", () => {
     it("should demonstrate the offset to char offset conversion issue", async () => {
       // This is the CRITICAL test - offsetToCharOffset doesn't account for display width
-      await setup("鍓嶅悗绔垎绂?@git-committer")
+      await setup("前后端分离 @git-committer")
 
       const style = SyntaxStyle.create()
       const styleId = style.registerStyle("mention", {

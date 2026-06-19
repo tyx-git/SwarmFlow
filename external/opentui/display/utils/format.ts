@@ -1,5 +1,5 @@
-﻿import type { DisplayThemeLayoutTokens } from "../theme/index.js";
-import { osCapabilities } from "../../../src/platform/index.js";
+import type { DisplayThemeLayoutTokens } from "../theme/index.js";
+import { osCapabilities } from "../../../../src/platform/index.js";
 
 export function formatCompactTokens(value: number | undefined): string {
   const safeValue = value ?? 0;
@@ -55,8 +55,8 @@ export function getUsageBarRows(
     const rowFilled = Math.max(0, Math.min(rowTotal, filledBlocks - rowStart));
     const emptyCount = Math.max(0, rowTotal - rowFilled);
     return {
-      filled: Array.from({ length: rowFilled }, () => "鈻?).join(" "),
-      empty: Array.from({ length: emptyCount }, () => "鈻?).join(" "),
+      filled: Array.from({ length: rowFilled }, () => "▆").join(" "),
+      empty: Array.from({ length: emptyCount }, () => "▆").join(" "),
     };
   });
 }
@@ -78,7 +78,7 @@ export function shortenPath(fullPath: string): string {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
   if (!home) return fullPath;
   // Case-insensitive filesystems (macOS, Windows) can hand us the same
-  // location in different casing (drive letter, profile dir) 鈥?fold before
+  // location in different casing (drive letter, profile dir) — fold before
   // comparing. The boundary check keeps /Users/felixfoo from shortening
   // under /Users/felix.
   const fold = (s: string) => (osCapabilities.caseInsensitiveFilesystem ? s.toLowerCase() : s);

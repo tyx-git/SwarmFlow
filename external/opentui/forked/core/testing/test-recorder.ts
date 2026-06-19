@@ -1,4 +1,4 @@
-﻿import type { TestRenderer } from "./test-renderer.js"
+import type { TestRenderer } from "./test-renderer.js"
 import { CliRenderEvents } from "../renderer.js"
 
 export interface RecordBuffersOptions {

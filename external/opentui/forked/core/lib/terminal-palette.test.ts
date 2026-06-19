@@ -1,4 +1,4 @@
-﻿import { test, expect } from "bun:test"
+import { test, expect } from "bun:test"
 import { TerminalPalette, normalizeTerminalPalette } from "./terminal-palette.js"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"

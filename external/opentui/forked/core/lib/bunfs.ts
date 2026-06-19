@@ -1,4 +1,4 @@
-﻿import { basename, join } from "node:path"
+import { basename, join } from "node:path"
 
 export function isBunfsPath(path: string): boolean {
   // Removed ambiguous '//' check

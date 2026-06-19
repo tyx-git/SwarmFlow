@@ -1,4 +1,4 @@
-﻿import { describe, test, expect } from "bun:test"
+import { describe, test, expect } from "bun:test"
 import { createTestRenderer } from "../../testing/test-renderer.js"
 import { TextareaRenderable } from "../Textarea.js"
 import { LineNumberRenderable } from "../LineNumberRenderable.js"

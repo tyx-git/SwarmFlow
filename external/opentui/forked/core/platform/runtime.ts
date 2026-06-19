@@ -1,4 +1,4 @@
-﻿import { existsSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { mkdir, writeFile as writeFileNode } from "node:fs/promises"
 import { dirname, isAbsolute, resolve } from "node:path"
 import { fileURLToPath } from "node:url"

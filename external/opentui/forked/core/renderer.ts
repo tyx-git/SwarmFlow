@@ -1,4 +1,4 @@
-﻿import { ANSI } from "./ansi.js"
+import { ANSI } from "./ansi.js"
 import { Renderable, RootRenderable } from "./Renderable.js"
 import { BoxRenderable } from "./renderables/Box.js"
 import { CodeRenderable } from "./renderables/Code.js"
@@ -54,10 +54,10 @@ import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from ".
 import { matchesKeyBinding } from "./lib/keybinding.internal.js"
 import { RendererThemeMode } from "./renderer-theme-mode.js"
 import {
-  isSwarmflowOpenTuiDiagEnabled,
+  isFermiOpenTuiDiagEnabled,
   previewLatin1Hex,
   previewLatin1Sequence,
-  writeSwarmflowOpenTuiDiag,
+  writeFermiOpenTuiDiag,
 } from "./lib/diagnostic.js"
 
 registerEnvVar({
@@ -905,7 +905,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _debugModeEnabled: boolean = env.OTUI_DEBUG
 
   private handleError: (error: Error) => void = ((error: Error) => {
-    writeSwarmflowOpenTuiDiag("renderer.error", {
+    writeFermiOpenTuiDiag("renderer.error", {
       error: { name: error.name, message: error.message, stack: error.stack },
     })
     console.error(error)
@@ -991,7 +991,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
    * Construction side effects (observable before the constructor returns):
    *   - Acquires exclusive ownership of the given stdin/stdout streams
    *   - Allocates a `NativeSpanFeed` (for non-process stdout unless bufferedOutput is "memory")
-   *   - Calls `lib.createRenderer` 鈫?native Zig allocation
+   *   - Calls `lib.createRenderer` → native Zig allocation
    *   - Registers in the process-wide `rendererTracker`
    *   - Adds `process.on(...)` listeners for SIGWINCH (process.stdout only),
    *     "warning", "uncaughtException", "unhandledRejection", "beforeExit",
@@ -1067,8 +1067,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     // Threading defaults (on everywhere except linux, where it currently
-    // crashes 鈥?likely a missing build dep). An explicit config value wins
-    // on every platform 鈥?otherwise the SWARMFLOW_OPENTUI_USE_THREAD escape
+    // crashes — likely a missing build dep). An explicit config value wins
+    // on every platform — otherwise the FERMI_OPENTUI_USE_THREAD escape
     // hatch is a silent no-op on linux while the diag log claims it took.
     if (config.useThread === undefined) config.useThread = process.platform !== "linux"
     lib.setUseThread(rendererPtr, config.useThread)
@@ -1077,7 +1077,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
     lib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
 
-    // Wire feed 鈫?Writable piping. The returned Promise keeps the chunk
+    // Wire feed → Writable piping. The returned Promise keeps the chunk
     // pinned (refcount held) until Node's write callback fires; this turns
     // Node's Writable flow control into async backpressure for the feed.
     // Write errors are surfaced via feed.onError / console.error; we do not
@@ -1177,7 +1177,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     // Handle terminal resize via SIGWINCH, but only when attached to the
-    // process's real stdout 鈥?a custom Writable wouldn't drive SIGWINCH
+    // process's real stdout — a custom Writable wouldn't drive SIGWINCH
     // anyway, and external consumers can call `renderer.resize(w, h)` to
     // announce dimension changes themselves.
     if (this._usesProcessStdout) {
@@ -1409,8 +1409,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
     // Route through the native backend whenever:
-    //   (a) threading is on (pre-existing path 鈥?batches with the render thread), OR
-    //   (b) a feed is wired (custom stdout) 鈥?otherwise the else-branch would
+    //   (a) threading is on (pre-existing path — batches with the render thread), OR
+    //   (b) a feed is wired (custom stdout) — otherwise the else-branch would
     //       write directly to the user's Writable, bypassing the feed and
     //       causing TS-side ANSI to interleave with Zig-emitted frame bytes
     //       on Linux where threading is forced off.
@@ -3106,13 +3106,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // for shutdown paths that don't go through main.tsx (fatal-error cleanup,
   // tests, embedders).
   //
-  // History 鈥?three failed attempts before this shape:
+  // History — three failed attempts before this shape:
   //   1. Only emitting ?1016l from TS while delegating ?1000/?1002/?1003/?1006
   //      to lib.disableMouse(). lib.disableMouse() routes through zig's
   //      writeOutBuf, which is drained by the render thread; that thread is
   //      about to be suspended/destroyed, so most of the reset bytes never
   //      reach the TTY. The terminal kept SGR framing on (?1006 still
-  //      active) and motion events kept flowing 鈥?leaked sequences read as
+  //      active) and motion events kept flowing — leaked sequences read as
   //      full SGR-Pixel reports like `<51;790;1276M`.
   //   2. Same as (1) but doing everything synchronously here via
   //      realStdoutWrite. Terminal now stops emitting new events, but one or
@@ -3127,7 +3127,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   //      stdinParser consumes them, so they never reach the shell. Verified
   //      clean on macOS Terminal.app under high-frequency mouse motion.
   //
-  // Why bypass lib.disableMouse(): see (1) above 鈥?writeOutBuf is async and
+  // Why bypass lib.disableMouse(): see (1) above — writeOutBuf is async and
   // racy with destroy. Why ?1016 is exclusively a TS concern: the shipped
   // zig native binary only *queries* ?1016 capability (?1016$p) and never
   // toggles it, so the TS layer owns both enable (updateMousePixelMode) and
@@ -3157,7 +3157,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   // 1016 (caps.sgr_pixels), mouse is enabled, and we have a pixel resolution
   // plus a sane grid to derive the per-cell pixel size from. \x1b[14t reports
   // the text-area size in pixels; dividing by the grid dimensions gives the
-  // cell size. Idempotent 鈥?safe to call from resolution, capability, resize
+  // cell size. Idempotent — safe to call from resolution, capability, resize
   // and focus-restore paths.
   //
   // 1016 is driven from here rather than from zig's setMouseMode because the
@@ -3344,7 +3344,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
 
     // The ?1016 DECRQM reply arrives after the initial mouse setup, so
-    // caps.sgr_pixels typically flips true here 鈥?(re)assert pixel mode.
+    // caps.sgr_pixels typically flips true here — (re)assert pixel mode.
     this.updateMousePixelMode()
 
     const hadPendingSplitStartupCursorSeed = this.pendingSplitStartupCursorSeed
@@ -3467,7 +3467,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private handleStdinParserFailure(error: unknown): void {
-    writeSwarmflowOpenTuiDiag("stdin.parser.failure", {
+    writeFermiOpenTuiDiag("stdin.parser.failure", {
       error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
     })
     if (!this.hasLoggedStdinParserError) {
@@ -3557,7 +3557,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private maybeDumpDiagStateForScrollBurst(mouseEvent: RawMouseEvent): void {
-    if (!isSwarmflowOpenTuiDiagEnabled()) return
+    if (!isFermiOpenTuiDiagEnabled()) return
     if (mouseEvent.type !== "scroll") return
 
     const now = this.clock.now()
@@ -3579,7 +3579,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const timestamp = Date.now()
     this.dumpHitGrid()
     this.dumpBuffers(timestamp)
-    writeSwarmflowOpenTuiDiag("renderer.diag_dump", {
+    writeFermiOpenTuiDiag("renderer.diag_dump", {
       reason: "scroll-burst",
       burstCount: this.diagScrollBurstCount,
       clockNow: now,
@@ -3649,7 +3649,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (mouseEvent.type === "scroll") {
       this.maybeDumpDiagStateForScrollBurst(mouseEvent)
       const scrollTarget = this.resolveScrollTarget(mouseEvent)
-      writeSwarmflowOpenTuiDiag("renderer.mouse.scroll", {
+      writeFermiOpenTuiDiag("renderer.mouse.scroll", {
         pointer: { x: mouseEvent.x, y: mouseEvent.y },
         scroll: mouseEvent.scroll ?? null,
         cachedScrollTarget: this.describeRenderable(this.activeScrollTarget ?? null),
@@ -3854,7 +3854,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // regain an identical shape is de-duplicated and the cursor sticks stale
     // (the Ghostty focus-stuck bug). Leaving it untouched keeps the recorded
     // shape consistent with what's visible, so the first hover after refocus
-    // re-resolves to a real change and repaints cleanly 鈥?no focus-time fixup
+    // re-resolves to a real change and repaints cleanly — no focus-time fixup
     // needed. `null` (focus reporting unknown/unsupported) does not gate.
     if (this._terminalFocusState === false) return
     this._currentMousePointerStyle = style
@@ -3862,11 +3862,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // native render loop (setCursorStyleOptions + requestRender). Two reasons:
     //
     // 1. Idle flush: the native side only emits OSC 22 inside a render tick,
-    //    and an idle renderer (settled resumed conversation) never ticks 鈥?a
+    //    and an idle renderer (settled resumed conversation) never ticks — a
     //    bare hover changes no on-screen state, so the escape never goes out.
     //
     // 2. Cursor survival: a render-triggered frame hides the text cursor in
-    //    its sync block (beginRenderFrame 鈫?hideCursor). The native loop
+    //    its sync block (beginRenderFrame → hideCursor). The native loop
     //    processes cursor BEFORE mouse-pointer, so if the pointer change is
     //    the only thing that opens the block, the cursor section has already
     //    passed with "nothing changed" and won't re-emit showCursor.
@@ -3877,8 +3877,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Importantly, we do NOT call setCursorStyleOptions here. That would
     // update native terminal.state.mouse_pointer without advancing the
     // renderer's lastMousePointerStyle cache, causing the next unrelated
-    // render frame to re-emit the same OSC 22 inside its sync block 鈥?    // reintroducing the cursor-hiding issue. By leaving native state alone,
-    // mouse_pointer == lastMousePointerStyle on the next frame 鈫?no re-emit.
+    // render frame to re-emit the same OSC 22 inside its sync block —
+    // reintroducing the cursor-hiding issue. By leaving native state alone,
+    // mouse_pointer == lastMousePointerStyle on the next frame → no re-emit.
     const name = style === "not-allowed" ? "not-allowed" : style
     this.writeOut(`\x1b]22;${name}\x07`)
   }
@@ -4051,7 +4052,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   /**
    * Programmatically resize the renderer to new dimensions.
    *
-   * Use this for externally-driven resize events 鈥?for example, an SSH
+   * Use this for externally-driven resize events — for example, an SSH
    * `window-change` signal or a test harness simulating a terminal resize.
    * When the renderer is attached to `process.stdout`, `SIGWINCH` is handled
    * automatically and callers do not need this method.
@@ -4546,13 +4547,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     //
     // The correct order is:
     //   a) drain any frames already committed but not yet delivered
-    //   b) call lib.destroyRenderer 鈥?this commits shutdown bytes into the feed
-    //   c) drain again 鈥?this flushes those shutdown bytes through the handler
+    //   b) call lib.destroyRenderer — this commits shutdown bytes into the feed
+    //   c) drain again — this flushes those shutdown bytes through the handler
     //   d) detach the handler now that no more data will flow
     //   e) close the feed (releases chunk memory once async handlers settle)
     //
     // Memory-lifetime invariant: `lib.destroyRenderer` calls into Zig's
-    // `FeedBackend.deinit`, which is a DOCUMENTED NO-OP 鈥?feed memory is
+    // `FeedBackend.deinit`, which is a DOCUMENTED NO-OP — feed memory is
     // owned by the TS side and only released by `feed.close()` at step (e).
     // Consequently, step (c)'s drain operates on still-valid chunk memory;
     // there is no use-after-free window between (b) and (e).

@@ -1,4 +1,4 @@
-﻿import { SyntaxStyle, parseColor, type TextareaRenderable, type ColorInput } from "@opentui/core";
+import { SyntaxStyle, parseColor, type TextareaRenderable, type ColorInput } from "@opentui/core";
 import {
   buildFileReferenceLabel,
   displayWidthWithNewlines,
@@ -22,7 +22,7 @@ export interface ComposerTokenVisuals {
 }
 
 const COMPOSER_TOKEN_TYPE = "composer-token";
-const COMPOSER_EXTMARK_PATCHED = Symbol("swarmflow.composer-extmarks-patched");
+const COMPOSER_EXTMARK_PATCHED = Symbol("fermi.composer-extmarks-patched");
 
 export function createComposerTokenVisuals(colors: {
   accent: ColorInput;

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 import { runUpdateAssetsCli } from "./assets/update.js"
 

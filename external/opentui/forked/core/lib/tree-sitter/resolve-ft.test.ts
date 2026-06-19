@@ -1,4 +1,4 @@
-﻿import { test, expect } from "bun:test"
+import { test, expect } from "bun:test"
 import { extensionToFiletype, infoStringToFiletype, pathToFiletype } from "./resolve-ft.js"
 
 test("pathToFiletype only resolves actual paths", () => {
@@ -12,11 +12,11 @@ test("pathToFiletype resolves common extension aliases to parser ids", () => {
   expect(pathToFiletype("src/index.mtsx")).toBe("typescriptreact")
   expect(pathToFiletype("src/module.cc")).toBe("cpp")
   expect(pathToFiletype("src/module.hxx")).toBe("cpp")
-  expect(pathToFiletype("src/config.hrl")).toBe("erlang")
+  expect(pathToFiletype("src/config/config.hrl")).toBe("erlang")
   expect(pathToFiletype("src/main.hs")).toBe("haskell")
   expect(pathToFiletype("src/main.ml")).toBe("ocaml")
   expect(pathToFiletype("src/main.scala")).toBe("scala")
-  expect(pathToFiletype("src/config.zon")).toBe("zig")
+  expect(pathToFiletype("src/config/config.zon")).toBe("zig")
   expect(pathToFiletype("src/script.sh")).toBe("bash")
 })
 

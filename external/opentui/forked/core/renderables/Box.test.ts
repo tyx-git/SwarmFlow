@@ -1,4 +1,4 @@
-﻿import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
+import { test, expect, describe, beforeEach, afterEach, spyOn } from "bun:test"
 import { BoxRenderable, type BoxOptions } from "./Box.js"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import type { BorderStyle } from "../lib/border.js"
@@ -192,14 +192,14 @@ describe("BoxRenderable - border titles (top and bottom)", () => {
 
     const lines = captureFrame().split("\n")
 
-    expect(lines[0].slice(0, 16)).toBe("鈹屸攢Top鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?)
-    expect(lines[4].slice(0, 16)).toBe("鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€Bot鈹€鈹?)
+    expect(lines[0].slice(0, 16)).toBe("┌─Top──────────┐")
+    expect(lines[4].slice(0, 16)).toBe("└──────────Bot─┘")
   })
 
   test.each([
-    ["left", "鈹斺攢Bot鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?],
-    ["center", "鈹斺攢鈹€鈹€鈹€鈹€鈹€Bot鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?],
-    ["right", "鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€Bot鈹€鈹?],
+    ["left", "└─Bot────────────┘"],
+    ["center", "└──────Bot───────┘"],
+    ["right", "└────────────Bot─┘"],
   ] as const)("renders bottom title with %s alignment", async (alignment, expectedBorder) => {
     const box = new BoxRenderable(testRenderer, {
       id: `bottom-title-${alignment}`,
@@ -251,7 +251,7 @@ describe("BoxRenderable - transparent border blending", () => {
     await renderOnce()
 
     const buffer = testRenderer.currentRenderBuffer
-    expect(buffer.buffers.char[0]).toBe("鈹?.codePointAt(0)!)
+    expect(buffer.buffers.char[0]).toBe("┃".codePointAt(0)!)
     expect({
       fg: RGBA.fromArray(buffer.buffers.fg.slice(0, 4)).toInts(),
       bg: RGBA.fromArray(buffer.buffers.bg.slice(0, 4)).toInts(),
@@ -444,10 +444,10 @@ describe("BoxRenderable - no-op rendering", () => {
     await renderOnce()
 
     const lines = captureFrame().split("\n")
-    // swarmflow (Decision 1) draws a titleColor'd title itself in JS with one space of
+    // Fermi (Decision 1) draws a titleColor'd title itself in JS with one space of
     // padding on each side (` Test `), so the title sits one column right of upstream's
     // flush-left native title (T at col 3, not col 2). This padded placement is the
-    // intended swarmflow visual and what the Agents鈹俆odos status panel relies on.
+    // intended Fermi visual and what the Agents│Todos status panel relies on.
     expect(lines[0].slice(0, 10)).toBe("   Test   ")
     expect(lines[4].slice(0, 10)).toBe("     Bot  ")
     expect(getCellChar(0, 0)).toBe(" ")
@@ -471,7 +471,7 @@ describe("BoxRenderable - no-op rendering", () => {
     testRenderer.root.add(box)
     await renderOnce()
 
-    expect(captureFrame().split("\n")[0].slice(0, 10)).toBe("鈹屸攢Test鈹€鈹€鈹€鈹?)
+    expect(captureFrame().split("\n")[0].slice(0, 10)).toBe("┌─Test───┐")
     expect(getCellForeground(0, 0)).toEqual([0, 0, 255, 255])
     expect(getCellForeground(2, 0)).toEqual([0, 0, 255, 255])
   })

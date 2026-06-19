@@ -1,4 +1,4 @@
-﻿export type TimerHandle = ReturnType<typeof globalThis.setTimeout> | number
+export type TimerHandle = ReturnType<typeof globalThis.setTimeout> | number
 
 export interface Clock {
   now(): number

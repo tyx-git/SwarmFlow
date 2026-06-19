@@ -8,7 +8,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
 
 const ENV_FILE = ".env";
 

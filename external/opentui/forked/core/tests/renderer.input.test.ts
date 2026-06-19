@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach, describe } from "bun:test"
+import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { decodePasteBytes } from "../lib/paste.js"
 import { nonAlphanumericKeys, type KeyEventType, type ParsedKey } from "../lib/parse.keypress.js"
 import { type KeyEvent } from "../lib/KeyHandler.js"
@@ -704,7 +704,7 @@ test("Kitty keyboard Ctrl+C with alternate base layout still exits the renderer"
 
   try {
     // Simulate Ctrl+C from a non-Latin IME. Kitty reports the produced
-    // character (`銋奰) plus the base-layout key (`c`).
+    // character (`ㅊ`) plus the base-layout key (`c`).
     const keypress = new Promise<KeyEvent>((resolve) => {
       renderer.keyInput.once("keypress", resolve)
     })
@@ -714,7 +714,7 @@ test("Kitty keyboard Ctrl+C with alternate base layout still exits the renderer"
 
     const event = await keypress
     expect(event).toMatchObject({
-      name: "銋?,
+      name: "ㅊ",
       ctrl: true,
       baseCode: 99,
     })
@@ -1089,16 +1089,16 @@ test("Kitty keyboard num lock via keyInput events", async () => {
 })
 
 test("Kitty keyboard unicode character via keyInput events", async () => {
-  const result = await triggerKittyInput("\x1b[233u") // 茅
+  const result = await triggerKittyInput("\x1b[233u") // é
   expect(result).toMatchObject({
     eventType: "press",
-    name: "茅",
+    name: "é",
     ctrl: false,
     meta: false,
     shift: false,
     option: false,
     number: false,
-    sequence: "茅",
+    sequence: "é",
     raw: "\x1b[233u",
     super: false,
     hyper: false,
@@ -1108,16 +1108,16 @@ test("Kitty keyboard unicode character via keyInput events", async () => {
 })
 
 test("Kitty keyboard emoji via keyInput events", async () => {
-  const result = await triggerKittyInput("\x1b[128512u") // 馃榾
+  const result = await triggerKittyInput("\x1b[128512u") // 😀
   expect(result).toMatchObject({
     eventType: "press",
-    name: "馃榾",
+    name: "😀",
     ctrl: false,
     meta: false,
     shift: false,
     option: false,
     number: false,
-    sequence: "馃榾",
+    sequence: "😀",
     raw: "\x1b[128512u",
     super: false,
     hyper: false,
@@ -2582,7 +2582,7 @@ describe("stdin routing", () => {
     const { renderer, clock } = await createRoutingRenderer()
 
     try {
-      const payload = "a".repeat(4095) + "茅"
+      const payload = "a".repeat(4095) + "é"
       const pastes: string[] = []
       renderer.keyInput.on("paste", (event) => {
         pastes.push(decodePasteBytes(event.bytes))

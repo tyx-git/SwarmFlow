@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -84,7 +84,7 @@ export function UsagePanel({
 
   let body: React.ReactNode;
   if (data === null) {
-    body = <text fg={colors.dim} content="Calculating session usage 鈥? />;
+    body = <text fg={colors.dim} content="Calculating session usage …" />;
   } else {
     const cachedPct = data.cumulativeInput > 0
       ? `(${((data.cumulativeCacheRead / data.cumulativeInput) * 100).toFixed(1)}%)`

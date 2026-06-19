@@ -1,4 +1,4 @@
-﻿import { EventEmitter } from "events"
+import { EventEmitter } from "events"
 import { readFile } from "node:fs/promises"
 import { resolveRenderLib, type AudioEngineHandle, type RenderLib } from "./zig.js"
 import type { AudioStats } from "./zig-structs.js"

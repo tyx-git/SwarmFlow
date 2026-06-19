@@ -1,12 +1,12 @@
 ﻿import {
   findProviderPreset,
   findProviderPresetModel,
-} from "./providers/presets.js";
-import { OPENROUTER_VENDOR_BRAND } from "./models/registry.js";
+} from "../providers/presets.js";
+import { OPENROUTER_VENDOR_BRAND } from "../models/registry.js";
 import {
   EFFECTIVE_MODEL_TABLES,
   EFFECTIVE_PROVIDER_SPECS,
-} from "./providers/registry-effective.js";
+} from "../providers/registry-effective.js";
 
 function normalizeModelId(model: string): string {
   const idx = model.lastIndexOf("/");

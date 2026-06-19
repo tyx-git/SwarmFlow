@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import type { DisplayTheme } from "../theme/index.js";
@@ -15,7 +15,7 @@ interface McpToastProps {
 }
 
 // The toast does not auto-dismiss: an MCP connection failure stays visible
-// until it clears on its own (the server recovers 鈥?handled by onMcpStatus) or
+// until it clears on its own (the server recovers — handled by onMcpStatus) or
 // the user dismisses it manually (Ctrl+L). Both paths live at the app level.
 export function McpToast({ failures, theme }: McpToastProps): React.ReactNode {
   const { colors } = theme;
@@ -23,10 +23,10 @@ export function McpToast({ failures, theme }: McpToastProps): React.ReactNode {
   const lines: string[] = [];
   for (const f of failures.slice(0, 3)) {
     const err = f.error ? `: ${f.error.slice(0, 40)}` : "";
-    lines.push(`  鉁?${f.name}${err}`);
+    lines.push(`  ✗ ${f.name}${err}`);
   }
   if (failures.length > 3) {
-    lines.push(`  鈥?and ${failures.length - 3} more`);
+    lines.push(`  … and ${failures.length - 3} more`);
   }
 
   return (

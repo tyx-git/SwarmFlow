@@ -1,4 +1,4 @@
-﻿export interface HighlightRange {
+export interface HighlightRange {
   startCol: number
   endCol: number
   group: string

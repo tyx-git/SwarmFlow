@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, expect, spyOn, test } from "bun:test"
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test"
 
 import { ANSI } from "../ansi.js"
 import { capture } from "../console.js"

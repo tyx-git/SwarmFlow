@@ -1,11 +1,11 @@
 # Skill Attributions
 
-This file ships inside the SwarmFlow binary (it lives in `skills/`, which the build
+This file ships inside the Fermi binary (it lives in `skills/`, which the build
 copies wholesale; the skill loader ignores non-directory entries so this file is
 never loaded as a skill).
 
 All SKILL.md instruction text in this directory is **original work written for
-SwarmFlow**. Workflow ideas were informed by surveying open coding agents and skill
+Fermi**. Workflow ideas were informed by surveying open coding agents and skill
 hubs, but no third-party prompt/instruction text was copied.
 
 Skills that invoke external open-source libraries or tools at runtime credit them

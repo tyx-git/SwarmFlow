@@ -13,33 +13,33 @@
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { CommandPickerResult } from "./ui/command-picker.js";
-import type { SessionStore, LocalProviderConfig, ModelSelectionState, FermiSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "./persistence.js";
-import { fetchModelSpecSuggestion } from "./models-dev-lookup.js";
-import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "./persistence.js";
-import { validateSummarizeHintLevels } from "./settings.js";
-import { VERSION } from "./version.js";
-import { applySessionRestore, findSessionById } from "./session-resume.js";
-import { setDotenvKey } from "./dotenv.js";
-import { fetchModelsFromServer } from "./model-discovery.js";
+import type { CommandPickerResult } from "../ui/command-picker.js";
+import type { SessionStore, LocalProviderConfig, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
+import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
+import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
+import { validateSummarizeHintLevels } from "../config/settings.js";
+import { VERSION } from "../version.js";
+import { applySessionRestore, findSessionById } from "../session-resume.js";
+import { setDotenvKey } from "../lifecycle/dotenv.js";
+import { fetchModelsFromServer } from "../models/discovery.js";
 import {
   getThinkingLevels,
   getTierEligibleThinkingLevels,
-} from "./config.js";
+} from "../config/config.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
-} from "./provider-presets.js";
+} from "../providers/presets.js";
 import {
   resolveModelSelection as resolveModelSelectionCore,
   type ResolvedModelSelection,
   createModelTierEntry,
   parseProviderModelTarget,
   runtimeModelName,
-} from "./model-selection.js";
+} from "../models/selection.js";
 import {
   isManagedProvider,
-} from "./managed-provider-credentials.js";
+} from "../config/managed-provider-credentials.js";
 import {
   ensureManagedProviderCredential,
   runCredentialManageFlow,
@@ -47,12 +47,12 @@ import {
   type CredentialPromptAdapter,
   type PromptSecretRequest,
   type PromptSelectRequest,
-} from "./provider-credential-flow.js";
-import { resolveSkillContent, type SkillMeta } from "./skills/loader.js";
-import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptions, type ModelPickerTreeContext } from "./model-picker-tree.js";
-import { describeModel, formatCurrentModelScopedLabel, getCurrentModelDescriptor } from "./model-presentation.js";
-import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "./auth/openai-oauth.js";
-import { hasGitHubTokens, clearGitHubTokens } from "./auth/github-copilot-oauth.js";
+} from "../providers/credential-flow.js";
+import { resolveSkillContent, type SkillMeta } from "../skills/loader.js";
+import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptions, type ModelPickerTreeContext } from "../models/picker-tree.js";
+import { describeModel, formatCurrentModelScopedLabel, getCurrentModelDescriptor } from "../models/presentation.js";
+import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "../auth/openai-oauth.js";
+import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -87,8 +87,8 @@ export interface CommandContext {
   /* 用于持久化的SessionStore（可能未定义）。 */
   store?: SessionStore;
 
-  /* Fermi主目录覆盖，用于测试以避免实际用户配置。 */
-  fermiHomeDir?: string;
+  /* Swarmflow主目录覆盖，用于测试以避免实际用户配置。 */
+  swarmflowHomeDir?: string;
 
   /* 自动保存当前会话（TUI提供实现）。 */
   autoSave: () => void;
@@ -468,7 +468,7 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
     session.setSummarizeHintConfig({ enabled });
     persistSettingsPatch({
       summarize_hint: { enabled, level1: current.level1, level2: current.level2 },
-    }, ctx.fermiHomeDir);
+    }, ctx.swarmflowHomeDir);
     hint(`Summarize hints: ${enabled ? "ON" : "OFF"}`);
   };
 
@@ -482,7 +482,7 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
     session.setSummarizeHintConfig({ level1, level2 });
     persistSettingsPatch({
       summarize_hint: { enabled: current.enabled, level1, level2 },
-    }, ctx.fermiHomeDir);
+    }, ctx.swarmflowHomeDir);
     hint(`Summarize hint levels: ${level1}% / ${level2}%`);
     return true;
   };
@@ -568,7 +568,7 @@ async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
       ctx.showMessage(
         `This session belongs to ${elsewhere.projectPath}. Exit and run:\n` +
           `cd ${elsewhere.projectPath}\n` +
-          `fermi --resume ${trimmed}`,
+          `swarmflow --resume ${trimmed}`,
       );
       return;
     }
@@ -704,7 +704,7 @@ function persistModelSelection(ctx: CommandContext): void {
         ? prefs.thinkingLevel
         : undefined,
     };
-    saveModelSelectionState(state, ctx.fermiHomeDir);
+    saveModelSelectionState(state, ctx.swarmflowHomeDir);
   } catch {
     // 忽略命令执行期间的持久性失败。
   }
@@ -714,7 +714,7 @@ function persistModelSelection(ctx: CommandContext): void {
  * Persist a partial settings update to global settings.json.
  * Reads existing settings, merges the patch, and writes back.
  */
-function persistSettingsPatch(patch: Partial<FermiSettings>, homeDir?: string): void {
+function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: string): void {
   try {
     saveGlobalSettingsPatch(patch, homeDir);
   } catch {
@@ -779,7 +779,7 @@ function parseModelArgs(args: string): { target: string } {
     throw new Error(
       "Inline API keys in `/model` are no longer supported.\n" +
       "Use `/model` to select the model and follow the prompt to import or paste a key,\n" +
-      "or run 'fermi init' to configure providers.",
+      "or run 'swarmflow init' to configure providers.",
     );
   }
   if (rest.length > 0) {
@@ -897,7 +897,7 @@ async function ensureModelSelectionReady(
     } else if (needsLogin) {
       throw new Error(
         "OpenAI OAuth token is missing or expired.\n" +
-        "Run 'fermi oauth' to log in.",
+        "Run 'swarmflow oauth' to log in.",
       );
     }
   }
@@ -909,7 +909,7 @@ async function ensureModelSelectionReady(
     } else {
       throw new Error(
         "Not logged in to GitHub Copilot.\n" +
-        "Run 'fermi oauth' to log in.",
+        "Run 'swarmflow oauth' to log in.",
       );
     }
   }
@@ -922,7 +922,7 @@ async function ensureModelSelectionReady(
       const result = await ensureManagedProviderCredential(
         parsedTarget.provider,
         adapter,
-        { mode: "model", allowReplaceExisting: false, homeDir: ctx.fermiHomeDir },
+        { mode: "model", allowReplaceExisting: false, homeDir: ctx.swarmflowHomeDir },
       );
       if (result.status === "skipped") return undefined;
       return resolveModelSelection(ctx.session, target);
@@ -995,7 +995,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
     ctx.showMessage(
       `Current model: ${current}\n` +
       "Use /model to select a new model.\n" +
-      "For models marked 'key missing', run 'fermi init' or select the model to import/paste a key.",
+      "For models marked 'key missing', run 'swarmflow init' or select the model to import/paste a key.",
     );
     return;
   }
@@ -1081,12 +1081,12 @@ async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
     }
   }
 
-  const settings = loadGlobalSettings(ctx.fermiHomeDir);
+  const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
   const label = settings.providers?.[providerId]?.label;
 
   try {
     const result = await runCredentialManageFlow(providerId, adapter, {
-      homeDir: ctx.fermiHomeDir,
+      homeDir: ctx.swarmflowHomeDir,
       label,
     });
 
@@ -1224,7 +1224,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
 
   // 将本地提供程序配置保存到设置中。Json，以便它在重启中幸存下来
   {
-    const existing = loadGlobalSettings(ctx.fermiHomeDir);
+    const existing = loadGlobalSettings(ctx.swarmflowHomeDir);
     const providerEntry: ProviderEntry = {
       base_url: baseUrl,
       model: modelChoice,
@@ -1236,7 +1236,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
         ...(existing.providers ?? {}),
         [providerId]: providerEntry,
       },
-    }, ctx.fermiHomeDir);
+    }, ctx.swarmflowHomeDir);
   }
 
   // 切换到新的模型。
@@ -1381,7 +1381,7 @@ async function addModelsInteractive(
       ? ((await ctx.promptSecret!({ message: `${label} — model id` }))?.trim() ?? "")
       : choice.slice("pick:".length);
     if (!modelId || addedIds.has(modelId)) continue;
-    const sug = await fetchModelSpecSuggestion(modelId, { homeDir: ctx.fermiHomeDir });
+    const sug = await fetchModelSpecSuggestion(modelId, { homeDir: ctx.swarmflowHomeDir });
     const reportedCtx = discovered.find((d) => d.id === modelId)?.contextLength;
     const ctxLen = await promptTokenCount(ctx, `${label} / ${modelId} — context length (required)`, sug?.contextLength ?? reportedCtx, { allowSkip: false });
     if (!ctxLen) { ctx.showMessage("Context length is required — model not added."); continue; }
@@ -1429,7 +1429,7 @@ async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
   // 1. 显示名称→唯一提供者id
   const label = (await ctx.promptSecret({ message: "Custom provider — display name (e.g. My LLM)" }))?.trim();
   if (!label) return false;
-  const existingProviders = loadGlobalSettings(ctx.fermiHomeDir).providers ?? {};
+  const existingProviders = loadGlobalSettings(ctx.swarmflowHomeDir).providers ?? {};
   const baseId = slugifyProviderId(label);
   let providerId = baseId;
   for (let i = 2; existingProviders[providerId] || config.modelNames.some((m: string) => m.startsWith(providerId + ":")); i++) {
@@ -1475,12 +1475,12 @@ async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
   let apiKeyRef = "local";
   if (apiKey) {
     const envVar = customProviderEnvVar(providerId);
-    setDotenvKey(envVar, apiKey, ctx.fermiHomeDir);
+    setDotenvKey(envVar, apiKey, ctx.swarmflowHomeDir);
     entry.api_key = `\${${envVar}}`;
     apiKeyRef = `\${${envVar}}`;
   }
-  const cur = loadGlobalSettings(ctx.fermiHomeDir);
-  persistSettingsPatch({ providers: { ...(cur.providers ?? {}), [providerId]: entry } }, ctx.fermiHomeDir);
+  const cur = loadGlobalSettings(ctx.swarmflowHomeDir);
+  persistSettingsPatch({ providers: { ...(cur.providers ?? {}), [providerId]: entry } }, ctx.swarmflowHomeDir);
 
   for (const m of added) registerCustomModel(config, providerId, baseUrl, protocol, apiKeyRef, m);
   ctx.showMessage(`✓ Added custom provider "${label}" with ${added.length} model${added.length > 1 ? "s" : ""}.`);
@@ -1491,7 +1491,7 @@ async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
 async function cmdManageCustomProvider(ctx: CommandContext, providerId: string): Promise<void> {
   if (!ctx.promptSelect) { ctx.showMessage("Not available in this UI."); return; }
   const config = ctx.session.config;
-  const settings = loadGlobalSettings(ctx.fermiHomeDir);
+  const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
   const entry = settings.providers?.[providerId];
   if (!entry?.custom) { ctx.showMessage(`"${providerId}" is not a custom provider.`); return; }
   const label = entry.label ?? providerId;
@@ -1513,7 +1513,7 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
   const apiKeyRef = entry.api_key ?? "local";
   const apiKeyForDiscover = apiKeyRef.startsWith("${") ? process.env[apiKeyRef.slice(2, -1)] : apiKeyRef;
   const saveProviders = (next: Record<string, ProviderEntry>) =>
-    persistSettingsPatch({ providers: next }, ctx.fermiHomeDir);
+    persistSettingsPatch({ providers: next }, ctx.swarmflowHomeDir);
 
   if (action === "edit") {
     const newUrl = (await ctx.promptSecret!({ message: `${label} — new endpoint URL (Enter to keep "${entry.base_url}")`, allowEmpty: true }))?.trim();
@@ -1527,7 +1527,7 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     let apiKeyField = entry.api_key;
     if (newKey) {
       const envVar = customProviderEnvVar(providerId);
-      setDotenvKey(envVar, newKey, ctx.fermiHomeDir);
+      setDotenvKey(envVar, newKey, ctx.swarmflowHomeDir);
       apiKeyField = `\${${envVar}}`;
     }
     const updated: ProviderEntry = { ...entry, base_url: newBaseUrl, ...(apiKeyField ? { api_key: apiKeyField } : {}) };
@@ -1590,7 +1590,7 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
 // /diff -配置内联写入/编辑diff显示
 // ------------------------------------------------------------------
 
-type DiffDisplayMode = NonNullable<FermiSettings["diff_display"]>;
+type DiffDisplayMode = NonNullable<SwarmflowSettings["diff_display"]>;
 
 function normalizeDiffDisplayMode(value: unknown): DiffDisplayMode {
   return value === "full" ? "full" : "compact";
@@ -1627,13 +1627,13 @@ async function cmdDiff(ctx: CommandContext, args: string): Promise<void> {
   }
 
   if (choice === "compact" || choice === "full") {
-    persistSettingsPatch({ diff_display: choice }, ctx.fermiHomeDir);
+    persistSettingsPatch({ diff_display: choice }, ctx.swarmflowHomeDir);
     ctx.showMessage(`__diff_display__:${choice}`);
     hint(`Diff display: ${choice}`);
     return;
   }
 
-  const current = normalizeDiffDisplayMode(loadGlobalSettings(ctx.fermiHomeDir).diff_display);
+  const current = normalizeDiffDisplayMode(loadGlobalSettings(ctx.swarmflowHomeDir).diff_display);
   ctx.showMessage(`Diff display is "${current}".\nUsage: /diff compact | full`);
 }
 
@@ -1668,7 +1668,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
   }
 
   if (choice === "auto" || choice === "light" || choice === "dark") {
-    persistSettingsPatch({ theme_mode: choice }, ctx.fermiHomeDir);
+    persistSettingsPatch({ theme_mode: choice }, ctx.swarmflowHomeDir);
     // 魔术消息- TUI拦截和更新React状态而不重启。
     ctx.showMessage(`__theme_mode__:${choice}`);
     hint(`Theme: ${choice}`);
@@ -1705,16 +1705,16 @@ async function cmdAutoUpdate(ctx: CommandContext, args: string): Promise<void> {
 
   if (choice === "on" || choice === "off") {
     const enabled = choice === "on";
-    const wasEnabled = loadGlobalSettings(ctx.fermiHomeDir).auto_update !== false;
-    persistSettingsPatch({ auto_update: enabled }, ctx.fermiHomeDir);
+    const wasEnabled = loadGlobalSettings(ctx.swarmflowHomeDir).auto_update !== false;
+    persistSettingsPatch({ auto_update: enabled }, ctx.swarmflowHomeDir);
     hint(`Auto-update: ${enabled ? "ON" : "OFF"}`);
     // 打开自动更新开关会立即启动背景调查——同样的
     // 启用自动更新时在启动时运行的程序。TUI的更新
     // Poll获取结果状态，如果存在更新，则显示toast。
     if (enabled && !wasEnabled) {
       try {
-        const { checkForUpdates, setUpdateStateGetter } = await import("./update-check.js");
-        setUpdateStateGetter(checkForUpdates(VERSION, ctx.fermiHomeDir, true));
+        const { checkForUpdates, setUpdateStateGetter } = await import("../lifecycle/update-check.js");
+        setUpdateStateGetter(checkForUpdates(VERSION, ctx.swarmflowHomeDir, true));
       } catch { /* 尽最大努力-设置已被保留 */ }
     }
     return;
@@ -1750,7 +1750,7 @@ async function cmdAutoCopy(ctx: CommandContext, args: string): Promise<void> {
 
   if (choice === "on" || choice === "off") {
     const enabled = choice === "on";
-    persistSettingsPatch({ copy_on_select: enabled }, ctx.fermiHomeDir);
+    persistSettingsPatch({ copy_on_select: enabled }, ctx.swarmflowHomeDir);
     // 神奇的消息——TUI拦截并翻转React状态而不重启。
     ctx.showMessage(`__copy_on_select__:${enabled ? "on" : "off"}`);
     hint(`Copy-on-select: ${enabled ? "ON" : "OFF"}`);
@@ -1904,7 +1904,7 @@ async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
     // 不同的计划不会继承错误的隐藏模型集。
     try {
       const { clearCopilotModelsCache } = await import(
-        "./providers/copilot-models-cache.js"
+        "../providers/copilot-models-cache.js"
       );
       clearCopilotModelsCache();
     } catch {
@@ -1998,7 +1998,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
 
   // 处理“清除”-删除所有层
   if (trimmed === "clear") {
-    persistSettingsPatch({ model_tiers: {} }, ctx.fermiHomeDir);
+    persistSettingsPatch({ model_tiers: {} }, ctx.swarmflowHomeDir);
     // 更新运行时配置
     session.config?.setModelTiers?.({});
     ctx.showMessage("All model tiers cleared. Sub-agents will inherit the main model.");
@@ -2036,7 +2036,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
   if (action === "clear_one") {
     const updatedTiers = { ...tiers };
     delete updatedTiers[level];
-    persistSettingsPatch({ model_tiers: updatedTiers }, ctx.fermiHomeDir);
+    persistSettingsPatch({ model_tiers: updatedTiers }, ctx.swarmflowHomeDir);
     session.config?.setModelTiers?.(updatedTiers);
     ctx.showMessage(`Tier '${level}' cleared. Sub-agents at this level will inherit the main model.`);
     return;
@@ -2095,7 +2095,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
 
   // 坚持
   const updatedTiers = { ...tiers, [level]: tierEntry };
-  persistSettingsPatch({ model_tiers: updatedTiers }, ctx.fermiHomeDir);
+  persistSettingsPatch({ model_tiers: updatedTiers }, ctx.swarmflowHomeDir);
 
   // 更新运行时配置
   session.config?.setModelTiers?.(updatedTiers);
@@ -2657,7 +2657,7 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
     }
   } catch { /* 继续-状态将显示失败 */ }
 
-  const allServers = getAllMcpServerNames(ctx.fermiHomeDir);
+  const allServers = getAllMcpServerNames(ctx.swarmflowHomeDir);
   if (allServers.size === 0) {
     ctx.showMessage(
       "No MCP servers configured.\n" +
@@ -2714,7 +2714,7 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
 
     if (op === "disable" || op === "enable") {
       const disabled = op === "disable";
-      if (setMcpServerDisabled(serverName, disabled, ctx.fermiHomeDir)) {
+      if (setMcpServerDisabled(serverName, disabled, ctx.swarmflowHomeDir)) {
         try {
           if (!disabled) hint(`Connecting MCP server '${serverName}'…`);
           const report = await reloadMcpLocked(
@@ -2813,7 +2813,7 @@ async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
     .map((s: { name: string }) => s.name);
   persistSettingsPatch(
     { disabled_skills: disabledSkills.length > 0 ? disabledSkills : undefined },
-    ctx.fermiHomeDir,
+    ctx.swarmflowHomeDir,
   );
 }
 
@@ -2970,7 +2970,7 @@ function persistPermissionMode(ctx: CommandContext): void {
   try {
     const session = ctx.session;
     if (typeof session.permissionMode !== "string") return;
-    persistSettingsPatch({ permission_mode: session.permissionMode }, ctx.fermiHomeDir);
+    persistSettingsPatch({ permission_mode: session.permissionMode }, ctx.swarmflowHomeDir);
   } catch {
     // 忽略持久性失败。
   }
@@ -3188,14 +3188,14 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
 
 function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: string; args?: string[]; disabled?: boolean; _sourcePath?: string; _scope?: string; matcher?: { toolNames?: string[]; agentIds?: string[] }; failClosed?: boolean }> {
   try {
-    const { resolveAssetPaths } = require("./config.js") as typeof import("./config.js");
-    const { loadHooksMulti } = require("./hooks/index.js") as typeof import("./hooks/index.js");
+    const { resolveAssetPaths } = require("./config.js") as typeof import("../config/config.js");
+    const { loadHooksMulti } = require("./hooks/index.js") as typeof import("../hooks/index.js");
     const paths = resolveAssetPaths();
     // loadhooksmti按名称进行重复数据删除（项目覆盖全局）
     // 我们希望所有包括禁用，所以我们从磁盘加载raw
     const allHooks: any[] = [];
     for (const { dir, scope } of paths.hookRoots) {
-      const { loadHooksFromDir } = require("./hooks/index.js") as typeof import("./hooks/index.js");
+      const { loadHooksFromDir } = require("./hooks/index.js") as typeof import("../hooks/index.js");
       for (const h of loadHooksFromDir(dir, scope as "project" | "global")) {
         allHooks.push(h);
       }
@@ -3227,8 +3227,8 @@ function setHookDisabled(sourcePath: string, disabled: boolean): boolean {
 
 function reloadHooksIntoRuntime(session: any): number {
   try {
-    const { resolveAssetPaths } = require("./config.js") as typeof import("./config.js");
-    const { loadHooksMulti } = require("./hooks/index.js") as typeof import("./hooks/index.js");
+    const { resolveAssetPaths } = require("./config.js") as typeof import("../config/config.js");
+    const { loadHooksMulti } = require("./hooks/index.js") as typeof import("../hooks/index.js");
     const paths = resolveAssetPaths();
     const hooks = loadHooksMulti(paths.hookRoots);
     session.hookRuntime.setHooks(hooks);

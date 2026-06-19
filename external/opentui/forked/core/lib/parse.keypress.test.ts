@@ -1,4 +1,4 @@
-﻿import { test, expect } from "bun:test"
+import { test, expect } from "bun:test"
 import { parseKeypress, nonAlphanumericKeys, type ParsedKey, type KeyEventType } from "./parse.keypress.js"
 import { Buffer } from "node:buffer"
 
@@ -1096,8 +1096,8 @@ test("nonAlphanumericKeys export", () => {
 // The `meta` flag: true when ESC prefix is detected OR ANSI Alt/Meta bits are set (legacy naming)
 //
 // Real terminal behavior on macOS (see key-results file):
-// - Alt+letter: sends ESC+char (e.g., "\x1ba") 鈫?meta=true, option=false
-// - Alt+arrow: sends ANSI sequence (e.g., "\x1b[1;3A") 鈫?meta=true, option=true
+// - Alt+letter: sends ESC+char (e.g., "\x1ba") → meta=true, option=false
+// - Alt+arrow: sends ANSI sequence (e.g., "\x1b[1;3A") → meta=true, option=true
 // - Cmd+anything: NO EVENT reaches terminal (OS intercepts)
 // - Ctrl+arrow: NO EVENT reaches terminal on Mac (OS intercepts)
 test("parseKeypress - modifier bit calculations and meta/option relationship", () => {
@@ -1195,8 +1195,8 @@ test("parseKeypress - distinguishing between Alt/Option and theoretical Meta mod
   // - The ANSI "Meta" modifier bit (8) is part of the standard but rarely/never seen in practice
   //
   // Real terminal behavior (see key-results file):
-  // - Alt+letter: "\x1ba" 鈫?meta=true, option=false (simple ESC prefix)
-  // - Alt+arrow: "\x1b[1;3A" 鈫?meta=true, option=true (ANSI with Alt bit)
+  // - Alt+letter: "\x1ba" → meta=true, option=false (simple ESC prefix)
+  // - Alt+arrow: "\x1b[1;3A" → meta=true, option=true (ANSI with Alt bit)
   // - Cmd+anything: NO EVENT (OS intercepts)
 
   // Alt/Option key with arrow (ANSI sequence with modifier bit 2)
@@ -1945,7 +1945,7 @@ test("parseKeypress - double ESC preserves meta state when fn-key modifiers are 
 })
 
 test("parseKeypress - preserves printable Unicode characters including non-BMP", () => {
-  for (const char of ["茅", "涓?, "馃憤"]) {
+  for (const char of ["é", "中", "👍"]) {
     const key = parseKeypress(char)!
     expect(key.name).toBe(char)
     expect(key.raw).toBe(char)

@@ -1,4 +1,4 @@
-﻿import type { FileModifyDisplayData } from "../../src/diff-hunk.js";
+import type { FileModifyDisplayData } from "../../../src/lib/diff-hunk.js";
 
 export type PresentationKind =
   | "user"
@@ -59,7 +59,7 @@ export interface PresentationEntry {
   toolText?: string;
   toolSuffix?: string;
   toolInterrupted?: boolean;
-  /** When set, the toolText represents a sub-agent id 鈥?clickable to open that agent's tab. */
+  /** When set, the toolText represents a sub-agent id — clickable to open that agent's tab. */
   toolAgentName?: string;
   toolStartedAt?: number;
   toolElapsedMs?: number;
@@ -75,7 +75,7 @@ export interface PresentationEntry {
   // kind=tool_group
   /** Individual tool entries within this group. */
   groupEntries?: PresentationEntry[];
-  /** Summary label like "Explored (Read 脳3, Search 脳2)" */
+  /** Summary label like "Explored (Read ×3, Search ×2)" */
   groupSummary?: string;
   /** Whether the group is still active (last tool still executing). */
   groupActive?: boolean;

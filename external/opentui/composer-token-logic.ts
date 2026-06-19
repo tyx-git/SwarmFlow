@@ -1,4 +1,4 @@
-﻿import stringWidth from "string-width";
+import stringWidth from "string-width";
 
 export type ComposerTokenKind = "file" | "paste" | "image";
 

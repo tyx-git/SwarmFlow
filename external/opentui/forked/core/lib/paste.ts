@@ -1,4 +1,4 @@
-﻿import { stripANSI } from "../platform/runtime.js"
+import { stripANSI } from "../platform/runtime.js"
 
 export type PasteKind = "text" | "binary" | "unknown"
 

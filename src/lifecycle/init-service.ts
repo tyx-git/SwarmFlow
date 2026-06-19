@@ -9,14 +9,14 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import {
   PROVIDER_PRESETS,
   buildProviderPresetRawConfig,
   type ProviderPreset,
-} from "./providers/presets.js";
-import { fetchModelsFromServer } from "./models/discovery.js";
-import { setDotenvKey } from "./lifecycle/dotenv.js";
+} from "../providers/presets.js";
+import { fetchModelsFromServer } from "../models/discovery.js";
+import { setDotenvKey } from "../lifecycle/dotenv.js";
 import {
   type SwarmflowSettings,
   type ProviderEntry,
@@ -25,20 +25,20 @@ import {
   globalSettingsPath,
   saveModelSelectionState,
   loadGlobalSettings,
-} from "./config/persistence.js";
+} from "../config/persistence.js";
 import {
   hasAnyManagedCredential,
   hasManagedCredential,
   isManagedProvider,
-} from "./config/managed-provider-credentials.js";
-import { Config, getThinkingLevels, getTierEligibleThinkingLevels } from "./config/config.js";
+} from "../config/managed-provider-credentials.js";
+import { Config, getThinkingLevels, getTierEligibleThinkingLevels } from "../config/config.js";
 import {
   buildModelPickerTree,
   labelModelPickerNode,
   type ModelPickerTreeNode,
-} from "./models/picker-tree.js";
-import { createModelTierEntry, parseProviderModelTarget } from "./models/selection.js";
-import { describeModel } from "./models/presentation.js";
+} from "../models/picker-tree.js";
+import { createModelTierEntry, parseProviderModelTarget } from "../models/selection.js";
+import { describeModel } from "../models/presentation.js";
 
 // ------------------------------------------------------------------
 // Public types

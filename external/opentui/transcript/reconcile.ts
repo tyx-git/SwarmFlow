@@ -1,6 +1,6 @@
-﻿import { isDeepStrictEqual } from "node:util";
+import { isDeepStrictEqual } from "node:util";
 
-import type { ConversationEntry } from "../../src/ui/contracts.js";
+import type { ConversationEntry } from "../../../src/ui/contracts.js";
 
 import type { ReconciledConversationEntry } from "./types.js";
 

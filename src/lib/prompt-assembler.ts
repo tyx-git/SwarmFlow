@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
 
 // ------------------------------------------------------------------
 // 提示层类型定义

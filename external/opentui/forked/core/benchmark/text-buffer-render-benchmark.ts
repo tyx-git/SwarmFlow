@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 // These scenarios isolate text-buffer/editor rendering from the rest of the UI
 // so native text drawing and TextRenderable lifecycle work can be measured on
@@ -767,7 +767,7 @@ function createPlainTranscript(lines: number): string {
   const parts: string[] = []
   for (let i = 0; i < lines; i += 1) {
     parts.push(
-      `[${String(i).padStart(3, "0")}] The renderer keeps a wrapped transcript of tool output, inline notes, and status lines with occasional\ttabs and emoji like 馃摝.`,
+      `[${String(i).padStart(3, "0")}] The renderer keeps a wrapped transcript of tool output, inline notes, and status lines with occasional\ttabs and emoji like 📦.`,
     )
   }
   return parts.join("\n")
@@ -787,7 +787,7 @@ function createStyledTranscript(lines: number): StyledText {
     chunks.push(fg(i % 2 === 0 ? "#a3be8c" : "#ebcb8b")("status=ok"))
     chunks.push(plain(" with inline code "))
     chunks.push(bold(fg("#d08770")("buffer.drawTextBuffer(view, x, y)")))
-    chunks.push(plain(" plus wrapped notes about viewport offsets, spans, tabs\tand Unicode like caf茅.\n"))
+    chunks.push(plain(" plus wrapped notes about viewport offsets, spans, tabs\tand Unicode like café.\n"))
   }
 
   return new StyledText(chunks)

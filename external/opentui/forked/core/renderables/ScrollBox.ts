@@ -1,4 +1,4 @@
-﻿import { type KeyEvent } from "../lib/index.js"
+import { type KeyEvent } from "../lib/index.js"
 import { getObjectsInViewport } from "../lib/objects-in-viewport.js"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
 import type { Renderable, RenderableOptions } from "../Renderable.js"
@@ -211,7 +211,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     const maxScrollLeft = Math.max(0, this.scrollWidth - this.viewport.width)
 
     // scrollTop/scrollLeft are floats now (sub-cell thumb precision), so
-    // "at top" must accept anything in [0, 1) 鈥?content rendering floors
+    // "at top" must accept anything in [0, 1) — content rendering floors
     // the value, so 0.5 still displays line 0. Without `< 1` here a mid-cell
     // drag would silently break sticky-top.
     if (this.scrollTop < 1) {
@@ -863,7 +863,7 @@ export class ScrollBoxRenderable extends BoxRenderable {
     // which is that the bar props are recalculated when the viewport is resized,
     // which intially happens onUpdate but is the viewport does not have the correct dimensions yet,
     // then when it does, no update is triggered and when we do we are in the middle of a render,
-    // which just ignores the request. 炉\_(銉?_/炉
+    // which just ignores the request. ¯\_(ツ)_/¯
     // TODO: Fix this properly. How? Move yoga to native, get all changes for elements in one go
     // and update all renderables in one go before rendering.
     // OR: Move this logic to the viewport. IMHO the wrapper and viewport are overkill and not necessary.

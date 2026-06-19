@@ -57,6 +57,7 @@ function createWindow(): void {
     backgroundColor: '#0b0b10',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 14 },
+    icon: path.join(__dirname, '../logo/swarmflow.png'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.mjs'),

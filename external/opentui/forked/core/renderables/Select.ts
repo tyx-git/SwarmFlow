@@ -1,4 +1,4 @@
-﻿import { OptimizedBuffer } from "../buffer.js"
+import { OptimizedBuffer } from "../buffer.js"
 import { fonts, measureText, renderFontToFrameBuffer } from "../lib/ascii.font.js"
 import type { KeyEvent } from "../lib/KeyHandler.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
@@ -190,13 +190,13 @@ export class SelectRenderable extends Renderable {
         this.frameBuffer.fillRect(contentX, itemY, contentWidth, contentHeight, this._selectedBackgroundColor)
       }
 
-      const nameContent = `${isSelected ? "鈻?" : "  "}${option.name}`
+      const nameContent = `${isSelected ? "▶ " : "  "}${option.name}`
       const baseTextColor = this._focused ? this._focusedTextColor : this._textColor
       const nameColor = isSelected ? this._selectedTextColor : baseTextColor
       let descX = contentX + 3
 
       if (this._font) {
-        const indicator = isSelected ? "鈻?" : "  "
+        const indicator = isSelected ? "▶ " : "  "
         this.frameBuffer.drawText(indicator, contentX + 1, itemY, nameColor)
 
         const indicatorWidth = 2
@@ -237,7 +237,7 @@ export class SelectRenderable extends Renderable {
     const indicatorY = contentY + 1 + Math.floor(scrollPercent * indicatorHeight)
     const indicatorX = contentX + contentWidth - 1
 
-    this.frameBuffer.drawText("鈻?, indicatorX, indicatorY, parseColor("#666666"))
+    this.frameBuffer.drawText("█", indicatorX, indicatorY, parseColor("#666666"))
   }
 
   public get options(): SelectOption[] {

@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
+import { test, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput, type MockMouse } from "../testing/test-renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { RendererControlState } from "../renderer.js"
@@ -440,7 +440,7 @@ test("input buffered during suspension is drained on resume", () => {
   renderer.resume()
   mockInput.pressKey("a")
 
-  // "x" should have been drained 鈥?only "a" received
+  // "x" should have been drained — only "a" received
   expect(received).toEqual(["a"])
   renderer.keyInput.off("keypress", onKeypress)
 })

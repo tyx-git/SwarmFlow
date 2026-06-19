@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { RGBA, createTextAttributes } from "@opentui/core";
@@ -21,7 +21,7 @@ export interface CenteredModalProps {
 }
 
 /**
- * Centered modal overlay 鈥?full-screen dimmed RGBA backdrop + background-only panel.
+ * Centered modal overlay — full-screen dimmed RGBA backdrop + background-only panel.
  * Follows OpenCode dialog pattern: no border, solid backgroundColor, generous padding.
  */
 export function CenteredModal({
@@ -66,7 +66,7 @@ export function CenteredModal({
           <text fg={colors.text} attributes={ATTRS_BOLD} content={title} />
         </box>
 
-        {/* Content 鈥?scrollable */}
+        {/* Content — scrollable */}
         <scrollbox flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1}>
           {children}
         </scrollbox>

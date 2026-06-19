@@ -21,17 +21,17 @@ import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { type ChildProcess } from "node:child_process";
 
-import { ToolResult } from "./providers/base.js";
-import { SafePathError, safePath } from "./security/path.js";
-import { shell } from "./platform/index.js";
+import { ToolResult } from "../providers/base.js";
+import { SafePathError, safePath } from "../security/path.js";
+import { shell } from "../platform/index.js";
 import {
   argOptionalInteger,
   argOptionalString,
   argRequiredString,
   argRequiredStringArray,
   toolArgError,
-} from "./tools/arg-helpers.js";
-import type { MessageEnvelope } from "./session-tree-types.js";
+} from "../tools/arg-helpers.js";
+import type { MessageEnvelope } from "../session-tree-types.js";
 
 // ── 类型 ────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-﻿import type { OptimizedBuffer } from "../buffer.js"
+import type { OptimizedBuffer } from "../buffer.js"
 import { parseColor, RGBA, type ColorInput } from "../lib/index.js"
 import type { KeyEvent } from "../lib/KeyHandler.js"
 import { stringWidth } from "../platform/runtime.js"
@@ -131,7 +131,7 @@ export class ScrollBarRenderable extends Renderable {
       value: this._scrollPosition,
       viewPortSize: stepSize,
       onChange: (value) => {
-        // Float 鈥?see scrollPosition setter; ScrollBox floors when applying
+        // Float — see scrollPosition setter; ScrollBox floors when applying
         // to translateY/translateX so content stays cell-aligned.
         this._scrollPosition = value
         this._onChange?.(this._scrollPosition)
@@ -343,10 +343,10 @@ export class ArrowRenderable extends Renderable {
     this._attributes = options.attributes ?? 0
 
     this._arrowChars = {
-      up: "鈻?,
-      down: "鈻?,
-      left: "鈼€",
-      right: "鈻?,
+      up: "▲",
+      down: "▼",
+      left: "◀",
+      right: "▶",
       ...options.arrowChars,
     }
 

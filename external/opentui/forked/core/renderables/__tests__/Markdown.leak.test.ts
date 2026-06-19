@@ -1,9 +1,9 @@
-﻿/**
+/**
  * Leak characterization: rendering a large streamed markdown code block and
  * then destroying the renderable must return the live-renderable population
  * (Renderable.renderablesByNumber) to its baseline. A residual after destroy
- * means block renderables (and their native TextBuffers) are orphaned 鈥?the
- * suspected source of the "short task 鈫?1GB" RSS the A/B repro showed.
+ * means block renderables (and their native TextBuffers) are orphaned — the
+ * suspected source of the "short task → 1GB" RSS the A/B repro showed.
  */
 
 import { test, expect, beforeEach, afterEach } from "bun:test"
@@ -92,7 +92,7 @@ test("destroying a streamed markdown code block returns to the renderable baseli
   expect(after).toBe(baseline)
 })
 
-test("repeated create鈫抯tream鈫抎estroy cycles do not grow the JS heap (leak vs churn)", async () => {
+test("repeated create→stream→destroy cycles do not grow the JS heap (leak vs churn)", async () => {
   const full = bigCodeBlock(600)
   const runCycle = async () => {
     const md = new MarkdownRenderable(renderer, {

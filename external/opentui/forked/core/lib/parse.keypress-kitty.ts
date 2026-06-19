@@ -1,4 +1,4 @@
-﻿// Kitty Keyboard Protocol parser
+// Kitty Keyboard Protocol parser
 // Based on https://sw.kovidgoyal.net/kitty/keyboard-protocol/
 
 import type { ParsedKey } from "./parse.keypress.js"
@@ -338,7 +338,7 @@ export function parseKittyKeyboard(sequence: string): ParsedKey | null {
 
   // Parse field 1: unicode-key-code:shifted_codepoint:base_layout_codepoint.
   // The character this key produced, the shifted variant, and what the same
-  // physical key would be on the base layout. Example: a key can produce `銋奰
+  // physical key would be on the base layout. Example: a key can produce `ㅊ`
   // but still report base-layout codepoint 99, which is Unicode `c`.
   const field1 = fields[0]?.split(":") || []
   const codepointStr = field1[0]

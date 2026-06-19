@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { createTestRenderer } from "../testing/test-renderer.js"
 
 describe("renderer notifications", () => {

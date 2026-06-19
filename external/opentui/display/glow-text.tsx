@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -44,8 +44,8 @@ interface GlowTextProps {
 }
 
 // Animation disabled: continuous PTY output from the color animation resets
-// Ghostty's cursor blink timer (processOutput 鈫?reset_cursor_blink every
-// 鈮?00ms, while the blink period is 600ms), preventing the input cursor from
+// Ghostty's cursor blink timer (processOutput → reset_cursor_blink every
+// ≤500ms, while the blink period is 600ms), preventing the input cursor from
 // blinking on the welcome screen. Static midpoint color until we move to a
 // self-drawn cursor that doesn't depend on the terminal's blink timer.
 function GlowTextInner({

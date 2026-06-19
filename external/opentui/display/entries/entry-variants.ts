@@ -1,4 +1,4 @@
-﻿import type { DisplayTheme } from "../theme/index.js";
+import type { DisplayTheme } from "../theme/index.js";
 
 export function getSystemEntryColor(
   severity: "info" | "error" | "compact" | "interrupted" | "sub_agent" | "no_reply",

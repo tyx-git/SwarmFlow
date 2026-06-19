@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import type { DisplayTheme } from "../theme/index.js";
@@ -12,7 +12,7 @@ interface CopyToastProps {
 
 /**
  * Transient toast shown after copy-on-select. Unlike the update/MCP toasts,
- * this one auto-dismisses 鈥?its ~2s lifecycle timer is owned by the app
+ * this one auto-dismisses — its ~2s lifecycle timer is owned by the app
  * (flashCopyToast). This component is pure presentation.
  */
 export function CopyToast({ message, theme }: CopyToastProps): React.ReactNode {

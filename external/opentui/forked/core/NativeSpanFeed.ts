@@ -1,4 +1,4 @@
-﻿import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
+import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
 import { resolveRenderLib } from "./zig.js"
 import { SpanInfoStruct } from "./zig-structs.js"
 import type { NativeSpanFeedOptions } from "./zig-structs.js"

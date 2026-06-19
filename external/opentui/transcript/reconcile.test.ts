@@ -1,6 +1,6 @@
-﻿import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
-import type { ConversationEntry } from "../../src/ui/contracts.js";
+import type { ConversationEntry } from "../../../src/ui/contracts.js";
 
 import { reconcileEntries } from "./reconcile.js";
 

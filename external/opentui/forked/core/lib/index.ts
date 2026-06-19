@@ -1,4 +1,4 @@
-﻿export * from "./border.js"
+export * from "./border.js"
 export * from "./KeyHandler.js"
 export * from "./ascii.font.js"
 export * from "./hast-styled-text.js"

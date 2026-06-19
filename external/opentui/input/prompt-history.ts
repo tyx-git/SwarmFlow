@@ -1,7 +1,7 @@
-﻿import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { getSwarmflowHomeDir } from "../../src/home-path.js";
+import { getSwarmflowHomeDir } from "../../../src/lib/home-path.js";
 
 const MAX_ENTRIES = 200;
 const STATE_SUBDIR = "state";
@@ -17,7 +17,7 @@ interface PromptHistoryState {
   history: PromptHistoryEntry[];
   /** 0 = draft slot (showing liveDraft); -1 = newest; -2 = second newest; ... */
   index: number;
-  /** Original draft saved on first entry into history (index 0 鈫?-1). */
+  /** Original draft saved on first entry into history (index 0 → -1). */
   liveDraft: string;
 }
 
@@ -75,14 +75,14 @@ function ensureLoaded(): void {
     try {
       writeFileSync(path, reserialized);
     } catch {
-      // best-effort 鈥?next start will retry
+      // best-effort — next start will retry
     }
   }
 }
 
 /**
  * Test-only: re-init module state. Pass a temp dir to redirect the JSONL file.
- * Pass `null` to fall back to the real swarmflow home.
+ * Pass `null` to fall back to the real Fermi home.
  */
 export function __resetPromptHistoryForTesting(homeDir: string | null = null): void {
   state.loaded = false;
@@ -95,7 +95,7 @@ export function __resetPromptHistoryForTesting(homeDir: string | null = null): v
 /**
  * Append a submitted prompt to history.
  * - Skips empty input.
- * - Skips slash commands (anything starting with "/") 鈥?they're invocations,
+ * - Skips slash commands (anything starting with "/") — they're invocations,
  *   not prompts the user wants to recall and re-edit.
  * - Skips if identical to the most recent entry (adjacent dedup).
  * - Trims to MAX_ENTRIES.
@@ -142,10 +142,10 @@ export function appendPromptHistory(input: string): void {
 }
 
 /**
- * Navigate prompt history (鏂规 2 semantics):
+ * Navigate prompt history (方案 2 semantics):
  * - direction = -1 walks toward older entries; +1 walks toward the draft slot.
  * - Always navigates if there is somewhere to go; never refuses based on input edits.
- * - On entering history (index 0 鈫?-1), captures `currentInput` as liveDraft.
+ * - On entering history (index 0 → -1), captures `currentInput` as liveDraft.
  * - On returning to index 0, returns the saved liveDraft.
  * - Returns `undefined` only when history is empty or navigation would go out of bounds;
  *   the caller should fall through to default behavior in that case.

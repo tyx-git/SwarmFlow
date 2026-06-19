@@ -1,4 +1,4 @@
-﻿import { test, expect, describe } from "bun:test"
+import { test, expect, describe } from "bun:test"
 import { BoxRenderable } from "../renderables/Box.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
 

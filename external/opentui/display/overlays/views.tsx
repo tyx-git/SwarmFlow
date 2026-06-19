@@ -1,27 +1,21 @@
-﻿/** @jsxImportSource @opentui/react */
-
-// =============================================================================
-// SwarmFlow GUI — Overlay 视图层
-// =============================================================================
-// 职责：渲染所有覆盖层 UI（命令选择器/复选框/OAuth/密钥输入/提示选择等）
-// Overlay 层级（条件渲染，由 OpenTuiScreen 统一管理）
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
 import type { InputRenderable } from "@opentui/core";
-import type { CommandPickerState } from "../../../src/ui/command-picker.js";
+import type { CommandPickerState } from "../../../../src/ui/command-picker.js";
 import {
   getCommandPickerLevel,
   getCommandPickerPath,
   getCommandPickerVisibleRange,
   isCommandPickerActive,
   isCommandPickerCustomInputOption,
-} from "../../../src/ui/command-picker.js";
-import type { CheckboxPickerState } from "../../../src/ui/checkbox-picker.js";
+} from "../../../../src/ui/command-picker.js";
+import type { CheckboxPickerState } from "../../../../src/ui/checkbox-picker.js";
 import {
   getCheckboxPickerVisibleRange,
   isCheckboxPickerActive,
-} from "../../../src/ui/checkbox-picker.js";
+} from "../../../../src/ui/checkbox-picker.js";
 import type { DisplayTheme } from "../theme/index.js";
 import type {
   CommandOverlayState,
@@ -249,7 +243,7 @@ export function CommandPickerView(
   const pickerHeight = 1 + visibleOptions.length + inlineInputLines + hintLine;
   const rootTitle = picker.title ?? picker.commandName;
   const title = path.length > 0
-    ? `${rootTitle} 鈥?${path.join(" 鈥?")}`
+    ? `${rootTitle} › ${path.join(" › ")}`
     : rootTitle;
 
   // Compute max detail width for column alignment
@@ -261,10 +255,10 @@ export function CommandPickerView(
   const isOnCustomInputOption = isCommandPickerCustomInputOption(picker);
   const showTabHint = picker.allowNote && !isOnCustomInputOption;
   const hintText = picker.noteEditing || picker.customInputMode
-    ? "Enter confirm 路 Esc cancel"
+    ? "Enter confirm · Esc cancel"
     : showTabHint
-      ? "鈫戔啌 navigate 路 Enter select 路 Tab add instructions 路 Esc cancel"
-      : "鈫戔啌 navigate 路 Enter select 路 Esc cancel";
+      ? "↑↓ navigate · Enter select · Tab add instructions · Esc cancel"
+      : "↑↓ navigate · Enter select · Esc cancel";
 
   return (
     <OverlayFrame theme={theme} height={pickerHeight}>
@@ -351,7 +345,7 @@ export function CheckboxPickerView(
           />
         );
       })}
-      <text fg={theme.colors.dim} content={truncateToWidth("Space toggle 路 Enter confirm 路 Esc cancel", contentWidth)} />
+      <text fg={theme.colors.dim} content={truncateToWidth("Space toggle · Enter confirm · Esc cancel", contentWidth)} />
     </OverlayFrame>
   );
 }
@@ -439,7 +433,7 @@ export function PromptSecretView(
         placeholderColor={theme.colors.dim}
         onSubmit={onSubmit as any}
       />
-      <text fg={theme.colors.dim} content="Enter confirm 路 Esc cancel" />
+      <text fg={theme.colors.dim} content="Enter confirm · Esc cancel" />
     </OverlayFrame>
   );
 }
@@ -480,7 +474,7 @@ export function OAuthOverlayView(
             width={contentWidth}
           />
         ))}
-        <text fg={theme.colors.dim} content="Enter select 路 Esc cancel" />
+        <text fg={theme.colors.dim} content="Enter select · Esc cancel" />
       </OverlayFrame>
     );
   }
@@ -530,7 +524,7 @@ const HELP_SHORTCUTS: Array<{ key: string; action: string }> = [
   { key: "Ctrl+X", action: "Kill all sub-agents" },
   { key: "Ctrl+K", action: "Kill all background shells" },
   { key: "PageUp/Down", action: "Scroll half page" },
-  { key: "鈫?/ 鈫?, action: "Browse prompt history" },
+  { key: "↑ / ↓", action: "Browse prompt history" },
   { key: "@filename", action: "Attach file" },
 ];
 

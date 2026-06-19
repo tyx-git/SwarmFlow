@@ -1,9 +1,9 @@
-﻿// Byte-level stdin parser that turns raw terminal input into typed StdinEvents.
+// Byte-level stdin parser that turns raw terminal input into typed StdinEvents.
 //
 // This replaces a two-phase token -> decode pipeline with a single state machine
 // that produces fully typed events (key, mouse, paste, response) directly from
 // bytes. The parser owns all byte framing and protocol recognition. It does NOT
-// own event dispatch 鈥?that belongs to KeyHandler and the renderer.
+// own event dispatch — that belongs to KeyHandler and the renderer.
 
 import { Buffer } from "node:buffer"
 import { SystemClock, type Clock, type TimerHandle } from "./clock.js"
@@ -249,7 +249,7 @@ function normalizePositiveOption(value: number | undefined, fallback: number): n
 
 // Returns the expected byte count for a UTF-8 sequence given its lead byte,
 // or 0 for bytes that aren't valid UTF-8 leads. Returning 0 tells the parser
-// this is a legacy high-byte character (0x80鈥?xBF, 0xC0鈥?xC1, 0xF5+) that
+// this is a legacy high-byte character (0x80–0xBF, 0xC0–0xC1, 0xF5+) that
 // goes through the parseKeypress() meta-key path instead.
 function utf8SequenceLength(first: number): number {
   if (first < 0x80) return 1
@@ -782,7 +782,7 @@ export class StdinParser {
   }
 
   // Marks the parser for forced flush if enough time has passed since
-  // incomplete data arrived. Does not immediately emit events 鈥?the next
+  // incomplete data arrived. Does not immediately emit events — the next
   // read() or drain() does the actual flush. This separation keeps the
   // timer callback from emitting events mid-flight in user code.
   public flushTimeout(nowMsValue: number = this.clock.now()): void {
@@ -852,7 +852,7 @@ export class StdinParser {
 
   // Scans the pending byte buffer one byte at a time, dispatching on the
   // current parser state. All protocol framing lives in this single switch
-  // 鈥?intentionally not split into per-mode scan helpers.
+  // — intentionally not split into per-mode scan helpers.
   //
   // Exits when: all bytes consumed (ground), more bytes needed (incomplete
   // unit), or paste mode entered (body handled by consumePasteBytes).
@@ -1173,7 +1173,7 @@ export class StdinParser {
             }
           }
 
-          // Standard CSI final byte (0x40鈥?x7E). Check for bracketed paste
+          // Standard CSI final byte (0x40–0x7E). Check for bracketed paste
           // start, SGR mouse, or a regular CSI key/response.
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
@@ -1780,7 +1780,7 @@ export class StdinParser {
 
   // Tries to parse the raw string as a key via parseKeypress(). If it
   // recognizes the sequence (printable char, arrow, function key, etc.),
-  // emits a key event. Otherwise emits a response event 鈥?this is how
+  // emits a key event. Otherwise emits a response event — this is how
   // capability responses, focus sequences, and other non-key CSI traffic
   // avoids becoming text.
   private emitKeyOrResponse(protocol: StdinResponseProtocol, raw: string): void {
@@ -1816,7 +1816,7 @@ export class StdinParser {
     })
   }
 
-  // Handles single bytes in the 0x80鈥?xFF range that aren't valid UTF-8
+  // Handles single bytes in the 0x80–0xFF range that aren't valid UTF-8
   // leads. Passes them through parseKeypress() which maps them to the
   // existing meta-key behavior (e.g. Alt+letter in terminals that send
   // high bytes instead of ESC-prefixed sequences).
@@ -1857,7 +1857,7 @@ export class StdinParser {
   }
 
   // Removes all bytes from the pending queue and returns them. Used when
-  // entering paste mode 鈥?leftover bytes after the paste start marker
+  // entering paste mode — leftover bytes after the paste start marker
   // need to flow through consumePasteBytes() instead.
   private takePendingBytes(): Uint8Array {
     const buffered = this.pending.take()
@@ -1896,7 +1896,7 @@ export class StdinParser {
   // across chunk boundaries. Bytes that can't be part of the end marker are
   // appended to the paste collector without decoding.
   //
-  // Returns any bytes that follow the end marker 鈥?those go back through
+  // Returns any bytes that follow the end marker — those go back through
   // normal parsing in the push() loop.
   private consumePasteBytes(chunk: Uint8Array): Uint8Array {
     const paste = this.paste!

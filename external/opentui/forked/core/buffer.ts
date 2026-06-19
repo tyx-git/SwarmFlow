@@ -1,4 +1,4 @@
-﻿import { RGBA } from "./lib/index.js"
+import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
 import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
 import { type BorderStyle, type BorderSides, BorderCharArrays, BorderChars, parseBorderStyle, getBorderSides } from "./lib/index.js"
@@ -481,7 +481,7 @@ export class OptimizedBuffer {
       if (maxTitleLen < 1) {
         leftTitleText = null
       } else if (leftTitleText.length > maxTitleLen) {
-        leftTitleText = leftTitleText.slice(0, Math.max(1, maxTitleLen - 1)) + "鈥?
+        leftTitleText = leftTitleText.slice(0, Math.max(1, maxTitleLen - 1)) + "…"
       }
     }
     if (jsDrawsLeftTitle && leftTitleText && !leftTitleText.startsWith(" ")) {
@@ -498,10 +498,10 @@ export class OptimizedBuffer {
       packedOptions,
       options.borderColor,
       options.backgroundColor,
-      // 0.4.1 native ABI added a required titleColor arg. When swarmflow draws the
+      // 0.4.1 native ABI added a required titleColor arg. When Fermi draws the
       // left title in JS (jsDrawsLeftTitle), the title arg below is null so this
       // titleColor is a no-op; otherwise native draws the title in borderColor
-      // (the upstream default), preserving 0.3.1 swarmflow visuals.
+      // (the upstream default), preserving 0.3.1 Fermi visuals.
       options.titleColor ?? options.borderColor,
       jsDrawsLeftTitle ? null : leftTitleText,
       options.bottomTitle ?? null,
@@ -515,7 +515,7 @@ export class OptimizedBuffer {
         // already pads itself (e.g. " Session Usage ") sits one cell from the
         // corner, so the leading space lands right after it instead of leaving
         // a border dash AND a space (which reads as a double gap). Bare titles
-        // (e.g. "Agents (2)") keep the conventional 鈺攢 dash gap.
+        // (e.g. "Agents (2)") keep the conventional ╭─ dash gap.
         const titlePadding = leftTitleText.startsWith(" ") ? 1 : 2
         const titleStartX = options.x + titlePadding
         const titleFg = options.titleColor!
@@ -561,7 +561,7 @@ export class OptimizedBuffer {
         if (availableWidth >= 1) {
           let titleText = options.dividerTitle.length <= availableWidth
             ? options.dividerTitle
-            : options.dividerTitle.slice(0, Math.max(1, availableWidth - 1)) + "鈥?
+            : options.dividerTitle.slice(0, Math.max(1, availableWidth - 1)) + "…"
           titleText = ` ${titleText} `
           const dividerTitleFg = options.dividerTitleColor ?? fg
           for (let i = 0; i < titleText.length; i++) {

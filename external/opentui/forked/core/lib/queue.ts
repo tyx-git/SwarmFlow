@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Generic processing queue that handles asynchronous job processing
  */
 export class ProcessQueue<T> {

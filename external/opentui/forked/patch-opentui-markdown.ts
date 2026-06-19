@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import {
   BoxRenderable,
   CodeRenderable,
@@ -11,10 +11,10 @@ import {
 import type { ColorInput, TextChunk } from "@opentui/core";
 import type { MarkedToken, Tokens } from "marked";
 import {
-  isSwarmflowMarkdownPatchDisabled,
-  writeSwarmflowOpenTuiDiag,
+  isFermiMarkdownPatchDisabled,
+  writeFermiOpenTuiDiag,
 } from "./core/lib/diagnostic.js";
-import { clipboard } from "../../src/platform/index.js";
+import { clipboard } from "../../../src/platform/index.js";
 import type { DisplayTheme } from "../display/theme/types.js";
 import { isShikiReady, setShikiTheme, shikiHighlightToChunks } from "./shiki-highlighter.js";
 
@@ -32,12 +32,12 @@ export function setUseShikiHighlighter(value: boolean): void {
   useShikiHighlighter = value;
 }
 
-const PATCH_FLAG = Symbol.for("swarmflow.opentui.markdown.patch.v5");
-const INNER_TEXT = Symbol.for("swarmflow.codeblock.text");
-const LABEL_REF = Symbol.for("swarmflow.codeblock.label");
-const COPY_REF = Symbol.for("swarmflow.codeblock.copy");
-const CODE_CONTENT = Symbol.for("swarmflow.codeblock.rawcontent");
-const COALESCED_MARGIN_TOP = Symbol.for("swarmflow.opentui.markdown.coalesced.marginTop");
+const PATCH_FLAG = Symbol.for("fermi.opentui.markdown.patch.v5");
+const INNER_TEXT = Symbol.for("fermi.codeblock.text");
+const LABEL_REF = Symbol.for("fermi.codeblock.label");
+const COPY_REF = Symbol.for("fermi.codeblock.copy");
+const CODE_CONTENT = Symbol.for("fermi.codeblock.rawcontent");
+const COALESCED_MARGIN_TOP = Symbol.for("fermi.opentui.markdown.coalesced.marginTop");
 const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/;
 const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/;
 const ANY_MARKDOWN_BLOCK_BREAK_RE = /(?:\r?\n){2,}/;
@@ -80,7 +80,7 @@ export function applyMarkdownTheme(theme: DisplayTheme): void {
   setShikiTheme(theme.mode);
 }
 
-// 鈹€鈹€ highlight.js integration 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── highlight.js integration ────────────────────────────────────────────────
 
 let hljs: any = null;
 let hljsLoadAttempted = false;
@@ -167,14 +167,14 @@ function hljsHtmlToChunks(html: string): TextChunk[] {
 }
 
 export function highlightToChunks(code: string, lang: string | undefined): TextChunk[] | null {
-  // 鈹€鈹€ Shiki path (opt-in) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── Shiki path (opt-in) ──────────────────────────────────────────────────
   if (useShikiHighlighter && isShikiReady()) {
     const shikiResult = shikiHighlightToChunks(code, lang);
     if (shikiResult) return shikiResult;
-    // Language not loaded yet or unsupported 鈥?fall through to hljs.
+    // Language not loaded yet or unsupported — fall through to hljs.
   }
 
-  // 鈹€鈹€ highlight.js path (default) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── highlight.js path (default) ──────────────────────────────────────────
   // Only highlight when an explicit, known language is given.  No auto-detect:
   // blocks without a language tag (```...```) render as plain text so we don't
   // mis-colorize prose, shell output, or random pasted content.
@@ -190,7 +190,7 @@ export function highlightToChunks(code: string, lang: string | undefined): TextC
   }
 }
 
-// 鈹€鈹€ Markdown prototype patches 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Markdown prototype patches ──────────────────────────────────────────────
 
 type MarkdownRenderablePatched = InstanceType<typeof MarkdownRenderable> & {
   _syntaxStyle: unknown;
@@ -227,14 +227,14 @@ function normalizeInterTokenSpace(raw: string): string {
   return ANY_MARKDOWN_BLOCK_BREAK_RE.test(raw) ? "\n\n" : raw;
 }
 
-if (isSwarmflowMarkdownPatchDisabled()) {
-  writeSwarmflowOpenTuiDiag("markdown.patch", {
+if (isFermiMarkdownPatchDisabled()) {
+  writeFermiOpenTuiDiag("markdown.patch", {
     applied: false,
     reason: "disabled-by-env",
   });
 } else if (!proto[PATCH_FLAG]) {
   proto[PATCH_FLAG] = true;
-  writeSwarmflowOpenTuiDiag("markdown.patch", {
+  writeFermiOpenTuiDiag("markdown.patch", {
     applied: true,
     version: "v5",
   });
@@ -335,7 +335,7 @@ if (isSwarmflowMarkdownPatchDisabled()) {
       // 0.4.1: draw raw text only while the precomputed styled text is present.
       drawUnstyledText: initialStyledText !== undefined,
       streaming: true,
-      // swarmflow: per-width height floor 鈥?follows the explicit reserve flag when
+      // Fermi: per-width height floor — follows the explicit reserve flag when
       // set (lets completed entries disable it), else falls back to streaming.
       reserveHeightWhileStreaming: this._reserveHeightWhileStreaming ?? this._streaming,
       initialStyledText,
@@ -348,7 +348,7 @@ if (isSwarmflowMarkdownPatchDisabled()) {
     });
   };
 
-  // 鈹€鈹€ Code block: TextRenderable with hljs-colored StyledText 鈹€鈹€
+  // ── Code block: TextRenderable with hljs-colored StyledText ──
 
   function createStyledCode(code: string, lang: string | undefined): StyledText {
     const chunks = highlightToChunks(code, lang);
@@ -475,7 +475,7 @@ if (isSwarmflowMarkdownPatchDisabled()) {
     renderable.conceal = this._conceal;
     // 0.4.1: draw raw text only while the precomputed styled text is present.
     renderable.drawUnstyledText = initialStyledText !== undefined;
-    // swarmflow: per-width height floor 鈥?follows the explicit reserve flag when set
+    // Fermi: per-width height floor — follows the explicit reserve flag when set
     // (lets completed entries disable it), else falls back to streaming.
     renderable.reserveHeightWhileStreaming = this._reserveHeightWhileStreaming ?? this._streaming;
     renderable.streaming = true;

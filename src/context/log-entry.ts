@@ -10,7 +10,7 @@
 // 枚举类型
 // ------------------------------------------------------------------
 
-import type { ThinkingArtifact } from "./lib/thinking-artifact.js";
+import type { ThinkingArtifact } from "../lib/thinking-artifact.js";
 
 /** 日志条目类型——决定内容结构和投影规则 */
 export type LogEntryType =

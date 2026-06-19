@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
@@ -6,7 +6,7 @@ import type { DisplayThemeColorTokens } from "../theme/index.js";
 
 /**
  * Constant scroll-acceleration adapter. Returns the same multiplier
- * for every wheel tick 鈥?used to apply a fixed speed scale per
+ * for every wheel tick — used to apply a fixed speed scale per
  * platform (Windows raw wheel ticks feel slow without it). For
  * variable-speed acceleration we'd reach for MacOSScrollAccel from
  * @opentui/core; this class is intentionally minimal and stateless.
@@ -25,7 +25,7 @@ interface ScrollViewportProps {
   viewportPaddingRight?: number;
   /**
    * Per-tick scroll delta multiplier. Defaults to 1 (no acceleration
-   * 鈥?caller relies on the underlying terminal / OS to deliver
+   * — caller relies on the underlying terminal / OS to deliver
    * comfortable speed). Set higher on platforms that send raw wheel
    * ticks (Windows). See `osCapabilities.conversationScrollMultiplier`.
    */

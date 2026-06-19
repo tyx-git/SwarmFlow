@@ -14,10 +14,10 @@
  * 工具名称遵循 mcp__<server>__<tool> 命名空间隔离，避免与内置工具冲突。
  */
 
-import type { MCPServerConfig } from "./config/config.js";
-import { ToolDef, ToolResult } from "./providers/base.js";
-import { VERSION } from "./version.js";
-import { osCapabilities } from "./platform/index.js";
+import type { MCPServerConfig } from "../config/config.js";
+import { ToolDef, ToolResult } from "../providers/base.js";
+import { VERSION } from "../version.js";
+import { osCapabilities } from "../platform/index.js";
 import { chmodSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import * as path from "node:path";

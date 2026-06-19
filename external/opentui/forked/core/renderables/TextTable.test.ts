@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { OptimizedBuffer } from "../buffer.js"
 import { RGBA } from "../lib/RGBA.js"
 import { bold, green, red, yellow } from "../lib/styled-text.js"
@@ -9,8 +9,8 @@ import { ScrollBoxRenderable } from "./ScrollBox.js"
 import { TextRenderable } from "./Text.js"
 import { TextTableRenderable, type TextTableCellContent, type TextTableContent } from "./TextTable.js"
 
-const VERTICAL_BORDER_CP = "鈹?.codePointAt(0)!
-const BORDER_CHAR_PATTERN = /[鈹屸攼鈹斺敇鈹溾敜鈹敶鈹尖攤鈹€]/
+const VERTICAL_BORDER_CP = "│".codePointAt(0)!
+const BORDER_CHAR_PATTERN = /[┌┐└┘├┤┬┴┼│─]/
 
 let renderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -69,7 +69,7 @@ function extractTableBlock(frame: string, headerMatcher: (line: string) => boole
   }
 
   let topY = headerY
-  while (topY >= 0 && !lines[topY]?.includes("鈹?)) {
+  while (topY >= 0 && !lines[topY]?.includes("┌")) {
     topY -= 1
   }
   if (topY < 0) {
@@ -77,7 +77,7 @@ function extractTableBlock(frame: string, headerMatcher: (line: string) => boole
   }
 
   let bottomY = headerY
-  while (bottomY < lines.length && !lines[bottomY]?.includes("鈹?)) {
+  while (bottomY < lines.length && !lines[bottomY]?.includes("└")) {
     bottomY += 1
   }
   if (bottomY >= lines.length) {
@@ -355,8 +355,8 @@ describe("TextTableRenderable", () => {
     await renderOnce()
 
     const frame = captureFrame()
-    expect(frame).toContain("鈹?  鈹?  鈹?)
-    expect(frame).toContain("鈹?A 鈹?B 鈹?)
+    expect(frame).toContain("│   │   │")
+    expect(frame).toContain("│ A │ B │")
 
     const lines = frame.split("\n")
     const headerY = lines.findIndex((line) => line.includes(" A ") && line.includes(" B "))
@@ -501,11 +501,11 @@ describe("TextTableRenderable", () => {
       await renderOnce()
 
       const frame = captureFrame()
-      expect(frame).not.toContain("鈹?)
-      expect(frame).not.toContain("鈹?)
-      expect(frame).not.toContain("鈹?)
-      expect(frame).not.toContain("鈹?)
-      expect(frame).toContain("鈹?)
+      expect(frame).not.toContain("┌")
+      expect(frame).not.toContain("┐")
+      expect(frame).not.toContain("└")
+      expect(frame).not.toContain("┘")
+      expect(frame).toContain("┼")
       expect(nativeCalls).toBe(1)
 
       const lines = frame.split("\n")
@@ -578,11 +578,11 @@ describe("TextTableRenderable", () => {
       await renderOnce()
 
       const frame = captureFrame()
-      expect(frame).toContain("鈹?)
-      expect(frame).toContain("鈹?)
-      expect(frame).toContain("鈹?)
-      expect(frame).toContain("鈹?)
-      expect(frame).not.toContain("鈹?)
+      expect(frame).toContain("┌")
+      expect(frame).toContain("┐")
+      expect(frame).toContain("└")
+      expect(frame).toContain("┘")
+      expect(frame).not.toContain("┼")
       expect(nativeCalls).toBe(1)
     } finally {
       OptimizedBuffer.prototype.drawGrid = originalDrawGrid
@@ -636,17 +636,17 @@ describe("TextTableRenderable", () => {
 
     const lastLine = lines[lines.length - 1] ?? ""
 
-    expect(lastLine).toContain("鈹?)
-    expect(lastLine).toContain("鈹?)
-    expect(lastLine).toContain("鈹?)
+    expect(lastLine).toContain("└")
+    expect(lastLine).toContain("┴")
+    expect(lastLine).toContain("┘")
   })
 
   test("keeps borders aligned with CJK and emoji content", async () => {
     const content: TextTableContent = [
       [[bold("Locale")], [bold("Sample")]],
-      [cell("ja-JP"), cell("鏉变含銇у鍙?馃崳")],
-      [cell("zh-CN"), cell("浣犲ソ涓栫晫 馃殌")],
-      [cell("ko-KR"), cell("頃滉竴 韰岇姢韸?馃槃")],
+      [cell("ja-JP"), cell("東京で寿司 🍣")],
+      [cell("zh-CN"), cell("你好世界 🚀")],
+      [cell("ko-KR"), cell("한글 테스트 😄")],
     ]
 
     const table = new TextTableRenderable(renderer, {
@@ -663,9 +663,9 @@ describe("TextTableRenderable", () => {
 
     const frame = captureFrame()
     expect(frame).toMatchSnapshot("unicode border alignment")
-    expect(frame).toContain("鏉变含銇у鍙?)
-    expect(frame).toContain("馃殌")
-    expect(frame).toContain("馃槃")
+    expect(frame).toContain("東京で寿司")
+    expect(frame).toContain("🚀")
+    expect(frame).toContain("😄")
 
     const lines = frame.split("\n")
     const headerY = lines.findIndex((line) => line.includes("Locale"))
@@ -692,8 +692,8 @@ describe("TextTableRenderable", () => {
   test("wraps CJK and emoji without grapheme duplication", async () => {
     const content: TextTableContent = [
       [[bold("Item")], [bold("Details")]],
-      [cell("mixed"), cell("鏉变含鐣?馃實 emoji wrapping continues across lines for width checks")],
-      [cell("emoji"), cell("Faces 馃榾馃槂馃槃 should remain stable")],
+      [cell("mixed"), cell("東京界 🌍 emoji wrapping continues across lines for width checks")],
+      [cell("emoji"), cell("Faces 😀😃😄 should remain stable")],
     ]
 
     const table = new TextTableRenderable(renderer, {
@@ -709,13 +709,13 @@ describe("TextTableRenderable", () => {
 
     const frame = captureFrame()
     expect(frame).toMatchSnapshot("unicode wrapping")
-    expect(frame).not.toContain("锟?)
-    expect(countChar(frame, "鐣?)).toBe(1)
-    expect(countChar(frame, "馃實")).toBe(1)
+    expect(frame).not.toContain("�")
+    expect(countChar(frame, "界")).toBe(1)
+    expect(countChar(frame, "🌍")).toBe(1)
 
     const lines = frame.split("\n")
-    const wrappedRowStartY = lines.findIndex((line) => line.includes("mix") && line.includes("鏉变含鐣?))
-    const wrappedRowEndBorderY = lines.findIndex((line, idx) => idx > wrappedRowStartY && line.includes("鈹?))
+    const wrappedRowStartY = lines.findIndex((line) => line.includes("mix") && line.includes("東京界"))
+    const wrappedRowEndBorderY = lines.findIndex((line, idx) => idx > wrappedRowStartY && line.includes("├"))
 
     expect(wrappedRowStartY).toBeGreaterThanOrEqual(0)
     expect(wrappedRowEndBorderY).toBeGreaterThan(wrappedRowStartY)
@@ -783,13 +783,13 @@ describe("TextTableRenderable", () => {
     const selected = table.getSelectedText()
     expect(selected).toContain("c1\tc2")
     expect(selected).toContain("aa\tb")
-    expect(selected).not.toContain("鈹?)
-    expect(selected).not.toContain("鈹?)
-    expect(selected).not.toContain("鈹?)
+    expect(selected).not.toContain("│")
+    expect(selected).not.toContain("┌")
+    expect(selected).not.toContain("┼")
 
     const rendererSelection = renderer.getSelection()
     expect(rendererSelection).not.toBeNull()
-    expect(rendererSelection?.getSelectedText()).not.toContain("鈹?)
+    expect(rendererSelection?.getSelectedText()).not.toContain("│")
   })
 
   test("keeps partial selection when focus stays in the anchor cell", async () => {
@@ -1134,19 +1134,19 @@ describe("TextTableRenderable", () => {
       [
         cell("mixed-languages"),
         cell(
-          "CJK and emoji wrapping stress case: 銇撱倱銇仭銇笘鐣?and 鞎堧厱頃橃劯鞖?靹戈硠 and 浣犲ソ锛屼笘鐣?followed by long English prose that keeps flowing to test whether each cell wraps naturally even when the terminal is extremely wide and the row still needs multiple visual lines for readability 馃實馃殌",
+          "CJK and emoji wrapping stress case: こんにちは世界 and 안녕하세요 세계 and 你好，世界 followed by long English prose that keeps flowing to test whether each cell wraps naturally even when the terminal is extremely wide and the row still needs multiple visual lines for readability 🌍🚀",
         ),
       ],
       [
         cell("emoji-and-symbols"),
         cell(
-          "Faces 馃榾馃槂馃槃馃榿馃槅 plus symbols 馃И馃摝馃洶锔忦煍ю煋?mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
+          "Faces 😀😃😄😁😆 plus symbols 🧪📦🛰️🔧📊 mixed with version tags like release-candidate-build-2026-02-very-long-token-without-breaks to ensure char wrapping remains stable and no glyph alignment issues appear at column boundaries",
         ),
       ],
       [
         cell("long-cjk-phrase"),
         cell(
-          "闀锋枃銇棩鏈獮銉嗐偔銈广儓銇ㄤ腑鏂囨钀藉拰頃滉淡鞏措鞛レ潉閫ｇ稓銇椼仸閰嶇疆銇椼€併仢銇緦銇?additional English context describing renderer behavior, border intersection handling, and selection extraction so that this single cell remains a reliable wrapping torture test.",
+          "長文の日本語テキストと中文段落和한국어문장을連続して配置し、その後に additional English context describing renderer behavior, border intersection handling, and selection extraction so that this single cell remains a reliable wrapping torture test.",
         ),
       ],
       [

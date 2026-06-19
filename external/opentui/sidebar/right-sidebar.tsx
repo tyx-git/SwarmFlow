@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -86,7 +86,7 @@ function RightSidebarInner({
               <text
                 key={shell.id}
                 fg={shell.status === "running" ? colors.green : colors.muted}
-                content={`${shell.status === "running" ? "鈼? : "鈼?} ${shell.command.slice(0, width - 6)}`}
+                content={`${shell.status === "running" ? "●" : "○"} ${shell.command.slice(0, width - 6)}`}
                 truncate
               />
             ))}
@@ -94,7 +94,7 @@ function RightSidebarInner({
         </>
       ) : null}
 
-      {/* Project path 鈥?pinned to bottom */}
+      {/* Project path — pinned to bottom */}
       <box flexDirection="column" width="100%" flexGrow={1} justifyContent="flex-end">
         <text fg={colors.muted} content={shortenPath(cwd)} truncate />
       </box>

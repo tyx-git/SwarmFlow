@@ -1,19 +1,15 @@
-﻿/** @jsxImportSource @opentui/react */
-
-// =============================================================================
-// SwarmFlow GUI — 状态面板（Agent 列表 + Todo 列表）
-// =============================================================================
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { StyledText, RGBA, createTextAttributes, type TextChunk } from "@opentui/core";
 
-import type { PlanCheckpoint } from "../../../src/plan-state.js";
-import type { ChildSessionSnapshot } from "../../../src/session-tree-types.js";
+import type { PlanCheckpoint } from "../../../../src/lib/plan-state.js";
+import type { ChildSessionSnapshot } from "../../../../src/session-tree-types.js";
 import type { ConversationPalette } from "../../components/conversation-types.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { formatCompactTokensShort } from "../utils/format.js";
 
-// ── 颜色规范 ─────────────────────────────────────────────────────────────────
+// ── Color spec ──────────────────────────────────────────────
 const AGENT_TITLE_COLOR = "#b4a0ec"; // matches input-area agent badge
 const TODO_TITLE_COLOR = "#86ded4";  // matches input-area todo badge
 
@@ -28,16 +24,16 @@ const TODO_COLORS = {
 
 const ATTRS_STRIKE = createTextAttributes({ strikethrough: true });
 
-// 鈹€鈹€ Glyphs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-const MARK_DONE = "鉁?;
-const MARK_ACTIVE = "鈻?;
-const MARK_PENDING = "鈻?;
+// ── Glyphs ──────────────────────────────────────────────────
+const MARK_DONE = "✓";
+const MARK_ACTIVE = "▶";
+const MARK_PENDING = "▷";
 
 function chunk(text: string, fg?: RGBA, attributes?: number): TextChunk {
   return { __isChunk: true as const, text, fg, attributes };
 }
 
-// 鈹€鈹€ Types 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Types ───────────────────────────────────────────────────
 
 export interface StatusPanelProps {
   agents: readonly ChildSessionSnapshot[];
@@ -50,14 +46,14 @@ export interface StatusPanelProps {
   onAgentClick?: (agentId: string) => void;
 }
 
-// 鈹€鈹€ Agent rows (modal style) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Agent rows (modal style) ────────────────────────────────
 
 function lifecycleIcon(lifecycle: string): string {
   switch (lifecycle) {
-    case "running": return "鈼?;
-    case "blocked": return "鈼?;
-    case "idle": return "鈼?;
-    default: return "鈼?;
+    case "running": return "●";
+    case "blocked": return "◐";
+    case "idle": return "○";
+    default: return "◌";
   }
 }
 
@@ -88,7 +84,7 @@ function AgentRows({ agents, colors, onAgentClick }: { agents: readonly ChildSes
         const descColor = isActive || isBlocked ? colors.dim : "#5a6078";
         const icon = lifecycleIcon(agent.lifecycle);
         const label = agentStatusLabel(agent);
-        const statsLine = `鈹?${agent.lifetimeToolCallCount} tools, ${formatCompactTokensShort(agent.lastTotalTokens)} tokens`;
+        const statsLine = `└ ${agent.lifetimeToolCallCount} tools, ${formatCompactTokensShort(agent.lastTotalTokens)} tokens`;
 
         return (
           <SelectableRow
@@ -118,7 +114,7 @@ function clampPanelHeight(terminalHeight: number): number {
   return Math.max(2, Math.min(8, Math.floor((terminalHeight - 8) * 0.2)));
 }
 
-// 鈹€鈹€ Todo rows (plan-panel style) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Todo rows (plan-panel style) ────────────────────────────
 
 function buildCheckpointStyledText(cp: PlanCheckpoint): StyledText {
   switch (cp.status) {
@@ -158,7 +154,7 @@ function TodoRows({ todos }: { todos: readonly PlanCheckpoint[] }): React.ReactN
   );
 }
 
-// 鈹€鈹€ Main panel 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Main panel ──────────────────────────────────────────────
 
 function StatusPanelInner({
   agents,

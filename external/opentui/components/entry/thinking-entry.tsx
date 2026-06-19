@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useState, useEffect, useRef } from "react";
 
@@ -34,7 +34,7 @@ function ThinkingEntryInner(
 
   useEffect(() => {
     if (wasActive.current && !active) {
-      // Streaming just finished 鈫?auto-collapse
+      // Streaming just finished → auto-collapse
       setManualToggle(false);
     }
     wasActive.current = active;
@@ -44,7 +44,7 @@ function ThinkingEntryInner(
   const toggle = () => setManualToggle((prev) => !(prev !== null ? prev : active));
 
   const shimmer = useShimmer(LABEL_TEXT, LABEL_RGBA, active, ATTRS_ITALIC);
-  const chevron = expanded ? "鈻?" : "鈻?";
+  const chevron = expanded ? "▼ " : "▶ ";
 
   return (
     <box flexDirection="column" paddingTop={1} width="100%" gap={0}>
@@ -86,7 +86,7 @@ function ThinkingEntryInner(
       {isError ? (
         <text
           fg={colors.orange}
-          content="[Interrupted 鈥?not sent to model]"
+          content="[Interrupted — not sent to model]"
         />
       ) : null}
     </box>

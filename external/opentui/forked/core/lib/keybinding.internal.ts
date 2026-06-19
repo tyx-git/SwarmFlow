@@ -1,4 +1,4 @@
-﻿export interface KeyBindingLike {
+export interface KeyBindingLike {
   name: string
   ctrl?: boolean
   shift?: boolean
@@ -76,8 +76,8 @@ export function getKeyBindingKey(binding: KeyBindingLike): string {
 
 // `baseCode` is Kitty's "base layout codepoint": the character for the same
 // physical key on the keyboard's base layout. Example: an event may arrive as
-// `name: "銋?, baseCode: 99`, where `99` is Unicode `c`. We normalize that
-// numeric codepoint to the key names we store in key maps so Ctrl+銋?can still
+// `name: "ㅊ", baseCode: 99`, where `99` is Unicode `c`. We normalize that
+// numeric codepoint to the key names we store in key maps so Ctrl+ㅊ can still
 // match a Ctrl+C binding.
 function getBaseCodeKeyName(baseCode: number | undefined): string | undefined {
   if (baseCode === undefined || baseCode < 32 || baseCode === 127) {

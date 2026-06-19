@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
 import { ManualClock } from "../testing/manual-clock.js"
 import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
@@ -76,7 +76,7 @@ test("scrollbox culling issue: last item not visible in frame after content grow
     const frame = frames[frameIdx].frame
     const lines = frame.split("\n")
 
-    const containerStart = lines.findIndex((line) => line.startsWith("鈹?))
+    const containerStart = lines.findIndex((line) => line.startsWith("┌"))
     const containerEnd = containerStart + 10 - 1
 
     if (containerStart >= 0 && containerEnd > containerStart && containerEnd < lines.length) {
@@ -86,7 +86,7 @@ test("scrollbox culling issue: last item not visible in frame after content grow
 
       for (let i = contentLines.length - 1; i >= 0; i--) {
         const line = contentLines[i]
-        const content = line.replace(/^[鈹俓s]*/, "").replace(/[鈹傗枅鈻刓s]*$/, "")
+        const content = line.replace(/^[│\s]*/, "").replace(/[│█▄\s]*$/, "")
 
         if (content.length === 0) {
           emptyLinesAtBottom++

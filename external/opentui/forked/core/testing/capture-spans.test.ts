@@ -1,4 +1,4 @@
-﻿import { describe, test, expect, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "./test-renderer.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { BoxRenderable } from "../renderables/Box.js"
@@ -169,7 +169,7 @@ describe("captureSpans", () => {
 
   test("handles box-drawing characters without crashing", async () => {
     const text = new TextRenderable(renderer, {
-      content: "鈹溾攢鈹€ folder",
+      content: "├── folder",
     })
     renderer.root.add(text)
     await renderOnce()
@@ -178,7 +178,7 @@ describe("captureSpans", () => {
     const firstLine = data.lines[0]
     const textContent = firstLine.spans.map((s) => s.text).join("")
 
-    expect(textContent).toContain("鈹溾攢鈹€ folder")
+    expect(textContent).toContain("├── folder")
   })
 
   test("handles box borders without crashing", async () => {
@@ -197,12 +197,12 @@ describe("captureSpans", () => {
 
     const firstLine = data.lines[0]
     const textContent = firstLine.spans.map((s) => s.text).join("")
-    expect(textContent.includes("鈹?) || textContent.includes("鈹€")).toBe(true)
+    expect(textContent.includes("┌") || textContent.includes("─")).toBe(true)
   })
 
   test("handles multi-width characters correctly", async () => {
     const text = new TextRenderable(renderer, {
-      content: "A馃専B",
+      content: "A🌟B",
     })
     renderer.root.add(text)
     await renderOnce()
@@ -211,6 +211,6 @@ describe("captureSpans", () => {
     const firstLine = data.lines[0]
     const textContent = firstLine.spans.map((s) => s.text).join("")
 
-    expect(textContent).toContain("A馃専B")
+    expect(textContent).toContain("A🌟B")
   })
 })

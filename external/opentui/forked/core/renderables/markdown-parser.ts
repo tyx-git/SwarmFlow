@@ -1,4 +1,4 @@
-﻿import { Lexer, type MarkedToken } from "marked"
+import { Lexer, type MarkedToken } from "marked"
 
 export interface ParseState {
   content: string

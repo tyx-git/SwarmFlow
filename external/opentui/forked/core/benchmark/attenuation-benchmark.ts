@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 import { performance } from "node:perf_hooks"
 import { OptimizedBuffer } from "../buffer.js"

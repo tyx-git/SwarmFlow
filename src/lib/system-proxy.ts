@@ -14,7 +14,7 @@
  * 空操作（提供商返回 null）。幂等操作。
  */
 
-import { systemProxy } from "./platform/index.js";
+import { systemProxy } from "../platform/index.js";
 
 /** 将系统代理应用到环境变量中（如缺失） */
 export function applySystemProxyToEnv(

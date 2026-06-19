@@ -1,4 +1,4 @@
-﻿import { afterEach, expect, test } from "bun:test"
+import { afterEach, expect, test } from "bun:test"
 
 import { RGBA } from "../lib/RGBA.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"

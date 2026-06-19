@@ -1,4 +1,4 @@
-﻿import { TextareaRenderable } from "../Textarea.js"
+import { TextareaRenderable } from "../Textarea.js"
 import { type TestRenderer } from "../../testing/test-renderer.js"
 import { type TextareaOptions } from "../Textarea.js"
 import type { DiffRenderable } from "../Diff.js"
@@ -19,7 +19,7 @@ export async function createTextareaRenderable(
 }
 
 // Settle Diff highlighting deterministically. Each iteration:
-// 1. Render twice 鈥?the first render may trigger Diff.requestRebuild via microtask
+// 1. Render twice — the first render may trigger Diff.requestRebuild via microtask
 //    (runs during renderOnce's internal awaits), which calls requestRender while
 //    rendering=true, setting immediateRerenderRequested. The resulting re-render
 //    is scheduled via clock.setTimeout (ManualClock), so needs a second renderOnce.

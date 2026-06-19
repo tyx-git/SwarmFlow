@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { join } from "node:path"
 import * as coreRuntime from "../index.js"
 import { createRuntimePlugin, runtimeModuleIdForSpecifier } from "../runtime-plugin.js"

@@ -1,4 +1,4 @@
-﻿import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
 import { CodeRenderable, type CodeOptions } from "./Code.js"
 import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./LineNumberRenderable.js"
@@ -205,7 +205,7 @@ export class DiffRenderable extends Renderable {
   // event (stopPropagation) so the scroll never bubbles to this parent, and the wheel
   // delta is applied a frame later in the pane's own onUpdate. We therefore detect, once
   // per frame, which pane's settled scroll moved since we last mirrored and copy it to the
-  // other. This lands one frame after the scroll 鈥?imperceptible in practice.
+  // other. This lands one frame after the scroll — imperceptible in practice.
   protected override onUpdate(deltaTime: number): void {
     super.onUpdate(deltaTime)
 

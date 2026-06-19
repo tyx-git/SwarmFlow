@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import {

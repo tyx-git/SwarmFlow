@@ -1,4 +1,4 @@
-﻿export type RGBTriplet = readonly [number, number, number]
+export type RGBTriplet = readonly [number, number, number]
 export type ColorIntent = "rgb" | "indexed" | "default"
 export type ColorInput = string | RGBA
 

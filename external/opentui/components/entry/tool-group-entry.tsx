@@ -1,9 +1,9 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React, { useState } from "react";
 import path from "node:path";
 
-import { browser, osCapabilities } from "../../../src/platform/index.js";
+import { browser, osCapabilities } from "../../../../src/platform/index.js";
 
 import { RGBA, createTextAttributes } from "@opentui/core";
 
@@ -74,8 +74,8 @@ function ToolGroupEntryInner(
     "tool",
   );
 
-  // See tool-operation-entry.tsx 鈥?done-state glyph is per-platform.
-  const indicator = active ? "鈥? : osCapabilities.toolIndicatorGlyph;
+  // See tool-operation-entry.tsx — done-state glyph is per-platform.
+  const indicator = active ? "›" : osCapabilities.toolIndicatorGlyph;
 
   const toggleExpand = () => setExpanded((prev) => !prev);
 
@@ -101,7 +101,7 @@ function ToolGroupEntryInner(
               <text fg={indicatorColor} content={`${indicator} `} flexShrink={0} />
               <text fg={toolNameColor} attributes={ATTRS_BOLD} content={summary} flexShrink={0} />
               <text content=" " flexShrink={0} />
-              <text fg={colors.dim} content={expanded ? "鈻? : "鈻?} flexShrink={0} />
+              <text fg={colors.dim} content={expanded ? "▾" : "▸"} flexShrink={0} />
             </box>
           </SelectableRow>
         </box>

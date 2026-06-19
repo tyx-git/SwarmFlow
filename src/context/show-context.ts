@@ -7,8 +7,8 @@
  */
 
 import { encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
-import type { LogEntry } from "./context/log-entry.js";
-import { buildActiveContextView, type ActiveContextGroup } from "./context/active-context.js";
+import type { LogEntry } from "../context/log-entry.js";
+import { buildActiveContextView, type ActiveContextGroup } from "../context/active-context.js";
 
 // ------------------------------------------------------------------
 // 类型定义

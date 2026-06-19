@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach } from "bun:test"
 import { DiffRenderable } from "./Diff.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
@@ -2373,7 +2373,7 @@ test("DiffRenderable - split view scroll is not synchronized by default", async 
   // Scroll over left pane. The delay (> the renderer's 48ms scroll-gesture reuse window)
   // lets the gesture latch expire before the next scroll, so the second scroll targets the
   // pane under the cursor rather than staying locked to the first pane. (A fast wheel burst
-  // intentionally stays on the pane it started on 鈥?that latch is deliberate, not a bug.)
+  // intentionally stays on the pane it started on — that latch is deliberate, not a bug.)
   await mockMouse.scroll(leftCodeRenderable.x, leftCodeRenderable.y + 1, "down", { delayMs: 60 })
   await renderOnce()
 

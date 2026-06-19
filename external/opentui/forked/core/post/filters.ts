@@ -1,4 +1,4 @@
-﻿import type { OptimizedBuffer } from "../buffer.js"
+import type { OptimizedBuffer } from "../buffer.js"
 
 function toU8(value: number): number {
   return Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 255)
@@ -125,7 +125,7 @@ export function applyNoise(buffer: OptimizedBuffer, strength: number = 0.1): voi
   // Brightness matrix: scales all channels by (1 + strength)
   // With cellMask strength S, result = original * (1 + (B - 1) * S)
   // where B = 1 + strength
-  // So: S=1 鈫?original * (1 + strength), S=-1 鈫?original * (1 - strength)
+  // So: S=1 → original * (1 + strength), S=-1 → original * (1 - strength)
   const b = 1.0 + strength
   const matrix = new Float32Array([
     b,

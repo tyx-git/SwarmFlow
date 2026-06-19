@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 import { readFile, writeFile, mkdir } from "fs/promises"
 import * as path from "path"
@@ -113,7 +113,7 @@ async function downloadAndCombineQueries(
 
         if (content.trim()) {
           queryContents.push(content)
-          console.log(`    鉁?Loaded ${content.split("\n").length} lines from local file`)
+          console.log(`    ✓ Loaded ${content.split("\n").length} lines from local file`)
         }
       } catch (error) {
         console.warn(`Failed to read local query from ${queryUrl}: ${error}`)
@@ -132,7 +132,7 @@ async function downloadAndCombineQueries(
         const content = await response.text()
         if (content.trim()) {
           queryContents.push(`; Query from: ${queryUrl}\n${content}`)
-          console.log(`    鉁?Downloaded ${content.split("\n").length} lines`)
+          console.log(`    ✓ Downloaded ${content.split("\n").length} lines`)
         }
       } catch (error) {
         console.warn(`Failed to download query from ${queryUrl}: ${error}`)
@@ -288,15 +288,15 @@ async function main(options?: Partial<UpdateOptions>): Promise<void> {
         injectionMapping: parser.injectionMapping,
       })
 
-      console.log(`  鉁?Completed ${parser.filetype}`)
+      console.log(`  ✓ Completed ${parser.filetype}`)
     }
 
     console.log("Generating output file...")
     await generateDefaultParsersFile(generatedParsers, opts.outputPath)
 
-    console.log("鉁?Update completed successfully!")
+    console.log("✅ Update completed successfully!")
   } catch (error) {
-    console.error("鉂?Update failed:", error)
+    console.error("❌ Update failed:", error)
     process.exit(1)
   }
 }

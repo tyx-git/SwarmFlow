@@ -1,19 +1,15 @@
-﻿// =============================================================================
-// SwarmFlow GUI — Presentation 条目转换
-// =============================================================================
-// 职责：将 ReconciledConversationEntry（Session log）转换为 PresentationEntry（UI 可渲染格式）
-// 转换逻辑：合并相关条目、提取用户文本、解析附件、构建工具组、处理 thinking 条目
-
 import type { ReconciledConversationEntry } from "../transcript/types.js";
 import type {
   PresentationEntry,
   PresentationState,
   InlineResultData,
 } from "./types.js";
-import type { FileModifyDisplayData } from "../../src/diff-hunk.js";
+import type { FileModifyDisplayData } from "../../../src/lib/diff-hunk.js";
 import { getToolProfile, HIDDEN_TOOLS } from "./tool-profiles.js";
 
-// ── 辅助函数 ────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------------
 
 const QUEUED_PREFIX = "[Queued user message]\n";
 const MANUAL_SUMMARIZE = "[Manual summarize request]";
@@ -75,7 +71,7 @@ function isToolResultInterrupted(entry: ReconciledConversationEntry): boolean {
  *
  * Detection is by the authoritative `planFileOperation` metadata flag, which the
  * runtime sets only for the exact session plan file (SESSION_ARTIFACTS/plan.md),
- * never by filename 鈥?a file merely named `plan.md` elsewhere is NOT matched.
+ * never by filename — a file merely named `plan.md` elsewhere is NOT matched.
  * The flag is stamped on the tool_call entry once its `path` arg is known (so the
  * TUI can relabel during streaming, before the write finishes) and on the
  * tool_result entry after the write completes.
@@ -171,7 +167,7 @@ function transformTurnEnd(entry: ReconciledConversationEntry): PresentationEntry
   const elapsedStr = formatElapsedMs(elapsedMs);
 
   const text = status === "interrupted"
-    ? `Interrupted 路 ${elapsedStr}`
+    ? `Interrupted · ${elapsedStr}`
     : `Worked for ${elapsedStr}`;
 
   return {
@@ -290,7 +286,7 @@ function buildToolOperation(
   } else if (!resultEntry && toolExecState === "failed") {
     state = "error";
   } else if (!resultEntry) {
-    // If another entry is active (streaming/executing), this one is queued 鈥?show as done
+    // If another entry is active (streaming/executing), this one is queued — show as done
     state = (callEntry.entry.elapsedMs != null || activeEntryId) ? "done" : "active";
   } else if (isToolResultError(resultEntry)) {
     state = "error";
@@ -305,7 +301,7 @@ function buildToolOperation(
     ? ((resultEntry.entry.meta as Record<string, unknown>)?.toolMetadata as Record<string, unknown>) ?? undefined
     : undefined;
 
-  // Extract fileModifyData 鈥?tool_result (authoritative) takes priority over tool_call (streaming)
+  // Extract fileModifyData — tool_result (authoritative) takes priority over tool_call (streaming)
   let fileModifyData: FileModifyDisplayData | undefined;
   const resultFmd = resultMeta?.fileModifyData;
   if (resultFmd && typeof resultFmd === "object") {
@@ -460,7 +456,7 @@ function collapseExploreGroups(result: PresentationEntry[]): void {
       i++;
       continue;
     }
-    // Found start of a potential group 鈥?scan forward.
+    // Found start of a potential group — scan forward.
     const start = i;
     while (i < result.length && isExploreTool(result[i])) {
       i++;
@@ -490,7 +486,7 @@ export function presentationTransform(
     prevById.set(pe.id, pe);
   }
 
-  // Pre-build a toolCallId 鈫?tool_result index. Pairing by id (not adjacency)
+  // Pre-build a toolCallId → tool_result index. Pairing by id (not adjacency)
   // is necessary because entries like agent_result may appear between a
   // tool_call and its matching tool_result in the log.
   const resultByCallId = new Map<string, ReconciledConversationEntry>();
@@ -567,7 +563,7 @@ export function presentationTransform(
         if (activeEntryId && activeEntryId === entry.id) {
           thinkingState = "active";
         } else if (!reasoningComplete && !processing) {
-          thinkingState = "error"; // interrupted 鈥?not transmitted to model
+          thinkingState = "error"; // interrupted — not transmitted to model
         } else {
           thinkingState = "done";
         }
@@ -666,7 +662,7 @@ export function presentationTransform(
     }
   }
 
-  // 3. Explore grouping 鈥?collapse consecutive file-read tool_operations into tool_group entries.
+  // 3. Explore grouping — collapse consecutive file-read tool_operations into tool_group entries.
   collapseExploreGroups(result);
 
   // 4. Memo optimization: reuse previous PresentationEntry by id+contentVersion

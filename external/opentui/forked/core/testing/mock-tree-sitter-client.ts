@@ -1,4 +1,4 @@
-﻿import { TreeSitterClient } from "../lib/tree-sitter/index.js"
+import { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { SystemClock, type Clock, type TimerHandle } from "../lib/clock.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 

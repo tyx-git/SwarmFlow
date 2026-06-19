@@ -1,13 +1,13 @@
-﻿import { setDotenvKey, unsetDotenvKey } from "./lifecycle/dotenv.js";
+﻿import { setDotenvKey, unsetDotenvKey } from "../lifecycle/dotenv.js";
 import {
   type DetectedCredentialCandidate,
   detectManagedCredentialCandidates,
   getManagedCredentialSpec,
   isManagedProvider,
   providerCredentialKind,
-} from "./config/managed-provider-credentials.js";
-import { findProviderPreset } from "./providers/presets.js";
-import { loadGlobalSettings, saveGlobalSettingsPatch } from "./config/persistence.js";
+} from "../config/managed-provider-credentials.js";
+import { findProviderPreset } from "../providers/presets.js";
+import { loadGlobalSettings, saveGlobalSettingsPatch } from "../config/persistence.js";
 
 export interface PromptChoice {
   label: string;

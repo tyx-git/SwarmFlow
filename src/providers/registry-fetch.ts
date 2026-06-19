@@ -22,9 +22,9 @@ import { createPublicKey, verify as cryptoVerify } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { VERSION } from "./version.js";
-import { loadRemoteRegistry, remoteCacheDir, type RawRegistryBundle } from "./providers/registry-effective.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { VERSION } from "../version.js";
+import { loadRemoteRegistry, remoteCacheDir, type RawRegistryBundle } from "../providers/registry-effective.js";
 
 /**
  * 用于验证远程注册表的内置 Ed25519 公钥（SPKI PEM）。

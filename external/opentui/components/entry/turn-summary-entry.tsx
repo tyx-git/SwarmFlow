@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
@@ -21,7 +21,7 @@ function TurnSummaryEntryInner(
   const totalDashes = Math.max(0, contentWidth - label.length - 1);
   const leftDashes = Math.max(0, Math.floor((totalDashes - 1) / 2));
   const rightDashes = totalDashes - leftDashes;
-  const line = " " + "鈹€".repeat(leftDashes) + label + "鈹€".repeat(rightDashes);
+  const line = " " + "─".repeat(leftDashes) + label + "─".repeat(rightDashes);
   const lineColor = interrupted ? colors.waitingStatus : colors.dim;
 
   return (
@@ -29,7 +29,7 @@ function TurnSummaryEntryInner(
       {hints.length > 0 ? (
         <box flexDirection="column" paddingLeft={2} gap={0}>
           {hints.map((hint, idx) => (
-            <text key={idx} fg={colors.dim} content={`鈹?${hint}`} />
+            <text key={idx} fg={colors.dim} content={`└ ${hint}`} />
           ))}
         </box>
       ) : null}

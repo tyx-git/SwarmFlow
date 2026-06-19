@@ -1,4 +1,4 @@
-﻿// Copied from https://github.com/enquirer/enquirer/blob/36785f3399a41cd61e9d28d1eb9c2fcd73d69b4c/lib/keypress.js
+// Copied from https://github.com/enquirer/enquirer/blob/36785f3399a41cd61e9d28d1eb9c2fcd73d69b4c/lib/keypress.js
 import { Buffer } from "node:buffer"
 import { kittyNamedSingleStrokeKeys, parseKittyKeyboard } from "./parse.keypress-kitty.js"
 
@@ -53,7 +53,7 @@ const keyName: Record<string, string> = {
   OE: "clear",
   OF: "end",
   OH: "home",
-  /* VT100 application keypad (SS3) 鈥?sent when terminal enables DECKPAM (ESC =).
+  /* VT100 application keypad (SS3) — sent when terminal enables DECKPAM (ESC =).
    * macOS Terminal.app and other xterm-based terminals emit these when running
    * full-screen apps with the alternate screen. */
   OM: "return",

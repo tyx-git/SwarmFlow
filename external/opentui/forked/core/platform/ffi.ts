@@ -1,4 +1,4 @@
-﻿import { createRequire } from "node:module"
+import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 
 declare const pointerBrand: unique symbol

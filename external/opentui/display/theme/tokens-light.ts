@@ -1,9 +1,9 @@
-﻿import type { DisplayThemeTokens } from "./types.js";
+import type { DisplayThemeTokens } from "./types.js";
 import { DARK_TOKENS } from "./tokens-dark.js";
 
 /**
  * Light mode token palette. Designed to render on a transparent background
- * inside a light terminal 鈥?text is a deep cool gray, surfaces are slightly
+ * inside a light terminal — text is a deep cool gray, surfaces are slightly
  * darker than the page, accent is a deeply saturated blue.
  *
  * Color choices follow the same hue families as DARK_TOKENS so brand identity
@@ -11,23 +11,23 @@ import { DARK_TOKENS } from "./tokens-dark.js";
  * and saturation is increased where needed to clear the 4.5:1 contrast bar
  * against a white terminal background.
  *
- * Conservative first pass 鈥?readable everywhere, may not be pixel-perfect.
+ * Conservative first pass — readable everywhere, may not be pixel-perfect.
  */
 export const LIGHT_TOKENS: DisplayThemeTokens = {
   colors: {
     userBg: "#eef0f3cc",        // raised surface w/ 80% alpha for subtle blend
-    userWash: "#0969da33",      // accent @ ~20% 鈥?faint scannable wash
+    userWash: "#0969da33",      // accent @ ~20% — faint scannable wash
     border: "#d0d7de",          // standard divider
     scrollbarThumb: "#1f2328",
     scrollbarTrack: "#afb8c1",
     text: "#1f2328",            // primary fg
-    dim: "#656d76",             // secondary fg 鈥?readable but quieter
-    muted: "#afb8c1",           // tertiary fg 鈥?close to surface
+    dim: "#656d76",             // secondary fg — readable but quieter
+    muted: "#afb8c1",           // tertiary fg — close to surface
     accent: "#0969da",          // deep saturated blue (brand)
     accentDim: "#5a7eaf",       // dimmed accent for inactive tabs
     orange: "#bc4c00",
     red: "#cf222e",
-    yellow: "#9a6700",          // olive 鈥?pure yellow is unreadable on white
+    yellow: "#9a6700",          // olive — pure yellow is unreadable on white
     green: "#1a7f37",
     cyan: "#0e7490",
     workingStatus: "#0969da",
@@ -39,7 +39,7 @@ export const LIGHT_TOKENS: DisplayThemeTokens = {
   layout: DARK_TOKENS.layout,
   branding: {
     logoLines: DARK_TOKENS.branding.logoLines,
-    // Single-hue luminance ramp (indigo, bright 鈫?dim, top 鈫?bottom); all stops 鈮?:1 on white.
+    // Single-hue luminance ramp (indigo, bright → dim, top → bottom); all stops ≥3:1 on white.
     logoGradient: ["#6b63ea", "#5d54e7", "#5249e6", "#4f46e5", "#4439c8", "#3a30ad", "#312892"],
     sidebarWordmark: DARK_TOKENS.branding.sidebarWordmark,
     sidebarGradientIndices: DARK_TOKENS.branding.sidebarGradientIndices,
@@ -58,10 +58,10 @@ export const LIGHT_TOKENS: DisplayThemeTokens = {
       function: "#8250df",      // purple-mauve (was dark #d0a0d0)
       type: "#9a6700",          // gold (was dark #e8c468)
       number: "#bc4c00",        // peach/orange (was dark #d08770)
-      comment: "#6e7781",       // slate (was dark #5a5565) 鈥?flipped lightness
-      operator: "#656d76",      // cool gray (was dark #9098a8) 鈥?flipped
+      comment: "#6e7781",       // slate (was dark #5a5565) — flipped lightness
+      operator: "#656d76",      // cool gray (was dark #9098a8) — flipped
       literal: "#0a4f4a",       // teal (was dark #6aa8a0)
-      variable: "#1f2328",      // default text (was dark #b0b8c4) 鈥?flipped
+      variable: "#1f2328",      // default text (was dark #b0b8c4) — flipped
       headingPrimary: "#0a5db8",
       headingSecondary: "#1a7ce0",
       raw: "#6f42c1",           // purple (was dark #b4a0ec)

@@ -10,6 +10,8 @@ export function EmptyState(): JSX.Element {
   const createDraftTab = useSessionStore((s) => s.createDraftTab)
   const [creating, setCreating] = useState(false)
 
+  const logoUrl = '/swarmflow-logo.png'
+
   const start = async (): Promise<void> => {
     if (creating) return
     setCreating(true)
@@ -24,6 +26,11 @@ export function EmptyState(): JSX.Element {
   return (
     <div className="flex h-full min-h-0 items-center justify-center bg-pane px-8">
       <div className="flex flex-col items-center">
+        <img
+          src={logoUrl}
+          alt="SwarmFlow"
+          className="mb-6 h-16 w-16 rounded-xl object-cover"
+        />
         <p className="text-[14.5px] text-ink-3">
           Open a workspace to start a session.
         </p>

@@ -1,4 +1,4 @@
-﻿import {
+import {
   CliRenderer,
   CliRenderEvents,
   type CliRendererConfig,

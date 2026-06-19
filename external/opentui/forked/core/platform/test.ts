@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict"
+import assert from "node:assert/strict"
 import { after, afterEach, before, beforeEach, describe, it, test } from "node:test"
 
 type ThrowMatcher = RegExp | string | Error | ((value: unknown) => boolean) | (new (...args: any[]) => Error)

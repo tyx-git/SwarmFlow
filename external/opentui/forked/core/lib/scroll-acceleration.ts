@@ -1,4 +1,4 @@
-﻿export interface ScrollAcceleration {
+export interface ScrollAcceleration {
   tick(now?: number): number
   reset(): void
 }
@@ -20,7 +20,7 @@ export class LinearScrollAccel implements ScrollAcceleration {
  *
  * For intuition, treat the streak as a continuous timeline and compare it with the
  * exponential distance curve from the pointer-acceleration research post:
- *   d(t) = v鈧€ * ( t + A * (exp(t/蟿) - 1 - t/蟿) ).
+ *   d(t) = v₀ * ( t + A * (exp(t/τ) - 1 - t/τ) ).
  * Small t stays near the base multiplier, medium streaks settle on multiplier1, and
  * sustained bursts reach multiplier2, mirroring how the exponential curve bends up.
  *

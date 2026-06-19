@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared syntax highlighting and styled-text utilities.
  *
  * Extracted from tool-result-artifacts.ts so that both the diff artifact
@@ -16,7 +16,7 @@ import { displayWidthWithNewlines } from "../composer-token-logic.js";
 // Language inference
 // ------------------------------------------------------------------
 
-// Extension 鈫?highlight.js language name.
+// Extension → highlight.js language name.
 export const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   // A
   ".abnf": "abnf", ".ada": "ada", ".adb": "ada", ".adoc": "asciidoc",

@@ -1,4 +1,4 @@
-﻿import { Readable } from "node:stream"
+import { Readable } from "node:stream"
 import { createTestRenderer } from "../testing.js"
 
 const code = parseInt(process.argv[2] ?? "0", 10)

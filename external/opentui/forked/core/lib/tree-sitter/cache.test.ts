@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, beforeAll, afterAll, describe } from "bun:test"
+import { test, expect, beforeEach, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient, addDefaultParsers } from "./client.js"
 import { createServer, type Server } from "node:http"
 import { tmpdir } from "node:os"

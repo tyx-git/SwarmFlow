@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { EditBuffer } from "./edit-buffer.js"
 
 function waitForWorker(worker: Worker) {

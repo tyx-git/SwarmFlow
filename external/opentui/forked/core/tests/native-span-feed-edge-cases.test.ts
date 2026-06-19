@@ -1,4 +1,4 @@
-﻿import { test, expect } from "bun:test"
+import { test, expect } from "bun:test"
 import { NativeSpanFeed } from "../NativeSpanFeed.js"
 import { resolveRenderLib } from "../zig.js"
 

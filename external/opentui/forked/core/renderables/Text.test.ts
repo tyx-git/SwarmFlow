@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextRenderable, type TextOptions } from "./Text.js"
 import { TextNodeRenderable } from "./TextNode.js"
 import { RGBA } from "../lib/RGBA.js"
@@ -40,16 +40,16 @@ describe("TextRenderable Selection", () => {
 
     it("should handle graphemes correctly", async () => {
       const { text } = await createTextRenderable(currentRenderer, {
-        content: "Hello 馃實 World",
+        content: "Hello 🌍 World",
         selectable: true,
       })
 
-      // Select "Hello 馃實" (7 characters: H,e,l,l,o, ,馃實)
+      // Select "Hello 🌍" (7 characters: H,e,l,l,o, ,🌍)
       await currentMouse.drag(text.x, text.y, text.x + 7, text.y)
       await renderOnce()
 
       const selectedText = text.getSelectedText()
-      expect(selectedText).toBe("Hello 馃實")
+      expect(selectedText).toBe("Hello 🌍")
     })
   })
 
@@ -1360,7 +1360,7 @@ describe("TextRenderable Selection", () => {
 
     it("should render text with graphemes/emojis correctly", async () => {
       await createTextRenderable(currentRenderer, {
-        content: "Hello 馃實 World 馃憢\n Test 馃殌 Emoji",
+        content: "Hello 🌍 World 👋\n Test 🚀 Emoji",
         left: 0,
         top: 2,
       })
@@ -1455,7 +1455,7 @@ describe("TextRenderable Selection", () => {
 
     it("should render wrapped text with emojis and graphemes", async () => {
       await createTextRenderable(currentRenderer, {
-        content: "Hello 馃實 World 馃憢 This is a test with emojis 馃殌 that should wrap properly",
+        content: "Hello 🌍 World 👋 This is a test with emojis 🚀 that should wrap properly",
         wrapMode: "char", // Explicitly test character wrapping
         width: 12, // Force wrapping at 12 characters width
         left: 1,
@@ -1482,7 +1482,7 @@ describe("TextRenderable Selection", () => {
     it("should render text with tab indicator correctly", async () => {
       await createTextRenderable(currentRenderer, {
         content: "Line 1\tTabbed\nLine 2\t\tDouble tab",
-        tabIndicator: "鈫?,
+        tabIndicator: "→",
         tabIndicatorColor: RGBA.fromValues(0.5, 0.5, 0.5, 1),
         left: 0,
         top: 0,
@@ -1496,7 +1496,7 @@ describe("TextRenderable Selection", () => {
       resize(60, 10)
 
       const { text } = await createTextRenderable(currentRenderer, {
-        content: "馃専 Unicode test: 銇撱倱銇仭銇笘鐣?Hello World 浣犲ソ涓栫晫",
+        content: "🌟 Unicode test: こんにちは世界 Hello World 你好世界",
         wrapMode: "word",
         width: 35,
         left: 0,
@@ -1512,10 +1512,10 @@ describe("TextRenderable Selection", () => {
       const line0 = lines[0] || ""
       const line1 = lines[1] || ""
 
-      const line0_ends_with_kai = line0.trimEnd().endsWith("鐣?)
-      const line1_starts_with_kai = line1.trimStart().startsWith("鐣?)
+      const line0_ends_with_kai = line0.trimEnd().endsWith("界")
+      const line1_starts_with_kai = line1.trimStart().startsWith("界")
 
-      // "鐣? should not appear on both lines (would indicate duplication bug)
+      // "界" should not appear on both lines (would indicate duplication bug)
       expect(line0_ends_with_kai && line1_starts_with_kai).toBe(false)
     })
 
@@ -1526,7 +1526,7 @@ describe("TextRenderable Selection", () => {
       resize(60, 10)
 
       const { text } = await createTextRenderable(currentRenderer, {
-        content: "馃専 Unicode test: 銇撱倱銇仭銇笘鐣?Hello World 浣犲ソ涓栫晫 鞎堧厱頃橃劯鞖?馃殌 More emoji: 馃帹馃幁馃帾馃幀馃幃馃幆",
+        content: "🌟 Unicode test: こんにちは世界 Hello World 你好世界 안녕하세요 🚀 More emoji: 🎨🎭🎪🎬🎮🎯",
         wrapMode: "word",
         width: 50, // Width that causes wrapping in the demo
         left: 0,
@@ -2307,7 +2307,7 @@ describe("TextRenderable Selection", () => {
       resize(80, 24)
 
       await createTextRenderable(currentRenderer, {
-        content: "gyorskiszolg谩l贸 茅ttermek k枚z眉l. Az贸ta alapjaiban 茅rtelmezt眉k 煤jra a vend茅gl谩t谩st",
+        content: "gyorskiszolgáló éttermek közül. Azóta alapjaiban értelmeztük újra a vendéglátást",
         wrapMode: "word",
         width: 40,
         left: 0,
@@ -2319,7 +2319,7 @@ describe("TextRenderable Selection", () => {
         .map((line) => line.trimEnd())
         .filter((line) => line.length > 0)
 
-      const expectedLines = ["gyorskiszolg谩l贸 茅ttermek k枚z眉l. Az贸ta", "alapjaiban 茅rtelmezt眉k 煤jra a", "vend茅gl谩t谩st"]
+      const expectedLines = ["gyorskiszolgáló éttermek közül. Azóta", "alapjaiban értelmeztük újra a", "vendéglátást"]
 
       expect(lines).toEqual(expectedLines)
     })

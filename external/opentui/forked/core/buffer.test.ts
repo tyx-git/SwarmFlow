@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { OptimizedBuffer } from "./buffer.js"
 import { RGBA } from "./lib/RGBA.js"
 
@@ -28,7 +28,7 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should encode emoji with correct width", () => {
-      const encoded = buffer.encodeUnicode("馃憢")
+      const encoded = buffer.encodeUnicode("👋")
       expect(encoded).not.toBeNull()
       expect(encoded!.data.length).toBe(1)
       expect(encoded!.data[0].width).toBe(2)
@@ -39,7 +39,7 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should encode mixed ASCII and emoji", () => {
-      const encoded = buffer.encodeUnicode("Hi 馃憢 World")
+      const encoded = buffer.encodeUnicode("Hi 👋 World")
       expect(encoded).not.toBeNull()
       expect(encoded!.data.length).toBe(10) // H, i, space, emoji, space, W, o, r, l, d
 
@@ -63,7 +63,7 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should encode monkey emoji frames and draw in a line", () => {
-      const frames = ["馃檲 ", "馃檲 ", "馃檳 ", "馃檴 "]
+      const frames = ["🙈 ", "🙈 ", "🙉 ", "🙊 "]
       const fg = RGBA.fromValues(1, 1, 1, 1)
       const bg = RGBA.fromValues(0, 0, 0, 1)
 
@@ -84,9 +84,9 @@ describe("OptimizedBuffer", () => {
 
       const frameBytes = buffer.getRealCharBytes(false)
       const frameText = new TextDecoder().decode(frameBytes)
-      expect(frameText).toContain("馃檲")
-      expect(frameText).toContain("馃檳")
-      expect(frameText).toContain("馃檴")
+      expect(frameText).toContain("🙈")
+      expect(frameText).toContain("🙉")
+      expect(frameText).toContain("🙊")
     })
   })
 
@@ -122,7 +122,7 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should draw emoji using encoded char", () => {
-      const encoded = buffer.encodeUnicode("馃憢")
+      const encoded = buffer.encodeUnicode("👋")
       expect(encoded).not.toBeNull()
 
       const fg = RGBA.fromValues(1, 1, 1, 1)
@@ -132,7 +132,7 @@ describe("OptimizedBuffer", () => {
 
       const frameBytes = buffer.getRealCharBytes(false)
       const frameText = new TextDecoder().decode(frameBytes)
-      expect(frameText).toContain("馃憢")
+      expect(frameText).toContain("👋")
 
       buffer.freeUnicode(encoded!)
     })
@@ -164,7 +164,7 @@ describe("OptimizedBuffer", () => {
     it("should render emoji text correctly", () => {
       buffer.clear(RGBA.fromValues(0, 0, 0, 1))
 
-      const encoded = buffer.encodeUnicode("Hi 馃憢 馃實")
+      const encoded = buffer.encodeUnicode("Hi 👋 🌍")
       expect(encoded).not.toBeNull()
 
       const fg = RGBA.fromValues(1, 1, 1, 1)
@@ -186,7 +186,7 @@ describe("OptimizedBuffer", () => {
     it("should handle multiline text with unicode", () => {
       buffer.clear(RGBA.fromValues(0, 0, 0, 1))
 
-      const lines = ["Hi 涓栫晫", "馃専 Star"]
+      const lines = ["Hi 世界", "🌟 Star"]
       const fg = RGBA.fromValues(1, 1, 1, 1)
       const bg = RGBA.fromValues(0, 0, 0, 1)
 
@@ -209,7 +209,7 @@ describe("OptimizedBuffer", () => {
     })
 
     it("should respect character widths in positioning", () => {
-      const encoded = buffer.encodeUnicode("A馃憢B")
+      const encoded = buffer.encodeUnicode("A👋B")
       expect(encoded).not.toBeNull()
 
       const fg = RGBA.fromValues(1, 1, 1, 1)
@@ -222,7 +222,7 @@ describe("OptimizedBuffer", () => {
 
       const frameBytes = buffer.getRealCharBytes(false)
       const frameText = new TextDecoder().decode(frameBytes)
-      expect(frameText).toContain("A馃憢B")
+      expect(frameText).toContain("A👋B")
 
       buffer.freeUnicode(encoded!)
     })
@@ -267,10 +267,10 @@ describe("OptimizedBuffer", () => {
         parent.clear(bg)
 
         if (cycle % 2 === 0) {
-          child.drawText("鈺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈺?, 0, 0, fg, bg)
-          child.drawText("鈹?鈼?Select Files 鈻?src/ 鈻?file.ts   鈹?, 0, 1, fg, bg)
-          child.drawText("鈹?鈫戔啌 navigate  鈴?select  esc close  鈹?, 0, 2, fg, bg)
-          child.drawText("鈺扳攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈺?, 0, 3, fg, bg)
+          child.drawText("╭────────────────────────────────────╮", 0, 0, fg, bg)
+          child.drawText("│ ◇ Select Files ▫ src/ ▪ file.ts   │", 0, 1, fg, bg)
+          child.drawText("│ ↑↓ navigate  ⏎ select  esc close  │", 0, 2, fg, bg)
+          child.drawText("╰────────────────────────────────────╯", 0, 3, fg, bg)
         } else {
           child.drawText("  Your Name                              ", 0, 0, fg, bg)
           child.drawText("  John Doe                               ", 0, 1, fg, bg)

@@ -1,4 +1,4 @@
-﻿import type { StyledText } from "./lib/styled-text.js"
+import type { StyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
 import { resolveRenderLib, type LineInfo, type RenderLib, type TextBufferHandle } from "./zig.js"
 import { type WidthMethod, type Highlight } from "./types.js"

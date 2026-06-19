@@ -1,10 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
-
-// =============================================================================
-// SwarmFlow GUI — 会话展示面板
-// =============================================================================
-// 职责：渲染 Logo、主会话条目列表、子会话指示器
-// 注意：不管理滚动框（滚动框由 OpenTuiScreen 的 ScrollViewport 管理）
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
@@ -33,7 +27,7 @@ export function LogoBlock(
 }
 
 /**
- * Pure entry list 鈥?renders logo, sub-session indicator, and conversation entries.
+ * Pure entry list — renders logo, sub-session indicator, and conversation entries.
  * Does NOT own a scrollbox; the parent (OpenTuiScreen) wraps this in a ScrollViewport.
  */
 function PresentationPanelInner(
@@ -64,7 +58,7 @@ function PresentationPanelInner(
       {selectedChildId ? (
         <box flexDirection="column" paddingLeft={2} paddingBottom={1}>
           <text fg={colors.accent} attributes={ATTRS_BOLD} content={`SUB-SESSION ${selectedChildId}`} />
-          <text fg={colors.dim} content="Esc back to primary session 路 Ctrl+C interrupt child turn" />
+          <text fg={colors.dim} content="Esc back to primary session · Ctrl+C interrupt child turn" />
         </box>
       ) : null}
       {items.map((entry) => (

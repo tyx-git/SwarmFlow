@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 import { decodePasteBytes, PasteEvent } from "../../lib/index.js"
@@ -206,9 +206,9 @@ describe("Textarea - Paste Tests", () => {
       editor.focus()
       editor.gotoLine(9999)
 
-      await currentMockInput.pasteBracketedText(" 馃専涓栫晫馃憤")
+      await currentMockInput.pasteBracketedText(" 🌟世界👍")
 
-      expect(editor.plainText).toBe("Hello 馃専涓栫晫馃憤")
+      expect(editor.plainText).toBe("Hello 🌟世界👍")
     })
 
     it("should strip ANSI sequences when inserting pasted text", async () => {

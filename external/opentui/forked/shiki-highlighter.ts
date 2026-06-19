@@ -1,7 +1,7 @@
-﻿/**
- * Shiki-based syntax highlighter 鈥?optional replacement for highlight.js.
+/**
+ * Shiki-based syntax highlighter — optional replacement for highlight.js.
  *
- * Provides VS Code鈥搎uality TextMate grammar highlighting with vivid theme colors.
+ * Provides VS Code–quality TextMate grammar highlighting with vivid theme colors.
  * Uses async initialization (grammar loading) but fully synchronous tokenization
  * after init.
  *
@@ -20,7 +20,7 @@ import type { ThemeMode } from "../display/theme/types.js";
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** Shiki theme names by mode. Catppuccin family 鈥?same author/family across modes. */
+/** Shiki theme names by mode. Catppuccin family — same author/family across modes. */
 export const SHIKI_THEME_DARK = "catppuccin-mocha";
 export const SHIKI_THEME_LIGHT = "catppuccin-latte";
 
@@ -45,13 +45,13 @@ export function setShikiTheme(mode: ThemeMode): void {
 /**
  * Tokenization is the dominant cost in syntax highlighting, and callers
  * (file-modify body, markdown code blocks) re-highlight the *same* line text
- * repeatedly 鈥?every streaming rebuild re-runs the whole visible file through
+ * repeatedly — every streaming rebuild re-runs the whole visible file through
  * `codeToTokens`, even though only the appended tail actually changed. This
  * LRU memoizes `(theme, lang, code) -> raw tokens` so stable lines become
  * cache hits and only genuinely-new text is tokenized.
  *
  * The cache stores *raw* token data (`{ text, color? }`, color as a hex
- * string) 鈥?NOT live `TextChunk`/`RGBA` objects. Every access rebuilds fresh
+ * string) — NOT live `TextChunk`/`RGBA` objects. Every access rebuilds fresh
  * chunks with fresh `RGBA` instances (`chunksFromRawTokens`), so a consumer
  * can never mutate state shared with the cache or with another call. This
  * preserves the pre-cache contract (each call produced brand-new chunks); the
@@ -68,7 +68,7 @@ const highlightCache = new Map<string, RawToken[]>();
 function cacheGet(key: string): RawToken[] | undefined {
   const hit = highlightCache.get(key);
   if (hit === undefined) return undefined;
-  // Refresh recency (Map preserves insertion order 鈫?re-insert moves to tail).
+  // Refresh recency (Map preserves insertion order → re-insert moves to tail).
   highlightCache.delete(key);
   highlightCache.set(key, hit);
   return hit;
@@ -106,7 +106,7 @@ const PRELOAD_LANGS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Language alias map (highlight.js name 鈫?Shiki name)
+// Language alias map (highlight.js name → Shiki name)
 // ---------------------------------------------------------------------------
 
 const LANG_ALIAS: Record<string, string> = {
@@ -127,7 +127,7 @@ function resolveLang(lang: string): string {
 let highlighter: ShikiHighlighter | null = null;
 let initPromise: Promise<void> | null = null;
 
-/** Minimal interface 鈥?we only use codeToTokens + loadLanguage. */
+/** Minimal interface — we only use codeToTokens + loadLanguage. */
 interface ShikiHighlighter {
   codeToTokens: (code: string, options: {
     lang: string;
@@ -146,7 +146,8 @@ interface ShikiHighlighter {
 // ---------------------------------------------------------------------------
 
 /**
- * Initialize the Shiki highlighter singleton.  Safe to call multiple times 鈥? * subsequent calls return the same promise.
+ * Initialize the Shiki highlighter singleton.  Safe to call multiple times —
+ * subsequent calls return the same promise.
  */
 export async function initShikiHighlighter(): Promise<void> {
   if (highlighter) return;
@@ -161,7 +162,7 @@ export async function initShikiHighlighter(): Promise<void> {
       });
       highlighter = h as unknown as ShikiHighlighter;
     } catch (err) {
-      // Swallow 鈥?caller will fall back to hljs.
+      // Swallow — caller will fall back to hljs.
       highlighter = null;
     }
   })();
@@ -205,7 +206,7 @@ export function shikiHighlightToChunks(
 
   const resolved = resolveLang(lang);
 
-  // Only attempt languages we've already loaded (sync path 鈥?no await).
+  // Only attempt languages we've already loaded (sync path — no await).
   const loaded = highlighter.getLoadedLanguages();
   if (!loaded.includes(resolved)) {
     // Fire-and-forget: load for next time.
@@ -225,7 +226,7 @@ export function shikiHighlightToChunks(
       theme: currentShikiTheme,
     });
 
-    // result.tokens is line-based 鈥?each outer entry is a line of tokens
+    // result.tokens is line-based — each outer entry is a line of tokens
     // with line breaks stripped by Shiki.  Flatten into a single raw-token
     // array, inserting a "\n" token between lines to preserve line breaks.
     const tokens: RawToken[] = [];

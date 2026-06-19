@@ -1,54 +1,38 @@
-﻿/** @jsxImportSource @opentui/react */
-
-// =============================================================================
-// SwarmFlow GUI — OpenTUI React 主应用
-// =============================================================================
-// 职责：React 主组件，协调所有 UI 状态、事件处理、命令分发
-// 架构：
-//   OpenTuiApp（根组件）
-//   ├── 状态层：phase（idle/Working/Asking/closing）、tabs、theme、draftValue 等
-//   ├── 事件层：session 事件轮询、进度回调、OAuth 回调
-//   ├── 渲染层：OpenTuiScreen（主界面）、各 Overlay（command/checkbox/prompt 等）
-//   └── 集成层：session.turn()、commandRegistry、store 持久化
-//
-// 数据流：
-//   用户输入 → handleSubmit → session.turn() → 进度事件 → handleProgressRef
-//   子进程事件 → session → usePresentationEntries → presentationEntries → OpenTuiScreen
-//   命令输入 → buildCommandContext() → command.handler() → session/UI 状态更新
+/** @jsxImportSource @opentui/react */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { clipboard } from "../src/platform/index.js";
+import { clipboard } from "../../src/platform/index.js";
 
 import type {
   CommandRegistry,
   CommandContext,
   CommandOption,
   Session as TuiSession,
-} from "../src/ui/contracts.js";
-import type { SessionStore } from "../src/persistence.js";
-import type { ChildSessionSnapshot } from "../src/session-tree-types.js";
-import { saveGlobalSettingsPatch, saveLog } from "../src/persistence.js";
-import { projectQueuedInputs } from "../src/log-projection.js";
-import { isCommandExitSignal } from "../src/commands.js";
-import { ProgressReporter, type ProgressEvent } from "../src/progress.js";
-import { scanCandidates } from "../src/file-attach.js";
-import { classifyPastedText, TurnPasteCounter } from "../src/ui/input/paste.js";
-import { readClipboardImage } from "../src/clipboard-image.js";
-import { processImage, type ProcessedImage } from "../src/image-compress.js";
-import { getUpdateState, triggerRelaunch } from "../src/update-check.js";
-import type { InlineImageInput } from "../src/ui/contracts.js";
+} from "../../src/ui/contracts.js";
+import type { SessionStore } from "../../src/config/persistence.js";
+import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
+import { saveGlobalSettingsPatch, saveLog } from "../../src/config/persistence.js";
+import { projectQueuedInputs } from "../../src/context/log-projection.js";
+import { isCommandExitSignal } from "../../src/commands/commands.js";
+import { ProgressReporter, type ProgressEvent } from "../../src/lib/progress.js";
+import { scanCandidates } from "../../src/lib/file-attach.js";
+import { classifyPastedText, TurnPasteCounter } from "../../src/ui/input/paste.js";
+import { readClipboardImage } from "../../src/lib/clipboard-image.js";
+import { processImage, type ProcessedImage } from "../../src/lib/image-compress.js";
+import { getUpdateState, triggerRelaunch } from "../../src/lifecycle/update-check.js";
+import type { InlineImageInput } from "../../src/ui/contracts.js";
 import type {
   PendingAskUi,
   AgentQuestionAnswer,
   AgentQuestionDecision,
   AgentQuestionItem,
-} from "../src/ask.js";
+} from "../../src/ask.js";
 import type {
   PromptChoice,
   PromptSecretRequest,
   PromptSelectRequest,
-} from "../src/provider-credential-flow.js";
+} from "../../src/providers/credential-flow.js";
 import {
   acceptCommandPickerSelection,
   createCommandPicker,
@@ -63,7 +47,7 @@ import {
   toggleCommandPickerNoteEditing,
   type CommandPickerResult,
   type CommandPickerState,
-} from "../src/ui/command-picker.js";
+} from "../../src/ui/command-picker.js";
 import {
   createCheckboxPicker,
   isCheckboxPickerActive,
@@ -72,7 +56,7 @@ import {
   submitCheckboxPicker,
   toggleCheckboxItem,
   type CheckboxPickerState,
-} from "../src/ui/checkbox-picker.js";
+} from "../../src/ui/checkbox-picker.js";
 import {
   type InputRenderable,
   type KeyBinding,
@@ -83,20 +67,20 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import "./forked/patch-opentui-markdown.js";
 import { applyMarkdownTheme } from "./forked/patch-opentui-markdown.js";
 import {
-  getSwarmflowAssistantRenderer,
-  isSwarmflowMarkdownPatchDisabled,
-  isSwarmflowOpenTuiDiagEnabled,
-  writeSwarmflowOpenTuiDiag,
+  getFermiAssistantRenderer,
+  isFermiMarkdownPatchDisabled,
+  isFermiOpenTuiDiagEnabled,
+  writeFermiOpenTuiDiag,
 } from "./forked/core/lib/diagnostic.js";
 import { usePresentationEntries } from "./presentation/use-presentation.js";
 import { useTurnTimer } from "./presentation/use-turn-timer.js";
 import type { TabState } from "./sidebar/sidebar-tabs.js";
-import { getCurrentModelDescriptor } from "../src/model-presentation.js";
+import { getCurrentModelDescriptor } from "../../src/models/presentation.js";
 import {
   UsagePoller,
   formatUsageLine,
   type UsageSnapshot,
-} from "../src/provider-usage.js";
+} from "../../src/providers/usage.js";
 import {
   readOAuthAccessToken,
   hasOAuthTokens,
@@ -106,13 +90,13 @@ import {
   deviceCodeLoginHeadless,
   type OAuthProgress,
   type OAuthTokens,
-} from "../src/auth/openai-oauth.js";
+} from "../../src/auth/openai-oauth.js";
 import {
   deviceCodeLoginHeadless as copilotDeviceCodeLoginHeadless,
   saveGitHubTokens,
   hasGitHubTokens,
   type GitHubOAuthTokens,
-} from "../src/auth/github-copilot-oauth.js";
+} from "../../src/auth/github-copilot-oauth.js";
 import {
   buildFileReferenceLabel,
   createComposerTokenVisuals,
@@ -165,7 +149,7 @@ export interface OpenTuiAppProps {
   /**
    * Terminal's default foreground (OSC 10 query at startup). Used as body
    * text colour when the user is in auto mode so the TUI matches their
-   * terminal theme exactly. Null on detection failure 鈫?fall back to the
+   * terminal theme exactly. Null on detection failure → fall back to the
    * token-table colour.
    */
   terminalDefaultFg?: string | null;
@@ -189,7 +173,7 @@ const GOODBYE_MESSAGES = [
   "Later, gator!",
 ] as const;
 
-const ASSISTANT_RENDERER_MODE = getSwarmflowAssistantRenderer();
+const ASSISTANT_RENDERER_MODE = getFermiAssistantRenderer();
 
 const DISABLED_TEXTAREA_ACTION = "__disabled__" as unknown as KeyBinding["action"];
 
@@ -339,8 +323,8 @@ export function OpenTuiApp({
   const [copyOnSelect, setCopyOnSelect] = useState<boolean>(initialCopyOnSelect);
   const theme = useMemo<DisplayTheme>(() => {
     // Only apply the terminal-fg override in auto mode. When the user pins a
-    // mode (SWARMFLOW_THEME=dark|light or /theme), assume they want the canonical
-    // palette 鈥?otherwise a dark-pinned UI on a light terminal would render
+    // mode (FERMI_THEME=dark|light or /theme), assume they want the canonical
+    // palette — otherwise a dark-pinned UI on a light terminal would render
     // unreadable dark text on a dark bg.
     const override: DeepPartial<DisplayThemeTokens> | undefined =
       themeModePref === "auto" && terminalFg
@@ -354,7 +338,7 @@ export function OpenTuiApp({
     if (themeModePref !== "auto") return;
     const handler = (mode: ThemeMode | null) => {
       if (mode === "light" || mode === "dark") setThemeMode(mode);
-      // Re-query the terminal palette on every mode flip 鈥?the new theme
+      // Re-query the terminal palette on every mode flip — the new theme
       // almost certainly changed foreground too. The renderer caches the
       // palette across calls (see Renderer.getPalette), so invalidate the
       // cache first or we get back the old terminal's foreground and the
@@ -369,7 +353,6 @@ export function OpenTuiApp({
       renderer.off("theme_mode", handler);
     };
   }, [renderer, themeModePref]);
-  // ── 核心状态：phase / processing / tokens / child sessions ─────────────────
   const [processing, _setProcessing] = useState(false);
   const processingRef = useRef(false);
   const setProcessing = useCallback((v: boolean) => {
@@ -384,7 +367,7 @@ export function OpenTuiApp({
     setContextTokens(inputTokens);
     setCacheReadTokens(cacheTokens ?? 0);
   }, []);
-  // Usage snapshot for Codex or Copilot 鈥?only one is active at a time, based
+  // Usage snapshot for Codex or Copilot — only one is active at a time, based
   // on the current model provider. Hidden for all other providers.
   const [usageSnapshot, setUsageSnapshot] = useState<UsageSnapshot | null>(null);
   const usagePollerRef = useRef<UsagePoller | null>(null);
@@ -424,7 +407,7 @@ export function OpenTuiApp({
     }
   }, [planCheckpoints.length]);
 
-  // Frozen child view 鈥?protects display when viewed child becomes archived
+  // Frozen child view — protects display when viewed child becomes archived
   const [frozenChildView, setFrozenChildView] = useState<{
     snapshot: ChildSessionSnapshot;
     entries: readonly import("./presentation/types.js").PresentationEntry[];
@@ -432,13 +415,13 @@ export function OpenTuiApp({
 
   // Tab state for sidebar
   const [tabs, setTabs] = useState<TabState[]>([
-    { id: "main", label: "Main Session", icon: "鈼?, closeable: false, kind: "main" },
+    { id: "main", label: "Main Session", icon: "●", closeable: false, kind: "main" },
   ]);
   const [activeTabId, setActiveTabId] = useState("main");
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [sidebarMode, setSidebarMode] = useState<"open" | "close" | "auto">("close");
 
-  // Sync child session tabs 鈥?child tabs are now temporary (created on enter, removed on exit).
+  // Sync child session tabs — child tabs are now temporary (created on enter, removed on exit).
   // Only clean up tabs for children that no longer exist and aren't frozen.
   useEffect(() => {
     setTabs((prev) => {
@@ -454,7 +437,7 @@ export function OpenTuiApp({
   }, [childSessions, selectedChildId, frozenChildView]);
 
   // Derive selectedChildId from active tab
-  // Tab id format is "child:{agentId}" 鈥?strip prefix to get the raw session id
+  // Tab id format is "child:{agentId}" — strip prefix to get the raw session id
   useEffect(() => {
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (activeTab?.kind === "child") {
@@ -502,7 +485,7 @@ export function OpenTuiApp({
       return [...prev, {
         id: tabId,
         label,
-        icon: "鉂?,
+        icon: "❯",
         closeable: true,
         kind: "detail-shell" as const,
         shellId,
@@ -512,12 +495,12 @@ export function OpenTuiApp({
   }, []);
 
   const openDetailTab = useCallback((entry: import("./presentation/types.js").PresentationEntry) => {
-    // Thinking entries expand/collapse inline 鈥?no detail tab needed.
+    // Thinking entries expand/collapse inline — no detail tab needed.
     if (entry.kind === "thinking") return;
 
     // bash_background / timed-out bash entries route to the live shell tab
     // when the shell is still tracked by the MAIN session (child sessions
-    // have their own shell managers 鈥?ids would collide).
+    // have their own shell managers — ids would collide).
     if (!selectedChildId) {
       const resultText = entry.toolResultFullText ?? "";
       const match = resultText.match(/background shell '([^']+)'/);
@@ -536,7 +519,7 @@ export function OpenTuiApp({
       return [...prev, {
         id: tabId,
         label,
-        icon: "鈼?,
+        icon: "◇",
         closeable: true,
         kind,
         sourceSessionKey: sourceKey,
@@ -571,7 +554,7 @@ export function OpenTuiApp({
   const [askInputValue, setAskInputValue] = useState("");
   const [optionNotes, setOptionNotes] = useState<Map<string, string>>(new Map());
   const [draftValue, setDraftValue] = useState("");
-  // inputVisibleLines removed 鈥?textarea self-drives height via Yoga measure
+  // inputVisibleLines removed — textarea self-drives height via Yoga measure
   const [commandOverlay, setCommandOverlay] = useState<CommandOverlayState>(EMPTY_COMMAND_OVERLAY);
   const [commandPicker, setCommandPicker] = useState<CommandPickerState | null>(null);
   const [checkboxPicker, setCheckboxPicker] = useState<CheckboxPickerState | null>(null);
@@ -583,7 +566,7 @@ export function OpenTuiApp({
 
   // Separate scroll refs so the main conversation's ScrollViewport can stay
   // mounted (and preserve its position) while a detail tab is active.
-  // `activeScrollRef` is what keyboard handlers consult 鈥?it follows the
+  // `activeScrollRef` is what keyboard handlers consult — it follows the
   // currently visible scrollbox.
   const mainScrollRef = useRef<ScrollBoxRenderable>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
@@ -599,7 +582,7 @@ export function OpenTuiApp({
   const suppressComposerSyncRef = useRef(false);
   // Prompt-history position and live-draft preservation live in
   // input/prompt-history.ts. The app-level key handler only decides whether an
-  // 鈫?鈫?key is at the absolute composer boundary or should be normal cursor
+  // ↑/↓ key is at the absolute composer boundary or should be normal cursor
   // movement within the current recalled/draft text.
   const pasteCounterRef = useRef(new TurnPasteCounter());
   const imageCounterRef = useRef(0);
@@ -627,8 +610,10 @@ export function OpenTuiApp({
     applyMarkdownTheme(theme);
   }, [theme]);
 
-  // ── Usage poller 生命周期（Codex + Copilot）─────────────────────────────────
-  // 根据当前 provider 启动/停止。provider 切换时必须重建（不同的 fetchFn + token）。
+  // -- Usage poller lifecycle (Codex + Copilot) --
+  // Start/stop based on current provider. The poller survives model switches
+  // within the same session, but must be torn down and rebuilt when the user
+  // switches between Codex and Copilot (different fetch fn + different token).
   useEffect(() => {
     const provider = session.primaryAgent?.modelConfig?.provider;
 
@@ -642,13 +627,13 @@ export function OpenTuiApp({
     };
 
     // Copilot moved to usage-based billing (AI Credits) with no per-account
-    // quota endpoint, so there's no usage indicator for it 鈥?only Codex.
+    // quota endpoint, so there's no usage indicator for it — only Codex.
     if (provider !== "openai-codex") {
       teardown();
       return;
     }
 
-    // If the provider changed (e.g. codex 鈫?copilot), tear down the old poller
+    // If the provider changed (e.g. codex → copilot), tear down the old poller
     // because it has the wrong fetchFn baked in. If it's the same provider,
     // just refresh the token and reuse.
     if (
@@ -965,17 +950,17 @@ export function OpenTuiApp({
   }, [selectedChildId, session, updateContextTokenState]);
 
   useEffect(() => {
-    if (!isSwarmflowOpenTuiDiagEnabled()) return;
+    if (!isFermiOpenTuiDiagEnabled()) return;
     const assistantPEs = presentationEntries.filter((pe) => pe.kind === "assistant");
     const lastAssistant = assistantPEs.length > 0 ? assistantPEs[assistantPEs.length - 1] : null;
-    writeSwarmflowOpenTuiDiag("app.entries", {
+    writeFermiOpenTuiDiag("app.entries", {
       totalEntries: presentationEntries.length,
       assistantEntries: assistantPEs.length,
       lastAssistantLength: lastAssistant?.assistantText?.length ?? 0,
       processing,
       markdownMode,
       assistantRenderer: ASSISTANT_RENDERER_MODE,
-      markdownPatchDisabled: isSwarmflowMarkdownPatchDisabled(),
+      markdownPatchDisabled: isFermiMarkdownPatchDisabled(),
       activeAgents: childSessions.length,
     });
   }, [childSessions.length, presentationEntries, markdownMode, processing]);
@@ -1029,7 +1014,7 @@ export function OpenTuiApp({
     };
   }, [session, verbose]);
 
-  // Stable ref for the textarea's expected character width 鈥?used by syncComposerState
+  // Stable ref for the textarea's expected character width — used by syncComposerState
   // when getComputedWidth() returns 0 (layout not yet computed inside scrollbox).
 
   const syncComposerState = useCallback(() => {
@@ -1169,11 +1154,11 @@ export function OpenTuiApp({
         } else {
           saveGitHubTokens(tokens as GitHubOAuthTokens);
           // Prime the Copilot models cache so picker visibility is accurate
-          // on first open. Best-effort 鈥?failures just leave the picker
+          // on first open. Best-effort — failures just leave the picker
           // optimistic until the next refresh cycle.
           try {
             const { refreshCopilotModelsCache } = await import(
-              "../src/providers/copilot-models-cache.js"
+              "../../src/providers/copilot-models-cache.js"
             );
             await refreshCopilotModelsCache();
           } catch {
@@ -1241,7 +1226,7 @@ export function OpenTuiApp({
     });
   }, [startOAuthFlow]);
 
-  // ── 启动时 OAuth 检查：token 缺失/过期时提示登录 ──────────────────────────────
+  // -- Startup OAuth check: prompt login if default model's token is missing/expired --
   const startupOAuthCheckedRef = useRef(false);
   useEffect(() => {
     if (startupOAuthCheckedRef.current) return;
@@ -1253,7 +1238,7 @@ export function OpenTuiApp({
       startupOAuthCheckedRef.current = true;
       queueMicrotask(() => { requestOAuthLogin("codex"); });
     } else if (provider === "copilot") {
-      // GitHub App user token is non-expiring 鈥?only check presence.
+      // GitHub App user token is non-expiring — only check presence.
       if (hasGitHubTokens()) return;
       startupOAuthCheckedRef.current = true;
       queueMicrotask(() => { requestOAuthLogin("copilot"); });
@@ -1304,7 +1289,7 @@ export function OpenTuiApp({
     };
   }, [copyOnSelect, renderer, flashCopyToast, showHint]);
 
-  // ── 后台 Shell：停止操作 + 选择器 ────────────────────────────────────────────
+  // ── Background shells: stop action + picker ─────────────────────────
 
   const stopShellFromUi = useCallback((shellId: string) => {
     void (async () => {
@@ -1316,14 +1301,14 @@ export function OpenTuiApp({
   const buildShellPickerOptions = useCallback((): PromptChoice[] => {
     const snapshots = (session.getBackgroundShellSnapshots?.() ?? []) as ShellSnapshotUi[];
     return snapshots.map((snapshot) => {
-      const dot = snapshot.status === "running" ? "鈼? : "鈼?;
+      const dot = snapshot.status === "running" ? "●" : "○";
       const tail = snapshot.recentOutput[snapshot.recentOutput.length - 1] ?? "";
       const statusBits = [snapshot.status, formatShellElapsed(snapshot.elapsedSeconds)];
       if (snapshot.exitCode !== null) statusBits.push(`exit ${snapshot.exitCode}`);
       return {
         label: `${dot} [${snapshot.id}] ${snapshot.command.slice(0, 56)}`,
         value: snapshot.id,
-        description: tail ? `${statusBits.join(" 路 ")} 路 ${tail}` : statusBits.join(" 路 "),
+        description: tail ? `${statusBits.join(" · ")} · ${tail}` : statusBits.join(" · "),
       };
     });
   }, [session]);
@@ -1349,7 +1334,7 @@ export function OpenTuiApp({
       message: "Background shells",
       options,
       selected: 0,
-      footerHint: "x stop 路 enter open 路 esc close",
+      footerHint: "x stop · enter open · esc close",
       actionKeys: {
         x: (option) => {
           void (async () => {
@@ -1373,7 +1358,7 @@ export function OpenTuiApp({
   }, [buildShellPickerOptions, openShellDetailTab, resolvePromptSecret, resolvePromptSelect, session, showHint]);
 
   // Live data for the active detail-shell tab (faster than the global 250ms
-  // sync 鈥?log tails grow continuously while a shell runs).
+  // sync — log tails grow continuously while a shell runs).
   useEffect(() => {
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (activeTab?.kind !== "detail-shell" || !activeTab.shellId) {
@@ -1394,7 +1379,7 @@ export function OpenTuiApp({
     try {
       // Dynamic import so the TUI module doesn't hard-depend on
       // platform internals (opentui-src is outside the src/ TS scope).
-      const { shell } = require("../src/platform/index.js") as {
+      const { shell } = require("../../src/platform/index.js") as {
         shell: { kind: string };
       };
       if (shell.kind === "pwsh") {
@@ -1686,8 +1671,6 @@ export function OpenTuiApp({
     };
   }, []);
 
-  // ── buildCommandContext: 命令执行上下文 ─────────────────────────────────────
-  // 提供给命令 handler 的 API：session、store、commandRegistry、UI 操作回调等
   const buildCommandContext = useCallback((): CommandContext => {
     return {
       session,
@@ -1920,14 +1903,17 @@ export function OpenTuiApp({
     return serializeComposerText(composer, ensureComposerTokenType(composer));
   }, [draftValue]);
 
-  // ── 命令分类：UI-only / Session-config ──────────────────────────────────────
-  // UI_ONLY: 即使在 processing 时也拦截（如 /agents /sidebar /copy /new）
-  // SESSION_CONFIG: 修改运行时配置，processing 时仅提示不排队（/mcp /skills）
+  // Commands that run regardless of streaming state. /copy is here so its
+  // "wait until the agent finishes" hint actually fires (otherwise the
+  // default path would queue "/copy" as a user message to the LLM).
   const UI_ONLY_COMMANDS = new Set(["/agents", "/raw", "/sidebar", "/copy", "/new"]);
+  // Commands that mutate session runtime config (skills / MCP). They run as
+  // ordinary commands when idle — the Session serializes the actual reload
+  // against turns via its turn lock, so they need no UI "Working" state. While
+  // a turn is processing we only intercept them with a hint so they are not
+  // queued to the LLM as a user message.
   const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills"]);
 
-  // ── handleSubmit: 核心输入处理 ──────────────────────────────────────────────
-  // 流程：UI-only 命令 → pendingAsk 审批 → 命令选择器 → session.turn()
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;
@@ -1978,7 +1964,7 @@ export function OpenTuiApp({
       }
     }
 
-    // Use ref to avoid stale closure 鈥?OpenTUI's custom renderer may not
+    // Use ref to avoid stale closure — OpenTUI's custom renderer may not
     // re-create useCallback closures on every state change.
     const isProcessing = processingRef.current;
 
@@ -1996,7 +1982,7 @@ export function OpenTuiApp({
         queuedInputsRef.current = projectQueuedInputs([...(session.log ?? [])]);
         if (decision && decision.accepted === false) {
           showHint(decision.reason === "compact_in_progress"
-            ? "Compacting context 鈥?try again in a moment"
+            ? "Compacting context — try again in a moment"
             : "A message is already queued");
           return;
         }
@@ -2520,7 +2506,7 @@ export function OpenTuiApp({
         event.stopPropagation();
         return;
       }
-      // Per-option action keys (e.g. x 鈫?stop shell in the shells picker).
+      // Per-option action keys (e.g. x → stop shell in the shells picker).
       const actionHandler = !event.ctrl && !event.meta
         ? promptSelect.actionKeys?.[event.name]
         : undefined;
@@ -2756,7 +2742,7 @@ export function OpenTuiApp({
           setCommandPicker((current) => current ? { ...toggleCommandPickerNoteEditing(current), note: "" } : current);
           return;
         }
-        // All other keys go to the note input 鈥?don't intercept
+        // All other keys go to the note input — don't intercept
         return;
       }
 
@@ -2768,7 +2754,7 @@ export function OpenTuiApp({
           // shipped (v0.3.7): the old "exit mode, then re-accept in a
           // microtask" round trip invoked the PREVIOUS render's accept
           // callback, whose closure still saw customInputMode=true and an
-          // empty note 鈥?accept hit the customInput option again, re-entered
+          // empty note — accept hit the customInput option again, re-entered
           // input mode, and cleared the field. Enter appeared to do nothing.
           const level = getCommandPickerLevel(commandPicker);
           const option = level.options[level.selected];
@@ -2793,7 +2779,7 @@ export function OpenTuiApp({
           setCommandPicker((current) => current ? exitCommandPickerCustomInput(current) : current);
           return;
         }
-        // All other keys go to the custom input 鈥?don't intercept
+        // All other keys go to the custom input — don't intercept
         return;
       }
 
@@ -2930,7 +2916,7 @@ export function OpenTuiApp({
     // to its own text-paste and consumes the keypress before it reaches
     // the app, leaving image paste otherwise unreachable there; Ctrl+Y
     // is not a Windows Terminal default binding and is unused elsewhere
-    // in swarmflow, so it reaches this handler on every platform.
+    // in Fermi, so it reaches this handler on every platform.
     if ((event.name === "v" || event.name === "y") && event.ctrl && !event.meta && !event.option && !event.super) {
       event.preventDefault();
       event.stopPropagation();
@@ -2971,7 +2957,7 @@ export function OpenTuiApp({
             syncComposerState();
           }
           const sizeMB = (processed.sizeBytes / (1024 * 1024)).toFixed(1);
-          showHint(`Image pasted (${processed.width}脳${processed.height}, ${sizeMB} MB)`);
+          showHint(`Image pasted (${processed.width}×${processed.height}, ${sizeMB} MB)`);
         } catch (err) {
           showHint(`Image paste failed: ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -3021,7 +3007,7 @@ export function OpenTuiApp({
           return;
         }
       }
-      // Not a running agent (or not a child tab at all) 鈥?close tab, jump to adjacent
+      // Not a running agent (or not a child tab at all) — close tab, jump to adjacent
       const currentIdx = tabs.findIndex((t) => t.id === activeTabId);
       const currentTab = tabs[currentIdx];
       if (currentTab?.closeable) {
@@ -3055,7 +3041,7 @@ export function OpenTuiApp({
             setProcessing(false);
             setPhase("idle");
           } else {
-            // Only a child was killed; root turn resumes 鈥?stay in working state.
+            // Only a child was killed; root turn resumes — stay in working state.
             setPhase("Working");
           }
           return true;
@@ -3076,7 +3062,7 @@ export function OpenTuiApp({
       return true;
     };
 
-    // Esc / Ctrl+C on main page: close overlays 鈫?deny+abort 鈫?idle double-tap
+    // Esc / Ctrl+C on main page: close overlays → deny+abort → idle double-tap
     if ((event.name === "escape" || (event.name === "c" && event.ctrl)) && activeTabId === "main") {
       event.preventDefault();
       event.stopPropagation();
@@ -3097,13 +3083,13 @@ export function OpenTuiApp({
         return;
       }
 
-      // 2. Processing or pending ask 鈫?interrupt
+      // 2. Processing or pending ask → interrupt
       if (processingRef.current || pendingAsk) {
         performInterrupt();
         return;
       }
 
-      // 3. Idle double-tap: Esc 鈫?/rewind, Ctrl+C 鈫?exit
+      // 3. Idle double-tap: Esc → /rewind, Ctrl+C → exit
       if (event.name === "escape") {
         const now = Date.now();
         if (now - lastEscRef.current < DOUBLE_ESC_WINDOW_MS) {
@@ -3195,8 +3181,8 @@ export function OpenTuiApp({
       return;
     }
 
-    // Prompt history: 鈫?at the very start, 鈫?at the very end. Multi-line cursor
-    // movement still wins via the gotoVisualLineHome/End branches below 鈥?they
+    // Prompt history: ↑ at the very start, ↓ at the very end. Multi-line cursor
+    // movement still wins via the gotoVisualLineHome/End branches below — they
     // run when cursor isn't yet at the absolute boundary.
     if (
       event.name === "up" &&
@@ -3284,7 +3270,7 @@ export function OpenTuiApp({
 
     // The composer now lives in a fixed footer outside the scrollbox, so the
     // user can always see what they're typing. We no longer force-scroll the
-    // transcript to bottom on every keystroke 鈥?that would yank them away
+    // transcript to bottom on every keystroke — that would yank them away
     // from whatever history they were reading.
 
     // Force composer state sync after the key is processed by the textarea.
@@ -3311,7 +3297,7 @@ export function OpenTuiApp({
     return `(${thinkingLevel})`;                                      // low/medium/high/xhigh/max
   })();
 
-  // Agent counts for indicator 鈥?all 3 states
+  // Agent counts for indicator — all 3 states
   const runningAgentCount = childSessions.filter((s) => s.lifecycle === "running" || s.lifecycle === "blocked").length;
   const idleAgentCount = childSessions.filter((s) => s.lifecycle === "idle").length;
   const archivedAgentCount = childSessions.filter((s) => s.lifecycle === "archived").length;
@@ -3322,7 +3308,7 @@ export function OpenTuiApp({
     const tabId = `child:${agentId}`;
     setTabs((prev) => {
       if (prev.some((t) => t.id === tabId)) return prev;
-      return [...prev, { id: tabId, label: agentId, icon: "鈼?, closeable: true, kind: "child" as const }];
+      return [...prev, { id: tabId, label: agentId, icon: "◎", closeable: true, kind: "child" as const }];
     });
     setActiveTabId(tabId);
   }, []);
@@ -3343,8 +3329,8 @@ export function OpenTuiApp({
   const effectiveContextTokens = childSnapshot ? childSnapshot.inputTokens : contextTokens;
   const effectiveContextLimit = childSnapshot ? childSnapshot.contextBudget : session.contextBudget;
 
-  // Usage panel data is computed off a deferred tick so the "Calculating鈥?
-  // frame paints before the (potentially long) log scan runs 鈥?otherwise a big
+  // Usage panel data is computed off a deferred tick so the "Calculating…"
+  // frame paints before the (potentially long) log scan runs — otherwise a big
   // conversation would freeze the panel's first render.
   useEffect(() => {
     if (!usagePanel) {

@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { stringWidth } from "../../platform/runtime.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
@@ -97,7 +97,7 @@ describe("Textarea - Buffer Tests", () => {
 
     it("should handle Unicode characters with getTextRangeByCoords", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "Hello 馃専 World",
+        initialValue: "Hello 🌟 World",
         width: 40,
         height: 10,
       })
@@ -106,7 +106,7 @@ describe("Textarea - Buffer Tests", () => {
       expect(range1).toBe("Hello ")
 
       const range2 = editor.getTextRangeByCoords(0, 6, 0, 8)
-      expect(range2).toBe("馃専")
+      expect(range2).toBe("🌟")
 
       const range3 = editor.getTextRangeByCoords(0, 8, 0, 14)
       expect(range3).toBe(" World")
@@ -114,7 +114,7 @@ describe("Textarea - Buffer Tests", () => {
 
     it("should handle CJK characters with getTextRangeByCoords", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "Hello 涓栫晫",
+        initialValue: "Hello 世界",
         width: 40,
         height: 10,
       })
@@ -123,7 +123,7 @@ describe("Textarea - Buffer Tests", () => {
       expect(range1).toBe("Hello ")
 
       const range2 = editor.getTextRangeByCoords(0, 6, 0, 10)
-      expect(range2).toBe("涓栫晫")
+      expect(range2).toBe("世界")
     })
 
     it("should get text range by coords after editing operations", async () => {
@@ -219,7 +219,7 @@ describe("Textarea - Buffer Tests", () => {
 
     it("should handle Unicode characters in ranges", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "Hello 馃専 World",
+        initialValue: "Hello 🌟 World",
         width: 40,
         height: 10,
       })
@@ -228,7 +228,7 @@ describe("Textarea - Buffer Tests", () => {
       expect(range1).toBe("Hello ")
 
       const range2 = editor.getTextRange(6, 8)
-      expect(range2).toBe("馃専")
+      expect(range2).toBe("🌟")
 
       const range3 = editor.getTextRange(8, 14)
       expect(range3).toBe(" World")
@@ -236,7 +236,7 @@ describe("Textarea - Buffer Tests", () => {
 
     it("should handle CJK characters in ranges", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
-        initialValue: "Hello 涓栫晫",
+        initialValue: "Hello 世界",
         width: 40,
         height: 10,
       })
@@ -245,7 +245,7 @@ describe("Textarea - Buffer Tests", () => {
       expect(range1).toBe("Hello ")
 
       const range2 = editor.getTextRange(6, 10)
-      expect(range2).toBe("涓栫晫")
+      expect(range2).toBe("世界")
     })
 
     it("should get text range after editing operations", async () => {

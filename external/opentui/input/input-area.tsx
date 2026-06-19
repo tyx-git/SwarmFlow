@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
@@ -70,7 +70,7 @@ interface InputAreaProps {
   todoPanelOpen?: boolean;
   /** Toggle the todo panel. */
   onTodoClick?: () => void;
-  /** Number of RUNNING background shells (async only 鈥?sync bash never shows here). */
+  /** Number of RUNNING background shells (async only — sync bash never shows here). */
   shellRunningCount?: number;
   /** Open the shells picker. */
   onShellsClick?: () => void;
@@ -92,7 +92,7 @@ function getPhaseColor(phase: ActivityPhase, colors: ConversationPalette): strin
 
 /**
  * Decide whether the usage indicator fits on the bottom row alongside cwd
- * and context. `hint` is NOT reserved 鈥?it has flexShrink={1} + truncate,
+ * and context. `hint` is NOT reserved — it has flexShrink={1} + truncate,
  * so it collapses to whatever space is left. If the fixed-shrink parts
  * (cwd + usage + context + separators) fit inside contentWidth, we show
  * the usage indicator; otherwise it's hidden entirely.
@@ -104,7 +104,7 @@ function shouldShowUsage(
   contextLen: number,
 ): boolean {
   const inner = contentWidth - 2; // paddingLeft=1 + paddingRight=1
-  const fixedWidth = cwdLen + usageLen + contextLen + 4; // "  " 脳 2 separators
+  const fixedWidth = cwdLen + usageLen + contextLen + 4; // "  " × 2 separators
   return inner >= fixedWidth;
 }
 
@@ -155,9 +155,9 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const placeholder = pendingAsk
     ? "ask pending..."
     : selectedChildId
-      ? "Esc/^C close or interrupt 路 Opt+鈫愨啋 switch tabs 路 Opt+鈫?main"
+      ? "Esc/^C close or interrupt · Opt+←→ switch tabs · Opt+↑ main"
       : hasQueuedUserInput
-        ? "鈫?to edit the queued message"
+        ? "↑ to edit the queued message"
         : "message or /command";
 
   const focused = phase !== "closing" && !pendingAsk && !commandPicker && !checkboxPicker && !promptSelect && !promptSecret && !selectedChildId;
@@ -259,7 +259,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
 
       {/* Input box with round border.
           paddingRight reserves one cell for the cursor's "next position"
-          past the last character 鈥?without it, long lines push the cursor
+          past the last character — without it, long lines push the cursor
           onto the right border before the textarea wraps. */}
       <box
         flexDirection="row"
@@ -270,7 +270,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
         borderColor={colors.dim}
         paddingRight={1}
       >
-        <text fg="#d4d4d4" attributes={ATTRS_BOLD} content="鉂?" flexShrink={0} />
+        <text fg="#d4d4d4" attributes={ATTRS_BOLD} content="❯ " flexShrink={0} />
         <textarea
           ref={(node: any) => {
             (inputRef as any).current = node;

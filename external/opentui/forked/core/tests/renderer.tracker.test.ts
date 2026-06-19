@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeEach, afterEach } from "bun:test"
+import { test, expect, beforeEach, afterEach } from "bun:test"
 import { createCliRenderer } from "../renderer.js"
 import { createTestStdin, createTestStdout } from "../testing/test-streams.js"
 

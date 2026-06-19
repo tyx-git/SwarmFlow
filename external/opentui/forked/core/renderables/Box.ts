@@ -1,4 +1,4 @@
-﻿import { Edge, Gutter } from "../yoga.js"
+import { Edge, Gutter } from "../yoga.js"
 import { type RenderableOptions, Renderable } from "../Renderable.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import {
@@ -27,7 +27,7 @@ export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> exte
   bottomTitleAlignment?: "left" | "center" | "right"
   /** Custom color for the left title text (defaults to borderColor) */
   titleColor?: ColorInput
-  /** Vertical divider position as a ratio (0鈥?) of box width */
+  /** Vertical divider position as a ratio (0–1) of box width */
   dividerRatio?: number
   /** Title text displayed after the divider on the top border */
   dividerTitle?: string

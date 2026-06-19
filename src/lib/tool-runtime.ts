@@ -11,11 +11,11 @@
  * Gate 层是未来权限系统的插入点。
  */
 
-import type { ToolDef } from "./providers/base.js";
-import { ToolResult } from "./providers/base.js";
-import type { ToolExecutor, ToolExecutorContext } from "./tools/executor-types.js";
-import type { ToolPreflightContext, ToolPreflightDecision } from "./agents/tool-loop.js";
-import type { ApprovalOffer, InvocationAssessment } from "./permissions/types.js";
+import type { ToolDef } from "../providers/base.js";
+import { ToolResult } from "../providers/base.js";
+import type { ToolExecutor, ToolExecutorContext } from "../tools/executor-types.js";
+import type { ToolPreflightContext, ToolPreflightDecision } from "../agents/tool-loop.js";
+import type { ApprovalOffer, InvocationAssessment } from "../permissions/types.js";
 import {
   SPAWN_TOOL,
   KILL_AGENT_TOOL,
@@ -26,15 +26,15 @@ import {
   ASK_TOOL,
   SEND_TOOL,
   RELOAD_TOOL,
-} from "./tools/comm.js";
+} from "../tools/comm.js";
 import {
   executeTool,
   type AdoptShellFn,
-} from "./tools/basic.js";
-import type { SessionCapabilities } from "./session-capabilities.js";
-import type { SkillMeta } from "./skills/loader.js";
-import type { MCPClientManager } from "./clients/mcp-client.js";
-import { setArgRepairSink } from "./tools/arg-repair.js";
+} from "../tools/basic.js";
+import type { SessionCapabilities } from "../session-capabilities.js";
+import type { SkillMeta } from "../skills/loader.js";
+import type { MCPClientManager } from "../clients/mcp-client.js";
+import { setArgRepairSink } from "../tools/arg-repair.js";
 
 // 一次性连接工具输入修复遥测。通过环境变量控制，默认静默；
 // 启用后可观察各 (tool,key) 的修复形态——这是模型在特定工具契约上
@@ -44,7 +44,7 @@ if (process.env.SWARMFLOW_TOOL_REPAIR_DEBUG === "1") {
     console.error(`tool_input_repaired:${tool} key=${key} kind=${kind}`);
   });
 }
-import type { Agent } from "./agents/agent.js";
+import type { Agent } from "../agents/agent.js";
 
 // ------------------------------------------------------------------
 // 门控类型定义

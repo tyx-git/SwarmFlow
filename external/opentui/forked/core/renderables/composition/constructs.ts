@@ -1,4 +1,4 @@
-﻿import {
+import {
   ASCIIFontRenderable,
   BoxRenderable,
   CodeRenderable,

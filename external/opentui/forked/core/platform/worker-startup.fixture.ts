@@ -1,4 +1,4 @@
-﻿import { postWorkerMessage, setWorkerMessageHandler } from "./worker.js"
+import { postWorkerMessage, setWorkerMessageHandler } from "./worker.js"
 
 postWorkerMessage({ type: "IMPORT_STARTED" })
 

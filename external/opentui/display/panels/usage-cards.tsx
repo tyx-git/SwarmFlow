@@ -1,15 +1,15 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
 
-import { formatResetRemaining, type UsageSnapshot } from "../../../src/provider-usage.js";
+import { formatResetRemaining, type UsageSnapshot } from "../../../../src/providers/usage.js";
 
 const ATTRS_BOLD = createTextAttributes({ bold: true });
 import {
   readOAuthAccessToken,
   getTokenExpiry,
-} from "../../../src/auth/openai-oauth.js";
+} from "../../../../src/auth/openai-oauth.js";
 import type { DisplayTheme } from "../theme/index.js";
 import {
   formatCompactTokens,
@@ -46,8 +46,8 @@ export function ContextUsageCard(
     <box flexDirection="column" width="100%" gap={0}>
       <text fg={theme.colors.dim} attributes={ATTRS_BOLD} content="CONTEXT" />
       <box flexDirection="row">
-        {filledBlocks > 0 ? <text fg={barColor} content={"鈹?.repeat(filledBlocks)} /> : null}
-        {emptyBlocks > 0 ? <text fg={theme.colors.border} content={"鈹€".repeat(emptyBlocks)} /> : null}
+        {filledBlocks > 0 ? <text fg={barColor} content={"━".repeat(filledBlocks)} /> : null}
+        {emptyBlocks > 0 ? <text fg={theme.colors.border} content={"─".repeat(emptyBlocks)} /> : null}
         <text fg={theme.colors.text} content={` ${percentText}`} />
       </box>
       <box flexDirection="row">

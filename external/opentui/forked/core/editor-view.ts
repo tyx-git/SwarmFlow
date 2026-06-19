@@ -1,4 +1,4 @@
-﻿import { RGBA } from "./lib/RGBA.js"
+import { RGBA } from "./lib/RGBA.js"
 import {
   resolveRenderLib,
   type EditorViewHandle,

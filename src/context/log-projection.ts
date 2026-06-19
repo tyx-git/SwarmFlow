@@ -4,13 +4,13 @@
  * 实时对话和恢复使用相同的投影逻辑，保证 100% 一致性。
  */
 
-import type { LogEntry, TuiDisplayKind } from "./context/log-entry.js";
-import { buildAgentResultTuiPreview } from "./context/log-entry.js";
-import type { ConversationEntry, ConversationEntryKind } from "./ui/contracts.js";
-import { mergeConsecutiveSameRole } from "./context/context-rendering.js";
-import { truncateSummarizeContextContent } from "./context/summarize-context.js";
-import { buildActiveContextView, flattenActiveContextEntries } from "./context/active-context.js";
-import { inferThinkingArtifact, normalizeThinkingArtifact } from "./lib/thinking-artifact.js";
+import type { LogEntry, TuiDisplayKind } from "../context/log-entry.js";
+import { buildAgentResultTuiPreview } from "../context/log-entry.js";
+import type { ConversationEntry, ConversationEntryKind } from "../ui/contracts.js";
+import { mergeConsecutiveSameRole } from "../context/context-rendering.js";
+import { truncateSummarizeContextContent } from "../context/summarize-context.js";
+import { buildActiveContextView, flattenActiveContextEntries } from "../context/active-context.js";
+import { inferThinkingArtifact, normalizeThinkingArtifact } from "../lib/thinking-artifact.js";
 
 // ------------------------------------------------------------------
 // TuiDisplayKind → ConversationEntryKind 映射

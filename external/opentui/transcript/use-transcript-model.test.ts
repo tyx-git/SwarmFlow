@@ -1,7 +1,7 @@
-﻿import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
-import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
-import type { Session as TuiSession } from "../../src/ui/contracts.js";
+import type { ChildSessionSnapshot } from "../../../src/session-tree-types.js";
+import type { Session as TuiSession } from "../../../src/ui/contracts.js";
 
 import {
   getActiveTranscriptSource,

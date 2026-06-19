@@ -1,4 +1,4 @@
-﻿import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
+import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import { resolveRenderLib, type RenderLib, type SyntaxStyleHandle } from "./zig.js"
 import { createTextAttributes } from "./utils.js"
 

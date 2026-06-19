@@ -1,14 +1,14 @@
-﻿import { existsSync, openSync, writeSync, mkdirSync } from "node:fs";
+import { existsSync, openSync, writeSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  getSwarmflowAssistantRenderer,
-  getSwarmflowOpenTuiDiagPath,
-  isSwarmflowMarkdownPatchDisabled,
-  isSwarmflowOpenTuiDiagEnabled,
-  resetSwarmflowOpenTuiDiagLog,
-  writeSwarmflowOpenTuiDiag,
+  getFermiAssistantRenderer,
+  getFermiOpenTuiDiagPath,
+  isFermiMarkdownPatchDisabled,
+  isFermiOpenTuiDiagEnabled,
+  resetFermiOpenTuiDiagLog,
+  writeFermiOpenTuiDiag,
 } from "./forked/core/lib/diagnostic.js";
 import type { OpenTuiRuntime } from "./bootstrap.js";
 
@@ -24,7 +24,7 @@ async function prewarmCompiledOpenTuiCore(): Promise<void> {
   const thisFile = fileURLToPath(import.meta.url);
   // Bun --compile mounts bundled JS at a virtual filesystem path:
   // `/$bunfs/root/...` on POSIX, `B:\~BUN\root\...` on Windows. Only run
-  // the prewarm in compiled mode 鈥?in dev (`bun run dev`) the module
+  // the prewarm in compiled mode — in dev (`bun run dev`) the module
   // graph evaluates in the natural order and the hack would just slow
   // startup. Missing the Windows path form is what allowed the
   // SpanRenderable-extends-TextNodeRenderable TDZ to surface on win32
@@ -57,14 +57,14 @@ async function prewarmCompiledOpenTuiCore(): Promise<void> {
 }
 
 function resolveRendererThreadSetting(): boolean {
-  const override = process.env.SWARMFLOW_OPENTUI_USE_THREAD?.trim().toLowerCase();
+  const override = process.env.FERMI_OPENTUI_USE_THREAD?.trim().toLowerCase();
   if (override === "1" || override === "true") return true;
   if (override === "0" || override === "false") return false;
 
-  // Native render threading has been unstable on macOS in swarmflow's
+  // Native render threading has been unstable on macOS in Fermi's
   // high-frequency streaming UI, and the upstream native lib is known to
   // crash with threading on Linux (the fork's renderer defaults it off
-  // there). Windows keeps the threaded renderer 鈥?the behavior every
+  // there). Windows keeps the threaded renderer — the behavior every
   // shipped Windows build has had.
   return process.platform === "win32";
 }
@@ -103,35 +103,35 @@ export async function launchTui(): Promise<void> {
   const { createRoot } = await import("@opentui/react");
   const { bootstrapOpenTuiRuntime } = await import("./bootstrap.js");
   const { OpenTuiApp } = await import("./app.js");
-  const { parseSettingsOverrides, saveLog } = await import("../src/persistence.js");
+  const { parseSettingsOverrides, saveLog } = await import("../../src/config/persistence.js");
 
   process.env.OPENTUI_FORCE_EXPLICIT_WIDTH = "false";
   const args = parseArgs(process.argv.slice(2));
-  // Validate -c overrides before bootstrap so a bad value fails with a
+  // Validate -c overrides before bootstrap so a bad value fails with aconfig/
   // clean stderr line rather than a fatal stack trace from inside bootstrap.
   try {
     parseSettingsOverrides(args.configOverrides);
   } catch (err) {
-    process.stderr.write(`swarmflow: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`fermi: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(2);
   }
-  if (isSwarmflowOpenTuiDiagEnabled()) {
-    resetSwarmflowOpenTuiDiagLog({
+  if (isFermiOpenTuiDiagEnabled()) {
+    resetFermiOpenTuiDiagLog({
       cwd: process.cwd(),
-      diagPath: getSwarmflowOpenTuiDiagPath(),
+      diagPath: getFermiOpenTuiDiagPath(),
       platform: process.platform,
-      assistantRenderer: getSwarmflowAssistantRenderer(),
-      markdownPatchDisabled: isSwarmflowMarkdownPatchDisabled(),
+      assistantRenderer: getFermiAssistantRenderer(),
+      markdownPatchDisabled: isFermiMarkdownPatchDisabled(),
     });
   }
   let runtime = await bootstrapOpenTuiRuntime(args);
 
-  // If `swarmflow --resume <id>` set this in cli.ts, restore the session log
+  // If `fermi --resume <id>` set this in cli.ts, restore the session log
   // into the freshly bootstrapped runtime before the TUI renders.
   const resumeDir = process.env["SWARMFLOW_RESUME_SESSION_DIR"];
   if (resumeDir) {
     delete process.env["SWARMFLOW_RESUME_SESSION_DIR"];
-    const { applySessionRestore } = await import("../src/session-resume.js");
+    const { applySessionRestore } = await import("../../src/session-resume.js");
     const result = applySessionRestore(runtime.session, runtime.store, resumeDir);
     if (!result.ok && result.error) {
       console.error(result.error);
@@ -143,7 +143,7 @@ export async function launchTui(): Promise<void> {
   // Redirect stderr to a log file before the TUI takes over the terminal.
   // Without this, console.warn/error from libraries (e.g. markitdown-ts) and
   // MCP server child process stderr corrupt the TUI display.
-  const { getSwarmflowHomeDir } = await import("../src/home-path.js");
+  const { getSwarmflowHomeDir } = await import("../../src/lib/home-path.js");
   const stderrLogDir = getSwarmflowHomeDir();
   if (!existsSync(stderrLogDir)) mkdirSync(stderrLogDir, { recursive: true });
   const stderrLogFd = openSync(join(stderrLogDir, "stderr.log"), "w");
@@ -157,7 +157,7 @@ export async function launchTui(): Promise<void> {
   }) as typeof process.stderr.write;
 
   const useThread = resolveRendererThreadSetting();
-  writeSwarmflowOpenTuiDiag("main.bootstrap", {
+  writeFermiOpenTuiDiag("main.bootstrap", {
     verbose: args.verbose,
     templates: args.templates ?? null,
     useThread,
@@ -182,11 +182,12 @@ export async function launchTui(): Promise<void> {
   let currentThemeModePref = resolved.pref;
 
   // Query the terminal's actual default foreground (OSC 10) so body text can
-  // match whatever colour the user configured. Null on failure/timeout 鈥?  // app.tsx falls back to the hardcoded token-table colour in that case.
+  // match whatever colour the user configured. Null on failure/timeout —
+  // app.tsx falls back to the hardcoded token-table colour in that case.
   const palette = await renderer.getPalette({ timeout: 250 }).catch(() => null);
   let currentTerminalFg: string | null = palette?.defaultForeground ?? null;
 
-  writeSwarmflowOpenTuiDiag("main.theme", {
+  writeFermiOpenTuiDiag("main.theme", {
     pref: resolved.pref,
     mode: resolved.mode,
     source: resolved.source,
@@ -198,7 +199,7 @@ export async function launchTui(): Promise<void> {
   let fatalCleaningUp = false;
 
   // Background shells are detached (own process group/session), so nothing
-  // implicit reaps them when this process dies 鈥?every exit path must kill
+  // implicit reaps them when this process dies — every exit path must kill
   // them explicitly and SYNCHRONOUSLY (signal dispatch needs no await; an
   // un-awaited session.close() never reaches its kill step before
   // process.exit).
@@ -206,7 +207,7 @@ export async function launchTui(): Promise<void> {
     try {
       runtime.session.killAllShells?.();
     } catch {
-      // ignore 鈥?exiting anyway
+      // ignore — exiting anyway
     }
   };
 
@@ -228,7 +229,7 @@ export async function launchTui(): Promise<void> {
   };
 
   const handleFatal = (err: unknown) => {
-    writeSwarmflowOpenTuiDiag("main.fatal", {
+    writeFermiOpenTuiDiag("main.fatal", {
       error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
     });
     killShellsSync();
@@ -241,7 +242,7 @@ export async function launchTui(): Promise<void> {
   process.on("unhandledRejection", handleFatal);
 
   // Terminal window close / external kill: reap shells before dying.
-  // (Ctrl+C never arrives as SIGINT 鈥?the TUI runs in raw mode and handles
+  // (Ctrl+C never arrives as SIGINT — the TUI runs in raw mode and handles
   // it as a keypress through the normal exit flow.)
   const handleTermination = () => {
     killShellsSync();
@@ -266,7 +267,7 @@ export async function launchTui(): Promise<void> {
       if (meta.turnCount === 0) return;
       saveLog(sessionDir, meta, [...entries]);
     } catch (err) {
-      writeSwarmflowOpenTuiDiag("main.new.save_failed", { error: formatError(err) });
+      writeFermiOpenTuiDiag("main.new.save_failed", { error: formatError(err) });
     }
   };
 
@@ -278,16 +279,16 @@ export async function launchTui(): Promise<void> {
         setTimeout(() => resolve("timeout"), SESSION_CLOSE_TIMEOUT_MS);
       }),
     ]).catch((err) => {
-      writeSwarmflowOpenTuiDiag("main.new.close_failed", { error: formatError(err) });
+      writeFermiOpenTuiDiag("main.new.close_failed", { error: formatError(err) });
       return "failed" as const;
     });
 
     if (timed === "timeout") {
-      writeSwarmflowOpenTuiDiag("main.new.close_timeout", {
+      writeFermiOpenTuiDiag("main.new.close_timeout", {
         timeoutMs: SESSION_CLOSE_TIMEOUT_MS,
       });
       closePromise.catch((err) => {
-        writeSwarmflowOpenTuiDiag("main.new.close_late_failed", { error: formatError(err) });
+        writeFermiOpenTuiDiag("main.new.close_late_failed", { error: formatError(err) });
       });
     }
   };
@@ -315,7 +316,7 @@ export async function launchTui(): Promise<void> {
     if (restartingRuntime) return;
     restartingRuntime = true;
     const previousRuntime = runtime;
-    writeSwarmflowOpenTuiDiag("main.new.start", { epoch: runtimeEpoch });
+    writeFermiOpenTuiDiag("main.new.start", { epoch: runtimeEpoch });
 
     try {
       saveRuntimeIfNeeded(previousRuntime);
@@ -330,7 +331,7 @@ export async function launchTui(): Promise<void> {
       currentThemeModePref = nextTheme.pref;
       currentTerminalFg = nextPalette?.defaultForeground ?? null;
       runtimeEpoch += 1;
-      writeSwarmflowOpenTuiDiag("main.new.done", {
+      writeFermiOpenTuiDiag("main.new.done", {
         epoch: runtimeEpoch,
         themePref: nextTheme.pref,
         themeMode: nextTheme.mode,
@@ -348,7 +349,7 @@ export async function launchTui(): Promise<void> {
       renderRuntime();
     } catch (err) {
       const message = formatError(err);
-      writeSwarmflowOpenTuiDiag("main.new.failed", { error: message });
+      writeFermiOpenTuiDiag("main.new.failed", { error: message });
       previousRuntime.session.appendErrorMessage?.(
         `Failed to start a new session: ${message}`,
         "command",
@@ -361,7 +362,7 @@ export async function launchTui(): Promise<void> {
   const exit = async (farewell?: string) => {
     if (exiting) return;
     exiting = true;
-    writeSwarmflowOpenTuiDiag("main.exit", {
+    writeFermiOpenTuiDiag("main.exit", {
       farewell: farewell ?? null,
     });
 
@@ -375,12 +376,12 @@ export async function launchTui(): Promise<void> {
     // 1a. Mouse-event residue on exit (three-layer bug, see CHANGELOG and
     // renderer.ts:resetMouseTracking() for the full history).
     //
-    // Symptom: after quitting swarmflow on macOS Terminal.app, the shell prompt
+    // Symptom: after quitting fermi on macOS Terminal.app, the shell prompt
     // showed garbage like `51;790;1276M` or `51;65;13M`. These are SGR mouse
-    // reports (CSI `<` Cb;Cx;Cy `M`) leaking after destroy 鈥?the shell read
+    // reports (CSI `<` Cb;Cx;Cy `M`) leaking after destroy — the shell read
     // them as input and printed them.
     //
-    // Layer 1 鈥?destroy never wrote ?1000l/?1002l/?1003l/?1006l. Upstream
+    // Layer 1 — destroy never wrote ?1000l/?1002l/?1003l/?1006l. Upstream
     // OpenTUI 0.2.1's cleanupBeforeDestroy() simply forgot to reset mouse
     // tracking; modern terminals (iTerm2/Alacritty/Kitty/Ghostty) implicitly
     // clear mouse modes when the alt-screen client exits, so the upstream
@@ -388,7 +389,7 @@ export async function launchTui(): Promise<void> {
     // opencode (same upstream) shows the same residue with character-cell
     // coordinates because it doesn't enable ?1016.
     //
-    // Layer 2 鈥??1016 (SGR-Pixels) was added by swarmflow's
+    // Layer 2 — ?1016 (SGR-Pixels) was added by fermi's
     // `feat(tui): sub-cell scrollbar-thumb drag via SGR-Pixels mouse`
     // (b5159a94). That commit added the enable path
     // (`\x1b[?1016h` in updateMousePixelMode) but never paired it with a
@@ -397,7 +398,7 @@ export async function launchTui(): Promise<void> {
     // mouse modes, ?1016 would still hang around forcing SGR-Pixel framing
     // on subsequent reports.
     //
-    // Layer 3 鈥?even after writing all reset CSIs synchronously here, one or
+    // Layer 3 — even after writing all reset CSIs synchronously here, one or
     // two mouse-motion bytes still leaked. The root cause is the kernel TTY
     // input buffer: while running we're in raw mode and motion reports flow
     // continuously; by the time we write the reset, several bytes are
@@ -408,7 +409,7 @@ export async function launchTui(): Promise<void> {
     // emitting (resetMouseTracking), wait ~30ms so the kernel pumps the
     // in-flight bytes up into node where the still-attached stdinParser
     // consumes them, drain anything left in node's readable queue, then
-    // destroy. resetMouseTracking() also bypasses zig's writeOutBuf 鈥?an
+    // destroy. resetMouseTracking() also bypasses zig's writeOutBuf — an
     // earlier attempt routed ?1000/?1002/?1003/?1006 through
     // lib.disableMouse() but those bytes were dropped when the render
     // thread suspended before draining its buffer.
@@ -446,19 +447,19 @@ export async function launchTui(): Promise<void> {
       }
     }
 
-    // Resume hint 鈥?only if a log was actually written for this session
+    // Resume hint — only if a log was actually written for this session
     // (i.e. the user sent at least one message). New sessions that never
     // got past the prompt don't have a log.json, so there's nothing to resume.
     const sessionDir = runtime.store.sessionDir;
     if (sessionDir && existsSync(join(sessionDir, "log.json"))) {
       try {
-        process.stdout.write(`\nTo continue this session, run \nswarmflow --resume ${basename(sessionDir)}\n`);
+        process.stdout.write(`\nTo continue this session, run \nfermi --resume ${basename(sessionDir)}\n`);
       } catch {
         // ignore
       }
     }
 
-    // 2. Kill background shells SYNCHRONOUSLY 鈥?session.close() below is not
+    // 2. Kill background shells SYNCHRONOUSLY — session.close() below is not
     // awaited (we exit on the next line), and its own kill step sits behind
     // two awaits it never reaches. Signal dispatch is synchronous, so this
     // is the one cleanup that must not ride on the un-awaited close.
@@ -510,7 +511,7 @@ export async function runDirectEntry(
   argv: string[] = process.argv,
   launcher: () => Promise<void> = launchTui,
 ): Promise<void> {
-  const { main } = await import("../src/cli.js");
+  const { main } = await import("../../src/cli.js");
   await main(argv, { launchTui: launcher });
 }
 
@@ -518,7 +519,7 @@ if (isDirectEntry()) {
   runDirectEntry()
     .then(() => process.exit(0))
     .catch((err) => {
-      writeSwarmflowOpenTuiDiag("main.catch", {
+      writeFermiOpenTuiDiag("main.catch", {
         error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
       });
       console.error("Fatal OpenTUI error:", err);

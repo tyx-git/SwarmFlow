@@ -1,4 +1,4 @@
-﻿import { Renderable, type RenderableOptions } from "../Renderable.js"
+import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { Edge, Unit } from "../yoga.js"
 import { type RenderContext } from "../types.js"
 import { SyntaxStyle, type StyleDefinition } from "../syntax-style.js"
@@ -109,11 +109,11 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
    */
   streaming?: boolean
   /**
-   * swarmflow: decouple the monotonic streaming height floor from `streaming`.
+   * Fermi: decouple the monotonic streaming height floor from `streaming`.
    * When set, child code renderables reserve height per this flag instead of
    * `streaming`. This lets a completed entry stay in streaming render mode (no
    * finalize re-parse, so no per-turn repaint) while turning the per-width
-   * height floor OFF 鈥?which is what avoids the resize height-oscillation and
+   * height floor OFF — which is what avoids the resize height-oscillation and
    * the residual trailing space. Defaults to following `streaming` when omitted.
    */
   reserveHeightWhileStreaming?: boolean
@@ -238,7 +238,7 @@ interface ResolvedTableRenderableOptions {
 const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/
 const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/
 const ANY_MARKDOWN_BLOCK_BREAK_RE = /(?:\r?\n){2,}/
-const COALESCED_MARGIN_TOP = Symbol.for("swarmflow.opentui.markdown.coalesced.marginTop")
+const COALESCED_MARGIN_TOP = Symbol.for("fermi.opentui.markdown.coalesced.marginTop")
 
 type CoalescedLayoutToken = MarkedToken & {
   [COALESCED_MARGIN_TOP]?: number
@@ -302,7 +302,7 @@ export class MarkdownRenderable extends Renderable {
 
   _parseState: ParseState | null = null
   private _streaming: boolean = false
-  // swarmflow: when defined, overrides _streaming as the per-width height-floor
+  // Fermi: when defined, overrides _streaming as the per-width height-floor
   // signal for child code renderables (undefined = follow _streaming).
   private _reserveHeightWhileStreaming?: boolean
   _blockStates: BlockState[] = []
@@ -439,7 +439,7 @@ export class MarkdownRenderable extends Renderable {
     if (this._reserveHeightWhileStreaming !== value) {
       this._reserveHeightWhileStreaming = value
       // Re-apply the floor flag to existing block renderables. This does NOT
-      // touch `streaming`, so there is no trailing-block re-parse 鈥?far lighter
+      // touch `streaming`, so there is no trailing-block re-parse — far lighter
       // than the old streaming->false finalize; it only flips each block's
       // per-width height floor on/off.
       this.updateBlocks(true)
@@ -1665,7 +1665,7 @@ export class MarkdownRenderable extends Renderable {
 
     // A custom-rendered block (a renderer-supplied widget that is NOT the default
     // renderable) bypasses createDefaultRenderable, which is where the coalesced leading
-    // margin is normally applied. Fill in the separator row here 鈥?but only when the
+    // margin is normally applied. Fill in the separator row here — but only when the
     // renderer left marginTop unset. We read the Yoga unit directly because the numeric
     // marginTop getter collapses unset, "auto", and "%" all to a finite/NaN number, so
     // overwriting based on it would silently change a renderer's explicit margin's unit.

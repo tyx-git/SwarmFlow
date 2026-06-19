@@ -1,4 +1,4 @@
-﻿import { describe, test, expect, beforeEach } from "bun:test"
+import { describe, test, expect, beforeEach } from "bun:test"
 import { MouseParser } from "./parse.mouse.js"
 
 // Encode a basic/X10 mouse event: ESC [ M Cb Cx Cy
@@ -110,25 +110,25 @@ describe("MouseParser basic (X10) mode", () => {
   })
 
   describe("motion detection", () => {
-    test("move without button: byte 35 (32|3) 鈫?'move', not 'up'", () => {
+    test("move without button: byte 35 (32|3) → 'move', not 'up'", () => {
       const e = parser.parseMouseEvent(encodeBasic(35, 10, 5))!
       expect(e.type).toBe("move")
       expect(e.x).toBe(10)
       expect(e.y).toBe(5)
     })
 
-    test("drag with left button: byte 32 (32|0) 鈫?not 'down'", () => {
+    test("drag with left button: byte 32 (32|0) → not 'down'", () => {
       const e = parser.parseMouseEvent(encodeBasic(32, 10, 5))!
       expect(e.type).toBe("move") // parser says "move"; renderer promotes to "drag"
       expect(e.type).not.toBe("down")
     })
 
-    test("drag with middle button: byte 33 (32|1) 鈫?not 'down'", () => {
+    test("drag with middle button: byte 33 (32|1) → not 'down'", () => {
       const e = parser.parseMouseEvent(encodeBasic(33, 10, 5))!
       expect(e.type).not.toBe("down")
     })
 
-    test("drag with right button: byte 34 (32|2) 鈫?not 'down'", () => {
+    test("drag with right button: byte 34 (32|2) → not 'down'", () => {
       const e = parser.parseMouseEvent(encodeBasic(34, 10, 5))!
       expect(e.type).not.toBe("down")
     })
@@ -140,25 +140,25 @@ describe("MouseParser basic (X10) mode", () => {
       }
     })
 
-    test("motion + shift modifier: byte 39 (32|3|4) 鈫?'move'", () => {
+    test("motion + shift modifier: byte 39 (32|3|4) → 'move'", () => {
       const e = parser.parseMouseEvent(encodeBasic(39, 10, 5))!
       expect(e.type).toBe("move")
       expect(e.modifiers.shift).toBe(true)
     })
 
-    test("motion + ctrl: byte 51 (32|3|16) 鈫?'move' with ctrl", () => {
+    test("motion + ctrl: byte 51 (32|3|16) → 'move' with ctrl", () => {
       const e = parser.parseMouseEvent(encodeBasic(51, 10, 5))!
       expect(e.type).toBe("move")
       expect(e.modifiers.ctrl).toBe(true)
     })
 
-    test("motion + all modifiers: byte 63 (32|3|4|8|16) 鈫?'move'", () => {
+    test("motion + all modifiers: byte 63 (32|3|4|8|16) → 'move'", () => {
       const e = parser.parseMouseEvent(encodeBasic(63, 10, 5))!
       expect(e.type).toBe("move")
       expect(e.modifiers).toEqual({ shift: true, alt: true, ctrl: true })
     })
 
-    test("motion bit takes priority over scroll bit: byte 96 (64|32) 鈫?'move'", () => {
+    test("motion bit takes priority over scroll bit: byte 96 (64|32) → 'move'", () => {
       const e = parser.parseMouseEvent(encodeBasic(96, 10, 5))!
       expect(e.type).toBe("move")
     })
@@ -183,14 +183,14 @@ describe("MouseParser basic (X10) mode", () => {
     })
 
     test("maximum safe X10 coordinate (94) works correctly", () => {
-      // x=94 鈫?raw byte = 94 + 33 = 127 (0x7F), still valid single-byte in UTF-8
+      // x=94 → raw byte = 94 + 33 = 127 (0x7F), still valid single-byte in UTF-8
       const e = parser.parseMouseEvent(encodeBasic(0, 94, 94))!
       expect(e.x).toBe(94)
       expect(e.y).toBe(94)
     })
 
     test("coordinates >= 95 break under utf8 toString() (known limitation)", () => {
-      // x=95 鈫?raw byte = 95 + 33 = 128 (0x80), invalid as a standalone UTF-8 byte.
+      // x=95 → raw byte = 95 + 33 = 128 (0x80), invalid as a standalone UTF-8 byte.
       //
       // The parser calls data.toString() which defaults to utf8, so charCodeAt()
       // on the decoded string will not equal the original byte value.
@@ -320,7 +320,7 @@ describe("MouseParser SGR mode", () => {
   })
 
   describe("motion and drag", () => {
-    test("move with no button: code 35 (32|3) 鈫?'move'", () => {
+    test("move with no button: code 35 (32|3) → 'move'", () => {
       const e = parser.parseMouseEvent(encodeSGR(35, 10, 5, false))!
       expect(e.type).toBe("move")
     })
@@ -333,7 +333,7 @@ describe("MouseParser SGR mode", () => {
     })
 
     test("motion without prior press is 'move' even when button bits != 3", () => {
-      // No prior press 鈫?mouseButtonsPressed is empty 鈫?should be "move"
+      // No prior press → mouseButtonsPressed is empty → should be "move"
       const e = parser.parseMouseEvent(encodeSGR(32, 10, 5, false))!
       expect(e.type).toBe("move")
     })
@@ -369,18 +369,18 @@ describe("MouseParser SGR mode", () => {
 
   describe("button tracking state (mouseButtonsPressed)", () => {
     test("press adds to tracked set, release clears it", () => {
-      // Press left 鈫?drag should be recognized
+      // Press left → drag should be recognized
       parser.parseMouseEvent(encodeSGR(0, 5, 5, true))
       const drag = parser.parseMouseEvent(encodeSGR(32, 8, 5, false))!
       expect(drag.type).toBe("drag")
 
-      // Release 鈫?subsequent motion should be "move"
+      // Release → subsequent motion should be "move"
       parser.parseMouseEvent(encodeSGR(0, 8, 5, false))
       const move = parser.parseMouseEvent(encodeSGR(35, 10, 5, false))!
       expect(move.type).toBe("move")
     })
 
-    test("multiple buttons pressed 鈥?any motion is drag", () => {
+    test("multiple buttons pressed — any motion is drag", () => {
       parser.parseMouseEvent(encodeSGR(0, 5, 5, true)) // left down
       parser.parseMouseEvent(encodeSGR(2, 5, 5, true)) // right down
       const e = parser.parseMouseEvent(encodeSGR(32, 8, 5, false))!
@@ -392,7 +392,7 @@ describe("MouseParser SGR mode", () => {
       parser.parseMouseEvent(encodeSGR(2, 5, 5, true)) // right down
       parser.parseMouseEvent(encodeSGR(0, 5, 5, false)) // release (clears all)
       const e = parser.parseMouseEvent(encodeSGR(32, 8, 5, false))!
-      expect(e.type).toBe("move") // no buttons tracked 鈫?move, not drag
+      expect(e.type).toBe("move") // no buttons tracked → move, not drag
     })
 
     test("reset() clears button tracking state", () => {
@@ -517,7 +517,7 @@ describe("MouseParser parseAllMouseEvents (multi-event chunks)", () => {
     // down + motion in same chunk: second event should be classified as drag
     const buf = Buffer.concat([
       encodeSGR(0, 5, 5, true), // press
-      encodeSGR(32, 8, 5, true), // motion with button 0 bits 鈫?drag if button tracked
+      encodeSGR(32, 8, 5, true), // motion with button 0 bits → drag if button tracked
     ])
     const events = parser.parseAllMouseEvents(buf)
     expect(events).toHaveLength(2)

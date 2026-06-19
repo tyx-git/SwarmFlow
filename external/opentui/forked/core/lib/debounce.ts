@@ -1,4 +1,4 @@
-﻿/**
+/**
  * A module-level map to store timeout IDs for all debounced functions
  * Structure: Map<scopeId, Map<debounceId, timerId>>
  */

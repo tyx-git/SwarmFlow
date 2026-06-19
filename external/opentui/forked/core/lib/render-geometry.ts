@@ -1,4 +1,4 @@
-﻿export type RenderGeometryScreenMode = "alternate-screen" | "main-screen" | "split-footer"
+export type RenderGeometryScreenMode = "alternate-screen" | "main-screen" | "split-footer"
 
 export interface RenderGeometry {
   effectiveFooterHeight: number

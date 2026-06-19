@@ -1,4 +1,4 @@
-﻿import { describe, test, expect } from "bun:test"
+import { describe, test, expect } from "bun:test"
 import { createTestRenderer } from "../../testing/test-renderer.js"
 import { CodeRenderable } from "../Code.js"
 import { SyntaxStyle } from "../../syntax-style.js"
@@ -29,10 +29,10 @@ describe("CodeRenderable", () => {
       renderer.root.add(code)
       await renderOnce()
 
-      // Set content in streaming mode 鈥?this should schedule a render
+      // Set content in streaming mode — this should schedule a render
       code.content = 'console.log("hello")'
 
-      // Render once 鈥?this should trigger startHighlight because highlights are dirty
+      // Render once — this should trigger startHighlight because highlights are dirty
       await renderOnce()
 
       // Highlighting should have started (mock client hasn't resolved yet)

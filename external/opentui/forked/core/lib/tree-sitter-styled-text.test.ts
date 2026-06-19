@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeAll, afterAll, describe } from "bun:test"
+import { test, expect, beforeAll, afterAll, describe } from "bun:test"
 import { TreeSitterClient } from "./tree-sitter/client.js"
 import { treeSitterToStyledText, treeSitterToTextChunks } from "./tree-sitter-styled-text.js"
 import { SyntaxStyle } from "../syntax-style.js"

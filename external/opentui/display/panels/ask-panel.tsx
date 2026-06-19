@@ -1,8 +1,8 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 
-import type { AgentQuestionItem } from "../../../src/ask.js";
+import type { AgentQuestionItem } from "../../../../src/ask.js";
 import type { DisplayTheme } from "../theme/index.js";
 import type { AskPanelProps } from "../types.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
@@ -71,7 +71,7 @@ export function AskPanelView({
             </box>
           );
         })}
-        <text fg={theme.colors.dim} content="Use 鈫?鈫?to select, Enter to confirm." />
+        <text fg={theme.colors.dim} content="Use ↑/↓ to select, Enter to confirm." />
         {error ? <text fg={theme.colors.red} content={error} /> : null}
       </PanelSurface>
     );
@@ -112,14 +112,14 @@ export function AskPanelView({
           const answerDisplay = !answer
             ? "(unanswered)"
             : selected?.kind === "custom_input"
-              ? `鉁?${answer.customText ?? ""}`
+              ? `✎ ${answer.customText ?? ""}`
               : selected?.label ?? "(unknown)";
           const noteKey = answer ? `${index}-${answer.optionIndex}` : "";
           const note = noteKey ? optionNotes.get(noteKey) : undefined;
           return (
             <box key={`ask-review-${index}`} flexDirection="column">
               <text content={`${index + 1}. ${question.question}`} />
-              <text fg={!answer ? theme.colors.accent : selected?.kind === "discuss_further" ? theme.colors.accent : theme.colors.green} content={`   鈫?${answerDisplay}`} />
+              <text fg={!answer ? theme.colors.accent : selected?.kind === "discuss_further" ? theme.colors.accent : theme.colors.green} content={`   → ${answerDisplay}`} />
               {note ? <text fg={theme.colors.accent} content={`     Note: ${note}`} /> : null}
             </box>
           );
@@ -161,7 +161,7 @@ export function AskPanelView({
           <box key={`ask-option-${index}`} flexDirection="column">
             <text
               fg={isSelected ? theme.colors.accent : isAnswered ? theme.colors.green : theme.colors.text}
-              content={`${isSelected ? "> " : isAnswered ? "鉁?" : "  "}${option.label}`}
+              content={`${isSelected ? "> " : isAnswered ? "✓ " : "  "}${option.label}`}
             />
             {option.description ? <text fg={theme.colors.dim} content={`   ${option.description}`} /> : null}
             {note ? <text fg={theme.colors.accent} content={`   Note: ${note}${isSelected ? " (Tab to edit)" : ""}`} /> : null}
@@ -193,7 +193,7 @@ export function AskPanelView({
       ) : null}
       <text
         fg={theme.colors.dim}
-        content={`Use 鈫?鈫?to select, 鈫?鈫?to navigate questions, Enter to confirm.${agentOptionCount > 0 && selectedIndex < agentOptionCount ? " Tab to add note." : ""}`}
+        content={`Use ↑/↓ to select, ←/→ to navigate questions, Enter to confirm.${agentOptionCount > 0 && selectedIndex < agentOptionCount ? " Tab to add note." : ""}`}
       />
       {error ? <text fg={theme.colors.red} content={error} /> : null}
     </PanelSurface>

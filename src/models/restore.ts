@@ -1,5 +1,5 @@
-﻿import type { PersistedModelSelection, ResolvedModelSelection } from "./models/selection.js";
-import { resolvePersistedModelSelection } from "./models/selection.js";
+﻿import type { PersistedModelSelection, ResolvedModelSelection } from "../models/selection.js";
+import { resolvePersistedModelSelection } from "../models/selection.js";
 
 export function applyPersistedModelSelectionToSession(
   session: any,

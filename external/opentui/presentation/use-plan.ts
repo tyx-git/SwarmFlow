@@ -1,7 +1,7 @@
-﻿import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 
-import type { Session } from "../../src/ui/contracts.js";
-import type { PlanCheckpoint } from "../../src/plan-state.js";
+import type { Session } from "../../../src/ui/contracts.js";
+import type { PlanCheckpoint } from "../../../src/lib/plan-state.js";
 
 /**
  * Hook to subscribe to session plan state changes.

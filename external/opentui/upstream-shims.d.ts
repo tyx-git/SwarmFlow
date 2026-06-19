@@ -1,4 +1,4 @@
-﻿declare module "*.scm" {
+declare module "*.scm" {
   const path: string
   export default path
 }

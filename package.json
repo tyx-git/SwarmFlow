@@ -1,14 +1,14 @@
 {
-  "name": "swarmflow",
-  "version": "0.4.0",
-  author: tyx-git,
+  "name": "SwarmFlow",
+  "version": "0.3.3",
+  "author": "tyx-git",
   "updateNotice": "",
   "description": "SwarmFlow — A multi-agent AI coding assistant with swarm orchestration, parallel sub-agents, and adaptive context management",
   "type": "module",
   "license": "MIT",
-    "repository": {
+  "repository": {
     "type": "git",
-    "url": "git+https://www.github.com/tyx-git/SwarmFlow"
+    "url": "https://www.github.com/tyx-git/SwarmFlow"
   },
   "homepage": "https://www.github.com/tyx-git/SwarmFlow",
   "bugs": {
@@ -47,6 +47,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.61.0",
     "@inquirer/prompts": "^8.3.0",
+    "@jimp/plugin-print": "1.6.1",
     "@joplin/turndown-plugin-gfm": "^1.0.67",
     "@mozilla/readability": "^0.6.0",
     "@opentui/core": "workspace:*",
@@ -87,7 +88,7 @@
     "@opentui/core-linux-arm64": "0.4.1",
     "@opentui/core-linux-x64": "0.4.1",
     "@opentui/core-win32-arm64": "0.4.1",
-    "@opentui/core-win32-x64": "0.4.1"
+    "@opentui/core-win32-x64": "^0.4.1"
   },
   "overrides": {
     "@opentui/core": "workspace:*"

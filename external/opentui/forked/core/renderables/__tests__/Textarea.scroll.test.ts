@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockMouse } from "../../testing/test-renderer.js"
 import { createTextareaRenderable, simulateFrames as _simulateFrames } from "./renderable-test-utils.js"
 import { TestRecorder } from "../../testing/test-recorder.js"

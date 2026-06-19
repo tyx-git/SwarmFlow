@@ -1,4 +1,4 @@
-﻿import os from "os"
+import os from "os"
 import path from "path"
 import { EventEmitter } from "events"
 import { singleton } from "./singleton.js"

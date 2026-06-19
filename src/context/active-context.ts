@@ -1,4 +1,4 @@
-﻿import type { LogEntry } from "./context/log-entry.js";
+﻿import type { LogEntry } from "../context/log-entry.js";
 
 /** 摘要来源类型 */
 export type SummaryOrigin = "agent" | "manual";

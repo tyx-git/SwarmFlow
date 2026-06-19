@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Terminal capability response detection utilities.
  *
  * Detects various terminal capability response sequences:

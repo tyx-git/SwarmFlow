@@ -1,4 +1,4 @@
-﻿import { type RenderableOptions, Renderable } from "../Renderable.js"
+import { type RenderableOptions, Renderable } from "../Renderable.js"
 import { OptimizedBuffer } from "../buffer.js"
 import type { RenderContext } from "../types.js"
 

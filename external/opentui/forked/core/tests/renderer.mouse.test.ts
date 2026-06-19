@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, MouseButtons, type MockMouse, type TestRenderer } from "../testing.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { MouseEvent } from "../renderer.js"
@@ -1191,7 +1191,7 @@ describe("renderer handleMouseData", () => {
       await mockMouse.moveTo(target.x + 1, target.y + 1)
       expect(overCount).toBe(1)
 
-      // Destroy without rendering 鈥?the hit grid still has the old state,
+      // Destroy without rendering — the hit grid still has the old state,
       // so the next mouse move hits handleMouseData's "out" path directly
       target.destroy()
 

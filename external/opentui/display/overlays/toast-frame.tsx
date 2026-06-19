@@ -1,4 +1,4 @@
-﻿/** @jsxImportSource @opentui/react */
+/** @jsxImportSource @opentui/react */
 
 import React from "react";
 import type { DisplayTheme } from "../theme/index.js";
@@ -27,7 +27,7 @@ export interface ToastFrameProps {
 
 /**
  * Shared visual shell for the top-right corner toasts (update / MCP / copy).
- * Pure presentation 鈥?positioning and vertical stacking are owned by
+ * Pure presentation — positioning and vertical stacking are owned by
  * <ToastStack>, so this component never sets its own absolute position.
  *
  * The footer is an absolutely-positioned overlay on the bottom border: the

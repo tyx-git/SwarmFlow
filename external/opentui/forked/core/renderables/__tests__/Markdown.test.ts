@@ -1,4 +1,4 @@
-﻿import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
+import { test, expect, beforeAll, beforeEach, afterEach, afterAll } from "bun:test"
 import { Edge } from "../../yoga.js"
 import { Lexer } from "marked"
 import { createMarkdownCodeBlockRenderer, MarkdownRenderable, type MarkdownOptions } from "../Markdown.js"
@@ -192,7 +192,13 @@ test("basic table alignment", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹?    鈹侼ame 鈹侫ge鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹侫lice鈹?0 鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹侭ob  鈹?  鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹?
+    ┌─────┬───┐
+    │Name │Age│
+    ├─────┼───┤
+    │Alice│30 │
+    ├─────┼───┤
+    │Bob  │5  │
+    └─────┴───┘"
   `)
 })
 
@@ -273,7 +279,11 @@ test("tableOptions.cellPaddingX pads cells horizontally without vertical padding
     .map((line) => line.trimEnd())
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹攢鈹€鈹€鈹?    鈹?A 鈹?B 鈹?    鈹溾攢鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹?1 鈹?2 鈹?    鈹斺攢鈹€鈹€鈹粹攢鈹€鈹€鈹?
+    ┌───┬───┐
+    │ A │ B │
+    ├───┼───┤
+    │ 1 │ 2 │
+    └───┴───┘"
   `)
 })
 
@@ -301,7 +311,7 @@ test("internalBlockMode=top-level defaults markdown tables to borderless columns
     .map((line) => line.trimEnd())
     .join("\n")
 
-  expect(rendered).not.toContain("鈹?)
+  expect(rendered).not.toContain("┌")
   expect(rendered).toMatch(/Name\s{2,}Age/)
   expect(rendered).toMatch(/Alice\s{2,}30/)
 })
@@ -337,7 +347,7 @@ test("tableOptions.style updates existing markdown table renderable content layo
     .map((line) => line.trimEnd())
     .join("\n")
 
-  expect(rendered).not.toContain("鈹?)
+  expect(rendered).not.toContain("┌")
   expect(rendered).toMatch(/Name\s{2,}Age/)
   expect(rendered).toMatch(/Alice\s{2,}30/)
 })
@@ -377,7 +387,15 @@ test("table with inline code (backticks)", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侰ommand      鈹侱escription  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俷pm install  鈹侷nstall deps 鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俷pm run build鈹侭uild project鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俷pm test     鈹俁un tests    鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌─────────────┬─────────────┐
+    │Command      │Description  │
+    ├─────────────┼─────────────┤
+    │npm install  │Install deps │
+    ├─────────────┼─────────────┤
+    │npm run build│Build project│
+    ├─────────────┼─────────────┤
+    │npm test     │Run tests    │
+    └─────────────┴─────────────┘"
   `)
 })
 
@@ -389,7 +407,13 @@ test("table with bold text", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹侳eature       鈹係tatus鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹侫uthentication鈹侱one  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹侫PI           鈹俉IP   鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌──────────────┬──────┐
+    │Feature       │Status│
+    ├──────────────┼──────┤
+    │Authentication│Done  │
+    ├──────────────┼──────┤
+    │API           │WIP   │
+    └──────────────┴──────┘"
   `)
 })
 
@@ -401,7 +425,13 @@ test("table with italic text", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侷tem鈹侼ote     鈹?    鈹溾攢鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侽ne 鈹俰mportant鈹?    鈹溾攢鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俆wo 鈹俹k       鈹?    鈹斺攢鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌────┬─────────┐
+    │Item│Note     │
+    ├────┼─────────┤
+    │One │important│
+    ├────┼─────────┤
+    │Two │ok       │
+    └────┴─────────┘"
   `)
 })
 
@@ -413,7 +443,13 @@ test("table with mixed formatting", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹俆ype 鈹俈alue 鈹侼otes 鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹侭old 鈹俢ode  鈹俰talic鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹侾lain鈹俿trong鈹俢md   鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌─────┬──────┬──────┐
+    │Type │Value │Notes │
+    ├─────┼──────┼──────┤
+    │Bold │code  │italic│
+    ├─────┼──────┼──────┤
+    │Plain│strong│cmd   │
+    └─────┴──────┴──────┘"
   `)
 })
 
@@ -425,7 +461,13 @@ test("table with alignment markers (left, center, right)", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹?    鈹侺eft     鈹侰enter鈹俁ight鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹?    鈹侫        鈹侭     鈹侰    鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹?    鈹侺ong text鈹俋     鈹俌    鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹?
+    ┌─────────┬──────┬─────┐
+    │Left     │Center│Right│
+    ├─────────┼──────┼─────┤
+    │A        │B     │C    │
+    ├─────────┼──────┼─────┤
+    │Long text│X     │Y    │
+    └─────────┴──────┴─────┘"
   `)
 })
 
@@ -437,7 +479,13 @@ test("table with empty cells", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹攢鈹?    鈹侫鈹侭鈹?    鈹溾攢鈹尖攢鈹?    鈹俋鈹?鈹?    鈹溾攢鈹尖攢鈹?    鈹?鈹俌鈹?    鈹斺攢鈹粹攢鈹?
+    ┌─┬─┐
+    │A│B│
+    ├─┼─┤
+    │X│ │
+    ├─┼─┤
+    │ │Y│
+    └─┴─┘"
   `)
 })
 
@@ -448,7 +496,11 @@ test("table with long header and short content", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹?    鈹俈ery Long Column Header鈹係hort鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹?    鈹侫                      鈹侭    鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹?
+    ┌───────────────────────┬─────┐
+    │Very Long Column Header│Short│
+    ├───────────────────────┼─────┤
+    │A                      │B    │
+    └───────────────────────┴─────┘"
   `)
 })
 
@@ -459,7 +511,11 @@ test("table with short header and long content", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹?    鈹俋                        鈹俌    鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹?    鈹俆his is very long content鈹係hort鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹?
+    ┌─────────────────────────┬─────┐
+    │X                        │Y    │
+    ├─────────────────────────┼─────┤
+    │This is very long content│Short│
+    └─────────────────────────┴─────┘"
   `)
 })
 
@@ -480,7 +536,11 @@ test("table inside code block should NOT be formatted", async () => {
     |---|---|---|
     | Should | Stay | Raw |
 
-    鈹屸攢鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俁eal鈹俆able    鈹?    鈹溾攢鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侷s  鈹侳ormatted鈹?    鈹斺攢鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌────┬─────────┐
+    │Real│Table    │
+    ├────┼─────────┤
+    │Is  │Formatted│
+    └────┴─────────┘"
   `)
 })
 
@@ -626,7 +686,11 @@ test("headings and tables keep exactly one separator row", async () => {
     "
     Before
 
-    鈹屸攢鈹攢鈹?    鈹侫鈹侭鈹?    鈹溾攢鈹尖攢鈹?    鈹?鈹?鈹?    鈹斺攢鈹粹攢鈹?
+    ┌─┬─┐
+    │A│B│
+    ├─┼─┤
+    │1│2│
+    └─┴─┘"
   `)
 })
 
@@ -639,7 +703,7 @@ test("headings and blockquotes keep exactly one separator row", async () => {
     "
     Before
 
-    鈹?quoted text"
+    │ quoted text"
   `)
 })
 
@@ -652,7 +716,7 @@ test("headings and horizontal rules keep exactly one separator row", async () =>
     "
     Before
 
-    鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€"
+    ────────────────────────────────────────────────────────────"
   `)
 })
 
@@ -669,10 +733,19 @@ Some text between.
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹攢鈹?    鈹俆able1鈹侫鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹?    鈹俋     鈹俌鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹?
+    ┌──────┬─┐
+    │Table1│A│
+    ├──────┼─┤
+    │X     │Y│
+    └──────┴─┘
+
     Some text between.
 
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹?    鈹俆able2      鈹侭B鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹?    鈹侺ong content鈹俍 鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹?
+    ┌────────────┬──┐
+    │Table2      │BB│
+    ├────────────┼──┤
+    │Long content│Z │
+    └────────────┴──┘"
   `)
 })
 
@@ -684,20 +757,34 @@ test("table with escaped pipe character", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侰ommand  鈹侽utput  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俥cho     鈹侶ello   鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俵s | grep鈹侳iltered鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌─────────┬────────┐
+    │Command  │Output  │
+    ├─────────┼────────┤
+    │echo     │Hello   │
+    ├─────────┼────────┤
+    │ls | grep│Filtered│
+    └─────────┴────────┘"
   `)
 })
 
 test("table with unicode characters", async () => {
   const markdown = `| Emoji | Name |
 |---|---|
-| 馃帀 | Party |
-| 馃殌 | Rocket |
-| 鏃ユ湰瑾?| Japanese |`
+| 🎉 | Party |
+| 🚀 | Rocket |
+| 日本語 | Japanese |`
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侲moji 鈹侼ame    鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹傪煄?   鈹侾arty   鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹傪煔€    鈹俁ocket  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹傛棩鏈獮鈹侸apanese鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌──────┬────────┐
+    │Emoji │Name    │
+    ├──────┼────────┤
+    │🎉    │Party   │
+    ├──────┼────────┤
+    │🚀    │Rocket  │
+    ├──────┼────────┤
+    │日本語│Japanese│
+    └──────┴────────┘"
   `)
 })
 
@@ -709,7 +796,13 @@ test("table with links", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侼ame  鈹侺ink                     鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侴oogle鈹俵ink (https://google.com)鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侴itHub鈹俫h (https://github.com)  鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌──────┬─────────────────────────┐
+    │Name  │Link                     │
+    ├──────┼─────────────────────────┤
+    │Google│link (https://google.com)│
+    ├──────┼─────────────────────────┤
+    │GitHub│gh (https://github.com)  │
+    └──────┴─────────────────────────┘"
   `)
 })
 
@@ -731,7 +824,11 @@ test("table with many columns", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹攢鈹攢鈹攢鈹攢鈹?    鈹侫鈹侭鈹侰鈹侱鈹侲鈹?    鈹溾攢鈹尖攢鈹尖攢鈹尖攢鈹尖攢鈹?    鈹?鈹?鈹?鈹?鈹?鈹?    鈹斺攢鈹粹攢鈹粹攢鈹粹攢鈹粹攢鈹?
+    ┌─┬─┬─┬─┬─┐
+    │A│B│C│D│E│
+    ├─┼─┼─┼─┼─┤
+    │1│2│3│4│5│
+    └─┴─┴─┴─┴─┘"
   `)
 })
 
@@ -760,7 +857,13 @@ test("table with nested inline formatting", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侱escription                    鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俆his has bold and code together鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侫nd italic with nested bold    鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌───────────────────────────────┐
+    │Description                    │
+    ├───────────────────────────────┤
+    │This has bold and code together│
+    ├───────────────────────────────┤
+    │And italic with nested bold    │
+    └───────────────────────────────┘"
   `)
 })
 
@@ -774,7 +877,13 @@ test("conceal=false: table with bold text", async () => {
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹侳eature           鈹係tatus鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹?*Authentication**鈹侱one  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹?    鈹?*API**           鈹俉IP   鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌──────────────────┬──────┐
+    │Feature           │Status│
+    ├──────────────────┼──────┤
+    │**Authentication**│Done  │
+    ├──────────────────┼──────┤
+    │**API**           │WIP   │
+    └──────────────────┴──────┘"
   `)
 })
 
@@ -786,7 +895,13 @@ test("conceal=false: table with inline code", async () => {
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侰ommand        鈹侱escription  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俓`npm install\`  鈹侷nstall deps 鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俓`npm run build\`鈹侭uild project鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌───────────────┬─────────────┐
+    │Command        │Description  │
+    ├───────────────┼─────────────┤
+    │\`npm install\`  │Install deps │
+    ├───────────────┼─────────────┤
+    │\`npm run build\`│Build project│
+    └───────────────┴─────────────┘"
   `)
 })
 
@@ -798,7 +913,13 @@ test("conceal=false: table with italic text", async () => {
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侷tem鈹侼ote       鈹?    鈹溾攢鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侽ne 鈹?important*鈹?    鈹溾攢鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俆wo 鈹?ok*       鈹?    鈹斺攢鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌────┬───────────┐
+    │Item│Note       │
+    ├────┼───────────┤
+    │One │*important*│
+    ├────┼───────────┤
+    │Two │*ok*       │
+    └────┴───────────┘"
   `)
 })
 
@@ -810,20 +931,34 @@ test("conceal=false: table with mixed formatting", async () => {
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹俆ype    鈹俈alue     鈹侼otes   鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹?*Bold**鈹俓`code\`    鈹?italic*鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侾lain   鈹?*strong**鈹俓`cmd\`   鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌────────┬──────────┬────────┐
+    │Type    │Value     │Notes   │
+    ├────────┼──────────┼────────┤
+    │**Bold**│\`code\`    │*italic*│
+    ├────────┼──────────┼────────┤
+    │Plain   │**strong**│\`cmd\`   │
+    └────────┴──────────┴────────┘"
   `)
 })
 
 test("conceal=false: table with unicode characters", async () => {
   const markdown = `| Emoji | Name |
 |---|---|
-| 馃帀 | Party |
-| 馃殌 | Rocket |
-| 鏃ユ湰瑾?| Japanese |`
+| 🎉 | Party |
+| 🚀 | Rocket |
+| 日本語 | Japanese |`
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侲moji 鈹侼ame    鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹傪煄?   鈹侾arty   鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹傪煔€    鈹俁ocket  鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹傛棩鏈獮鈹侸apanese鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌──────┬────────┐
+    │Emoji │Name    │
+    ├──────┼────────┤
+    │🎉    │Party   │
+    ├──────┼────────┤
+    │🚀    │Rocket  │
+    ├──────┼────────┤
+    │日本語│Japanese│
+    └──────┴────────┘"
   `)
 })
 
@@ -835,7 +970,13 @@ test("conceal=false: basic table alignment", async () => {
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹?    鈹侼ame 鈹侫ge鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹侫lice鈹?0 鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹侭ob  鈹?  鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹?
+    ┌─────┬───┐
+    │Name │Age│
+    ├─────┼───┤
+    │Alice│30 │
+    ├─────┼───┤
+    │Bob  │5  │
+    └─────┴───┘"
   `)
 })
 
@@ -852,7 +993,12 @@ This is a paragraph after the table.`
     "
     This is a paragraph before the table.
 
-    鈹屸攢鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹?    鈹侼ame 鈹侫ge鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹侫lice鈹?0 鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹?
+    ┌─────┬───┐
+    │Name │Age│
+    ├─────┼───┤
+    │Alice│30 │
+    └─────┴───┘
+
     This is a paragraph after the table."
   `)
 })
@@ -1517,14 +1663,21 @@ Then continue with prose immediately after the code block.
     
     Quote, Table, Diff
     
-    鈹?Quoted note after the list. It should preserve quote
-    鈹?styling.
+    │ Quoted note after the list. It should preserve quote
+    │ styling.
 
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹?Feature  鈹?Stress                      鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹?Markdown 鈹?prose/code/table interleave 鈹?    鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹?Renderer 鈹?wrapping and spacing        鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    
+    ┌──────────┬─────────────────────────────┐
+    │ Feature  │ Stress                      │
+    ├──────────┼─────────────────────────────┤
+    │ Markdown │ prose/code/table interleave │
+    ├──────────┼─────────────────────────────┤
+    │ Renderer │ wrapping and spacing        │
+    └──────────┴─────────────────────────────┘
+    
     - const renderer = oldMarkdown
     + const renderer = experimentalMarkdown
     
-    鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€"
+    ────────────────────────────────────────────────────────────"
   `)
 })
 
@@ -1573,18 +1726,23 @@ Paragraph after diff.
     - First bullet
     - Second bullet
     
-    鈹?Quote text.
+    │ Quote text.
     
     1. First step
     2. Second step
     
-    鈹屸攢鈹€鈹€鈹攢鈹€鈹€鈹?    鈹?A 鈹?B 鈹?    鈹溾攢鈹€鈹€鈹尖攢鈹€鈹€鈹?    鈹?1 鈹?2 鈹?    鈹斺攢鈹€鈹€鈹粹攢鈹€鈹€鈹?    
+    ┌───┬───┐
+    │ A │ B │
+    ├───┼───┤
+    │ 1 │ 2 │
+    └───┴───┘
+    
     - old
     + new
     
     Paragraph after diff.
     
-    鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    ────────────────────────────────────────────────────────────
     
     Next Section"
   `)
@@ -1598,8 +1756,8 @@ test("simple blockquote", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹?This is a quote
-    鈹?spanning multiple lines"
+    │ This is a quote
+    │ spanning multiple lines"
   `)
 })
 
@@ -1620,7 +1778,7 @@ test("blockquote uses markup.quote style for text and conceal style for bar", as
   await renderMarkdownRenderable(md)
 
   const spans = captureSpans()
-  expect(findSpanContaining(spans, "鈹?)?.fg?.toInts()).toEqual(concealColor.toInts())
+  expect(findSpanContaining(spans, "│")?.fg?.toInts()).toEqual(concealColor.toInts())
 
   const textSpan = findSpanContaining(spans, "Quote text")
   expect(textSpan?.fg?.toInts()).toEqual(quoteColor.toInts())
@@ -1650,14 +1808,14 @@ test("blockquote updates quote text and bar colors when syntaxStyle changes", as
 
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
-  expect(findSpanContaining(captureSpans(), "鈹?)?.fg?.toInts()).toEqual(concealColor1.toInts())
+  expect(findSpanContaining(captureSpans(), "│")?.fg?.toInts()).toEqual(concealColor1.toInts())
   expect(findSpanContaining(captureSpans(), "Quote text")?.fg?.toInts()).toEqual(quoteColor1.toInts())
 
   md.syntaxStyle = theme2
   renderer.requestRender()
   await renderMarkdownRenderable(md)
 
-  expect(findSpanContaining(captureSpans(), "鈹?)?.fg?.toInts()).toEqual(concealColor2.toInts())
+  expect(findSpanContaining(captureSpans(), "│")?.fg?.toInts()).toEqual(concealColor2.toInts())
   expect(findSpanContaining(captureSpans(), "Quote text")?.fg?.toInts()).toEqual(quoteColor2.toInts())
 })
 
@@ -1778,7 +1936,7 @@ After`
     "
     Before
 
-    鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    ────────────────────────────────────────────────────────────
 
     After"
   `)
@@ -1802,7 +1960,7 @@ test("horizontal rule has one blank row before and after", async () => {
     "
     Before
     
-    鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    ────────────────────────────────────────────────────────────
     
     After"
   `)
@@ -1859,7 +2017,7 @@ Visit [GitHub](https://github.com) for more.
 
     Visit GitHub (https://github.com) for more.
 
-    鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    ────────────────────────────────────────────────────────────
 
     Press ? for help"
   `)
@@ -1947,7 +2105,9 @@ const x = 1;
     .map((line) => line.trimEnd())
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?    鈹侰ODE: const x = 1;                                        鈹?    鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+    ┌──────────────────────────────────────────────────────────┐
+    │CODE: const x = 1;                                        │
+    └──────────────────────────────────────────────────────────┘"
   `)
 })
 
@@ -2415,7 +2575,11 @@ test("malformed table with missing pipes", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹攢鈹?    鈹侫鈹侭鈹?    鈹溾攢鈹尖攢鈹?    鈹?鈹?鈹?    鈹斺攢鈹粹攢鈹?
+    ┌─┬─┐
+    │A│B│
+    ├─┼─┤
+    │1│2│
+    └─┴─┘"
   `)
 })
 
@@ -2496,7 +2660,11 @@ test("table at end with trailing blank lines", async () => {
 
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
-    鈹屸攢鈹攢鈹?    鈹侫鈹侭鈹?    鈹溾攢鈹尖攢鈹?    鈹?鈹?鈹?    鈹斺攢鈹粹攢鈹?
+    ┌─┬─┐
+    │A│B│
+    ├─┼─┤
+    │1│2│
+    └─┴─┘"
   `)
 })
 
@@ -3343,7 +3511,15 @@ test("stream end mid-table finalizes full table snapshot", async () => {
     .trimEnd()
 
   expect(frame).toMatchInlineSnapshot(`
-"鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹侼ame                          鈹係core                      鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹侫lpha                         鈹?0                         鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹侭ravo                         鈹?0                         鈹?鈹溾攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹尖攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?鈹侰harlie                       鈹?0                         鈹?鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹粹攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+"┌──────────────────────────────┬───────────────────────────┐
+│Name                          │Score                      │
+├──────────────────────────────┼───────────────────────────┤
+│Alpha                         │10                         │
+├──────────────────────────────┼───────────────────────────┤
+│Bravo                         │20                         │
+├──────────────────────────────┼───────────────────────────┤
+│Charlie                       │30                         │
+└──────────────────────────────┴───────────────────────────┘"
 `)
 })
 
@@ -3528,20 +3704,20 @@ test("streaming table updates trailing row content", async () => {
 })
 
 test("streaming complex tables keep final rows visible (issue #15244)", async () => {
-  const vmHeader = "| VM | 鐘舵€?| Owner | Zone | CPU | Mem(GB) | Disk(GB) | Net | Uptime | Cost/鏈?| Notes |"
+  const vmHeader = "| VM | 状态 | Owner | Zone | CPU | Mem(GB) | Disk(GB) | Net | Uptime | Cost/月 | Notes |"
   const vmDelimiter = "|---|---|---|---|---|---|---|---|---|---|---|"
   const vmRows = [
-    "| vm-api-01 | 馃煝 杩愯涓?| alice | us-east-1a | 8 | 32 | 500 | 1.2Gbps | 99.99% | 12,345 | 涓昏妭鐐?鈥?steady |",
-    "| vm-job-02 | 馃煝 杩愯涓?| bob | ap-south-1b | 16 | 64 | 1,024 | 950Mbps | 98.70% | 23,456 | 鎵瑰鐞?鈥?spikes |",
-    "| vm-batch-03 | 馃煛 缁存姢涓?| carol | eu-west-1c | 32 | 128 | 2,048 | 2.4Gbps | 97.10% | 34,567 | 鏈€鍚庝竴琛?鈥?must stay |",
+    "| vm-api-01 | 🟢 运行中 | alice | us-east-1a | 8 | 32 | 500 | 1.2Gbps | 99.99% | 12,345 | 主节点 — steady |",
+    "| vm-job-02 | 🟢 运行中 | bob | ap-south-1b | 16 | 64 | 1,024 | 950Mbps | 98.70% | 23,456 | 批处理 — spikes |",
+    "| vm-batch-03 | 🟡 维护中 | carol | eu-west-1c | 32 | 128 | 2,048 | 2.4Gbps | 97.10% | 34,567 | 最后一行 — must stay |",
   ] as const
 
-  const storageHeader = "| 瀛樺偍姹?| 鐘舵€?| 浣跨敤鐜?| 鍙敤(GB) | 宸茬敤(GB) | 鍐椾綑 | 澶囨敞 |"
+  const storageHeader = "| 存储池 | 状态 | 使用率 | 可用(GB) | 已用(GB) | 冗余 | 备注 |"
   const storageDelimiter = "|---|---|---|---|---|---|---|"
   const storageRows = [
-    "| 鐑睜A | 馃煝 姝ｅ父 | 72% | 12,500 | 32,500 | 3x | 娣峰悎璐熻浇 |",
-    "| 娓╂睜B | 馃煝 姝ｅ父 | 81% | 8,250 | 35,750 | 2x | 鍘嗗彶鏁版嵁 |",
-    "| 鍐锋睜C | 馃煛 鍛婅 | 93% | 2,100 | 27,900 | 2x | 鏈€鍚庝竴琛?鈥?must stay |",
+    "| 热池A | 🟢 正常 | 72% | 12,500 | 32,500 | 3x | 混合负载 |",
+    "| 温池B | 🟢 正常 | 81% | 8,250 | 35,750 | 2x | 历史数据 |",
+    "| 冷池C | 🟡 告警 | 93% | 2,100 | 27,900 | 2x | 最后一行 — must stay |",
   ] as const
 
   const buildContent = (vmRowCount: number, storageRowCount: number): string =>
@@ -3580,7 +3756,7 @@ test("streaming complex tables keep final rows visible (issue #15244)", async ()
   expect(vmTable.content.length).toBe(4)
   expect(storageTable.content.length).toBe(4)
   expect(cellText(vmTable.content[3]?.[0])).toContain("vm-batch-03")
-  expect(cellText(storageTable.content[3]?.[0])).toContain("鍐锋睜C")
+  expect(cellText(storageTable.content[3]?.[0])).toContain("冷池C")
 })
 
 test("streaming table with incomplete first row is rendered with padded cells", async () => {
@@ -3599,7 +3775,7 @@ test("streaming table with incomplete first row is rendered with padded cells", 
     .map((line) => line.trimEnd())
     .join("\n")
 
-  expect(frame1).toMatch(/[鈹屸攤鈹擼/)
+  expect(frame1).toMatch(/[┌│└]/)
   expect(frame1).toContain("A")
 
   md.content = "| A |\n|---|\n| 1"
@@ -3610,7 +3786,7 @@ test("streaming table with incomplete first row is rendered with padded cells", 
     .map((line) => line.trimEnd())
     .join("\n")
 
-  expect(frame2).toMatch(/[鈹屸攤鈹擼/)
+  expect(frame2).toMatch(/[┌│└]/)
   expect(frame2).toContain("1")
 
   md.content = "| A |\n|---|\n| 1 |\n| 2 |"
@@ -3621,7 +3797,7 @@ test("streaming table with incomplete first row is rendered with padded cells", 
     .map((line) => line.trimEnd())
     .join("\n")
 
-  expect(frame3).toMatch(/[鈹屸攤鈹擼/)
+  expect(frame3).toMatch(/[┌│└]/)
   expect(frame3).toContain("1")
   expect(frame3).toContain("2")
 })
@@ -3642,7 +3818,7 @@ test("streaming table transitions from raw text to table once first row appears"
     .map((line) => line.trimEnd())
     .join("\n")
   expect(frame).toContain("| Header |")
-  expect(frame).not.toMatch(/[鈹屸攤鈹擼/)
+  expect(frame).not.toMatch(/[┌│└]/)
 
   md.content = "| Header |\n|---|"
   await renderMarkdownRenderable(md)
@@ -3652,7 +3828,7 @@ test("streaming table transitions from raw text to table once first row appears"
     .map((line) => line.trimEnd())
     .join("\n")
   expect(frame).toContain("|---|")
-  expect(frame).not.toMatch(/[鈹屸攤鈹擼/)
+  expect(frame).not.toMatch(/[┌│└]/)
 
   md.content = "| Header |\n|---|\n| D"
   await renderMarkdownRenderable(md)
@@ -3661,7 +3837,7 @@ test("streaming table transitions from raw text to table once first row appears"
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
-  expect(frame).toMatch(/[鈹屸攤鈹擼/)
+  expect(frame).toMatch(/[┌│└]/)
   expect(frame).toContain("Header")
   expect(frame).toContain("D")
   expect(frame).not.toContain("|---|")
@@ -3682,7 +3858,7 @@ test("streaming table remains rendered when row count decreases", async () => {
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
-  expect(frame).toMatch(/[鈹屸攤鈹擼/)
+  expect(frame).toMatch(/[┌│└]/)
   expect(frame).toContain("1")
   expect(frame).toContain("2")
 
@@ -3693,7 +3869,7 @@ test("streaming table remains rendered when row count decreases", async () => {
     .split("\n")
     .map((line) => line.trimEnd())
     .join("\n")
-  expect(frame).toMatch(/[鈹屸攤鈹擼/)
+  expect(frame).toMatch(/[┌│└]/)
   expect(frame).toContain("1")
   expect(frame).not.toContain("|---|")
 })
@@ -3752,7 +3928,7 @@ Welcome to the **MarkdownRenderable** showcase! This demonstrates automatic tabl
 | Table alignment | **Done** | High | Uses \`marked\` parser |
 | Conceal mode | *Working* | Medium | Hides \`**\`, \`\`\`, etc. |
 | Theme switching | **Done** | Low | 3 themes available |
-| Unicode support | 鏃ユ湰瑾?| High | CJK characters |
+| Unicode support | 日本語 | High | CJK characters |
 
 ## Code Examples
 
@@ -3793,10 +3969,10 @@ const md = createMarkdownRenderable({
 
 | Emoji | Name | Category |
 |---|---|---|
-| 馃殌 | Rocket | Transport |
-| 馃帹 | Palette | Art |
-| 鈿?| Lightning | Nature |
-| 馃敟 | Fire | Nature |
+| 🚀 | Rocket | Transport |
+| 🎨 | Palette | Art |
+| ⚡ | Lightning | Nature |
+| 🔥 | Fire | Nature |
 
 ---
 

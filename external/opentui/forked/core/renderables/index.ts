@@ -1,4 +1,4 @@
-﻿export * from "./ASCIIFont.js"
+export * from "./ASCIIFont.js"
 export * from "./Box.js"
 export * from "./Code.js"
 export * from "./composition/constructs.js"

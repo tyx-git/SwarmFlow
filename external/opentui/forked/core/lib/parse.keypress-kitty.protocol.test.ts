@@ -1,4 +1,4 @@
-﻿import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { parseKeypress, type ParseKeypressOptions, type ParsedKey } from "./parse.keypress.js"
 
 // This mirrors the upstream protocol tables and expands them into one test
@@ -299,7 +299,7 @@ const eventAndPayloadCases = [
   ["\x1b[57400u", { name: "kp1", sequence: "1" }],
   ["\x1b[57413u", { name: "kpplus", sequence: "+" }],
   ["\x1b[57400;1;120u", { name: "kp1", sequence: "x" }],
-  ["\x1b[0;;229u", { name: "氓", sequence: "氓" }],
+  ["\x1b[0;;229u", { name: "å", sequence: "å" }],
   ["\x1b[0;;104:105u", { name: "hi", sequence: "hi" }],
 ] as const satisfies ReadonlyArray<readonly [string, ExpectedKey]>
 
