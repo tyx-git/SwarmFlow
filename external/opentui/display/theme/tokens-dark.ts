@@ -25,6 +25,8 @@ export const DARK_TOKENS: DisplayThemeTokens = {
     workingStatus: "#8ab4f8",
     waitingStatus: "#e8c468",
     errorStatus: "#f05030",
+    diffAdditionBg: "#285438",
+    diffDeletionBg: "#6a3232",
   },
   spacing: {
     screenPaddingX: 0,
@@ -46,20 +48,17 @@ export const DARK_TOKENS: DisplayThemeTokens = {
     minTerminalWidthForSidebar: 120,
   },
   branding: {
-    // ANSI Shadow figlet. Rendered in a single uniform accent color via
-    // LogoBlock (home wordmark). `logoGradient` below is separate — still
-    // consumed by the sidebar wordmark + system entries, so it is left
-    // intact and is intentionally NOT used for the home logo anymore.
+    // SwarmFlow logo
     logoLines: [
-      "███████╗███████╗██████╗ ███╗   ███╗██╗",
-      "██╔════╝██╔════╝██╔══██╗████╗ ████║██║",
-      "█████╗  █████╗  ██████╔╝██╔████╔██║██║",
-      "██╔══╝  ██╔══╝  ██╔══██╗██║╚██╔╝██║██║",
-      "██║     ███████╗██║  ██║██║ ╚═╝ ██║██║",
-      "╚═╝     ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝",
+      "███████╗██╗    ██╗ █████╗ ██████╗ ███╗   ███╗███████╗██╗      ██████╗ ██╗    ██╗",
+      "██╔════╝██║    ██║██╔══██╗██╔══██╗████╗ ████║██╔════╝██║     ██╔═══██╗██║    ██║",
+      "███████╗██║ █╗ ██║███████║██████╔╝██╔████╔██║█████╗  ██║     ██║   ██║██║ █╗ ██║",
+      "╚════██║██║███╗██║██╔══██║██╔══██╗██║╚██╔╝██║██╔══╝  ██║     ██║   ██║██║███╗██║",
+      "███████║╚███╔███╔╝██║  ██║██║  ██║██║ ╚═╝ ██║██║     ███████╗╚██████╔╝╚███╔███╔╝",
+      "╚══════╝ ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝ ",
     ],
-    // Single-hue luminance ramp (accent blue). NOT used by the home logo
-    // (uniform accent) — kept for sidebar wordmark + system entries.
+    //单一色调亮度渐变(强调蓝色)。未被主页徽标使用
+    //(!!!)-为侧栏文字标记+系统条目保留。
     logoGradient: ["#cdddfd", "#b3cbfb", "#9bbaf9", "#8ab4f8", "#7398d6", "#5e7cb3", "#4c6691"],
     sidebarWordmark: "SWARMFLOW",
     sidebarGradientIndices: [0, 1, 3, 5, 6],

@@ -82,7 +82,7 @@ export interface OpenTuiRuntime {
   commandRegistry: CommandRegistry;
   verbose: boolean;
   /** Persisted user preference for theme mode. main.tsx feeds this into the resolver. */
-  themeModePref: "auto" | "light" | "dark";
+  themeModePref: "auto" | "light" | "dark" | "default" | "nord" | "dracula";
   /** Persisted global preference for inline write/edit diff display. */
   diffDisplay: "compact" | "full";
   /** Persisted global preference for copy-on-select. Default: true. */
@@ -252,9 +252,9 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   session.applySettings(settings, modelState);
   await refreshActiveOpenAICodexToken(session);
 
-  // ── Shiki syntax highlighter (disable with FERMI_SHIKI=0) ──
+  // ── Shiki syntax highlighter (disable with SHIKI=0) ──
   if (opts?.initHighlighter !== false) {
-    if (process.env.FERMI_SHIKI !== "0") {
+    if (process.env.SHIKI !== "0") {
       import("./forked/shiki-highlighter.js").then(async ({ initShikiHighlighter }) => {
         await initShikiHighlighter();
       }).catch(() => {
@@ -273,7 +273,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   const commandRegistry = buildDefaultRegistry();
   registerSkillCommands(commandRegistry, session.skills);
 
-  const themeModePref: "auto" | "light" | "dark" = settings.theme_mode ?? "auto";
+  const themeModePref: "auto" | "light" | "dark" | "default" | "nord" | "dracula" = settings.theme_mode ?? "auto";
   const diffDisplay: "compact" | "full" = globalSettings.diff_display === "full" ? "full" : "compact";
   const copyOnSelect: boolean = globalSettings.copy_on_select !== false;
 

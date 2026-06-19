@@ -498,10 +498,10 @@ export class OptimizedBuffer {
       packedOptions,
       options.borderColor,
       options.backgroundColor,
-      // 0.4.1 native ABI added a required titleColor arg. When Fermi draws the
+      // 0.4.1 native ABI added a required titleColor arg. When  draws the
       // left title in JS (jsDrawsLeftTitle), the title arg below is null so this
       // titleColor is a no-op; otherwise native draws the title in borderColor
-      // (the upstream default), preserving 0.3.1 Fermi visuals.
+      // (the upstream default), preserving 0.3.1  visuals.
       options.titleColor ?? options.borderColor,
       jsDrawsLeftTitle ? null : leftTitleText,
       options.bottomTitle ?? null,

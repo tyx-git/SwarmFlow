@@ -1,38 +1,36 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
-
 import { env, registerEnvVar } from "./env.js"
 
 registerEnvVar({
-  name: "FERMI_OPENTUI_DIAG",
-  description: "Enable synchronous JSONL diagnostics for Fermi's OpenTUI integration.",
+  name: "OPENTUI_DIAG",
+  description: "Enable synchronous JSONL diagnostics for SwarmFlow's OpenTUI integration.",
   type: "boolean",
   default: false,
 })
 
 registerEnvVar({
-  name: "FERMI_OPENTUI_DIAG_PATH",
-  description: "Path for Fermi OpenTUI diagnostic JSONL output.",
+  name: "OPENTUI_DIAG_PATH",
+  description: "Path for SwarmFlow OpenTUI diagnostic JSONL output.",
   type: "string",
-  default: "/tmp/fermi-opentui-diag.jsonl",
+  default: "/tmp/opentui-diag.jsonl",
 })
 
 registerEnvVar({
-  name: "FERMI_OPENTUI_DISABLE_MARKDOWN_PATCH",
-  description: "Disable Fermi's local OpenTUI markdown monkey patch.",
+  name: "OPENTUI_DISABLE_MARKDOWN_PATCH",
+  description: "Disable SwarmFlow's local OpenTUI markdown monkey patch.",
   type: "boolean",
   default: false,
 })
 
 registerEnvVar({
-  name: "FERMI_OPENTUI_ASSISTANT_RENDERER",
+  name: "OPENTUI_ASSISTANT_RENDERER",
   description: "Assistant message renderer: 'markdown' or 'code'.",
   type: "string",
   default: "markdown",
 })
 
 const MAX_DIAG_BYTES = 8 * 1024 * 1024
-
 let currentBytes = 0
 let didReset = false
 let didTruncate = false
@@ -40,7 +38,6 @@ let sequence = 0
 
 function sanitize(value: unknown, depth: number = 0): unknown {
   if (depth > 4) return "[max-depth]"
-
   if (value instanceof Error) {
     return {
       name: value.name,
@@ -48,27 +45,26 @@ function sanitize(value: unknown, depth: number = 0): unknown {
       stack: value.stack,
     }
   }
-
   if (typeof value === "string") {
     return value.length > 500 ? `${value.slice(0, 500)}...[truncated]` : value
   }
-
   if (typeof value === "number" || typeof value === "boolean" || value === null) {
     return value
   }
-
   if (typeof value === "bigint") {
+
     return value.toString()
-  }
 
+  }
   if (typeof value === "undefined") {
-    return undefined
-  }
 
+    return undefined
+
+  }
   if (Array.isArray(value)) {
+
     return value.slice(0, 32).map((item) => sanitize(item, depth + 1))
   }
-
   if (typeof value === "object") {
     const out: Record<string, unknown> = {}
     for (const [key, entry] of Object.entries(value)) {
@@ -76,53 +72,43 @@ function sanitize(value: unknown, depth: number = 0): unknown {
     }
     return out
   }
-
   return String(value)
 }
-
 function appendLine(line: string): void {
-  const path = getFermiOpenTuiDiagPath()
+  const path = getOpenTuiDiagPath()
   mkdirSync(dirname(path), { recursive: true })
   appendFileSync(path, line, "utf8")
   currentBytes += Buffer.byteLength(line)
 }
-
-export function isFermiOpenTuiDiagEnabled(): boolean {
-  return Boolean(env.FERMI_OPENTUI_DIAG)
+export function isOpenTuiDiagEnabled(): boolean {
+  return Boolean(env.OPENTUI_DIAG)
 }
-
-export function getFermiOpenTuiDiagPath(): string {
-  return String(env.FERMI_OPENTUI_DIAG_PATH)
+export function getOpenTuiDiagPath(): string {
+  return String(env.OPENTUI_DIAG_PATH)
 }
-
-export function isFermiMarkdownPatchDisabled(): boolean {
-  return Boolean(env.FERMI_OPENTUI_DISABLE_MARKDOWN_PATCH)
+export function isMarkdownPatchDisabled(): boolean {
+  return Boolean(env.OPENTUI_DISABLE_MARKDOWN_PATCH)
 }
-
-export function getFermiAssistantRenderer(): "markdown" | "code" {
-  const value = String(env.FERMI_OPENTUI_ASSISTANT_RENDERER ?? "markdown").trim().toLowerCase()
+export function getAssistantRenderer(): "markdown" | "code" {
+  const value = String(env.OPENTUI_ASSISTANT_RENDERER ?? "markdown").trim().toLowerCase()
   return value === "code" ? "code" : "markdown"
 }
-
-export function resetFermiOpenTuiDiagLog(context: Record<string, unknown> = {}): void {
-  if (!isFermiOpenTuiDiagEnabled()) return
-
-  const path = getFermiOpenTuiDiagPath()
+export function resetOpenTuiDiagLog(context: Record<string, unknown> = {}): void {
+  if (!isOpenTuiDiagEnabled()) return
+  const path = getOpenTuiDiagPath()
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, "", "utf8")
   currentBytes = 0
   didReset = true
   didTruncate = false
   sequence = 0
-  writeFermiOpenTuiDiag("diag.start", context)
+  writeOpenTuiDiag("diag.start", context)
 }
-
-export function writeFermiOpenTuiDiag(event: string, payload: Record<string, unknown> = {}): void {
-  if (!isFermiOpenTuiDiagEnabled()) return
+export function writeOpenTuiDiag(event: string, payload: Record<string, unknown> = {}): void {
+  if (!isOpenTuiDiagEnabled()) return
   if (!didReset) {
-    resetFermiOpenTuiDiagLog({ reason: "implicit-reset" })
+    resetOpenTuiDiagLog({ reason: "implicit-reset" })
   }
-
   const record = {
     seq: ++sequence,
     ts: new Date().toISOString(),
@@ -131,7 +117,6 @@ export function writeFermiOpenTuiDiag(event: string, payload: Record<string, unk
     ...(sanitize(payload) as Record<string, unknown>),
   }
   const line = `${JSON.stringify(record)}\n`
-
   if (currentBytes + Buffer.byteLength(line) > MAX_DIAG_BYTES) {
     if (!didTruncate) {
       didTruncate = true
@@ -147,16 +132,14 @@ export function writeFermiOpenTuiDiag(event: string, payload: Record<string, unk
     }
     return
   }
-
   appendLine(line)
 }
-
 export function previewLatin1Sequence(input: string, maxChars: number = 160): string {
   const preview = JSON.stringify(input)
   if (preview.length <= maxChars) return preview
   return `${preview.slice(0, maxChars)}...[truncated]`
 }
-
 export function previewLatin1Hex(input: string, maxBytes: number = 64): string {
   return Buffer.from(input, "latin1").subarray(0, maxBytes).toString("hex")
 }
+

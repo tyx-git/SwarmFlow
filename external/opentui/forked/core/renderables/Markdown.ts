@@ -109,7 +109,7 @@ export interface MarkdownOptions extends RenderableOptions<MarkdownRenderable> {
    */
   streaming?: boolean
   /**
-   * Fermi: decouple the monotonic streaming height floor from `streaming`.
+   * : decouple the monotonic streaming height floor from `streaming`.
    * When set, child code renderables reserve height per this flag instead of
    * `streaming`. This lets a completed entry stay in streaming render mode (no
    * finalize re-parse, so no per-turn repaint) while turning the per-width
@@ -302,7 +302,7 @@ export class MarkdownRenderable extends Renderable {
 
   _parseState: ParseState | null = null
   private _streaming: boolean = false
-  // Fermi: when defined, overrides _streaming as the per-width height-floor
+  // : when defined, overrides _streaming as the per-width height-floor
   // signal for child code renderables (undefined = follow _streaming).
   private _reserveHeightWhileStreaming?: boolean
   _blockStates: BlockState[] = []

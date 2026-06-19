@@ -82,7 +82,7 @@ function ensureLoaded(): void {
 
 /**
  * Test-only: re-init module state. Pass a temp dir to redirect the JSONL file.
- * Pass `null` to fall back to the real Fermi home.
+ * Pass `null` to fall back to the real  home.
  */
 export function __resetPromptHistoryForTesting(homeDir: string | null = null): void {
   state.loaded = false;

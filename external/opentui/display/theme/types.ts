@@ -1,6 +1,6 @@
 import type { SyntaxStyle } from "@opentui/core";
 
-export type ThemeMode = "dark" | "light";
+export type ThemeMode = "dark" | "light" | "default" | "nord" | "dracula";
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends readonly (infer U)[]
@@ -32,6 +32,8 @@ export interface DisplayThemeColorTokens {
   workingStatus: string;
   waitingStatus: string;
   errorStatus: string;
+  diffAdditionBg: string;
+  diffDeletionBg: string;
 }
 
 export interface DisplayThemeSpacingTokens {
@@ -104,7 +106,7 @@ export interface DisplayThemeTokens {
 }
 
 export interface DisplayTheme {
-  /** Resolved theme mode: "dark" or "light". Useful for branching by mode. */
+  /** Resolved theme mode. Useful for branching by mode. */
   mode: ThemeMode;
   tokens: DisplayThemeTokens;
   colors: DisplayThemeColorTokens;

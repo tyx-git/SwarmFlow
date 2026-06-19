@@ -394,7 +394,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
   // ── OpenAI Codex（OAuth）──
   if (provider.id === "openai-codex") {
     console.log(`  ${provider.name}: Logging in with your ChatGPT account...\n`);
-    const { browserLogin, deviceCodeLogin, saveOAuthTokens, hasOAuthTokens } = await import("./auth/openai-oauth.js");
+    const { browserLogin, deviceCodeLogin, saveOAuthTokens, hasOAuthTokens } = await import("../auth/openai-oauth.js");
     if (hasOAuthTokens()) {
       const reuse = await confirm({
         message: "Existing OAuth login found. Use it?",
@@ -433,7 +433,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
   // ── GitHub Copilot (设备流) ──
   if (provider.id === "copilot") {
     console.log(`  ${provider.name}: Logging in with your GitHub account...\n`);
-    const { deviceCodeLoginCLI, saveGitHubTokens, hasGitHubTokens } = await import("./auth/github-copilot-oauth.js");
+    const { deviceCodeLoginCLI, saveGitHubTokens, hasGitHubTokens } = await import("../auth/github-copilot-oauth.js");
     if (hasGitHubTokens()) {
       const reuse = await confirm({
         message: "Existing GitHub Copilot login found. Use it?",

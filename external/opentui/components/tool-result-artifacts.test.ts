@@ -30,6 +30,8 @@ const COLORS = {
   waitingStatus: "#e8c468",
   closingStatus: "#4d4843",
   errorStatus: "#f05030",
+  diffAdditionBg: "#285438",
+  diffDeletionBg: "#6a3232",
 } as const;
 
 describe("tool-result artifacts", () => {
@@ -43,8 +45,8 @@ describe("tool-result artifacts", () => {
       colors: COLORS,
     });
 
-    expect(artifacts[0]?.rowBackgroundColor).toBe("#285438");
-    expect(artifacts[1]?.rowBackgroundColor).toBe("#6a3232");
+    expect(artifacts[0]?.rowBackgroundColor).toBe(COLORS.diffAdditionBg);
+    expect(artifacts[1]?.rowBackgroundColor).toBe(COLORS.diffDeletionBg);
     expect(artifacts[0]?.content.chunks[0]?.text).toContain("12 ");
     expect(artifacts[0]?.content.chunks[0]?.fg?.toString()).toBe(artifacts[0]?.content.chunks[1]?.fg?.toString());
     expect(artifacts[1]?.content.chunks[0]?.fg?.toString()).toBe(artifacts[1]?.content.chunks[1]?.fg?.toString());
@@ -114,6 +116,6 @@ describe("tool-result artifacts", () => {
     expect(artifacts.length).toBeGreaterThan(1);
     expect(allText).toContain("hover:border");
     expect(allText).toContain("hover:text");
-    expect(artifacts.every((artifact) => artifact.rowBackgroundColor === "#285438")).toBe(true);
+    expect(artifacts.every((artifact) => artifact.rowBackgroundColor === COLORS.diffAdditionBg)).toBe(true);
   });
 });

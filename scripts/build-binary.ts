@@ -32,7 +32,7 @@ const host = detectHost();
 // 它们在 models.json / providers.json 无效时会抛出异常。
 // 在昂贵编译之前快速失败，使错误的 registry 数据永远不会发布。
 try {
-  await import("../src/model-registry.js");
+  await import("../src/models/registry.js");
   console.log("model/provider registry: valid");
 } catch (err) {
   console.error("model/provider registry INVALID — aborting build:");

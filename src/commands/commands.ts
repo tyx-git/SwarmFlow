@@ -1652,6 +1652,9 @@ function themeModeOptions(_ctx: CommandOptionsContext): CommandOption[] {
     { label: `Auto (follow terminal)${mark("auto")}`, value: "auto" },
     { label: `Light${mark("light")}`, value: "light" },
     { label: `Dark${mark("dark")}`, value: "dark" },
+    { label: `Default (Catppuccin)${mark("default")}`, value: "default" },
+    { label: `Nord${mark("nord")}`, value: "nord" },
+    { label: `Dracula${mark("dracula")}`, value: "dracula" },
   ];
 }
 
@@ -1667,7 +1670,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
     choice = picked.value;
   }
 
-  if (choice === "auto" || choice === "light" || choice === "dark") {
+  if (choice === "auto" || choice === "light" || choice === "dark" || choice === "default" || choice === "nord" || choice === "dracula") {
     persistSettingsPatch({ theme_mode: choice }, ctx.swarmflowHomeDir);
     // 魔术消息- TUI拦截和更新React状态而不重启。
     ctx.showMessage(`__theme_mode__:${choice}`);
@@ -1676,7 +1679,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
   }
 
   const current = loadGlobalSettings().theme_mode ?? "auto";
-  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme auto | light | dark`);
+  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme auto | light | dark | default | nord | dracula`);
 }
 
 // ------------------------------------------------------------------
@@ -2109,7 +2112,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
 // ------------------------------------------------------------------
 
 function loadReviewPromptTemplate(): string {
-  const { getBundledAssetsDir } = require("./config.js") as { getBundledAssetsDir: () => string };
+  const { getBundledAssetsDir } = require("../config/config.js") as { getBundledAssetsDir: () => string };
   const promptPath = join(getBundledAssetsDir(), "prompts", "review.md");
   try {
     return readFileSync(promptPath, "utf-8");
@@ -2354,7 +2357,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/hooks", description: "Manage registered hooks", handler: cmdHooks, options: hooksOptions, pickerTitle: "Hooks" });
   registry.register({ name: "/copy", description: "Copy the agent's most recent text response", handler: cmdCopy });
   registry.register({ name: "/fork", description: "Fork the current session into a new branch", handler: cmdFork });
-  registry.register({ name: "/theme", description: "Set theme mode (auto / light / dark)", handler: cmdTheme });
+  registry.register({ name: "/theme", description: "Set theme mode (auto / light / dark / default / nord / dracula)", handler: cmdTheme });
   registry.register({ name: "/diff", description: "Set write/edit diff display (compact / full)", handler: cmdDiff });
   registry.register({ name: "/usage", description: "Show session token usage", handler: cmdUsage, aliases: ["/context"] });
   registry.register({ name: "/stat", description: "Show all-time token statistics", handler: cmdStat });

@@ -113,8 +113,8 @@ function buildDiffLineArtifact(
   const textFg = RGBA.fromHex(colors.text);
   const greenFg = RGBA.fromHex(colors.green);
   const redFg = RGBA.fromHex(colors.red);
-  const additionBg = "#285438";
-  const deletionBg = "#6a3232";
+  const additionBg = colors.diffAdditionBg;
+  const deletionBg = colors.diffDeletionBg;
 
   if (raw.startsWith("@@")) {
     return [];

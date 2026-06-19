@@ -210,7 +210,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return OTUI_TREE_SITTER_WORKER_PATH
     }
 
-    // Fermi: in a bun --compile single-file binary, import.meta lives under
+    // : in a bun --compile single-file binary, import.meta lives under
     // /$bunfs/; resolve the worker next to the executable instead.
     const moduleDir = import.meta.dirname
     if (isBunfsPath(moduleDir)) {

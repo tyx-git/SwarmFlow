@@ -656,8 +656,8 @@ export interface SwarmflowSettings {
   // -- 显示 --
   /** 强调色 */
   accent_color?: string;
-  /** 主题模式："auto"（跟随终端）| "light" | "dark"。默认："auto" */
-  theme_mode?: "auto" | "light" | "dark";
+  /** 主题模式："auto"（跟随终端）| "light" | "dark" | "default"（Catppuccin）| "nord" | "dracula"。默认："auto" */
+  theme_mode?: "auto" | "light" | "dark" | "default" | "nord" | "dracula";
   /** 内联写入/编辑差异显示模式。默认："compact" */
   diff_display?: "compact" | "full";
   /** 选择时自动复制：将拖拽选择自动复制到剪贴板。默认：true */

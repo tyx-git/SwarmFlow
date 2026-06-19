@@ -6,12 +6,12 @@ user-invocable: false
 
 # Skill Manager
 
-You are managing skills for Fermi. Skills are reusable prompt expansions stored as directories containing a SKILL.md file.
+You are managing skills for SwarmFlow. Skills are reusable prompt expansions stored as directories containing a SKILL.md file.
 
 ## Directory Layout
 
 ```
-~/.fermi/skills/         # or the project's skills/ directory
+~/.swarmflow/skills/         # or the project's skills/ directory
   skill-name/
     SKILL.md          # Required: YAML frontmatter + markdown instructions
     scripts/          # Optional: helper scripts
@@ -40,7 +40,7 @@ Use $ARGUMENTS[0], $ARGUMENTS[1], or $0, $1 for positional arguments.
 1. **Search**: Use `web_search` to find relevant skill repositories or ideas
 2. **Download**: Clone or fetch to the staging area:
    ```bash
-   git clone --depth 1 <repo-url> ~/.fermi/skills/.staging/<skill-name>
+   git clone --depth 1 <repo-url> ~/.swarmflow/skills/.staging/<skill-name>
    ```
 3. **Inspect**: Read the downloaded files. Look for an existing SKILL.md, README, or relevant source files.
 4. **Organize**: Ensure `skills/.staging/<skill-name>/SKILL.md` exists with proper frontmatter:
@@ -50,11 +50,11 @@ Use $ARGUMENTS[0], $ARGUMENTS[1], or $0, $1 for positional arguments.
    - Include practical instructions in the markdown body
 5. **Install**: Move the staging directory to the skills directory:
    ```bash
-   mv ~/.fermi/skills/.staging/<skill-name> ~/.fermi/skills/<skill-name>
+   mv ~/.swarmflow/skills/.staging/<skill-name> ~/.swarmflow/skills/<skill-name>
    ```
    Clean up any git metadata if not needed:
    ```bash
-   rm -rf ~/.fermi/skills/<skill-name>/.git
+   rm -rf ~/.swarmflow/skills/<skill-name>/.git
    ```
 6. **Activate**: Call the `reload` tool. Skills are loaded at session start and refreshed on reload — they are **not** rescanned every turn, so a newly moved skill does not appear until you reload. After the `reload` tool runs, the skill is available as a `/<skill-name>` command and to the agent.
 
@@ -71,7 +71,7 @@ When the user describes a task pattern they want as a skill:
 
 Delete the skill directory:
 ```bash
-rm -rf ~/.fermi/skills/<skill-name>
+rm -rf ~/.swarmflow/skills/<skill-name>
 ```
 
 Then call the `reload` tool so the removed skill is dropped from the active set.

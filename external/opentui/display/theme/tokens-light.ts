@@ -33,6 +33,8 @@ export const LIGHT_TOKENS: DisplayThemeTokens = {
     workingStatus: "#0969da",
     waitingStatus: "#9a6700",
     errorStatus: "#cf222e",
+    diffAdditionBg: "#dafbe1",
+    diffDeletionBg: "#ffebe9",
   },
   // spacing / layout are mode-agnostic; clone from dark.
   spacing: DARK_TOKENS.spacing,

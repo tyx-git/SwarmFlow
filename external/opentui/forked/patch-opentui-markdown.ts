@@ -11,8 +11,8 @@ import {
 import type { ColorInput, TextChunk } from "@opentui/core";
 import type { MarkedToken, Tokens } from "marked";
 import {
-  isFermiMarkdownPatchDisabled,
-  writeFermiOpenTuiDiag,
+  isMarkdownPatchDisabled,
+  writeOpenTuiDiag,
 } from "./core/lib/diagnostic.js";
 import { clipboard } from "../../../src/platform/index.js";
 import type { DisplayTheme } from "../display/theme/types.js";
@@ -227,14 +227,14 @@ function normalizeInterTokenSpace(raw: string): string {
   return ANY_MARKDOWN_BLOCK_BREAK_RE.test(raw) ? "\n\n" : raw;
 }
 
-if (isFermiMarkdownPatchDisabled()) {
-  writeFermiOpenTuiDiag("markdown.patch", {
+if (isMarkdownPatchDisabled()) {
+  writeOpenTuiDiag("markdown.patch", {
     applied: false,
     reason: "disabled-by-env",
   });
 } else if (!proto[PATCH_FLAG]) {
   proto[PATCH_FLAG] = true;
-  writeFermiOpenTuiDiag("markdown.patch", {
+  writeOpenTuiDiag("markdown.patch", {
     applied: true,
     version: "v5",
   });
@@ -335,7 +335,7 @@ if (isFermiMarkdownPatchDisabled()) {
       // 0.4.1: draw raw text only while the precomputed styled text is present.
       drawUnstyledText: initialStyledText !== undefined,
       streaming: true,
-      // Fermi: per-width height floor — follows the explicit reserve flag when
+      // : per-width height floor — follows the explicit reserve flag when
       // set (lets completed entries disable it), else falls back to streaming.
       reserveHeightWhileStreaming: this._reserveHeightWhileStreaming ?? this._streaming,
       initialStyledText,
@@ -475,7 +475,7 @@ if (isFermiMarkdownPatchDisabled()) {
     renderable.conceal = this._conceal;
     // 0.4.1: draw raw text only while the precomputed styled text is present.
     renderable.drawUnstyledText = initialStyledText !== undefined;
-    // Fermi: per-width height floor — follows the explicit reserve flag when set
+    // : per-width height floor — follows the explicit reserve flag when set
     // (lets completed entries disable it), else falls back to streaming.
     renderable.reserveHeightWhileStreaming = this._reserveHeightWhileStreaming ?? this._streaming;
     renderable.streaming = true;

@@ -37,20 +37,20 @@ export function UpdateToast({
   let bodyLine2: string | undefined;
   if (isFailed) {
     bodyLine1 = version ? `Couldn't download v${version}.` : "Update download failed.";
-    bodyLine2 = "Check your proxy / network, then run `fermi update`.";
+    bodyLine2 = "Check your proxy / network, then run `swarmflow update`.";
   } else if (isReady) {
-    bodyLine1 = "A new version of Fermi downloaded.";
+    bodyLine1 = "A new version of swarmflow downloaded.";
     bodyLine2 = undefined;
   } else {
-    bodyLine1 = "A new version of Fermi detected.";
+    bodyLine1 = "A new version of swarmflow detected.";
     bodyLine2 = phase === "downloading"
       ? "Downloading update..."
-      : "Run `fermi update` to install.";
+      : "Run `swarmflow update` to install.";
   }
 
   return (
     <ToastFrame
-      title={isFailed ? " Update failed " : " New Fermi "}
+      title={isFailed ? " Update failed " : " New Version "}
       titleColor={isFailed ? colors.red : colors.accent}
       borderColor={colors.dim}
       theme={theme}

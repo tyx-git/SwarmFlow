@@ -40,8 +40,6 @@ import {
 // Constants
 // ------------------------------------------------------------------
 
-const ADDITION_BG = "#285438";
-const DELETION_BG = "#6a3232";
 const DEFAULT_MAX_VISIBLE = 25;
 
 // ------------------------------------------------------------------
@@ -223,7 +221,7 @@ function buildReplaceDescriptors(
         payloadFallbackFg: redFg,
         payloadBrightness: DIFF_BRIGHTNESS_DELETION,
         language,
-        rowBackgroundColor: DELETION_BG,
+        rowBackgroundColor: colors.diffDeletionBg,
       });
     }
 
@@ -239,7 +237,7 @@ function buildReplaceDescriptors(
         payloadFallbackFg: greenFg,
         payloadBrightness: DIFF_BRIGHTNESS_ADDITION,
         language,
-        rowBackgroundColor: ADDITION_BG,
+        rowBackgroundColor: colors.diffAdditionBg,
       });
     }
 
@@ -303,7 +301,7 @@ function buildAppendDescriptors(
       payloadFallbackFg: greenFg,
       payloadBrightness: DIFF_BRIGHTNESS_ADDITION,
       language,
-      rowBackgroundColor: ADDITION_BG,
+      rowBackgroundColor: colors.diffAdditionBg,
     });
   }
 
