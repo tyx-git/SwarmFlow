@@ -1,19 +1,18 @@
 ﻿/**
- * @deprecated 2026-05 鈥?superseded by DeepSeekAnthropicProvider in `./deepseek-anthropic.ts`.
+ * @deprecated 2026-05 — 已由 `./deepseek-anthropic.ts` 中的 DeepSeekAnthropicProvider 取代。
  *
- * Kept in the tree for emergency rollback only. The registry no longer
- * dispatches the `deepseek` provider id to this class. Once the new path
- * has soaked, delete this file.
+ * 仅保留在代码树中用于紧急回滚。注册表不再将 `deepseek` provider id
+ * 分派到此类。新路径稳定后删除此文件。
  *
- * ---- Original docstring follows ----
+ * ---- 原始文档字符串如下 ----
  *
- * DeepSeek provider adapter.
+ * DeepSeek 提供者适配器。
  *
- * Extends OpenAIChatProvider with DeepSeek's thinking control:
- * - thinking.type: "enabled" / "disabled" toggles reasoning mode
- * - reasoning_effort: "high" / "max" picks effort within thinking mode
- *   (DeepSeek auto-maps low/medium 鈫?high and xhigh 鈫?max, so we surface
- *   only the three documented behaviors as levels: off / high / max)
+ * 在 OpenAIChatProvider 之上扩展 DeepSeek 的 thinking 控制：
+ * - thinking.type: "enabled" / "disabled" 切换 reasoning 模式
+ * - reasoning_effort: "high" / "max" 在 thinking 模式中选择 effort
+ *   （DeepSeek 会自动将 low/medium 映射到 high，将 xhigh 映射到 max，
+ *   因此我们只将三个已记录行为作为级别暴露：off / high / max）
  */
 
 import type { ModelConfig } from "../config/config.js";

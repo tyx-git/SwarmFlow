@@ -1,20 +1,20 @@
 ﻿/**
- * Shared base for all providers that speak the Anthropic Messages API.
+ * 所有使用 Anthropic Messages API 的提供者共享的基类。
  *
- * Pure protocol mechanics live here: message/tool conversion, response parsing,
- * streaming event handling, and the strict-alternating-roles merge required by
- * /v1/messages. Vendor-specific behavior is exposed via protected hooks:
+ * 纯协议机制位于此处：消息/工具转换、响应解析、
+ * 流式事件处理，以及 /v1/messages 要求的严格角色交替合并。
+ * 供应商特定行为通过 protected 钩子暴露：
  *
- *   - _defaultBaseUrl()              鈥?fallback base URL when config has none
- *   - _applyThinkingParams()         鈥?write `thinking` / `output_config`
- *   - _applyCacheBreakpoint()        鈥?emit `cache_control` markers
- *   - _applySamplingParams()         鈥?write `temperature` (and friends)
- *   - _emitSignature()               鈥?keep `signature` on thinking blocks
- *   - _supportsBetas()               鈥?forward `betas` from config.extra
- *   - _convertWebSearchTool()        鈥?server-side web search tool shape
+ *   - _defaultBaseUrl()              — 配置未提供时的备用 base URL
+ *   - _applyThinkingParams()         — 写入 `thinking` / `output_config`
+ *   - _applyCacheBreakpoint()        — 发出 `cache_control` 标记
+ *   - _applySamplingParams()         — 写入 `temperature` 等采样参数
+ *   - _emitSignature()               — 保留 thinking 块上的 `signature`
+ *   - _supportsBetas()               — 从 config.extra 转发 `betas`
+ *   - _convertWebSearchTool()        — 服务端网页搜索工具形状
  *
- * Defaults are tuned for open-source vendors (Kimi / DeepSeek / MiniMax / Xiaomi):
- * no signature, no cache_control, no betas, no native server web search.
+ * 默认值面向开源供应商（Kimi / DeepSeek / MiniMax / Xiaomi）调优：
+ * 无 signature、无 cache_control、无 betas、无原生服务端网页搜索。
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -66,19 +66,18 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Vendor hooks 鈥?override in subclasses
+  // 供应商钩子 — 在子类中覆盖
   // ------------------------------------------------------------------
 
-  /** Default base URL when none provided in config. */
+  /** 配置中未提供时的默认 base URL。 */
   protected _defaultBaseUrl(): string | undefined {
     return undefined;
   }
 
   /**
-   * Optional fetch wrapper for vendors whose streaming responses need to be
-   * repaired before the SDK consumes them. Default: no wrapper (use the SDK's
-   * own fetch). Override to return a wrapped fetch 鈥?see
-   * `makeAnthropicSSERepairFetch`.
+   * 可选 fetch 包装器，用于流式响应需要在 SDK 消费前修复的供应商。
+   * 默认无包装器（使用 SDK 自带 fetch）。覆盖后返回包装后的 fetch — 见
+   * `makeAnthropicSSERepairFetch`。
    */
   protected _wrapFetch():
     | ((url: string | URL | Request, init?: RequestInit) => Promise<Response>)
@@ -86,40 +85,38 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     return undefined;
   }
 
-  /** Whether to preserve / forward `signature` on thinking blocks. Anthropic-only. */
+  /** 是否保留/转发 thinking 块上的 `signature`。仅 Anthropic。 */
   protected _emitSignature(): boolean {
     return false;
   }
 
   /**
-   * Whether this vendor prepends a synthetic "search preamble" text block (a
-   * leading text block immediately followed by a server_tool_use web search)
-   * that should not be shown to the user. Kimi does this on every web-search
-   * turn (e.g. "Search results for query: ..."). When true, `_callStream`
-   * buffers a leading text block and drops it if a server_tool_use follows.
+   * 此供应商是否会预置不应显示给用户的合成“搜索前言”文本块
+   *（一个紧接 server_tool_use 网页搜索的前导文本块）。
+   * Kimi 在每个网页搜索回合都会这样做（例如“Search results for query: ...”）。
+   * 为 true 时，`_callStream` 会缓冲前导文本块，并在后续是 server_tool_use 时丢弃它。
    *
-   * Note: the non-streaming `_parseResponse` and the streaming finalText
-   * re-derivation already drop this block from the stored text via a
-   * server_tool_use lookahead; this hook only governs the *live* stream so the
-   * preamble never reaches `onTextChunk`.
+   * 注意：非流式 `_parseResponse` 和流式 finalText 重新派生已经通过
+   * server_tool_use 前瞻从存储文本中丢弃此块；此钩子只控制*实时*流，
+   * 确保前言永远不会到达 `onTextChunk`。
    */
   protected _dropsLeadingSearchPreamble(): boolean {
     return false;
   }
 
-  /** Whether `config.extra.betas` should be forwarded as request kwargs. Anthropic-only. */
+  /** 是否应将 `config.extra.betas` 作为请求 kwargs 转发。仅 Anthropic。 */
   protected _supportsBetas(): boolean {
     return false;
   }
 
-  /** Additional config.extra keys this provider wants forwarded verbatim. */
+  /** 此提供者希望逐字转发的额外 config.extra 键。 */
   protected _allowedExtraConfigKeys(): readonly string[] {
     return [];
   }
 
   /**
-   * Vendor-specific thinking params. Default: respect "off"/"none" only.
-   * Subclasses extend for effort / budget_tokens / adaptive behaviors.
+   * 供应商特定的思考参数。默认仅尊重 "off"/"none"。
+   * 子类扩展 effort / budget_tokens / 自适应行为。
    */
   protected _applyThinkingParams(
     kwargs: Record<string, unknown>,
@@ -135,15 +132,15 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   /**
-   * Vendor-specific cache marker placement.  Default: no-op.
-   * Most open-source vendors run automatic prefix caching server-side, so a
-   * client-side cache_control marker is either silently ignored or unneeded.
+   * 供应商特定的缓存标记放置。默认：no-op。
+   * 大多数开源供应商在服务端运行自动前缀缓存，因此客户端 cache_control
+   * 标记要么被静默忽略，要么并不需要。
    */
   protected _applyCacheBreakpoint(_kwargs: Record<string, unknown>): void {
-    // no-op
+    // 无操作
   }
 
-  /** Default sampling: take temperature from request or config. */
+  /** 默认采样：从请求或配置获取 temperature。 */
   protected _applySamplingParams(
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
@@ -155,16 +152,16 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   /**
-   * Translate the unified `web_search` tool into a server-side native tool.
-   * Default: register as a regular function tool. Anthropic itself uses
-   * `web_search_20250305`.
+   * 将统一的 `web_search` 工具翻译为服务端原生工具。
+   * 默认：注册为常规函数工具。Anthropic 自身使用
+   * `web_search_20250305`。
    */
   protected _convertWebSearchTool(): Record<string, unknown> | null {
     return null;
   }
 
   // ------------------------------------------------------------------
-  // Tool conversion
+  // 工具转换
   // ------------------------------------------------------------------
 
   protected _convertTools(tools: ToolDef[]): Record<string, unknown>[] {
@@ -187,7 +184,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Message conversion
+  // 消息转换
   // ------------------------------------------------------------------
 
   protected _convertMessages(
@@ -292,9 +289,9 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       }
     }
 
-    // Strict alternation merge: multiple tool_result turns (all role:"user")
-    // and a following real user message must collapse into one user message
-    // with combined content blocks.
+    // 严格交替合并：多个 tool_result 回合（全部 role:"user"）
+    // 以及后续的真实用户消息必须折叠为一条用户消息，
+    // 并合并内容块。
     const merged: Record<string, unknown>[] = [];
     for (const msg of converted) {
       const prev = merged.length > 0 ? merged[merged.length - 1] : null;
@@ -325,9 +322,8 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   /**
-   * Strip vendor-incompatible fields from a stored reasoning block before
-   * sending it back. Subclasses that need `signature` round-trip override
-   * _emitSignature() to true.
+   * 发送回去之前，从存储的 reasoning 块中剥离供应商不兼容字段。
+   * 需要 `signature` 往返的子类将 _emitSignature() 覆盖为 true。
    */
   private _sanitizeReasoningBlock(block: Record<string, unknown>): Record<string, unknown> {
     const type = block["type"] as string;
@@ -371,7 +367,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Response parsing
+  // 响应解析
   // ------------------------------------------------------------------
 
   protected _parseResponse(resp: Anthropic.Message): ProviderResponse {
@@ -385,11 +381,10 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
       if (block.type === "text") {
-        // Drop server-tool-use preamble text. Some vendors (notably Kimi via
-        // /anthropic with web_search_20250305) emit an internal "Search results
-        // for query: ..." text block immediately before the server_tool_use
-        // block. Native Anthropic does not. Filter the noise so the agent's
-        // text field stays clean.
+        // 丢弃 server-tool-use 前言文本。一些供应商（尤其是通过 /anthropic
+        // 使用 web_search_20250305 的 Kimi）会在 server_tool_use 块前立即发出
+        // 内部的 "Search results for query: ..." 文本块。原生 Anthropic 不会这样做。
+        // 过滤这些噪声，让 agent 的 text 字段保持干净。
         const next = blocks[i + 1];
         if (next && (next as unknown as Record<string, unknown>)["type"] === "server_tool_use") {
           continue;
@@ -434,7 +429,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
           toolCalls.push(finalizeToolCall(block.id, block.name, String(input ?? ""), `${block.name} response`));
         }
       }
-      // server_tool_use, web_search_tool_result 鈥?handled transparently
+      // server_tool_use、web_search_tool_result — 透明处理
     }
 
     const respUsage = resp.usage as unknown as Record<string, number> | undefined;
@@ -467,7 +462,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Core API call
+  // 核心 API 调用
   // ------------------------------------------------------------------
 
   async sendMessage(
@@ -512,11 +507,10 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   /**
-   * Merge `config.extra` into request kwargs.  Drops `betas` unless the
-   * subclass opts in via _supportsBetas(). Everything else must be explicitly
-   * whitelisted by the subclass to avoid leaking old Chat/Responses-only
-   * fields (`extra_body`, `reasoning_effort`, `web_search_options`, `top_p`,
-   * etc.) into Anthropic Messages requests.
+   * 将 `config.extra` 合并到请求 kwargs 中。除非子类通过 _supportsBetas() 选择加入，
+   * 否则丢弃 `betas`。其他所有字段都必须由子类显式列入白名单，以避免将旧的
+   * 仅 Chat/Responses 使用的字段（`extra_body`、`reasoning_effort`、
+   * `web_search_options`、`top_p` 等）泄漏到 Anthropic Messages 请求中。
    */
   private _forwardExtraConfig(kwargs: Record<string, unknown>): void {
     if (!this._config.extra) return;
@@ -534,7 +528,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Streaming
+  // 流式传输
   // ------------------------------------------------------------------
 
   protected async _callStream(
@@ -556,11 +550,10 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     const blockNameById = new Map<string, string>();
     const toolJsonById = new Map<string, string>();
 
-    // Leading-search-preamble suppression (e.g. Kimi). We buffer a leading text
-    // block and only release it once we see the following block: if that block
-    // is a server_tool_use web search, the text was a synthetic preamble and we
-    // drop it; otherwise we flush it. Only the very first block is ever buffered,
-    // so the real answer (which follows thinking / search) always streams live.
+    // 抑制前导搜索前言（例如 Kimi）。我们缓冲一个前导文本块，
+    // 只有看到后续块后才释放：如果后续块是 server_tool_use 网页搜索，
+    // 该文本就是合成前言并会被丢弃；否则刷新它。只有第一个块会被缓冲，
+    // 因此真正答案（跟在 thinking/search 之后）始终实时流式输出。
     const dropLeadingPreamble = this._dropsLeadingSearchPreamble();
     let forwardedFirstBlock = false;
     let pendingLeading: { index: number; text: string } | null = null;
@@ -587,11 +580,11 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
         ] as Record<string, unknown> | undefined;
         const blockType = block?.["type"] as string | undefined;
 
-        // Resolve a buffered leading text block now that we know what follows it.
+        // 既然知道后续内容，就解析已缓冲的前导文本块。
         if (pendingLeading !== null) {
           if (blockType === "server_tool_use") {
-            // Leading text immediately followed by a server web search 鈫?it was
-            // a synthetic preamble. Drop it (never reached onTextChunk).
+            // 前导文本紧跟服务端网页搜索 → 它是合成前言。
+            // 丢弃它（永远不会到达 onTextChunk）。
             pendingLeading = null;
           } else {
             flushPendingLeading();
@@ -599,7 +592,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
           forwardedFirstBlock = true;
         }
 
-        // Begin buffering a brand-new leading text block (candidate preamble).
+        // 开始缓冲一个全新的前导文本块（候选前言）。
         if (dropLeadingPreamble && !forwardedFirstBlock && blockType === "text") {
           pendingLeading = { index: index ?? -1, text: "" };
         } else if (blockType !== undefined) {
@@ -647,7 +640,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
           const text = (delta["text"] as string) || "";
           if (text) {
             if (pendingLeading !== null && index === pendingLeading.index) {
-              // Buffer instead of emitting 鈥?may be a search preamble.
+              // Buffer instead of emitting —may be a search preamble.
               pendingLeading.text += text;
             } else {
               textParts.push(text);
@@ -695,7 +688,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     }
 
     // A leading text block that was never followed by another block (i.e. it is
-    // the whole message, not a preamble) is still buffered 鈥?release it now.
+    // the whole message, not a preamble) is still buffered —release it now.
     flushPendingLeading();
 
     const response = await stream.finalMessage();

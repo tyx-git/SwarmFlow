@@ -1,14 +1,14 @@
 ﻿/**
- * ToolRuntime 鈥?the three-layer tool execution pipeline.
+ * ToolRuntime —— 三层工具执行管道。
  *
- * Separates three concerns that were previously interleaved in Session:
+ * 分离了之前在 Session 中交错的三个关注点：
  *
- *   Catalog  鈥?what tools does the model see?
- *   Gate     鈥?can this specific call execute? (permissions hook)
- *   Executor 鈥?the actual tool implementations
+ *   Catalog  ——模型看到哪些工具？
+ *   Gate     ——这个特定调用能否执行？（权限钩子）
+ *   Executor ——实际的工具实现
  *
- * Session creates a ToolRuntime and delegates tool management to it.
- * The Gate layer is the insertion point for the future permissions system.
+ * Session 创建 ToolRuntime 并将工具管理委托给它。
+ * Gate 层是未来权限系统的插入点。
  */
 
 import type { ToolDef } from "./providers/base.js";
@@ -36,9 +36,9 @@ import type { SkillMeta } from "./skills/loader.js";
 import type { MCPClientManager } from "./clients/mcp-client.js";
 import { setArgRepairSink } from "./tools/arg-repair.js";
 
-// Wire tool-input repair telemetry once. Gated behind an env var so it stays
-// silent by default; enable to watch per-(tool,key) repair shapes 鈥?a leading
-// indicator that a model is drifting on a specific tool contract.
+// 一次性连接工具输入修复遥测。通过环境变量控制，默认静默；
+// 启用后可观察各 (tool,key) 的修复形态——这是模型在特定工具契约上
+// 发生漂移的领先指标。
 if (process.env.SWARMFLOW_TOOL_REPAIR_DEBUG === "1") {
   setArgRepairSink(({ tool, key, kind }) => {
     console.error(`tool_input_repaired:${tool} key=${key} kind=${kind}`);
@@ -47,7 +47,7 @@ if (process.env.SWARMFLOW_TOOL_REPAIR_DEBUG === "1") {
 import type { Agent } from "./agents/agent.js";
 
 // ------------------------------------------------------------------
-// Gate types
+// 门控类型定义
 // ------------------------------------------------------------------
 
 export type GateDecision =
@@ -60,7 +60,7 @@ export interface GateAdvisor {
 }
 
 // ------------------------------------------------------------------
-// Catalog 鈥?what tools the model sees
+// Catalog ——模型看到哪些工具
 // ------------------------------------------------------------------
 
 export interface CatalogDeps {
@@ -70,8 +70,8 @@ export interface CatalogDeps {
 }
 
 /**
- * Build the skill meta-tool definition from available skills.
- * Returns null if no skills are available for model invocation.
+ * 从可用技能构建 skill 元工具定义。
+ * 若没有可供模型调用的技能则返回 null。
  */
 export function buildSkillToolDef(
   skills: ReadonlyMap<string, SkillMeta>,
@@ -113,8 +113,8 @@ export function buildSkillToolDef(
 }
 
 /**
- * Ensure comm tools are present in the tools array based on capabilities.
- * Mutates the provided array in place.
+ * 根据能力配置确保通信工具存在于工具数组中。
+ * 就地修改传入的数组。
  */
 export function ensureCommTools(
   tools: ToolDef[],
@@ -138,9 +138,9 @@ export function ensureCommTools(
 }
 
 /**
- * Ensure the skill tool is present/absent based on capabilities and available skills.
- * Mutates the provided array in place by reference (filter+push pattern requires reassignment).
- * Returns the new tools array.
+ * 根据能力和可用技能确保 skill 工具的存在/缺失。
+ * 就地修改传入数组（filter+push 模式需要重新赋值）。
+ * 返回新的工具数组。
  */
 export function ensureSkillTool(
   tools: ToolDef[],
@@ -159,25 +159,25 @@ export function ensureSkillTool(
 }
 
 // ------------------------------------------------------------------
-// Executor builder 鈥?constructs the name鈫抏xecutor dict
+// 执行器构建器 ——构建 name→executor 字典
 // ------------------------------------------------------------------
 
 export interface ExecutorDeps {
   projectRoot: string;
   getSessionArtifactsDir: () => string;
   supportsMultimodal: boolean;
-  /** Session-owned executors for comm tools (execAsk, execSpawn, etc.) */
+  /* 会话拥有的通信工具执行器（execAsk， execSpawn等） */
   commExecutors: Record<string, ToolExecutor>;
-  /** Additional overrides (e.g. from constructor opts) */
+  /* 额外的覆盖（例如，从构造函数选项） */
   overrides?: Record<string, ToolExecutor>;
-  /** Called after a file write (e.g. for custom post-write side effects). */
+  /* 在文件写入后调用（例如用于自定义写入后的副作用）。 */
   onFileWrite?: (filePath: string) => void;
-  /** Called after a file write to check if plan.md was modified */
+  /* 在文件写入后调用以检查是否计划。Md被修改了 */
   isPlanFile?: (filePath: string) => boolean;
   onPlanFileWrite?: () => void;
-  /** Dynamic getter for approved external path prefixes from permission rules. */
+  /* 从权限规则中获取已批准的外部路径前缀的动态getter。 */
   getApprovedExternalPrefixes?: () => string[];
-  /** Hand a timed-out synchronous bash process over to the background shell manager. */
+  /* 将超时的同步bash进程移交给后台shell管理器。 */
   adoptShell?: AdoptShellFn;
 }
 
@@ -263,7 +263,7 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
 }
 
 // ------------------------------------------------------------------
-// MCP tool registration
+// MCP 工具注册
 // ------------------------------------------------------------------
 
 const MCP_TOOL_PREFIX = "mcp__";
@@ -336,9 +336,9 @@ export async function registerMcpTools(
       const newTools = selectedTools.filter((t) => !existingToolNames.has(t.name));
       if (!newTools.length) continue;
 
-      // Insert MCP tools before the "skill" tool (if present) so that
-      // _ensureSkillTool's filter-push-to-end pattern doesn't reorder
-      // the array on subsequent turns 鈥?which would break prompt caching.
+      // 在 "skill" 工具之前插入 MCP 工具（若存在），这样
+      // _ensureSkillTool 的 filter-push-to-end 模式不会在后续回合
+      // 重新排列数组——否则会破坏提示缓存。
       const skillIdx = agent.tools.findIndex((t) => t.name === "skill");
       if (skillIdx >= 0) {
         agent.tools.splice(skillIdx, 0, ...newTools);
@@ -355,7 +355,7 @@ export async function registerMcpTools(
 }
 
 // ------------------------------------------------------------------
-// Gate 鈥?permission checking pipeline
+// Gate ——权限检查管道
 // ------------------------------------------------------------------
 
 export class ToolGate {
@@ -371,8 +371,8 @@ export class ToolGate {
   }
 
   /**
-   * Evaluate a tool call against all advisors.
-   * First deny or ask wins. If all allow (or no advisors), allow.
+   * 根据所有顾问评估工具调用。
+   * 首个 deny 或 ask 胜出。若全部 allow（或无顾问），则 allow。
    */
   async evaluate(ctx: ToolPreflightContext): Promise<GateDecision> {
     for (const advisor of this._advisors) {
@@ -383,10 +383,10 @@ export class ToolGate {
   }
 
   /**
-   * Create a BeforeToolExecuteCallback compatible with tool-loop.ts.
-   * Not used directly 鈥?Session wraps this with additional logic
-   * (artifacts-dir bypass, hooks, ApprovalRequest construction).
-   * Kept as a reference implementation of the Gate鈫扵oolPreflight bridge.
+   * 创建与 tool-loop.ts 兼容的 BeforeToolExecuteCallback。
+   * 不直接使用 —— Session 用额外逻辑包装此方法
+   * （产出目录旁路、钩子、ApprovalRequest 构造）。
+   * 保留作为 Gate→ToolPreflight 桥接的参考实现。
    */
   asBeforeToolExecute(): (ctx: ToolPreflightContext) => Promise<ToolPreflightDecision | void> {
     return async (ctx: ToolPreflightContext): Promise<ToolPreflightDecision | void> => {

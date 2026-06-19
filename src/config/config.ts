@@ -1,6 +1,5 @@
-﻿/**
- * Configuration management 鈥?resolve env vars, auto-detect model
- * capabilities from known lookup tables, build Config from preferences.
+/**
+ * 配置管理——解析环境变量、从已知查找表自动检测模型能力、根据偏好构建 Config。
  */
 
 import { existsSync, statSync } from "node:fs";
@@ -35,70 +34,105 @@ import { EFFECTIVE_MODEL_TABLES } from "./providers/registry-effective.js";
 export { SWARMFLOW_HOME_DIR } from "./lib/home-path.js";
 
 // ------------------------------------------------------------------
-// Data interfaces
+// 数据接口定义
 // ------------------------------------------------------------------
 
+/** 完整的模型配置——包含 API 凭据、能力标志、传输协议等运行时所需全部信息 */
 export interface ModelConfig {
+  /** 模型配置名称，格式为 "provider:modelKey" */
   name: string;
+  /** 服务提供商标识符 */
   provider: string;
+  /** 模型 ID（API 请求中的 model 参数） */
   model: string;
+  /** API 密钥（可能是明文、环境变量引用 ${ENV}、或 OAuth 标记） */
   apiKey: string;
+  /** 自定义 API 基础 URL（可选，为空则使用提供商默认值） */
   baseUrl?: string;
+  /** 采样温度 */
   temperature: number;
+  /** 最大输出 token 数 */
   maxTokens: number;
+  /** 上下文窗口长度（token 数） */
   contextLength: number;
+  /** 是否支持多模态输入（图像等） */
   supportsMultimodal: boolean;
+  /** 是否支持思维链/推理模式 */
   supportsThinking: boolean;
+  /** 思维链预算（token 数，0 表示不限制） */
   thinkingBudget: number;
+  /** 是否支持原生网络搜索 */
   supportsWebSearch: boolean;
+  /** 传输协议（chat / responses / anthropic） */
   transportProtocol: TransportProtocol;
+  /** 思维链加密方式 */
   thinkingEncryption: ThinkingEncryption;
   /**
-   * Wire-format tag for sealed thinking payloads. Two providers with the same
-   * tag can round-trip sealed reasoning between each other; null means the
-   * provider does not emit or accept sealed payloads.
+   * 密封思维链负载的线格式标签。具有相同标签的两个提供商可以
+   * 在彼此之间往返密封推理；null 表示该提供商不发出或接受密封负载。
    */
   sealedSchema: SealedSchema | null;
+  /** 未在已知字段中定义的额外配置项 */
   extra: Record<string, unknown>;
 }
 
+/** 模型配置的简化条目——用于 UI 展示，不解析 API 密钥 */
 export interface ModelConfigEntry {
+  /** 模型配置名称 */
   name: string;
+  /** 服务提供商 */
   provider: string;
+  /** 模型 ID */
   model: string;
+  /** 原始 API 密钥值（可能包含 ${ENV} 引用） */
   apiKeyRaw: string;
+  /** 该 API 密钥是否可以成功解析（环境变量已设置或 OAuth 令牌存在） */
   hasResolvedApiKey: boolean;
 }
 
+/** MCP 服务器配置——定义如何连接和与 MCP 服务器通信 */
 export interface MCPServerConfig {
+  /** 服务器名称 */
   name: string;
+  /** 传输类型：stdio（标准输入输出）或 sse（Server-Sent Events） */
   transport: "stdio" | "sse";
+  /** stdio 模式下的启动命令 */
   command: string;
+  /** stdio 模式下的命令行参数 */
   args: string[];
+  /** SSE 模式下的服务器 URL */
   url: string;
+  /** 传递给子进程的环境变量 */
   env: Record<string, string>;
+  /** 允许传递的环境变量白名单（可选） */
   envAllowlist?: string[];
+  /** 需要用户确认才执行的敏感工具列表（可选） */
   sensitiveTools?: string[];
 }
 
 // ------------------------------------------------------------------
-// Known model lookup tables
+// 已知模型查找表（从 registry-effective 自动派生）
 // ------------------------------------------------------------------
 
+/** 有效模型表的别名，从 providers/registry-effective.js 导入 */
 const _MODEL_TABLES = EFFECTIVE_MODEL_TABLES;
 
+/** 已知模型的上下文长度映射（模型 ID → token 数） */
 export const KNOWN_CONTEXT_LENGTHS: Record<string, number> = _MODEL_TABLES.contextLengths;
 
+/** 已知支持多模态的模型集合 */
 export const KNOWN_MULTIMODAL_MODELS: Set<string> = _MODEL_TABLES.multimodal;
 
+/** 已知支持思维链的模型集合 */
 export const KNOWN_THINKING_MODELS: Set<string> = _MODEL_TABLES.thinking;
 
+/** 已知不支持网络搜索的模型集合 */
 export const KNOWN_NO_WEB_SEARCH_MODELS: Set<string> = _MODEL_TABLES.noWebSearch;
 
 /**
- * Models that support OpenAI's extended 24h prompt cache retention
- * (`prompt_cache_retention: "24h"`). Derived from specs flagged extendedCache,
- * unioned with retired-but-still-configurable legacy ids (see model-registry).
+ * 支持 OpenAI 扩展 24 小时提示缓存保留的模型
+ * （`prompt_cache_retention: "24h"`）。从标记为 extendedCache 的规格派生，
+ * 并与已退役但仍可配置的旧 ID 联合（见 model-registry）。
  */
 export const KNOWN_EXTENDED_CACHE_MODELS: Set<string> = new Set([
   ..._MODEL_TABLES.extendedCache,
@@ -106,24 +140,26 @@ export const KNOWN_EXTENDED_CACHE_MODELS: Set<string> = new Set([
 ]);
 
 // ------------------------------------------------------------------
-// Max output tokens per model
+// 每个模型的最大输出 token 数
 // ------------------------------------------------------------------
 
+/** 已知模型的最大输出 token 数映射 */
 export const KNOWN_MAX_OUTPUT_TOKENS: Record<string, number> = _MODEL_TABLES.maxOutputTokens;
 
-/** Resolve max output tokens for a model. Priority: known lookup (exact then normalized) > undefined. */
+/** 解析模型的最大输出 token 数。优先级：已知查找（精确匹配 > 标准化匹配）> undefined */
 export function getModelMaxOutputTokens(model: string): number | undefined {
   return KNOWN_MAX_OUTPUT_TOKENS[model]
     ?? KNOWN_MAX_OUTPUT_TOKENS[normalizeModelId(model)];
 }
 
 // ------------------------------------------------------------------
-// Thinking levels per model
+// 每个模型的思维链级别
 // ------------------------------------------------------------------
 
+/** 已知模型的思维链级别映射（模型 ID → 可用级别列表） */
 export const KNOWN_THINKING_LEVELS: Record<string, string[]> = _MODEL_TABLES.thinkingLevels;
 
-/** Return available thinking levels for a model, or empty array if not a thinking model. */
+/** 返回模型可用的思维链级别列表，非思维链模型返回空数组 */
 export function getThinkingLevels(model: string): string[] {
   return KNOWN_THINKING_LEVELS[model]
     ?? KNOWN_THINKING_LEVELS[normalizeModelId(model)]
@@ -131,37 +167,37 @@ export function getThinkingLevels(model: string): string[] {
 }
 
 /**
- * Tier-eligible thinking levels: native levels with "off" / "none" filtered out.
+ * 子代理层级可用的思维链级别：过滤掉 "off" / "none" 的原生级别。
  *
- * Sub-agent tiers must always have thinking enabled 鈥?"off" / "none" defeat the
- * purpose of giving a tier its own configuration. Main-agent flow may still pick
- * "off" / "none" via getThinkingLevels (user override is sovereign there).
+ * 子代理层级必须始终启用思维链——"off" / "none" 违背了为层级提供
+ * 独立配置的目的。主代理流程仍可通过 getThinkingLevels 选择 "off" / "none"
+ * （用户覆盖在那里的优先级最高）。
  */
 export function getTierEligibleThinkingLevels(model: string): string[] {
   return getThinkingLevels(model).filter((l) => l !== "off" && l !== "none");
 }
 
-/** Return the highest (last) thinking level for a model, or undefined if not a thinking model. */
+/** 返回模型最高（最后一个）思维链级别，非思维链模型返回 undefined */
 export function getHighestThinkingLevel(model: string): string | undefined {
   const levels = getThinkingLevels(model);
   return levels.length > 0 ? levels[levels.length - 1] : undefined;
 }
 
 // ------------------------------------------------------------------
-// Helper functions
+// 辅助函数
 // ------------------------------------------------------------------
 
 /**
- * Strip the vendor prefix from an OpenRouter-style model ID.
- * e.g. "anthropic/claude-sonnet-4-6" 鈫?"claude-sonnet-4-6"
- * If the model ID contains no "/", it is returned unchanged.
+ * 去除 OpenRouter 风格模型 ID 的供应商前缀。
+ * 例如 "anthropic/claude-sonnet-4-6" → "claude-sonnet-4-6"
+ * 如果模型 ID 不包含 "/"，则原样返回。
  */
 export function normalizeModelId(model: string): string {
   const idx = model.lastIndexOf("/");
   return idx >= 0 ? model.slice(idx + 1) : model;
 }
 
-/** Format a short user-facing model label for UI surfaces such as the status bar. */
+/** 格式化简短的用户可见模型标签，用于状态栏等 UI 界面 */
 export function formatDisplayModelName(provider: string | undefined, model: string | undefined): string {
   const safeProvider = String(provider ?? "").trim();
   const safeModel = String(model ?? "").trim();
@@ -172,7 +208,7 @@ export function formatDisplayModelName(provider: string | undefined, model: stri
   return safeModel;
 }
 
-/** Format a provider-scoped user-facing model label for status messages. */
+/** 格式化带提供商前缀的用户可见模型标签，用于状态消息 */
 export function formatScopedModelName(provider: string | undefined, model: string | undefined): string {
   const safeProvider = String(provider ?? "").trim();
   const safeModel = String(model ?? "").trim();
@@ -184,7 +220,7 @@ export function formatScopedModelName(provider: string | undefined, model: strin
   return `${safeProvider}/${safeModel}`;
 }
 
-/** Resolve effective context length. Priority: explicit > known lookup (exact then normalized) > 0. */
+/** 解析有效的上下文长度。优先级：显式指定 > 已知查找（精确 > 标准化）> 0 */
 export function getContextLength(model: string, contextLength = 0): number {
   if (contextLength > 0) return contextLength;
   return KNOWN_CONTEXT_LENGTHS[model]
@@ -192,31 +228,31 @@ export function getContextLength(model: string, contextLength = 0): number {
     ?? 0;
 }
 
-/** Resolve multimodal support. Priority: explicit > known lookup (exact then normalized) > false. */
+/** 解析多模态支持。优先级：显式指定 > 已知查找（精确 > 标准化）> false */
 export function getMultimodalSupport(model: string, explicit?: boolean): boolean {
   if (explicit !== undefined) return explicit;
   return KNOWN_MULTIMODAL_MODELS.has(model)
     || KNOWN_MULTIMODAL_MODELS.has(normalizeModelId(model));
 }
 
-/** Resolve thinking/reasoning support. Priority: explicit > known lookup (exact then normalized) > false. */
+/** 解析思维链/推理支持。优先级：显式指定 > 已知查找（精确 > 标准化）> false */
 export function getThinkingSupport(model: string, explicit?: boolean): boolean {
   if (explicit !== undefined) return explicit;
   return KNOWN_THINKING_MODELS.has(model)
     || KNOWN_THINKING_MODELS.has(normalizeModelId(model));
 }
 
-/** Check whether a model supports OpenAI's extended 24h prompt cache retention. */
+/** 检查模型是否支持 OpenAI 的扩展 24 小时提示缓存保留 */
 export function getExtendedCacheSupport(model: string): boolean {
   return KNOWN_EXTENDED_CACHE_MODELS.has(model)
     || KNOWN_EXTENDED_CACHE_MODELS.has(normalizeModelId(model));
 }
 
-/** Resolve native web search support. Priority: explicit > provider default > blacklist > true. */
+/** 解析原生网络搜索支持。优先级：显式指定 > 提供商默认值 > 黑名单 > true */
 export function getWebSearchSupport(model: string, explicit?: boolean, provider?: string): boolean {
   if (explicit !== undefined) return explicit;
-  // OpenRouter: web search is a paid add-on, default to false.
-  // Users can explicitly enable via supports_web_search: true in config.
+  // OpenRouter：网络搜索是付费附加功能，默认为 false。
+  // 用户可通过配置中 supports_web_search: true 显式启用。
   if (provider === "openrouter") return false;
   if (KNOWN_NO_WEB_SEARCH_MODELS.has(model)
     || KNOWN_NO_WEB_SEARCH_MODELS.has(normalizeModelId(model))) return false;
@@ -224,9 +260,10 @@ export function getWebSearchSupport(model: string, explicit?: boolean, provider?
 }
 
 // ------------------------------------------------------------------
-// Environment variable resolution
+// 环境变量解析
 // ------------------------------------------------------------------
 
+/** 解析 ${ENV_VAR} 格式的环境变量引用，返回变量名或 null */
 function parseEnvRef(value: string): string | null {
   if (typeof value === "string" && value.startsWith("${") && value.endsWith("}")) {
     return value.slice(2, -1);
@@ -234,9 +271,10 @@ function parseEnvRef(value: string): string | null {
   return null;
 }
 
+/** 检查 API 密钥值是否可以成功解析（OAuth 令牌存在或环境变量已设置） */
 function hasResolvableApiKey(value: unknown): boolean {
   if (typeof value !== "string" || value.trim() === "") return false;
-  // OAuth token check
+  // OAuth 令牌检查
   if (value === "oauth:openai-codex") return hasOAuthTokens();
   if (value === "oauth:copilot") return hasGitHubTokens();
   if (value.startsWith("${") && value.endsWith("}")) {
@@ -247,6 +285,7 @@ function hasResolvableApiKey(value: unknown): boolean {
   return true;
 }
 
+/** 要求配置中必须存在指定的字符串字段，缺失或为空则抛出错误 */
 function requireConfigStringField(
   modelConfigName: string,
   cfg: Record<string, unknown>,
@@ -261,6 +300,7 @@ function requireConfigStringField(
   return raw;
 }
 
+/** 读取可选的字符串字段，未定义返回 undefined，类型错误则抛出异常 */
 function optionalConfigStringField(
   modelConfigName: string,
   cfg: Record<string, unknown>,
@@ -276,6 +316,7 @@ function optionalConfigStringField(
   return raw;
 }
 
+/** 读取可选的数值字段，未定义返回 undefined，类型错误则抛出异常 */
 function optionalConfigNumberField(
   modelConfigName: string,
   cfg: Record<string, unknown>,
@@ -291,6 +332,7 @@ function optionalConfigNumberField(
   return raw;
 }
 
+/** 读取可选的布尔字段，未定义返回 undefined，类型错误则抛出异常 */
 function optionalConfigBooleanField(
   modelConfigName: string,
   cfg: Record<string, unknown>,
@@ -306,6 +348,7 @@ function optionalConfigBooleanField(
   return raw;
 }
 
+/** 读取可选的枚举字段，值必须在 allowed 列表中，否则抛出异常 */
 function optionalConfigEnumField<T extends string>(
   modelConfigName: string,
   cfg: Record<string, unknown>,
@@ -323,57 +366,61 @@ function optionalConfigEnumField<T extends string>(
 }
 
 // ------------------------------------------------------------------
-// Config path resolution
+// 配置路径解析
 // ------------------------------------------------------------------
 
 /**
- * Extension discovery paths across four layers (highest priority first):
+ * 四层扩展发现路径（优先级从高到低）：
  *
- *   workspace  鈥?{cwd}/.swarmflow/         (checked into repo, shared with team)
- *   project    鈥?~/.swarmflow/projects/<hash>/.swarmflow/  (per-project, not in repo)
- *   global     鈥?~/.swarmflow/             (user-wide defaults)
- *   bundled    鈥?package assets        (shipped with swarmflow)
+ *   workspace  → {cwd}/.swarmflow/         （检入仓库，团队共享）
+ *   project    → ~/.swarmflow/projects/<hash>/.swarmflow/  （每项目独立，不在仓库中）
+ *   global     → ~/.swarmflow/             （用户级默认值）
+ *   bundled    → package assets        （随 swarmflow 一起发布）
  */
+/** 解析后的路径配置——包含所有扩展发现根目录 */
 export interface ResolvedPaths {
+  /** 模板目录路径 */
   templatesPath: string | null;
+  /** 提示词目录路径 */
   promptsPath: string | null;
+  /** SwarmFlow 主目录（~/.swarmflow） */
   homeDir: string;
 
-  // Four-layer extension discovery roots (each may be null if dir doesn't exist)
+  // 四层扩展发现根目录（目录不存在时为 null）
   extensions: {
-    /** {cwd}/.swarmflow/ 鈥?workspace layer (highest priority) */
+    /** {cwd}/.swarmflow/ — workspace 层（最高优先级） */
     workspace: string | null;
-    /** ~/.swarmflow/projects/<hash>/.swarmflow/ 鈥?project layer */
+    /** ~/.swarmflow/projects/<hash>/.swarmflow/ — project 层 */
     project: string | null;
-    /** ~/.swarmflow/ 鈥?global layer */
+    /** ~/.swarmflow/ — global 层 */
     global: string;
-    /** bundled assets dir 鈥?bundled layer (lowest priority) */
+    /** 内置资源目录 — bundled 层（最低优先级） */
     bundled: string | null;
   };
 
-  // Convenience: flattened paths for specific extension types
-  /** Skills roots ordered by priority: [bundled, global, project, workspace] */
+  // 便捷字段：展平的扩展类型路径
+  /** 技能根目录列表，按优先级排序：[bundled, global, project, workspace] */
   skillRoots: string[];
-  /** Hooks roots ordered by priority: [global, project, workspace] */
+  /** 钩子根目录列表，按优先级排序：[global, project, workspace] */
   hookRoots: { dir: string; scope: "global" | "project" | "workspace" }[];
-  /** Template paths: [bundled, global, project, workspace] 鈥?used by loadTemplates */
+  /** 模板根目录列表：[bundled, global, project, workspace] — 用于 loadTemplates 分层加载 */
   templateRoots: string[];
-  /** Project .mcp.json path (workspace layer) */
+  /** 项目 .mcp.json 路径（workspace 层） */
   projectMcpConfigPath: string | null;
 
-  // Legacy compat (used by cli.ts for template loading)
+  // 旧版兼容（cli.ts 模板加载使用）
   projectTemplatesPath: string | null;
   projectSkillsPath: string | null;
 }
 
 /**
- * Discover extension paths across four layers.
+ * 跨四层发现扩展路径。
  *
- * Layer priority (highest first):
- *   workspace  鈥?{cwd}/.swarmflow/
- *   project    鈥?~/.swarmflow/projects/<hash>/.swarmflow/
- *   global     鈥?~/.swarmflow/
- *   bundled    鈥?package assets (resolved separately via getBundledAssetsDir)
+ * 层级优先级（从高到低）：
+ *   workspace  → {cwd}/.swarmflow/
+ *   project    → ~/.swarmflow/projects/<hash>/.swarmflow/
+ *   global     → ~/.swarmflow/
+ *   bundled    → package assets（通过 getBundledAssetsDir 单独解析）
  */
 export function resolveAssetPaths(opts?: {
   templatesFlag?: string;
@@ -383,11 +430,11 @@ export function resolveAssetPaths(opts?: {
   const home = opts?.homeDir ?? getSwarmflowHomeDir();
   const projectPath = opts?.projectPath ?? process.cwd();
 
-  // Compute project hash dir: ~/.swarmflow/projects/<name>_<hash>/
+  // 计算项目哈希目录：~/.swarmflow/projects/<name>_<hash>/
   const slug = makeProjectSlug(projectPath);
   const projectStoreDir = join(home, "projects", slug);
 
-  // Four extension layer roots
+  // 四个扩展层根目录
   const workspaceRoot = join(projectPath, ".swarmflow");
   const projectRoot = join(projectStoreDir, ".swarmflow");
   const globalRoot = home;
@@ -399,7 +446,7 @@ export function resolveAssetPaths(opts?: {
     bundled: null as string | null, // set by caller from getBundledAssetsDir()
   };
 
-  // --- Templates (legacy: CLI flag > global > cwd) ---
+  // --- 模板（旧版：CLI 标志 > global > cwd）---
   let templatesPath: string | null = null;
   if (opts?.templatesFlag) {
     templatesPath = isDir(opts.templatesFlag) ? opts.templatesFlag : null;
@@ -413,7 +460,7 @@ export function resolveAssetPaths(opts?: {
     }
   }
 
-  // --- Prompts ---
+  // --- 提示词 ---
   let promptsPath: string | null = null;
   if (templatesPath) {
     const siblingPrompts = join(dirname(templatesPath), "prompts");
@@ -426,9 +473,9 @@ export function resolveAssetPaths(opts?: {
     else if (isDir(cwdPrompts)) promptsPath = cwdPrompts;
   }
 
-  // --- Skills roots (bundled > global > project > workspace) ---
+  // --- 技能根目录（bundled > global > project > workspace）---
   const skillRoots: string[] = [];
-  // bundled added by caller
+  // bundled 由调用者添加
   const globalSkills = join(globalRoot, "skills");
   if (isDir(globalSkills)) skillRoots.push(globalSkills);
   const projectSkills = join(projectStoreDir, ".swarmflow", "skills");
@@ -436,7 +483,7 @@ export function resolveAssetPaths(opts?: {
   const workspaceSkills = join(workspaceRoot, "skills");
   if (isDir(workspaceSkills)) skillRoots.push(workspaceSkills);
 
-  // --- Hooks roots (global > project > workspace) ---
+  // --- 钩子根目录（global > project > workspace）---
   const hookRoots: { dir: string; scope: "global" | "project" | "workspace" }[] = [];
   const globalHooks = join(globalRoot, "hooks");
   if (isDir(globalHooks)) hookRoots.push({ dir: globalHooks, scope: "global" });
@@ -445,20 +492,20 @@ export function resolveAssetPaths(opts?: {
   const workspaceHooks = join(workspaceRoot, "hooks");
   if (isDir(workspaceHooks)) hookRoots.push({ dir: workspaceHooks, scope: "workspace" });
 
-  // --- Template roots (for loadTemplates layered loading) ---
+  // --- 模板根目录（用于 loadTemplates 分层加载）---
   const templateRoots: string[] = [];
-  // bundled added by caller
+  // bundled 由调用者添加
   if (templatesPath) templateRoots.push(templatesPath);
   const projectTemplates = join(projectStoreDir, ".swarmflow", "prompts", "templates");
   if (isDir(projectTemplates)) templateRoots.push(projectTemplates);
   const workspaceTemplates = join(workspaceRoot, "prompts", "templates");
   if (isDir(workspaceTemplates)) templateRoots.push(workspaceTemplates);
 
-  // --- Project MCP config ---
+  // --- 项目 MCP 配置 ---
   const mcpPath = join(projectPath, ".mcp.json");
   const projectMcpConfigPath = existsSync(mcpPath) ? mcpPath : null;
 
-  // Legacy compat fields
+  // 旧版兼容字段
   const projectTemplatesPath = isDir(workspaceTemplates) ? workspaceTemplates : null;
   const projectSkillsPath = isDir(workspaceSkills) ? workspaceSkills : null;
 
@@ -476,6 +523,7 @@ export function resolveAssetPaths(opts?: {
   };
 }
 
+/** 检查路径是否存在且为目录 */
 function isDir(p: string): boolean {
   try {
     return existsSync(p) && statSync(p).isDirectory();
@@ -484,6 +532,7 @@ function isDir(p: string): boolean {
   }
 }
 
+/** 生成项目路径的 slug 格式：<name>_<sha256前6位> */
 function makeProjectSlug(projectPath: string): string {
   const name = basename(projectPath) || "root";
   const h = createHash("sha256").update(projectPath).digest("hex").slice(0, 6);
@@ -491,26 +540,26 @@ function makeProjectSlug(projectPath: string): string {
 }
 
 // ------------------------------------------------------------------
-// Bundled assets path
+// 内置资源路径
 // ------------------------------------------------------------------
 
-/** Return the root directory of the installed package (parent of dist/). */
+/** 返回已安装包的根目录（dist/ 的父目录） */
 export function getBundledAssetsDir(): string {
   const thisFile = fileURLToPath(import.meta.url);
-  // Bun --compile mounts bundled resources at a virtual filesystem path:
-  // `/$bunfs/root/...` on POSIX, `B:\~BUN\root\...` on Windows. When we
-  // detect either form, the real on-disk assets sit next to the binary.
+  // Bun --compile 将内置资源挂载到虚拟文件系统路径：
+  // POSIX 上为 `/$bunfs/root/...`，Windows 上为 `B:\~BUN\root\...`。
+  // 检测到任一形式时，实际磁盘资源位于二进制文件旁边。
   if (thisFile.includes("$bunfs") || /^B:[\\/]~BUN/i.test(thisFile)) {
     return dirname(process.execPath);
   }
 
-  // In development this file is under src/. In the old tsc build it compiled
-  // to dist/config.js. Both layouts keep bundled assets at the project root.
+  // 开发模式下此文件位于 src/ 下。旧版 tsc 构建会编译到 dist/config.js。
+  // 两种布局都将内置资源保持在项目根目录。
   return join(dirname(thisFile), "..");
 }
 
 // ------------------------------------------------------------------
-// Config class
+// Config 类——核心配置管理
 // ------------------------------------------------------------------
 
 export class Config {
@@ -551,9 +600,9 @@ export class Config {
   }
 
   /**
-   * Populate the raw model map from provider env-var mappings and local server configs.
-   * For each configured provider, all preset models are registered.
-   * For each local server, a single model entry is registered.
+   * 从提供商环境变量映射和本地服务器配置填充原始模型映射。
+   * 对于每个已配置的提供商，注册所有预设模型。
+   * 对于每个本地服务器，注册一个模型条目。
    */
   private _populateFromPreferences(
     providerEnvVars: Record<string, string>,
@@ -578,7 +627,7 @@ export class Config {
       return `\${${source}}`;
     };
 
-    // Cloud / standard providers
+    // 云端/标准提供商
     for (const [providerId, envVar] of Object.entries(providerEnvVars)) {
       const preset = findProviderPreset(providerId);
       if (!preset || preset.localServer || isManagedProvider(providerId)) continue;
@@ -594,7 +643,7 @@ export class Config {
       }
     }
 
-    // Managed cloud providers: resolve directly from fixed swarmflow env slots.
+    // 托管云提供商：直接从固定的 swarmflow 环境变量槽解析。
     for (const spec of MANAGED_PROVIDER_CREDENTIAL_SPECS) {
       const raw = process.env[spec.internalEnvVar];
       if (typeof raw !== "string" || raw.trim() === "") continue;
@@ -612,7 +661,7 @@ export class Config {
       }
     }
 
-    // Custom / local providers: one endpoint, one or more models.
+    // 自定义/本地提供商：一个端点，一个或多个模型。
     for (const [providerId, local] of Object.entries(localProviders)) {
       for (const m of local.models) {
         const name = `${providerId}:${m.id}`;
@@ -632,6 +681,7 @@ export class Config {
     }
   }
 
+  /** 从原始配置构建完整的 ModelConfig 对象，解析 API 密钥、能力标志等 */
   private _buildModel(name: string, cfg: Record<string, unknown>): ModelConfig {
     const provider = requireConfigStringField(name, cfg, "provider");
     const modelName = requireConfigStringField(name, cfg, "model");
@@ -639,7 +689,7 @@ export class Config {
     const baseUrl = optionalConfigStringField(name, cfg, "base_url") || getProviderDefaultBaseUrl(provider);
     const apiKeyEnv = parseEnvRef(apiKeyRaw);
     const resolvedApiKey = (() => {
-      // OAuth token resolution
+      // OAuth 令牌解析
       if (apiKeyRaw === "oauth:openai-codex") {
         const token = readOAuthAccessToken();
         if (!token) {
@@ -652,10 +702,9 @@ export class Config {
         return token;
       }
       if (apiKeyRaw === "oauth:copilot") {
-        // CopilotProvider ignores this value at runtime (it mints short-lived
-        // tokens via copilotTokenManager). We just need a non-empty string so
-        // downstream SDK construction doesn't fail. Use the stored GitHub OAuth
-        // token for parallelism with the Codex branch.
+        // CopilotProvider 在运行时忽略此值（它通过 copilotTokenManager 铸造短期令牌）。
+        // 我们只需要一个非空字符串，这样下游 SDK 构造就不会失败。
+        // 使用存储的 GitHub OAuth 令牌，与 Codex 分支保持一致。
         const gh = loadGitHubTokens();
         if (!gh) {
           throw new Error(
@@ -745,6 +794,7 @@ export class Config {
     };
   }
 
+  /** 获取指定名称的模型配置，带缓存；未找到时抛出错误 */
   getModel(name: string): ModelConfig {
     const cached = this._models.get(name);
     if (cached) return cached;
@@ -760,10 +810,12 @@ export class Config {
     return model;
   }
 
+  /** 使指定模型的缓存失效，下次 getModel 时会重新构建 */
   invalidateModel(name: string): void {
     this._models.delete(name);
   }
 
+  /** 使指定提供商的所有模型缓存失效 */
   invalidateModelsByProvider(provider: string): void {
     for (const [name, cfg] of Object.entries(this._rawModels)) {
       if (cfg["provider"] === provider) {
@@ -772,13 +824,14 @@ export class Config {
     }
   }
 
+  /** 返回所有已注册的模型配置名称列表 */
   get modelNames(): string[] {
     return Object.keys(this._rawModels);
   }
 
   /**
-   * Return raw model entries without resolving env vars.
-   * Useful for UI that needs to show missing API keys instead of throwing.
+   * 返回未解析环境变量的原始模型条目。
+   * 用于 UI 需要显示缺失的 API 密钥而不是抛出错误的场景。
    */
   listModelEntries(): ModelConfigEntry[] {
     const out: ModelConfigEntry[] = [];
@@ -797,7 +850,7 @@ export class Config {
     return out;
   }
 
-  /** Find the first model config name matching provider + model ID exactly. */
+  /** 查找第一个精确匹配提供商 + 模型 ID 的模型配置名称 */
   findModelConfigName(provider: string, model: string): string | undefined {
     for (const [name, cfg] of Object.entries(this._rawModels)) {
       if (cfg["provider"] === provider && cfg["model"] === model) {
@@ -808,22 +861,22 @@ export class Config {
   }
 
   /**
-   * Insert or replace a raw model config at runtime (in-memory only).
+   * 在运行时插入或替换原始模型配置（仅内存中）。
    */
   upsertModelRaw(name: string, cfg: Record<string, unknown>): void {
     this._rawModels[name] = { ...cfg };
     this._models.delete(name);
   }
 
-  /** Remove a model from the runtime config (custom-provider management). */
+  /** 从运行时配置中移除模型（自定义提供商管理） */
   removeModel(name: string): void {
     delete this._rawModels[name];
     this._models.delete(name);
   }
 
   /**
-   * Return the best default model name.
-   * Priority: first with resolvable API key > first model.
+   * 返回最佳默认模型名称。
+   * 优先级：第一个具有可解析 API 密钥的 > 第一个模型。
    */
   get defaultModel(): string | undefined {
     for (const [name, cfg] of Object.entries(this._rawModels)) {
@@ -839,22 +892,23 @@ export class Config {
     return names.length > 0 ? names[0] : undefined;
   }
 
+  /** 获取所有 MCP 服务器配置 */
   get mcpServerConfigs(): MCPServerConfig[] {
     return this._mcpServers;
   }
 
-  // -- Model tiers --
+  // -- 模型层级 --
 
   get modelTiers(): { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry } {
     return this._modelTiers;
   }
 
-  /** Replace the runtime tier map (persisted separately via settings). */
+  /** 替换运行时层级映射（通过设置单独持久化） */
   setModelTiers(tiers: { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry }): void {
     this._modelTiers = tiers;
   }
 
-  // -- Agent model pins --
+  // -- 代理模型固定配置 --
 
   get agentModels(): Record<string, AgentModelEntry> {
     return this._agentModels;

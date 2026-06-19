@@ -1,17 +1,18 @@
-﻿/**
- * MCP server configuration loader.
+/**
+ * MCP 服务器配置加载器。
  *
- * Loads MCP server definitions from:
- *   1. ~/.swarmflow/mcp.json       (global)
- *   2. {project}/.mcp.json     (project 鈥?overrides global by server name)
+ * 从以下位置加载 MCP 服务器定义：
+ *   1. ~/.swarmflow/mcp.json       （全局）
+ *   2. {project}/.mcp.json           （项目——按服务器名覆盖全局）
  *
- * Project servers require approval via settings (mcp_approved_project_servers).
+ * 项目服务器需要通过 settings 审批（mcp_approved_project_servers）。
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MCPServerConfig } from "./config/config.js";
 
+/** 解析 ${ENV_VAR} 形式的环境变量占位符。 */
 function resolveEnv(value: string): string {
   if (typeof value === "string" && value.startsWith("${") && value.endsWith("}")) {
     const envName = value.slice(2, -1);
@@ -25,8 +26,8 @@ function resolveEnv(value: string): string {
 }
 
 /**
- * Load MCP server configurations from mcp.json in the given directory.
- * Returns empty array if the file doesn't exist.
+ * 从给定目录的 mcp.json 加载 MCP 服务器配置。
+ * 文件不存在时返回空数组。
  */
 export function loadMcpServers(homeDir: string): MCPServerConfig[] {
   const mcpPath = join(homeDir, "mcp.json");
@@ -34,9 +35,8 @@ export function loadMcpServers(homeDir: string): MCPServerConfig[] {
 }
 
 /**
- * Load MCP servers from global + project configs.
- * Project servers override global by name.
- * Project servers are marked with `_projectServer = true` for approval gating.
+ * 从全局 + 项目配置加载 MCP 服务器。
+ * 项目服务器按名称覆盖全局服务器，并标记 _projectServer=true 以便审批门禁。
  */
 export function loadMcpServersWithProject(
   homeDir: string,
@@ -57,6 +57,7 @@ export function loadMcpServersWithProject(
   return [...byName.values()];
 }
 
+/** 解析 mcp.json 文件（支持 flat 和嵌套 mcpServers 两种格式）。 */
 function parseMcpFile(filePath: string): MCPServerConfig[] {
   if (!existsSync(filePath)) return [];
 
@@ -68,7 +69,7 @@ function parseMcpFile(filePath: string): MCPServerConfig[] {
     return [];
   }
 
-  // Handle both flat format { "server": { ... } } and nested { "mcpServers": { ... } }
+  // 支持 { "mcpServers": { ... } } 嵌套格式
   if (raw["mcpServers"] && typeof raw["mcpServers"] === "object") {
     raw = raw["mcpServers"] as Record<string, Record<string, unknown>>;
   }

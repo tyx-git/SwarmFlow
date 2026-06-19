@@ -1,16 +1,14 @@
 ﻿/**
- * Minimal JSONC (JSON with Comments) parser.
+ * 简易 JSONC（带注释的 JSON）解析器。
  *
- * Strips single-line (`//`) and multi-line (`/* ... *鈥?`) comments
- * from the input string, then delegates to `JSON.parse`.
+ * 然后交给 `JSON.parse` 处理。
  *
- * Does NOT strip comments inside JSON string values 鈥?the regex
- * handles quoted strings as opaque tokens so that `"http://example.com"`
- * is preserved intact.
+ * 不会移除 JSON 字符串值内部的注释——正则将引号字符串
+ * 视为不透明标记，因此 `"http://example.com"` 会完整保留。
  */
 
 /**
- * Strip comments from a JSONC string and return plain JSON.
+ * 从 JSONC 字符串中移除注释并返回纯 JSON。
  */
 export function stripJsoncComments(text: string): string {
   // Match (in order):
@@ -28,7 +26,7 @@ export function stripJsoncComments(text: string): string {
 }
 
 /**
- * Parse a JSONC string. Returns `undefined` on failure instead of throwing.
+ * 解析 JSONC 字符串。失败时返回 `undefined` 而不是抛出异常。
  */
 export function parseJsonc<T = unknown>(text: string): T | undefined {
   try {

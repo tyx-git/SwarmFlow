@@ -1,9 +1,8 @@
 /**
- * TaskDecomposer — decomposes user requests into executable TaskDAGs.
+ * TaskDecomposer — 将用户请求分解为可执行的 TaskDAG。
  *
- * Uses an LLM agent (or rule-based heuristics) to analyze a user request
- * and break it down into a structured DAG of tasks, each assigned to the
- * appropriate agent role.
+ * 使用 LLM agent（或基于规则的启发式方法）分析用户请求，
+ * 并将其分解为结构化的任务 DAG，每个任务分配给适当的 agent 角色。
  *
  * @packageDocumentation
  */
@@ -13,10 +12,10 @@ import { AgentRole } from "./types.js";
 import { createDAG, validateDAG } from "./task-dag.js";
 
 // ------------------------------------------------------------------
-// Decomposition strategy
+// 分解策略
 // ------------------------------------------------------------------
 
-/** Strategy for task decomposition. */
+/** Strategy for 任务分解. */
 export enum DecompositionStrategy {
   /** Full analysis upfront — best for well-understood tasks. */
   TopDown = "top-down",
@@ -61,12 +60,12 @@ const DEFAULT_OPTIONS: Required<DecomposerOptions> = {
 };
 
 // ------------------------------------------------------------------
-// Built-in decomposition rules
+// 内置分解规则
 // ------------------------------------------------------------------
 
 /**
- * Pattern: request mentions adding a feature
- * → Scout (analyze) → Worker (implement) → Reviewer (review)
+ * 模式：请求提到添加功能
+ * → Scout（分析）→ Worker（实现）→ Reviewer（审查）
  */
 function detectFeatureRequest(request: string): boolean {
   const patterns = [
@@ -78,8 +77,8 @@ function detectFeatureRequest(request: string): boolean {
 }
 
 /**
- * Pattern: request mentions fixing a bug
- * → Scout (investigate) → Worker (fix) → Reviewer (verify)
+ * 模式：请求提到修复 bug
+ * → Scout（调查）→ Worker（修复）→ Reviewer（验证）
  */
 function detectBugFix(request: string): boolean {
   const patterns = [
@@ -92,8 +91,8 @@ function detectBugFix(request: string): boolean {
 }
 
 /**
- * Pattern: request mentions refactoring
- * → Scout (analyze) → Worker × N (refactor partitions) → Reviewer (review) → Guard (check)
+ * 模式：请求提到重构
+ * → Scout（分析）→ Worker × N（重构分区）→ Reviewer（审查）→ Guard（检查）
  */
 function detectRefactor(request: string): boolean {
   const patterns = [
@@ -107,8 +106,8 @@ function detectRefactor(request: string): boolean {
 }
 
 /**
- * Pattern: request is exploratory / learning
- * → Scout × N (explore different areas) → Merger (synthesize)
+ * 模式：请求是探索性/学习性的
+ * → Scout × N（探索不同区域）→ Merger（综合）
  */
 function detectExploration(request: string): boolean {
   const patterns = [
@@ -124,8 +123,8 @@ function detectExploration(request: string): boolean {
 }
 
 /**
- * Pattern: request mentions security
- * → Guard (audit) → Worker (fix) → Guard (verify)
+ * 模式：请求提到安全性
+ * → Guard（审计）→ Worker（修复）→ Guard（验证）
  */
 function detectSecurity(request: string): boolean {
   const patterns = [
@@ -141,7 +140,7 @@ function detectSecurity(request: string): boolean {
 }
 
 // ------------------------------------------------------------------
-// Template-based DAG builders
+// 基于模板的 DAG 构建器
 // ------------------------------------------------------------------
 
 function buildFeatureDag(request: string, options: Required<DecomposerOptions>): TaskNode[] {
@@ -289,11 +288,11 @@ function buildSecurityDag(request: string, options: Required<DecomposerOptions>)
 }
 
 // ------------------------------------------------------------------
-// Main decomposer
+// 主分解器
 // ------------------------------------------------------------------
 
 /**
- * TaskDecomposer — the main entry point for task decomposition.
+ * TaskDecomposer — the main 入口点 for 任务分解.
  *
  * Uses pattern recognition (rule-based) to decompose requests.
  * Future: will use LLM-based decomposition for complex cases.

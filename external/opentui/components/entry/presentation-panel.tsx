@@ -1,5 +1,11 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — 会话展示面板
+// =============================================================================
+// 职责：渲染 Logo、主会话条目列表、子会话指示器
+// 注意：不管理滚动框（滚动框由 OpenTuiScreen 的 ScrollViewport 管理）
+
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
 

@@ -1,14 +1,13 @@
 ﻿/**
- * Qwen / DashScope Chat Completions provider adapter.
+ * Qwen / DashScope Chat Completions 提供者适配器。
  *
- * Deprecated rollback path: direct Qwen presets now use qwen-responses.ts.
+ * 已弃用的回滚路径：直接 Qwen 预设现在使用 qwen-responses.ts。
  *
- * Extends OpenAIChatProvider with Qwen-specific Chat Completions controls.
+ * 在 OpenAIChatProvider 之上扩展 Qwen 特定的 Chat Completions 控制项。
  *
- * DashScope's OpenAI-compatible API accepts these vendor extensions as
- * top-level request fields when called through the Node OpenAI SDK. Python
- * examples often show them under `extra_body`, but that shape is not
- * serialized correctly by the Node client.
+ * DashScope 的 OpenAI 兼容 API 在通过 Node OpenAI SDK 调用时会接受这些
+ * 供应商扩展作为顶层请求字段。Python 示例常把它们放在 `extra_body` 下，
+ * 但 Node 客户端不会正确序列化这种形状。
  */
 
 import type { ModelConfig } from "../config/config.js";

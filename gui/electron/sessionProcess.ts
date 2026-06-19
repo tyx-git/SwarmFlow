@@ -1,6 +1,5 @@
 /**
- * One subprocess wrapping `swarmflow --server`. Handles NDJSON framing and
- * tracks pending requests.
+ * 封装 `swarmflow --server` 的子进程。处理 NDJSON 帧并跟踪待处理的请求。
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import path from 'node:path'
@@ -148,7 +147,7 @@ export class SessionProcess {
         new Promise<void>((_, rej) => setTimeout(() => rej(new Error('shutdown timeout')), 3_000)),
       ])
     } catch {
-      // ignore — we're killing it anyway
+      // 忽略——反正我们要杀掉它
     }
     if (!this.#closed) {
       this.#child.kill('SIGTERM')
@@ -203,8 +202,8 @@ export class SessionProcess {
 }
 
 function resolveSwarmflowBinary(): { cmd: string; args: string[] } {
-  // Dev: spawn `bun` running the TS source directly (hot iteration).
-  // Prod: would point at the bundled binary in resourcesPath.
+  // 开发：生成运行 TS 源码的 `bun`（热迭代）。
+  // 生产：指向 resourcesPath 中的打包二进制。
   const entry = path.resolve(__dirname, '../../../src/cli.ts')
   return { cmd: 'bun', args: [entry] }
 }

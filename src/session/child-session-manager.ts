@@ -1,18 +1,18 @@
-﻿/**
- * ChildSessionManager 鈥?owns the session tree (P2.4b).
+/**
+ * ChildSessionManager —— 拥有会话树（P2.4b）。
  *
- * Holds the three tables (live handles, archived records, numeric id counter)
- * plus the full child lifecycle: spawn/instantiate, turn start/finish,
- * send/revive, kill/suspend/archive, settle waiting, snapshots/status
- * reports, and the staged child restore. Parent-session services (log
- * appends, message delivery, hooks, progress, the sub-agent factory) reach
- * back into Session through the deps closures. Child Session construction is
- * injected via `createChildSession`, so this module never imports the
- * Session class at runtime (`import type` only 鈥?breaks the import cycle).
+ * 持有三张表（live handles、archived 记录、ID 计数器）
+ * 以及完整的子生命周期：spawn/instantiate、turn start/finish、
+ * send/revive、kill/suspend/archive、settle waiting、snapshots/status 报告、
+ * 以及 staged child restore。
  *
- * Closures that touch a child session's private members (inbox, delivery,
- * event recording, log normalization) are defined inside Session, where
- * same-class private access is legal.
+ * 父会话服务（日志追加、消息传递、hooks、进度、子代理工厂）
+ * 通过 deps 闭包回调回 Session。
+ * 子 Session 构建通过 createChildSession 注入，
+ * 使本模块运行时从不导入 Session 类（仅 import type——打破导入循环）。
+ *
+ * 访问子会话私有成员（inbox、delivery、事件记录、日志正规化）
+ * 的闭包定义在 Session 内部——同类私有访问合法。
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -40,8 +40,10 @@ import {
 } from "../session-tree-types.js";
 import { SEND_TOOL } from "../tools/comm.js";
 
+/** 子代理输出截断限制（12000 字符）。 */
 const SUB_AGENT_OUTPUT_LIMIT = 12_000;
 
+/** 人类可读的 Token 数量格式化。 */
 export function formatTokenCount(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0";
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
@@ -49,7 +51,7 @@ export function formatTokenCount(value: number): string {
   return String(Math.round(value));
 }
 
-/** Latest non-discarded assistant text (or no_reply) in a child log. */
+/** 从子会话日志提取最新的非丢弃助手文本（或 no_reply）。 */
 export function extractLatestAssistantText(entries: readonly LogEntry[]): string {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
@@ -62,7 +64,7 @@ export function extractLatestAssistantText(entries: readonly LogEntry[]): string
 }
 
 // ------------------------------------------------------------------
-// ChildSessionHandle 鈥?tracked nested child session state
+// ChildSessionHandle —— 追踪嵌套子会话状态的接口
 // ------------------------------------------------------------------
 
 export interface ChildSessionHandle {
@@ -74,12 +76,11 @@ export interface ChildSessionHandle {
   status: "working" | "idle" | "error" | "interrupted" | "terminated" | "completed";
   phase: ChildSessionPhase;
   /**
-   * Null after a settled one-shot child is released: its log lives on disk
-   * (read back on demand for the child tab) and `frozenSnapshot` serves the
-   * Agents panel. Persistent children keep their Session for revival.
+   * settled one-shot 子会话后为 null：其日志在磁盘（按需读回），
+   * frozenSnapshot 服务于 Agents 面板。persistent 子会话保留 Session 以便复活。
    */
   session: Session | null;
-  /** Final snapshot captured at release time (see _freezeAndRelease). */
+  /** release 时捕获的最终快照（见 _freezeAndRelease）。 */
   frozenSnapshot?: ChildSessionSnapshot | null;
   sessionDir: string;
   artifactsDir: string;
@@ -95,9 +96,9 @@ export interface ChildSessionHandle {
   lastOutcome: ChildSessionOutcome;
   lastActivityAt: number;
   order: number;
-  /** Set by suspendAll / archiveAll to prevent zombie finishChildTurn callbacks. */
+  /** suspendAll / archiveAll 设置，防止僵尸 finishChildTurn 回调。 */
   suspended: boolean;
-  /** Resolve when finishChildTurn completes. Created in _startChildTurn, resolved in finishChildTurn. */
+  /** settlePromise：finishChildTurn 完成时 resolve。在 _startChildTurn 创建，finishChildTurn 中 resolve。 */
   settlePromise: Promise<void> | null;
   settleResolve: (() => void) | null;
   terminationCause?: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt";
@@ -111,7 +112,7 @@ export interface PreparedChildRestore {
   loaded: LoadLogResult;
 }
 
-/** Constructor surface Session exposes for child instantiation. */
+/** Session 暴露给子会话实例化的构造函数表面。 */
 export interface ChildSessionSpawnOpts {
   primaryAgent: Agent;
   artifactsDir: string;
@@ -121,27 +122,24 @@ export interface ChildSessionSpawnOpts {
 }
 
 export interface ChildSessionManagerDeps {
-  // Parent log & bookkeeping
+  // 父日志 & 记账
   appendEntry(entry: LogEntry, notify?: boolean): void;
   nextLogId(type: LogEntry["type"]): string;
   allocateContextId(): string;
   getTurnCount(): number;
   notifyLogListeners(): void;
   requestSave(): void;
-  /** Standard delivery into the PARENT's inbox (root._deliverMessage). */
+  /** 标准传递到父 inbox（root._deliverMessage）。 */
   deliverMessageToParent(msg: MessageEnvelope): void;
-  // Child-session private access (closures live inside Session 鈥?same-class
-  // private access; keeps instance-level test mocks effective)
+  // 子会话私有访问（闭包在 Session 内部——同类私有访问）
   deliverToChild(child: Session, msg: MessageEnvelope): void;
   childHasInbox(child: Session): boolean;
   setChildInbox(child: Session, msgs: MessageEnvelope[]): void;
   recordChildEvent(child: Session, event: string): void;
   normalizeChildInterruptedTurn(child: Session, message: string): void;
-  /** Persist a child's log+meta. Routed via Session._saveChildSession so tests
-   * can stub it. Returns whether the save succeeded 鈥?release decisions hinge
-   * on it (never drop an in-memory log whose disk copy is stale). */
+  /** 持久化子会话日志+meta。路由经 Session._saveChildSession。返回保存是否成功——决定释放逻辑。 */
   saveChildSession(handle: ChildSessionHandle): boolean;
-  // Parent environment
+  // 父环境
   getProgress(): ProgressReporter | undefined;
   fireHook(event: HookEvent, payload: HookPayload): void;
   resolveSessionArtifacts(): string;
@@ -149,12 +147,12 @@ export interface ChildSessionManagerDeps {
   getPreferredThinkingLevel(): string;
   getPrimaryAgent(): Agent;
   getAgentTemplates(): Record<string, Agent>;
-  // Sub-agent factory (SubAgentFactory via Session delegates)
+  // 子代理工厂
   createFromPredefined(templateName: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string };
   createFromPath(templateDir: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string };
   resolveTemplatePath(relPath: string): string;
   buildSubAgentSystemPrompt(basePrompt: string, persistent: boolean): string;
-  /** Construct the child Session (breaks the Session鈫攎anager import cycle). */
+  /** 构造子 Session（打破 Session-Manager 导入循环）。 */
   createChildSession(opts: ChildSessionSpawnOpts): Session;
 }
 
@@ -181,19 +179,19 @@ export class ChildSessionManager {
     this._counter = value;
   }
 
-  /** Drop both tables (fresh-session reset; counter is reset separately). */
+  /** 清空两张表（新会话重置；counter 单独重置）。 */
   clearTables(): void {
     this._handles = new Map();
     this._archived = new Map();
-    // Child ids (worker-1, explorer鈥? recur across sessions 鈥?a cache entry
-    // surviving /new or /resume would serve the previous session's log.
+    // 子 id（worker-1、explorer 等）跨会话重用——/new 或 /resume 时缓存若存活会提供前一会话的日志。
     this._releasedLogCache = null;
   }
 
   // ==================================================================
-  // Snapshots & status reports
+  // Snapshots & status 报告
   // ==================================================================
 
+  /** 获取所有子会话快照（按 lifecycle 优先级和活跃时间排序）。 */
   getSnapshots(): ChildSessionSnapshot[] {
     return [...this._handles.values()]
       .map((handle) => this._buildSnapshot(handle))
@@ -213,6 +211,7 @@ export class ChildSessionManager {
       });
   }
 
+  /** 获取子会话日志（live 或从磁盘加载）。 */
   getChildLog(childId: string): readonly LogEntry[] | null {
     const handle = this._handles.get(childId);
     if (!handle) return null;
@@ -221,10 +220,9 @@ export class ChildSessionManager {
   }
 
   /**
-   * Single-slot cache for released children's logs: at most one released
-   * child's log is resident (the tab being viewed), with a stable array
-   * identity so the TUI projection memo holds across polls. Keyed by
-   * sessionDir 鈥?unique per child per root session, unlike child ids.
+   * 已释放子会话日志的单槽缓存：至多一个已释放子会话日志驻留
+   *（对应正在查看的 tab），数组标识稳定使 TUI 投影 memo 在轮询间保持有效。
+   * 按 sessionDir 而非 child id 索引——sessionDir 在每个根会话中唯一。
    */
   private _releasedLogCache: { sessionDir: string; entries: LogEntry[] } | null = null;
 
@@ -238,26 +236,22 @@ export class ChildSessionManager {
       this._releasedLogCache = { sessionDir: handle.sessionDir, entries: repaired.entries };
       return repaired.entries;
     } catch {
-      // Missing/corrupt child log on disk 鈥?show an empty transcript rather
-      // than crashing the tab.
+      // 磁盘上子会话日志缺失/损坏——显示空 transcript 而非崩溃 tab。
       return [];
     }
   }
 
   /**
-   * A settled one-shot child can never run again: sends are mode-guarded,
-   * revival is persistent-only, and its result already lives in the parent
-   * log. Its Session existed only so the TUI could read the log and the
-   * Agents panel its metadata 鈥?freeze the final snapshot, drop the Session
-   * (and with it the in-memory log), and serve the log from disk on demand.
-   * The log was persisted by saveChildSession just before this runs.
+   * 已结束 one-shot 子会话无法再次运行：send 受模式守卫，
+   * 复活仅限 persistent，其结果已在父日志中。
+   * 其 Session 仅供 TUI 读取日志和 Agents 面板元数据——
+   * 冻结最终快照，丢弃 Session（和内存日志），
+   * 按需从磁盘提供日志。日志由 saveChildSession 在此前持久化。
    */
   private _freezeAndRelease(handle: ChildSessionHandle, persistedOk: boolean): void {
     if (!handle.session) return;
     if (handle.mode !== "oneshot" || handle.lifecycle !== "archived") return;
-    // The disk copy is the only copy after release 鈥?never drop the
-    // in-memory log when the settle-time save failed (the on-disk log
-    // would be the stale spawn-time one).
+    // 释放后磁盘副本是唯一副本——若持久化失败不丢弃内存日志。
     if (!persistedOk) return;
     handle.frozenSnapshot = this._buildSnapshot(handle);
     handle.session = null;
@@ -269,12 +263,12 @@ export class ChildSessionManager {
     return handle.lifecycle === "running" || handle.lifecycle === "blocked";
   }
 
+  /** 从 handle 构建快照（用于 TUI 子会话面板）。 */
   private _buildSnapshot(handle: ChildSessionHandle): ChildSessionSnapshot {
     const session = handle.session;
     if (!session) {
-      // Released child 鈥?the frozen snapshot is the source of truth.
+      // 已释放——frozenSnapshot 是真相来源。
       if (handle.frozenSnapshot) return handle.frozenSnapshot;
-      // Defensive: released without a frozen snapshot (shouldn't happen).
       return {
         id: handle.id,
         numericId: handle.numericId,
@@ -347,7 +341,6 @@ export class ChildSessionManager {
       recentEvents: [...session.recentSessionEvents],
       pendingInboxCount: session.pendingInboxCount,
       lastActivityAt: handle.lastActivityAt,
-      // Child page chrome fields
       inputTokens: session.lastTotalTokens,
       contextBudget: session.contextBudget,
       modelConfigName: modelConfig?.name ?? "",
@@ -363,6 +356,7 @@ export class ChildSessionManager {
     };
   }
 
+  /** 生成详细状态报告字符串。 */
   buildDetailedStatusReport(): string {
     const snapshots = this.getSnapshots();
     if (snapshots.length === 0) return "No sub-sessions tracked.";
@@ -383,15 +377,16 @@ export class ChildSessionManager {
         `  latest: ${latest}`,
         `  recent:`,
         recent,
-      ].join("\n");
+      ].join("\n\n");
     });
     return sections.join("\n\n");
   }
 
   // ==================================================================
-  // Ask routing helpers (ask domain itself stays in Session)
+  // Ask 路由辅助（ask 领域本身留在 Session）
   // ==================================================================
 
+  /** 查找持有待处理 ask 的子会话。 */
   findChildWithPendingAsk(askId: string): ChildSessionHandle | null {
     for (const handle of this._handles.values()) {
       const ask = handle.session?.getPendingAsk();
@@ -400,6 +395,7 @@ export class ChildSessionManager {
     return null;
   }
 
+  /** 恢复子会话的待处理 turn。 */
   resumeChildPendingTurn(handle: ChildSessionHandle): void {
     if (handle.turnPromise) return;
     const session = handle.session;
@@ -425,13 +421,15 @@ export class ChildSessionManager {
   }
 
   // ==================================================================
-  // Lifecycle
+  // 生命周期
   // ==================================================================
 
+  /** 计算子会话目录路径。 */
   childSessionDir(childId: string): string {
     return join(this.deps.resolveSessionArtifacts(), "agents", childId, "session");
   }
 
+  /** 实例化子会话（创建 Session + handle，但不启动 turn）。 */
   instantiateChild(
     taskId: string,
     templateLabel: string,
@@ -490,6 +488,7 @@ export class ChildSessionManager {
     return handle;
   }
 
+  /** 创建并启动子会话（持久化 + fire SubagentStart hook）。 */
   createChild(
     taskId: string,
     templateLabel: string,
@@ -498,7 +497,6 @@ export class ChildSessionManager {
   ): ChildSessionHandle {
     const handle = this.instantiateChild(taskId, templateLabel, mode, agent);
     this.deps.saveChildSession(handle);
-    // Fire SubagentStart hook
     this.deps.fireHook("SubagentStart", {
       event: "SubagentStart",
       timestamp: Date.now(),
@@ -514,9 +512,10 @@ export class ChildSessionManager {
     handle.lastActivityAt = Date.now();
   }
 
+  /** 启动子会话 turn。 */
   private _startChildTurn(handle: ChildSessionHandle, input: string, options?: { skipUserInput?: boolean }): void {
     const session = handle.session;
-    if (!session) return; // released one-shot 鈥?unreachable via the mode guards
+    if (!session) return; // 已释放 one-shot——模式守卫不可达
     handle.startTime = performance.now();
     handle.status = "working";
     handle.lifecycle = "running";
@@ -526,7 +525,7 @@ export class ChildSessionManager {
     handle.terminationCause = undefined;
     const abortController = new AbortController();
     handle.abortController = abortController;
-    // Create settle promise so close() can wait for this turn to finish
+    // 创建 settle promise 以便 close() 等待本 turn 结束
     handle.settlePromise = new Promise<void>((resolve) => {
       handle.settleResolve = resolve;
     });
@@ -537,8 +536,18 @@ export class ChildSessionManager {
     );
   }
 
+  /**
+   * 完成子会话 turn。
+   *
+   * 处理：中断完成、自然完成、错误。
+   * 关键不变量：
+   * - 僵尸回调守卫：suspended handle 直接返回
+   * - released handle 直接返回
+   * - oneshot → lifecycle=archived；persistent → lifecycle=idle
+   * - 自然完成的 persistent 子会话若有排队消息则自动恢复
+   */
   finishChildTurn(handle: ChildSessionHandle, error?: unknown): void {
-    // Zombie callback guard: if close/suspend already handled this handle, bail out.
+    // 僵尸守卫：close/suspend 已处理此 handle，直接退出。
     if (handle.suspended) {
       const resolve = handle.settleResolve;
       handle.settleResolve = null;
@@ -546,8 +555,7 @@ export class ChildSessionManager {
       return;
     }
 
-    // A released handle has no running turn 鈥?this callback can only be a
-    // zombie from a path that also violated the release invariant. Bail.
+    // released handle 无运行中 turn——若是僵尸回调则直接退出。
     const session = handle.session;
     if (!session) {
       const resolve = handle.settleResolve;
@@ -588,7 +596,7 @@ export class ChildSessionManager {
       agentId: handle.id,
     });
 
-    // Determine outcome from error / endStatus
+    // 从 error / endStatus 确定 outcome
     const endStatus = error ? "error" : session.lastTurnEndStatus;
     if (error || endStatus === "error") {
       handle.lastOutcome = "error";
@@ -622,10 +630,9 @@ export class ChildSessionManager {
       this.deps.allocateContextId(),
       agentResult.fullOutputPath,
     ), false);
-    // User-initiated kills deliver as ride-along: the user is present and
-    // steering, so the parent must not wake and start reacting on its own.
-    // Natural completions/failures keep waking the idle parent (safety net
-    // for missing await_event).
+
+    // 用户发起 kill 随附传递：用户在场并引导，父会话不应自动唤醒。
+    // 自然完成/失败保持唤醒 idle 父会话（安全网）。
     const userInitiatedKill = cause === "user_targeted_kill" || cause === "user_mass_interrupt";
     this.deps.deliverMessageToParent({
       type: "peer_message",
@@ -636,10 +643,7 @@ export class ChildSessionManager {
     });
     handle.terminationCause = undefined;
 
-    // Lifecycle transition: oneshot 鈫?archived, persistent 鈫?idle
-    // NOTE: archived children stay in the live handles table during runtime
-    // (snapshot + disk-served log readable for TUI). Only move to the
-    // archived-records table on close/reset.
+    // 生命周期转换：oneshot → archived，persistent → idle
     let savedOk = false;
     if (handle.mode === "oneshot") {
       handle.lifecycle = "archived";
@@ -647,11 +651,9 @@ export class ChildSessionManager {
     } else {
       handle.lifecycle = "idle";
       this.deps.saveChildSession(handle);
-      // Persistent: only auto-resume queued work after a natural completion.
-      // User/parent-triggered kills must leave the agent idle.
+      // persistent：自然完成后自动恢复排队消息。
       if (cause === "natural") {
         if (this.deps.childHasInbox(session)) {
-          // Resolve settle before starting next turn (current turn is done)
           const resolve = handle.settleResolve;
           handle.settleResolve = null;
           resolve?.();
@@ -661,16 +663,15 @@ export class ChildSessionManager {
       }
     }
 
-    // Resolve settle promise
     const resolve = handle.settleResolve;
     handle.settleResolve = null;
     resolve?.();
 
-    // One-shot children are terminal here 鈥?release the Session (the log
-    // was just persisted by saveChildSession above).
+    // one-shot 子会话在此终结——丢弃 Session（日志已在 saveChildSession 持久化）。
     this._freezeAndRelease(handle, savedOk);
   }
 
+  /** 构建 agent_result 内容（处理输出截断和溢出文件）。 */
   private _buildAgentResultApiContent(
     handle: ChildSessionHandle,
     outcome: "completed" | "failed" | "interrupted",
@@ -709,7 +710,7 @@ export class ChildSessionManager {
     return { content: `${header}\n${text}` };
   }
 
-  /** Move a handle from the live table to the archived table, releasing the Session instance. */
+  /** 将 handle 从 live 表移到 archived 表，释放 Session 实例。 */
   private _archiveHandle(handle: ChildSessionHandle): void {
     this._archived.set(handle.id, {
       id: handle.id,
@@ -724,6 +725,7 @@ export class ChildSessionManager {
     this._handles.delete(handle.id);
   }
 
+  /** send tool 实现：向 persistent 子会话发送消息（可复活 archived persistent）。 */
   sendMessageToChild(childId: string, msg: MessageEnvelope): ToolResult {
     const handle = this._handles.get(childId);
     if (!handle) {
@@ -732,18 +734,17 @@ export class ChildSessionManager {
     if (handle.mode !== "persistent") {
       return new ToolResult({ content: `Agent '${childId}' is one-shot and cannot receive messages.` });
     }
-    // Persistent children keep their Session for the lifetime of the root 鈥?    // a null here means the release invariant broke; fail soft.
+    // persistent 子会话在根会话生命周期内保留 Session——
+    // 此处为 null 意味着释放不变量被打破；软失败。
     const session = handle.session;
     if (!session) {
       return new ToolResult({ content: `Agent '${childId}' is no longer active.` });
     }
     if (handle.lifecycle === "archived") {
-      // Persistent archived child still in the live table 鈥?revive in-place.
+      // persistent archived 子会话仍在 live 表中——原地复活。
       if (handle.mode === "persistent") {
         handle.lastActivityAt = Date.now();
-        // Standard delivery (never a raw inbox push): it populates the
-        // bookkeeping fields the child's drain invariant requires. wake:false
-        // because we start the turn explicitly right after.
+        // 标准传递（从不是原始 inbox 推送）：填充子会话引流不变量所需的记账字段。
         this.deps.deliverToChild(session, { ...msg, wake: false });
         this._startChildTurn(handle, "", { skipUserInput: true });
         return new ToolResult({ content: `Agent '${childId}' revived and message sent.` });
@@ -764,17 +765,16 @@ export class ChildSessionManager {
       return new ToolResult({ content: `Message sent to '${childId}'.` });
     }
 
-    // idle 鈥?queue message and start turn. Standard delivery populates the
-    // bookkeeping fields the drain invariant requires; wake:false because we
-    // start the turn explicitly right after.
+    // idle——排队消息并启动 turn。标准传递填充记账字段；wake:false 因显式启动 turn。
     this.deps.deliverToChild(session, { ...msg, wake: false });
     this._startChildTurn(handle, "", { skipUserInput: true });
     return new ToolResult({ content: `Message sent to '${childId}'.` });
   }
 
+  /** 中断 blocked 子会话（abortController 可用时直接 abort，否则正规化）。 */
   private _interruptBlockedChild(handle: ChildSessionHandle, message: string): void {
     const session = handle.session;
-    if (!session) return; // released children have no pending turn to normalize
+    if (!session) return; // 已释放的子会话无待处理 turn
     this.deps.normalizeChildInterruptedTurn(session, message);
     session.requestTurnInterrupt();
     handle.lifecycle = handle.mode === "oneshot" ? "archived" : "idle";
@@ -783,11 +783,11 @@ export class ChildSessionManager {
     handle.lastOutcome = "interrupted";
     handle.lastActivityAt = Date.now();
     const savedOk = this.deps.saveChildSession(handle);
-    // Blocked one-shots never reach finishChildTurn 鈥?release here so the
-    // "archived one-shot 鈬?released" invariant has no standing exception.
+    // blocked one-shot 从不在 finishChildTurn 到达此处——此处释放使"archived one-shot 已释放"不变量无持续例外。
     this._freezeAndRelease(handle, savedOk);
   }
 
+  /** 中断单个子会话。 */
   interruptChild(childId: string): { accepted: boolean; reason?: string } {
     const handle = this._handles.get(childId);
     if (!handle) return { accepted: false, reason: "not_found" };
@@ -813,20 +813,21 @@ export class ChildSessionManager {
     });
   }
 
+  /** 级联杀死所有运行中的子会话。 */
   cascadeKillRunning(cause: "user_mass_interrupt" | "parent_kill"): number {
     let interrupted = 0;
     for (const handle of this._handles.values()) {
       if (!this._isLive(handle)) continue;
       handle.terminationCause = cause;
-      // Record before the blocked-interrupt path: it may release the handle,
-      // and the event must land inside the frozen snapshot.
       if (handle.session) {
         this.deps.recordChildEvent(handle.session, cause === "user_mass_interrupt" ? "interrupted by user" : "interrupted by parent");
       }
       if (handle.abortController) {
         handle.abortController.abort();
       } else {
-        this._interruptBlockedChild(handle, "Sub-agent was interrupted while waiting for user approval.");
+        this._interruptBlockedChild(handle, cause === "user_mass_interrupt"
+          ? "Sub-agent was interrupted while waiting for user approval."
+          : "Parent session was interrupted.");
       }
       interrupted += 1;
     }
@@ -834,11 +835,8 @@ export class ChildSessionManager {
   }
 
   /**
-   * Suspend all child sessions for close(). Preserves lifecycle semantics:
-   * - running persistent 鈫?normalize + idle
-   * - running oneshot 鈫?normalize + archived
-   * - idle persistent 鈫?stays idle
-   * Saves log + inbox for all non-archived children.
+   * 为 close() 挂起所有子会话。
+   * 持久化所有非 archived 子会话的日志和 inbox。
    */
   suspendAll(): void {
     const toArchive: string[] = [];
@@ -846,7 +844,6 @@ export class ChildSessionManager {
       handle.suspended = true;
       if (this._isLive(handle) && handle.session) {
         handle.abortController?.abort();
-        // Normalize the child's log before persisting
         this.deps.normalizeChildInterruptedTurn(
           handle.session,
           "Parent session was interrupted by the user.",
@@ -877,7 +874,6 @@ export class ChildSessionManager {
       }
       this.deps.saveChildSession(handle);
     }
-    // Move oneshot-archived handles out of the live table after iteration
     for (const id of toArchive) {
       const handle = this._handles.get(id);
       if (handle) this._archiveHandle(handle);
@@ -885,11 +881,11 @@ export class ChildSessionManager {
   }
 
   /**
-   * Archive all child sessions unconditionally. Used by _resetTransientState() for /new.
-   * All children 鈫?archived regardless of mode or current lifecycle.
+   * 无条件归档所有子会话（用于 /new）。
+   * 所有子会话——无论模式或当前生命周期——均变为 archived。
    */
   archiveAll(): void {
-    for (const [_name, handle] of this._handles) {
+    for (const [, handle] of this._handles) {
       handle.suspended = true;
       if (this._isLive(handle) && handle.session) {
         handle.abortController?.abort();
@@ -904,8 +900,7 @@ export class ChildSessionManager {
       handle.lastActivityAt = Date.now();
       this.deps.saveChildSession(handle);
     }
-    // Move all to archived map
-    for (const [_name, handle] of this._handles) {
+    for (const [, handle] of this._handles) {
       this._archived.set(handle.id, {
         id: handle.id,
         numericId: handle.numericId,
@@ -920,7 +915,7 @@ export class ChildSessionManager {
     this._handles.clear();
   }
 
-  /** Wait for all running child turns to settle, with timeout. */
+  /** 等待所有运行中的子会话 turn 结束（带超时）。 */
   async waitForAllTurnsSettled(): Promise<void> {
     const SETTLE_TIMEOUT_MS = 3000;
     const settlePromises = [...this._handles.values()]
@@ -934,9 +929,10 @@ export class ChildSessionManager {
   }
 
   // ==================================================================
-  // spawn / kill_agent / send tool bodies (arg validation stays in Session)
+  // spawn / kill_agent / send tool 实现
   // ==================================================================
 
+  /** spawn tool 实现：批量实例化并启动子会话。 */
   spawnFromSpecs(tasksSpec: Array<Record<string, unknown>>): ToolResult {
     const spawned: string[] = [];
     const spawnedInfo: Array<{ numericId: number; taskId: string; template: string; task: string }> = [];
@@ -996,8 +992,7 @@ export class ChildSessionManager {
       }
 
       const handle = this.createChild(taskId, templateLabel, mode, agent);
-      // Tier/pin wins; otherwise inherit parent's preferred level. Setter resolves
-      // against the child's model and persists _preferredThinkingLevel into log meta.
+      // tier/pin 优先；否则继承父会话的首选层级。
       if (handle.session) {
         handle.session.thinkingLevel = tierThinkingLevel ?? this.deps.getPreferredThinkingLevel();
       }
@@ -1028,16 +1023,16 @@ export class ChildSessionManager {
       parts.push("Errors: " + errors.join(" | "));
     }
 
-    // Build TUI preview: list each sub-agent with truncated task
+    // 构建 TUI 预览：列出每个子代理及截断任务
     let previewText: string | undefined;
     if (spawnedInfo.length) {
       const maxTaskLen = 60;
       const lines = spawnedInfo.map((info) => {
         const taskOneLine = info.task.replace(/\s+/g, " ");
         const taskTrunc = taskOneLine.length > maxTaskLen
-          ? taskOneLine.slice(0, maxTaskLen - 1) + "鈥?
+          ? taskOneLine.slice(0, maxTaskLen - 1) + "…"
           : taskOneLine;
-        return `  #${info.numericId} ${info.taskId} [${info.template}] 鈥?${taskTrunc}`;
+        return `  #${info.numericId} ${info.taskId} [${info.template}] — ${taskTrunc}`;
       });
       previewText = `Spawned ${spawnedInfo.length} sub-agent(s):\n${lines.join("\n")}`;
     }
@@ -1048,6 +1043,7 @@ export class ChildSessionManager {
     });
   }
 
+  /** kill_agent tool 实现。 */
   killAgents(ids: string[]): ToolResult {
     const killed: string[] = [];
     const notFound: string[] = [];
@@ -1072,7 +1068,7 @@ export class ChildSessionManager {
       if (handle.session) {
         this.deps.recordChildEvent(handle.session, "terminated by parent");
       }
-      // A released handle's panel state comes from the frozen snapshot 鈥?      // mirror the kill there or it would keep showing the settled state.
+      // released handle 面板状态来自 frozen snapshot——在快照中镜像 kill 状态，否则会持续显示已结束状态。
       if (handle.frozenSnapshot) {
         handle.frozenSnapshot = {
           ...handle.frozenSnapshot,
@@ -1107,9 +1103,8 @@ export class ChildSessionManager {
     return new ToolResult({ content: parts.join(" ") });
   }
 
-  /** send tool body: direct send, or revive an archived persistent agent. */
+  /** send tool 实现：直接发送或复活 archived persistent 子会话。 */
   async sendOrRevive(to: string, content: string): Promise<ToolResult> {
-    // Direct send 鈥?may revive archived persistent agent
     if (!this._handles.has(to)) {
       const archived = this._archived.get(to);
       if (archived) {
@@ -1129,7 +1124,7 @@ export class ChildSessionManager {
     return this.sendMessageToChild(to, { type: "user_input", sender: "main", content, timestamp: Date.now() });
   }
 
-  /** Revive an archived persistent child: rebuild Session, restore log, start turn. */
+  /** 复活 archived persistent 子会话：重建 Session、恢复日志、启动 turn。 */
   private async _reviveArchivedChild(record: ArchivedChildRecord, messageContent: string): Promise<void> {
     let agent: Agent;
     if (this.deps.getAgentTemplates()[record.template]) {
@@ -1146,7 +1141,7 @@ export class ChildSessionManager {
       { numericId: record.numericId, order: record.order },
     );
 
-    // Restore log from disk
+    // 从磁盘恢复日志
     const session = handle.session;
     if (!session) throw new Error(`freshly instantiated child '${record.id}' has no session`);
     const loaded = loadLog(record.sessionDir);
@@ -1157,11 +1152,11 @@ export class ChildSessionManager {
     handle.lastActivityAt = Date.now();
     handle.resultText = extractLatestAssistantText(session.log);
 
-    // Move from archived to active
+    // 从 archived 移到 active
     this._handles.set(record.id, handle);
     this._archived.delete(record.id);
 
-    // Deliver message and start turn (standard delivery 鈥?see sendMessageToChild)
+    // 传递消息并启动 turn（标准传递——见 sendMessageToChild）
     this.deps.deliverToChild(session, {
       type: "user_input",
       sender: "main",
@@ -1171,7 +1166,7 @@ export class ChildSessionManager {
     });
     this._startChildTurn(handle, "", { skipUserInput: true });
 
-    // Trigger root save since child references changed
+    // 触发根会话保存（因子会话引用已变更）
     this.deps.requestSave();
   }
 
@@ -1179,6 +1174,7 @@ export class ChildSessionManager {
   // Staged child restore
   // ==================================================================
 
+  /** 准备子会话恢复：加载日志、验证、修复。 */
   prepareChildRestores(
     childSessions: ChildSessionMetaRecord[],
     warnings: string[],
@@ -1230,6 +1226,7 @@ export class ChildSessionManager {
     return prepared;
   }
 
+  /** 提交已准备的子会话恢复。 */
   commitPreparedChildren(children: PreparedChildRestore[]): string[] {
     if (children.length === 0) return [];
 
@@ -1257,9 +1254,8 @@ export class ChildSessionManager {
             : "idle";
 
         if (record.inbox && record.inbox.length > 0) {
-          // For a settled one-shot the restored inbox is dropped at the
-          // release below 鈥?benign: nothing can ever deliver to or drain a
-          // one-shot archived inbox (pre-release it just sat unread).
+          // 已结束 one-shot 的恢复 inbox 在下方 release 时丢弃：
+          // 无任何传递能向其送达或耗尽（release 前已读但从未耗尽）。
           this.deps.setChildInbox(
             session,
             record.inbox.map((m) => migrateMessageEnvelope(m as unknown as Record<string, unknown>)),
@@ -1267,7 +1263,7 @@ export class ChildSessionManager {
         }
 
         this._handles.set(record.id, handle);
-        // Settled one-shot children come back released, same as live settle 鈥?        // the log was just loaded from this very disk copy.
+        // 已结束 one-shot 子会话以 released 状态返回，与 live settle 同。
         this._freezeAndRelease(handle, true);
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);

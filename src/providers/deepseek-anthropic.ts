@@ -1,18 +1,17 @@
 ﻿/**
- * DeepSeek Anthropic-compatible provider.
+ * DeepSeek Anthropic 兼容提供者。
  *
- * Endpoint: https://api.deepseek.com/anthropic
+ * 端点：https://api.deepseek.com/anthropic
  *
- * Verified live (2026-05): standard Anthropic Messages shape; backend runs
- * automatic prefix cache (no `cache_control` needed); thinking is server-side
- * default-enabled 鈥?must explicitly send `{ type: "disabled" }` to turn off.
+ * 实机验证（2026-05）：标准 Anthropic Messages 形状；后端运行
+ * 自动前缀缓存（不需要 `cache_control`）；thinking 在服务端默认启用 —
+ * 必须显式发送 `{ type: "disabled" }` 才能关闭。
  *
- * Thinking effort is controlled via `output_config.effort: "high" | "max"`
- * (max measurably expands the prompt server-side; budget_tokens is ignored).
+ * Thinking effort 通过 `output_config.effort: "high" | "max"` 控制
+ *（max 会在服务端可测地扩展 prompt；budget_tokens 会被忽略）。
  *
- * The vendor sends a placeholder `signature` field on thinking blocks (value
- * equals the response id). It is not cryptographically validated 鈥?we do not
- * round-trip it.
+ * 供应商会在 thinking 块上发送占位 `signature` 字段（值等于响应 id）。
+ * 它不经过密码学验证 — 我们不往返它。
  */
 
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";

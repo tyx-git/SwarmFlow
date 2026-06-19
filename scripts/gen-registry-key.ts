@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Generate the Ed25519 keypair used to sign the remote model registry.
+ * 生成用于签名远程模型 registry 的 Ed25519 密钥对。
  *
  *   bun run scripts/gen-registry-key.ts [private-key-output.pem]
  *
- * Writes the PRIVATE key (keep secret, never commit — store in a CI secret) and
- * prints the PUBLIC key to paste into src/registry-fetch.ts REGISTRY_PUBLIC_KEY_PEM.
- * Run this ONCE.
+ * 写入私钥（保持私密，绝不提交——存放在 CI secret 中）并
+ * 打印公钥以粘贴到 src/registry-fetch.ts REGISTRY_PUBLIC_KEY_PEM。
+ * 运行一次即可。
  */
 
 import { generateKeyPairSync } from "node:crypto";

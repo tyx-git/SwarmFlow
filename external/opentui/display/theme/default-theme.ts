@@ -1,4 +1,10 @@
-﻿import { RGBA, SyntaxStyle } from "@opentui/core";
+﻿// =============================================================================
+// SwarmFlow GUI — 主题构建器
+// =============================================================================
+// 职责：根据 ThemeMode (dark/light) + overrides 构建完整的 DisplayTheme
+// 包含：颜色令牌、间距令牌、布局令牌、Markdown 语法高亮风格
+
+import { RGBA, SyntaxStyle } from "@opentui/core";
 
 import type {
   DeepPartial,
@@ -10,6 +16,7 @@ import type {
 import { DARK_TOKENS } from "./tokens-dark.js";
 import { LIGHT_TOKENS } from "./tokens-light.js";
 
+/** 深度合并 base 和 overrides 对象 */
 function mergeNested<T extends object>(base: T, overrides?: DeepPartial<T>): T {
   if (!overrides) return { ...base };
   const baseRecord = base as Record<string, unknown>;

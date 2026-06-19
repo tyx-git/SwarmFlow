@@ -1,26 +1,27 @@
-﻿/**
- * cd-aware context resolution for compound bash commands.
+/**
+ * cd 感知的上下文解析 — 用于复合 bash 命令。
  *
- * Used by the permission classifier (to decide whether rules apply).
- * The bash executor has its own inlined cd parser in tools/basic.ts
- * to avoid a circular dependency.
+ * 由权限分类器使用（用于决定规则是否适用）。
+ * bash 执行器在 tools/basic.ts 中有内联的 cd 解析器，
+ * 以避免循环依赖。
  */
 
 import path from "node:path";
 import { homedir } from "node:os";
 
+/** cd 解析后的上下文信息 */
 export interface ParsedCdContext {
-  /** Segments with pure-cd segments removed. */
+  /** 移除了纯 cd 段后的分段列表 */
   segments: import("./bash/types.js").ParsedBashSegment[];
-  /** Effective cwd after resolving all cd segments. */
+  /** 解析所有 cd 段后的有效工作目录 */
   effectiveCwd: string;
-  /** Whether ANY non-cd segment runs outside projectRoot. */
+  /** 是否有任何非 cd 段在项目根目录外运行 */
   isExternal: boolean;
 }
 
 /**
- * cd-context resolution on tree-sitter parsed segments.
- * Handles quoted paths correctly via structured tokens.
+ * 对 tree-sitter 解析段进行 cd 上下文解析。
+ * 通过结构化标记正确处理带引号的路径。
  */
 export function resolveCdContextParsed(
   segments: readonly import("./bash/types.js").ParsedBashSegment[],
@@ -33,14 +34,14 @@ export function resolveCdContextParsed(
   const kept: import("./bash/types.js").ParsedBashSegment[] = [];
 
   for (const seg of segments) {
-    // A segment is a pure cd if it has exactly one command named "cd"
+    // 如果一个段只有一个名为 "cd" 的命令，则是纯 cd 段
     if (seg.commands.length === 1 && seg.operator === "command") {
       const cmd = seg.commands[0]!;
       const name = cmd.name.split("/").pop() ?? cmd.name;
       if (name === "cd") {
         const target = extractCdTargetParsed(cmd);
         if (target === null) {
-          // Unresolvable cd 鈫?treat as external
+          // 无法解析的 cd → 视为外部
           everExternal = true;
         } else {
           effectiveCwd = path.isAbsolute(target)
@@ -62,11 +63,14 @@ export function resolveCdContextParsed(
   return { segments: kept, effectiveCwd, isExternal: everExternal };
 }
 
+/**
+ * 从解析后的命令中提取 cd 的目标路径。
+ */
 function extractCdTargetParsed(cmd: import("./bash/types.js").ParsedBashCommand): string | null {
-  // No arguments 鈫?home directory
+  // 无参数 → 主目录
   if (cmd.argv.length === 0) return homedir();
 
-  // First non-flag argument
+  // 第一个非标志参数
   const targetToken = cmd.argv.find(t => !t.value.startsWith("-"));
   if (!targetToken) return homedir();
 
@@ -81,6 +85,9 @@ function extractCdTargetParsed(cmd: import("./bash/types.js").ParsedBashCommand)
   return val;
 }
 
+/**
+ * 检查候选路径是否在基础路径内。
+ */
 function isWithinBase(baseAbs: string, candidateAbs: string): boolean {
   const rel = path.relative(baseAbs, candidateAbs);
   if (rel === "") return true;

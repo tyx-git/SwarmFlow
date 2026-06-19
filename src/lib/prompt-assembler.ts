@@ -1,16 +1,16 @@
 ﻿/**
- * System prompt assembler 鈥?builds the full system prompt from layers.
+ * 系统提示组装器 —— 从各层构建完整的系统提示。
  *
- * Follows swarmflow's pattern: agent base prompt + prompt layers.
+ * 遵循 swarmflow 的模式：代理基础提示 + 提示层。
  *
- * Formula:
+ * 公式：
  *   systemPrompt =
- *     agent.prompt                    鈫?from template (role + tools + knowledge)
- *     + memory layer (AGENTS.md)      鈫?from disk, refreshed per-reload
- *     + agent model pins              鈫?from config
- *     + variable rendering            鈫?{PROJECT_ROOT}/{SESSION_ARTIFACTS}/{SYSTEM_DATA}/{INITIAL_MODEL}/{SESSION_STARTED} 鈫?real values
+ *     agent.prompt                    → 来自模板（角色 + 工具 + 知识）
+ *     + 记忆层 (AGENTS.md)            → 来自磁盘，每次重新加载时刷新
+ *     + 代理模型固定配置               → 来自配置
+ *     + 变量渲染                      → {PROJECT_ROOT}/{SESSION_ARTIFACTS}/{SYSTEM_DATA}/{INITIAL_MODEL}/{SESSION_STARTED} → 实际值
  *
- * All layers are assembled here 鈥?Session no longer does ad-hoc string concatenation.
+ * 所有层在此组装 —— Session 不再做临时的字符串拼接。
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -18,38 +18,44 @@ import { join } from "node:path";
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
 
 // ------------------------------------------------------------------
-// Prompt layer types
+// 提示层类型定义
 // ------------------------------------------------------------------
 
 export interface PromptLayer {
+  /** 层标识 */
   id: string;
+  /** 排序序号（越小越靠前） */
   order: number;
+  /** 返回该层内容的函数 */
   content: () => string;
 }
 
 // ------------------------------------------------------------------
-// Prompt variables and session context
+// 提示变量与会话上下文
 // ------------------------------------------------------------------
 
+/** 提示模板中可替换的变量 */
 export interface PromptVariables {
+  /** 项目根路径 */
   projectRoot: string;
+  /** 会话产出目录路径 */
   sessionArtifacts: string;
+  /** 系统数据目录路径 */
   systemData: string;
   /** ISO timestamp of when this session began (its first message). Stable across resumes. */
   sessionStartedAt?: string;
-  /** Model identity at session creation. Stable across resumes and /model switches. */
+  /* 会话创建时的模型标识。跨简历和/模型切换稳定。 */
   initialModel?: string;
-  /** Shell-specific notes injected into the tools prompt (bash vs PowerShell). */
+  /* 将特定于shell的注释注入到工具提示符中（bash vs PowerShell）。 */
   shellNotes?: string;
 }
 
 /**
- * Format the session-start anchor line, or null if the timestamp is missing/invalid.
+ * 格式化会话开始的锚定行，若时间戳缺失或无效则返回 null。
  *
- * Renders the session's start time in the runtime's local timezone so the agent
- * can reason about time of day naturally. We deliberately do NOT instruct the
- * agent to comment on it 鈥?providing the fact is enough; forcing a reaction would
- * turn into a tic.
+ * 以运行时本地时区渲染会话开始时间，以便代理自然地进行时间推理。
+ * 我们刻意不要求代理对此发表评论 —— 提供事实就足够了；
+ * 强迫反应会变成一种习惯性废话。
  */
 function formatSessionStartLine(iso: string | undefined): string | null {
   if (!iso) return null;
@@ -74,13 +80,12 @@ function formatSessionStartLine(iso: string | undefined): string | null {
 }
 
 /**
- * Substitute path variables with the session's real absolute paths.
+ * 将路径变量替换为会话的实际绝对路径。
  *
- * Renders `{PROJECT_ROOT}` / `{SESSION_ARTIFACTS}` / `{SYSTEM_DATA}` in the
- * prompt body, so the model sees concrete paths in tool-call examples and
- * instructions rather than a token it might paste verbatim. Within a session
- * (and across sessions in the same project) the rendered body is stable, so it
- * stays cache-friendly turn-to-turn.
+ * 渲染提示正文中的 `{PROJECT_ROOT}` / `{SESSION_ARTIFACTS}` / `{SYSTEM_DATA}`，
+ * 让模型在工具调用示例和指令中看到具体路径，而非可能被原样粘贴的标记。
+ * 在同一会话内（以及同一项目的多次会话中），渲染后的正文是稳定的，
+ * 因此在各回合之间对缓存友好。
  */
 export function renderPromptVariables(prompt: string, vars: PromptVariables): string {
   return prompt
@@ -93,10 +98,9 @@ export function renderPromptVariables(prompt: string, vars: PromptVariables): st
 }
 
 /**
- * Build the {SESSION_STARTED} replacement value.
- * Returns the formatted line with a trailing newline (so the template
- * can place it as its own paragraph), or "" when no valid timestamp
- * is available (the placeholder and its surrounding blank line collapse).
+ * 构建 {SESSION_STARTED} 替换值。
+ * 返回带尾换行的格式化行（模板可将其作为独立段落），
+ * 若无有效时间戳则返回 ""（占位符及其周围空行将被折叠）。
  */
 function buildSessionStartedVar(iso: string | undefined): string {
   const line = formatSessionStartLine(iso);
@@ -104,12 +108,12 @@ function buildSessionStartedVar(iso: string | undefined): string {
 }
 
 // ------------------------------------------------------------------
-// Built-in layers
+// 内置层
 // ------------------------------------------------------------------
 
 /**
- * Read AGENTS.md persistent memory from global + project paths.
- * Returns empty string if no memory files exist.
+ * 从全局和项目路径读取 AGENTS.md 持久化记忆文件。
+ * 若不存在记忆文件则返回空字符串。
  */
 export function readAgentsMemory(projectRoot: string): string {
   const parts: string[] = [];
@@ -119,7 +123,7 @@ export function readAgentsMemory(projectRoot: string): string {
     try {
       const content = readFileSync(globalPath, "utf-8").trim();
       if (content) parts.push(`## Global Memory\n\n${content}`);
-    } catch { /* ignore */ }
+    } catch { /* 忽略 */ }
   }
 
   const projectPath = join(projectRoot, "AGENTS.md");
@@ -127,14 +131,14 @@ export function readAgentsMemory(projectRoot: string): string {
     try {
       const content = readFileSync(projectPath, "utf-8").trim();
       if (content) parts.push(`## Project Memory\n\n${content}`);
-    } catch { /* ignore */ }
+    } catch { /* 忽略 */ }
   }
 
   return parts.join("\n\n---\n\n");
 }
 
 /**
- * Build a prompt section listing agent model pins.
+ * 构建列出代理模型固定配置的提示段落。
  */
 export function buildAgentModelPinsSection(
   agentModels: Record<string, { provider: string; selection_key: string; model_id: string; thinking_level?: string }>,
@@ -150,43 +154,44 @@ export function buildAgentModelPinsSection(
 
   return [
     "",
-    "The following sub-agent templates have user-pinned models.",
-    "When spawning these agents, do NOT specify `model_level` 鈥?the pinned model will be used automatically:",
+    "以下子代理模板已固定了用户指定的模型。",
+    "生成这些代理时，请勿指定 `model_level` —— 固定的模型将自动使用：",
     "",
     ...lines,
   ].join("\n");
 }
 
 // ------------------------------------------------------------------
-// Assembler
+// 组装器
 // ------------------------------------------------------------------
 
+/** assembleFullSystemPrompt 的配置选项 */
 export interface AssembleOptions {
-  /** Base agent prompt (from template: role + tools + knowledge). */
+  /** 基础代理提示（来自模板：角色 + 工具 + 知识）。 */
   agentPrompt: string;
-  /** Project root path (for AGENTS.md and variable rendering). */
+  /** 项目根路径（用于 AGENTS.md 和变量渲染）。 */
   projectRoot: string;
-  /** Session artifacts directory path. */
+  /** 会话产出目录路径。 */
   sessionArtifacts: string;
-  /** System data directory path. */
+  /** 系统数据目录路径。 */
   systemData: string;
-  /** ISO timestamp of when this session began (its first message). Stable across resumes. */
+  /* 此会话开始时的ISO时间戳（它的第一条消息）。在简历中保持稳定。 */
   sessionStartedAt?: string;
-  /** Model identity at session creation. Stable across resumes and /model switches. */
+  /* 会话创建时的模型标识。跨简历和/模型切换稳定。 */
   initialModel?: string;
-  /** Agent model pins from config (for the model pins section). */
+  /* 配置中的代理模型引脚（用于模型引脚部分）。 */
   agentModels?: Record<string, { provider: string; selection_key: string; model_id: string; thinking_level?: string }>;
-  /** Shell-specific notes (bash vs PowerShell) for {SHELL_NOTES} variable. */
+  /* {SHELL_NOTES}变量的特定于shell的注释（bash vs PowerShell）。 */
   shellNotes?: string;
-  /** Additional prompt layers (hooks, injected turns, etc.). */
+  /* 额外的提示层（钩子，注入转弯等）。 */
   extraLayers?: PromptLayer[];
 }
 
 /**
- * Assemble the full system prompt from agent base + layers + variables.
+ * 从代理基础提示 + 各层 + 变量组装完整的系统提示。
  *
- * This is the single entry point for system prompt construction.
- * Called at session init and on each reload (AGENTS.md edit, /reload, etc.).
+ * 这是系统提示构建的唯一入口。
+ * 在会话初始化和每次重新加载（AGENTS.md 编辑、/reload 等）时调用。
  */
 export function assembleFullSystemPrompt(opts: AssembleOptions): string {
   const vars = {
@@ -200,7 +205,7 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
 
   let prompt = opts.agentPrompt;
 
-  // Layer: AGENTS.md persistent memory
+  // 层：AGENTS.md 持久化记忆
   const memory = readAgentsMemory(opts.projectRoot);
   if (memory) {
     prompt = prompt.trimEnd() +
@@ -208,7 +213,7 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
       memory;
   }
 
-  // Layer: agent model pins
+  // 层：代理模型固定配置
   if (opts.agentModels) {
     const pinsSection = buildAgentModelPinsSection(opts.agentModels);
     if (pinsSection) {
@@ -216,7 +221,7 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
     }
   }
 
-  // Layer: extra (hooks, injected turns 鈥?future extension point)
+  // 层：额外层（钩子、注入回合 —— 未来的扩展点）
   if (opts.extraLayers) {
     const sorted = [...opts.extraLayers].sort((a, b) => a.order - b.order);
     for (const layer of sorted) {
@@ -227,9 +232,8 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
     }
   }
 
-  // Substitute path variables ({PROJECT_ROOT} etc.) with the session's real
-  // absolute paths. Runs last so variables in any layer (AGENTS.md, hooks) are
-  // also resolved.
+  // 将路径变量（{PROJECT_ROOT} 等）替换为会话的实际绝对路径。
+  // 放在最后运行，以便任何层（AGENTS.md、钩子）中的变量也能被解析。
   prompt = renderPromptVariables(prompt, vars);
 
   return prompt;

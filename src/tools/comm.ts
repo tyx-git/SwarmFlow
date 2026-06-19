@@ -1,9 +1,9 @@
 ﻿/**
- * Communication and orchestration tools.
+ * 通信和编排工具。
  *
- * Tool definitions for the context-centric runtime.
- * Detailed usage guidance is in prompts/templates/main/system_prompt.md.
- * Tool executors are created at runtime by Session.
+ * 以上下文为中心的运行时的工具定义。
+ * 详细使用指导在 prompts/templates/main/system_prompt.md 中。
+ * 工具执行器在运行时由 Session 创建。
  */
 
 import type { ToolDef } from "../providers/base.js";
@@ -120,16 +120,16 @@ export const SHOW_CONTEXT_TOOL: ToolDef = {
 export const SUMMARIZE_CONTEXT_TOOL: ToolDef = {
   name: "summarize_context",
   description:
-    "Summarize a contiguous range of context groups 鈥?keep the valuable information, drop the rest. " +
+    "Summarize a contiguous range of context groups —keep the valuable information, drop the rest. " +
     "Specify the range with `from` and `to` context IDs (inclusive).\n\n" +
     "Rules:\n" +
-    "- Never summarize the user's own messages on your own initiative 鈥?they anchor turns and must survive.\n" +
-    "- Keep each operation within a single turn. For a multi-turn span, submit one operation per turn in a single call 鈥?the effect is equivalent.\n" +
+    "- Never summarize the user's own messages on your own initiative —they anchor turns and must survive.\n" +
+    "- Keep each operation within a single turn. For a multi-turn span, submit one operation per turn in a single call —the effect is equivalent.\n" +
     "- Summaries are ordinary context: they may be re-summarized and merged like any other group. When a summary contains <user-message> blocks (the user's original words), carry those blocks verbatim into the new summary.\n\n" +
     "Targets specific ranges. For whole-window summarization, the system uses auto-compact (different mechanism).\n\n" +
     "If you need to inspect the current context distribution first, call show_context.\n\n" +
-    "Example 鈥?single context group: from=\"a3f1\", to=\"a3f1\"\n" +
-    "Example 鈥?two non-adjacent groups: use TWO separate operations (one per group), NOT one operation spanning the gap.",
+    "Example —single context group: from=\"a3f1\", to=\"a3f1\"\n" +
+    "Example —two non-adjacent groups: use TWO separate operations (one per group), NOT one operation spanning the gap.",
   parameters: {
     type: "object",
     properties: {
@@ -149,7 +149,7 @@ export const SUMMARIZE_CONTEXT_TOOL: ToolDef = {
             },
             content: {
               type: "string",
-              description: "Summary content preserving decisions, key facts, file paths, code references, and unresolved issues. Length should match the information density of the original 鈥?preserve everything you'd look back at.",
+              description: "Summary content preserving decisions, key facts, file paths, code references, and unresolved issues. Length should match the information density of the original —preserve everything you'd look back at.",
             },
             reason: {
               type: "string",
@@ -203,7 +203,7 @@ export const SEND_TOOL: ToolDef = {
   name: "send",
   description:
     "Send a message to a persistent child agent by ID. " +
-    "The message is delivered asynchronously 鈥?you get a confirmation, not a reply. " +
+    "The message is delivered asynchronously —you get a confirmation, not a reply. " +
     "The target auto-activates if idle.",
   parameters: {
     type: "object",

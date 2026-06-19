@@ -1,37 +1,40 @@
-﻿/**
- * Plan file parser and state types.
+/**
+ * 计划文件解析器与状态类型。
  *
- * The plan file is a Markdown document stored at {SESSION_ARTIFACTS}/plan.md.
- * Agents create and edit it using write_file / edit_file 鈥?no dedicated tool.
+ * 计划文件是存储在 {SESSION_ARTIFACTS}/plan.md 的 Markdown 文档。
+ * 代理通过 write_file / edit_file 创建和编辑它——没有专用工具。
  *
- * Checkbox syntax:
- *   - [ ] pending checkpoint
- *   - [>] active (in-progress) checkpoint
- *   - [x] completed checkpoint
+ * 复选框语法：
+ *   - [ ] 待处理检查点
+ *   - [>] 进行中检查点
+ *   - [x] 已完成检查点
  */
 
 // ------------------------------------------------------------------
-// Types
+// 类型定义
 // ------------------------------------------------------------------
 
 export type CheckpointStatus = "pending" | "active" | "done";
 
+/** 计划文件中的一个检查点 */
 export interface PlanCheckpoint {
-  /** Full text of the checkbox line (without the `- [.] ` prefix). */
+  /** 复选框行的完整文本（不含 `- [.] ` 前缀）。 */
   text: string;
+  /** 状态 */
   status: CheckpointStatus;
 }
 
 // ------------------------------------------------------------------
-// Parser
+// 解析器
 // ------------------------------------------------------------------
 
 /**
- * Regex matching a plan checkbox line.
- * Captures: group 1 = marker character (space, >, x/X), group 2 = text.
+ * 匹配计划复选框行的正则。
+ * 捕获：组 1 = 标记字符（空格、>、x/X），组 2 = 文本。
  */
 const CHECKBOX_RE = /^[-*]\s+\[([ >xX])\]\s+(.+)$/;
 
+/** 将标记字符映射为状态 */
 function markerToStatus(marker: string): CheckpointStatus {
   switch (marker) {
     case "x":
@@ -45,9 +48,9 @@ function markerToStatus(marker: string): CheckpointStatus {
 }
 
 /**
- * Parse a plan file's content into an ordered list of checkpoints.
- * Only lines matching the checkbox pattern are extracted;
- * all other content (headings, descriptions, blank lines) is ignored.
+ * 解析计划文件内容为有序的检查点列表。
+ * 仅提取匹配复选框模式的行；
+ * 其他内容（标题、描述、空行）将被忽略。
  */
 export function parsePlanFile(content: string): PlanCheckpoint[] {
   const checkpoints: PlanCheckpoint[] = [];
@@ -64,7 +67,7 @@ export function parsePlanFile(content: string): PlanCheckpoint[] {
 }
 
 // ------------------------------------------------------------------
-// Snapshot formatter (for compact injection)
+// 快照格式化器（用于压缩上下文注入）
 // ------------------------------------------------------------------
 
 const STATUS_MARKER: Record<CheckpointStatus, string> = {
@@ -74,8 +77,7 @@ const STATUS_MARKER: Record<CheckpointStatus, string> = {
 };
 
 /**
- * Format plan checkpoints into a readable snapshot suitable for
- * injection into compact context.
+ * 将计划检查点格式化为可读的快照，适合注入到压缩上下文中。
  */
 export function formatPlanSnapshot(checkpoints: PlanCheckpoint[]): string {
   if (checkpoints.length === 0) return "";
@@ -86,7 +88,7 @@ export function formatPlanSnapshot(checkpoints: PlanCheckpoint[]): string {
 }
 
 // ------------------------------------------------------------------
-// Plan file name constant
+// 计划文件名常量
 // ------------------------------------------------------------------
 
 export const PLAN_FILENAME = "plan.md";

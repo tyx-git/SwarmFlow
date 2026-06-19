@@ -1,8 +1,8 @@
 ﻿/**
- * Log-native summarize_context tool implementation (append-only).
+ * 基于日志的 summarize_context 工具实现（仅追加）。
  *
- * Summary entries are appended to the log, but active context is assembled by
- * replacing the covered visible context groups with the new summary group.
+ * 摘要条目被追加到日志中，但活动上下文通过将覆盖的可见上下文分组
+ * 替换为新的摘要分组来组装。
  */
 
 import {
@@ -14,43 +14,68 @@ import {
 } from "./context/active-context.js";
 import { createSummary, type LogEntry } from "./context/log-entry.js";
 
+/** 摘要上下文操作——指定要摘要的范围和内容 */
 export interface SummarizeContextOperation {
+  /** 起始上下文 ID */
   from: string;
+  /** 结束上下文 ID */
   to: string;
+  /** 要摘要的上下文 ID 列表 */
   context_ids: string[];
+  /** 摘要内容 */
   summary: string;
+  /** 摘要原因（可选） */
   reason?: string;
 }
 
+/** 操作结果 */
 export interface OperationResult {
+  /** 是否成功 */
   success: boolean;
+  /** 影响的上下文 ID 列表 */
   contextIds: string[];
+  /** 新创建的摘要上下文 ID */
   newContextId?: string;
+  /** 错误信息 */
   error?: string;
 }
 
+/** 日志验证结果 */
 interface LogValidationResult {
+  /** 是否有效 */
   valid: boolean;
+  /** 有效的上下文分组 */
   groups?: ActiveContextGroup[];
+  /** 错误信息 */
   error?: string;
 }
 
+/** 日志摘要上下文执行结果 */
 export interface LogSummarizeContextExecutionResult {
+  /** 输出文本 */
   output: string;
+  /** 操作结果列表 */
   results: OperationResult[];
-  /** Summary entries to append to the log (caller appends). */
+  /** 要追加到日志的摘要条目（由调用者追加） */
   newEntries: LogEntry[];
 }
 
+/** 摘要上下文执行选项 */
 export interface SummarizeContextExecutionOptions {
+  /** 摘要来源 */
   origin?: SummaryOrigin;
+  /** 精确范围（可选） */
   exactRange?: {
+    /** 起始上下文 ID */
     from: string;
+    /** 结束上下文 ID */
     to: string;
+    /** 上下文 ID 列表 */
     contextIds: string[];
   };
 }
 
+/** 解析操作参数 */
 function parseOperations(args: Record<string, unknown>): SummarizeContextOperation[] {
   const operations = (args["operations"] as Array<Record<string, unknown>>) ?? [];
   return operations.map((raw) => ({
@@ -65,9 +90,8 @@ function parseOperations(args: Record<string, unknown>): SummarizeContextOperati
 }
 
 /**
- * Build the set of context IDs directly covered by summary entries.
- * Kept for callers that only need a quick coverage set; active context
- * assembly should use buildActiveContextView instead.
+ * 构建摘要条目直接覆盖的上下文 ID 集合。
+ * 保留给只需要快速覆盖集的调用者；活动上下文组装应使用 buildActiveContextView。
  */
 export function buildCoveredContextIds(entries: LogEntry[]): Set<string> {
   const covered = new Set<string>();
@@ -83,6 +107,7 @@ export function buildCoveredContextIds(entries: LogEntry[]): Set<string> {
   return covered;
 }
 
+/** 比较两个字符串数组是否相等 */
 function sameStringArray(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -91,6 +116,7 @@ function sameStringArray(a: string[], b: string[]): boolean {
   return true;
 }
 
+/** 验证日志操作——检查范围、权限和一致性 */
 function validateLogOperation(
   op: SummarizeContextOperation,
   view: ActiveContextView,
@@ -100,7 +126,7 @@ function validateLogOperation(
   const { context_ids, summary } = op;
 
   if (!context_ids.length) {
-    return { valid: false, error: "Empty range 鈥?from/to produced no context IDs." };
+    return { valid: false, error: "Empty range —from/to produced no context IDs." };
   }
   if (!summary.trim()) {
     return { valid: false, error: "Empty summary. Provide a non-empty summary string." };
@@ -161,6 +187,7 @@ function validateLogOperation(
   return { valid: true, groups };
 }
 
+/** 构建摘要条目和操作结果 */
 function buildSummaryEntry(
   op: SummarizeContextOperation,
   allocateContextId: () => string,
@@ -188,7 +215,7 @@ function buildSummaryEntry(
     : turnIndex;
 
   const header =
-    "[Summarized context 鈥?summarized from earlier conversation. Text inside <user-message> tags " +
+    "[Summarized context —summarized from earlier conversation. Text inside <user-message> tags " +
     "is the user's original words: carry these blocks verbatim into any future re-summarization. " +
     "This block itself may be re-summarized like any other context.]";
   let display = `${header}\n`;
@@ -223,6 +250,7 @@ function buildSummaryEntry(
   };
 }
 
+/** 格式化执行输出文本 */
 function formatExecutionOutput(ops: SummarizeContextOperation[], results: OperationResult[]): string {
   const succeeded = results.filter((r) => r.success).length;
   const failed = results.filter((r) => !r.success).length;
@@ -234,18 +262,18 @@ function formatExecutionOutput(ops: SummarizeContextOperation[], results: Operat
     const op = ops[i];
     const rangeLabel = op.from === op.to ? op.from : `${op.from}..${op.to}`;
     if (result.success) {
-      lines.push(`鉁?[${rangeLabel}] 鈫?Replaced with context_id ${String(result.newContextId)}.`);
+      lines.push(`✓[${rangeLabel}] →Replaced with context_id ${String(result.newContextId)}.`);
     } else {
-      lines.push(`鉁?[${rangeLabel}] 鈫?Error: ${result.error}`);
+      lines.push(`✓[${rangeLabel}] →Error: ${result.error}`);
     }
   }
   return lines.join("\n");
 }
 
 /**
- * Truncate long summarize_context content in projected tool arguments.
- * The full content is preserved in the summary entry; this only shrinks the
- * duplicated copy inside the tool_call before provider submission.
+ * 截断投影工具参数中过长的 summarize_context 内容。
+ * 完整内容保留在摘要条目中；这只是在提供商提交前缩小
+ * tool_call 内的重复副本。
  */
 export function truncateSummarizeContextContent(content: string, newContextId?: string | number): string {
   if (content.length <= 100) return content;
@@ -260,13 +288,13 @@ export function truncateSummarizeContextContent(content: string, newContextId?: 
 
   const kept = content.slice(0, cutPoint);
   const ctxRef = newContextId !== undefined ? ` in context_id ${String(newContextId)}` : "";
-  return `${kept}... [truncated 鈥?full content preserved${ctxRef}]`;
+  return `${kept}... [truncated —full content preserved${ctxRef}]`;
 }
 
 /**
- * Execute summarize_context operations on the active context. Append-only:
- * original entries are never mutated. Returns new summary entries for the
- * caller to append after the summarize_context tool_result.
+ * 在活动上下文上执行 summarize_context 操作。仅追加：
+ * 原始条目永远不会被修改。返回新的摘要条目供调用者
+ * 在 summarize_context tool_result 之后追加。
  */
 export function execSummarizeContextOnLog(
   args: Record<string, unknown>,

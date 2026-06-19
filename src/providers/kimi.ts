@@ -1,18 +1,17 @@
 ﻿/**
- * @deprecated 2026-05 鈥?superseded by KimiAnthropicProvider in `./kimi-anthropic.ts`.
+ * @deprecated 2026-05 — 已由 `./kimi-anthropic.ts` 中的 KimiAnthropicProvider 取代。
  *
- * Kept in the tree for emergency rollback only. The registry no longer
- * dispatches the `kimi*` provider ids to this class 鈥?see registry.ts for
- * the live wiring. Once the new path has soaked, delete this file.
+ * 仅保留在代码树中用于紧急回滚。注册表不再将 `kimi*` provider id
+ * 分派到此类 — 实际接线见 registry.ts。新路径稳定后删除此文件。
  *
- * ---- Original docstring follows ----
+ * ---- 原始文档字符串如下 ----
  *
- * Kimi (Moonshot) provider adapter.
+ * Kimi（Moonshot）提供者适配器。
  *
- * Extends OpenAIChatProvider with:
- * - builtin_function.$web_search tool conversion (echo handled by tool loop)
- * - Forced temperature=1 for thinking mode
- * - reasoning_content enforcement on all assistant messages
+ * 在 OpenAIChatProvider 之上扩展：
+ * - builtin_function.$web_search 工具转换（echo 由 tool loop 处理）
+ * - thinking 模式强制 temperature=1
+ * - 对所有 assistant 消息强制 reasoning_content
  */
 
 import type { ModelConfig } from "../config/config.js";
@@ -39,7 +38,7 @@ export class KimiProvider extends OpenAIChatProvider {
     if (!this._config.supportsThinking) return;
     const level = options?.thinkingLevel;
     if (level === "off" || level === "none") return;
-    // Kimi K2.5 thinking requires temperature=1
+    // Kimi K2.5 thinking 要求 temperature=1
     kwargs["temperature"] = 1;
   }
 
@@ -55,8 +54,8 @@ export class KimiProvider extends OpenAIChatProvider {
       }
       return converted;
     }
-    // Kimi requires reasoning_content on ALL assistant messages when
-    // thinking is active. Ensure a non-empty fallback.
+    // thinking 激活时，Kimi 要求所有 assistant 消息都带 reasoning_content。
+    // 确保有非空回退。
     for (const msg of converted) {
       if (msg["role"] !== "assistant") continue;
 
@@ -101,7 +100,7 @@ export class KimiProvider extends OpenAIChatProvider {
           });
           continue;
         }
-        // No native support 鈥?fall through to register as a regular function tool
+        // 没有原生支持 — 继续注册为常规函数工具
       }
       result.push({
         type: "function",

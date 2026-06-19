@@ -1,7 +1,7 @@
 /**
- * Renderer-side typed wrapper over the preload bridge.
- * The preload script exposes `window.swarmflow`; we re-export it here with types
- * so the rest of the codebase can import a single api object.
+ * preload bridge 的渲染器端类型化包装器。
+ * preload 脚本暴露 `window.swarmflow`；我们在此处用类型重新导出，
+ * 以便代码库的其余部分可以导入单一的 api 对象。
  */
 import type {
   CreateTabInput,

@@ -1,8 +1,7 @@
 ﻿/**
- * Log projection functions 鈥?derive TUI entries and API messages from the log.
+ * 日志投影函数——从日志派生 TUI 条目和 API 消息。
  *
- * Both real-time conversation and resume use the same projection logic,
- * guaranteeing 100% consistency.
+ * 实时对话和恢复使用相同的投影逻辑，保证 100% 一致性。
  */
 
 import type { LogEntry, TuiDisplayKind } from "./context/log-entry.js";
@@ -14,9 +13,10 @@ import { buildActiveContextView, flattenActiveContextEntries } from "./context/a
 import { inferThinkingArtifact, normalizeThinkingArtifact } from "./lib/thinking-artifact.js";
 
 // ------------------------------------------------------------------
-// TuiDisplayKind 鈫?ConversationEntryKind mapping
+// TuiDisplayKind → ConversationEntryKind 映射
 // ------------------------------------------------------------------
 
+/** TUI 显示类型到对话条目类型的映射 */
 const DISPLAY_KIND_TO_ENTRY_KIND: Record<TuiDisplayKind, ConversationEntryKind> = {
   user: "user",
   agent_result: "agent_result",
@@ -31,17 +31,21 @@ const DISPLAY_KIND_TO_ENTRY_KIND: Record<TuiDisplayKind, ConversationEntryKind> 
 };
 
 // ------------------------------------------------------------------
-// TUI Projection
+// TUI 投影
 // ------------------------------------------------------------------
 
+/** TUI 投影选项 */
 export interface TuiProjectionOptions {
-  /** Override the compact fold threshold (default: 3). */
+  /** 覆盖压缩折叠阈值（默认：3） */
   compactFoldThreshold?: number;
 }
 
+/** 中断标记文本 */
 const INTERRUPTED_MARKER_TEXT = "[Interrupted here.]";
+/** 中断标记后缀 */
 const INTERRUPTED_MARKER_SUFFIX = ` ${INTERRUPTED_MARKER_TEXT}`;
 
+/** 主轮次条目类型集合（用于轮次分组） */
 const PRIMARY_ROUND_ENTRY_TYPES = new Set<LogEntry["type"]>([
   "assistant_text",
   "reasoning",
@@ -49,6 +53,7 @@ const PRIMARY_ROUND_ENTRY_TYPES = new Set<LogEntry["type"]>([
   "tool_result",
 ]);
 
+/** 检查条目是否可投影到 TUI */
 function isProjectableTuiEntry(entry: LogEntry): boolean {
   if (entry.discarded) return false;
   if (entry.type === "input_received") return false;
@@ -63,13 +68,19 @@ function isProjectableTuiEntry(entry: LogEntry): boolean {
   return true;
 }
 
+/** 队列输入投影——尚未投递的用户输入 */
 export interface QueuedInputProjection {
+  /** 输入 ID */
   id: string;
+  /** 输入文本 */
   text: string;
+  /** turn 索引 */
   turnIndex: number;
+  /** 时间戳 */
   timestamp: number;
 }
 
+/** 投影未投递的队列输入 */
 export function projectQueuedInputs(entries: LogEntry[]): QueuedInputProjection[] {
   const deliveredInputIds = new Set<string>();
   for (const entry of entries) {
@@ -100,6 +111,7 @@ export function projectQueuedInputs(entries: LogEntry[]): QueuedInputProjection[
   return queued;
 }
 
+/** 将日志条目转换为对话条目（用于 TUI 显示） */
 function toConversationEntry(
   entry: LogEntry,
   toolElapsedMap?: Map<string, number>,
@@ -212,7 +224,7 @@ function toConversationEntry(
       const fmd = entry.meta["fileModifyData"];
       if (fmd && typeof fmd === "object") ce.meta.fileModifyData = fmd;
       // Forward toolMetadata (e.g. planFileOperation) so the TUI can relabel a
-      // plan-file write/edit as "Update Todos" while it streams 鈥?before the
+      // plan-file write/edit as "Update Todos" while it streams —before the
       // tool_result lands and carries the same flag. Without this the call-side
       // flag set in tool-loop is dropped here and "Write" + diff flashes first.
       const toolMetadata = entry.meta["toolMetadata"];
@@ -261,6 +273,7 @@ function toConversationEntry(
   return ce;
 }
 
+/** 将日志条目转换为对话条目列表（处理中断标记分割） */
 function toConversationEntries(
   entry: LogEntry,
   toolElapsedMap?: Map<string, number>,
@@ -304,6 +317,7 @@ function toConversationEntries(
   return entries;
 }
 
+/** 检查条目是否为轮次中的主要条目（assistant_text、reasoning、tool_call、tool_result） */
 function isPrimaryRoundEntry(entry: LogEntry): boolean {
   return (
     isProjectableTuiEntry(entry) &&
@@ -312,6 +326,7 @@ function isPrimaryRoundEntry(entry: LogEntry): boolean {
   );
 }
 
+/** 构建子代理工具调用的汇总条目 */
 function buildSubAgentRollup(entries: LogEntry[]): ConversationEntry | null {
   if (entries.length === 0) return null;
   const lastFive = entries.slice(-5);
@@ -328,12 +343,11 @@ function buildSubAgentRollup(entries: LogEntry[]): ConversationEntry | null {
 }
 
 /**
- * Build a map of toolCallId 鈫?elapsed time (ms) by pairing
- * tool_call and tool_result entries.
+ * 通过配对 tool_call 和 tool_result 条目构建 toolCallId → 经过时间（毫秒）映射。
  *
- * Prefers execStartMs (actual tool execution start) from tool_result metadata
- * over the tool_call entry timestamp, which for parallel calls all share
- * roughly the same value (when they were logged, not when they ran).
+ * 优先使用 tool_result 元数据中的 execStartMs（实际工具执行开始时间），
+ * 而非 tool_call 条目时间戳（并行调用的时间戳大致相同，
+ * 是记录时间而非运行时间）。
  */
 function buildToolElapsedMap(entries: readonly LogEntry[]): Map<string, number> {
   const callTimestamps = new Map<string, number>();
@@ -362,6 +376,7 @@ function buildToolElapsedMap(entries: readonly LogEntry[]): Map<string, number> 
   return elapsed;
 }
 
+/** 投影 TUI 窗口——将日志条目转换为对话条目列表 */
 function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, number>): ConversationEntry[] {
   const result: ConversationEntry[] = [];
   const pendingSubAgentCalls: LogEntry[] = [];
@@ -395,8 +410,8 @@ function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, numbe
       const turnIndex = entry.turnIndex;
       const roundIndex = entry.roundIndex;
 
-      // Collect all entries in this round first, then reorder so that each
-      // tool_result appears right after its corresponding tool_call.
+      // 先收集此轮次的所有条目，然后重新排序使每个
+      // tool_result 出现在其对应的 tool_call 之后。
       const roundEntries: LogEntry[] = [];
 
       while (i < entries.length) {
@@ -426,10 +441,9 @@ function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, numbe
         break;
       }
 
-      // Pair tool_call entries with their matching tool_result entries.
-      // Non-tool entries (assistant_text, reasoning) go first in their
-      // original order, then each tool_call is immediately followed by
-      // its tool_result (if visible).
+      // 将 tool_call 条目与其匹配的 tool_result 条目配对。
+      // 非工具条目（assistant_text、reasoning）按原始顺序排在前面，
+      // 然后每个 tool_call 紧接着其 tool_result（如果可见）。
       const nonToolEntries: LogEntry[] = [];
       const toolCalls: LogEntry[] = [];
       const toolResultByCallId = new Map<string, LogEntry>();
@@ -442,7 +456,7 @@ function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, numbe
           if (typeof callId === "string") {
             toolResultByCallId.set(callId, re);
           } else {
-            // Orphan result 鈥?append after all paired entries
+            // Orphan result —append after all paired entries
             nonToolEntries.push(re);
           }
         } else {
@@ -491,24 +505,23 @@ function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, numbe
 }
 
 /**
- * Project log entries into ConversationEntry[] for TUI rendering.
+ * 将日志条目投影为 ConversationEntry[] 用于 TUI 渲染。
  *
- * Rules:
- *  1. Determine fold boundary based on compact markers
- *  2. Skip: folded entries, tuiVisible===false, discarded, summary entries
- *  3. Map (displayKind, display) 鈫?ConversationEntry
+ * 规则：
+ *  1. 根据压缩标记确定折叠边界
+ *  2. 跳过：折叠条目、tuiVisible===false、已丢弃、摘要条目
+ *  3. 映射 (displayKind, display) → ConversationEntry
  */
 export function projectToTuiEntries(
   entries: readonly LogEntry[],
   options?: TuiProjectionOptions,
 ): ConversationEntry[] {
   const threshold = options?.compactFoldThreshold ?? 3;
-  // TUI shows the full append-only history, including entries that have been
-  // covered by a later summary. Only the API projection hides them. This
-  // gives the user the ability to scroll back and verify what the summary
-  // captured (and lets pickers list groups that still exist on disk).
+  // TUI 显示完整的仅追加历史，包括被后续摘要覆盖的条目。
+  // 只有 API 投影隐藏它们。这使用户能够回滚并验证摘要捕获的内容
+  // （并允许选择器列出磁盘上仍然存在的分组）。
 
-  // Find all compact_marker indices
+  // 查找所有 compact_marker 索引
   const compactMarkerIndices: number[] = [];
   for (let i = 0; i < entries.length; i++) {
     if (entries[i].type === "compact_marker" && !entries[i].discarded) {
@@ -516,14 +529,12 @@ export function projectToTuiEntries(
     }
   }
 
-  // One pairing map over the full log, shared by both windows. Window-local
-  // maps would pair identically for anything either window renders: results
-  // always follow their calls, so a window never renders a call whose result
-  // lives in an earlier window, and extra pairs for unrendered entries are
-  // simply unused.
+  // 整个日志上的一个配对映射，两个窗口共享。窗口本地映射对于任一窗口
+  // 渲染的任何内容都会相同配对：结果总是跟随其调用，因此窗口永远不会
+  // 渲染其结果位于更早窗口中的调用，未渲染条目的额外配对 simply 未使用。
   const toolElapsedMap = buildToolElapsedMap(entries);
 
-  // Determine fold boundary: if N >= threshold, fold entries before the (N - threshold + 1)th marker
+  // 确定折叠边界：如果 N >= 阈值，折叠第 (N - 阈值 + 1) 个标记之前的条目
   let foldEndIdx = -1; // entries at index <= foldEndIdx are folded
   let foldedCount = 0;
   let foldedCompactCount = 0;
@@ -536,7 +547,7 @@ export function projectToTuiEntries(
 
   const result: ConversationEntry[] = [];
 
-  // Add fold placeholder if needed
+  // 如果需要，添加折叠占位符
   if (foldEndIdx >= 0 && foldedCount > 0) {
     result.push({
       kind: "status",
@@ -550,7 +561,7 @@ export function projectToTuiEntries(
 }
 
 // ------------------------------------------------------------------
-// API Projection
+// API 投影
 // ------------------------------------------------------------------
 
 /**
@@ -559,38 +570,40 @@ export function projectToTuiEntries(
  */
 export type InternalMessage = Record<string, unknown>;
 
+/** API 投影选项 */
 export interface ApiProjectionOptions {
   /**
-   * Current system prompt supplied by Session, usually from its prompt cache.
-   * If not provided, the system_prompt log entry's content is used as fallback.
+   * Session 提供的当前系统提示词，通常来自其提示缓存。
+   * 如果未提供，则使用 system_prompt 日志条目的内容作为回退。
    */
   systemPrompt?: string;
-  /** Legacy support for important log injection. Runtime no longer uses this. */
+  /** 旧版重要日志注入支持。运行时不再使用。 */
   importantLog?: string;
   /**
-   * Resolve an image_ref path to base64 data for API consumption.
-   * If not provided, image_ref blocks are passed through as-is.
+   * 将 image_ref 路径解析为 base64 数据供 API 使用。
+   * 如果未提供，image_ref 块按原样传递。
    */
   resolveImageRef?: (refPath: string) => { data: string; media_type: string } | null;
-  /** Merge consecutive same-role messages for providers that require alternation. */
+  /** 为需要交替的提供商合并连续同角色消息 */
   requiresAlternatingRoles?: boolean;
-  /** Truncate summarize_context tool-call content before provider submission. */
+  /** 在提供商提交前截断 summarize_context 工具调用内容 */
   truncateSummarizeContextToolArgs?: boolean;
-  /** Enforce provider tool-call ordering invariants before submission. */
+  /** 在提交前强制执行提供商工具调用排序不变量 */
   enforceToolCallProtocol?: boolean;
 }
 
+/** 用户消息头部文本 */
 const USER_MESSAGE_HEADER = "[User Message]";
 
 /**
- * Project log entries into InternalMessage[] for provider consumption.
+ * 将日志条目投影为 InternalMessage[] 供提供商使用。
  *
- * Algorithm:
- *  1. Re-render system prompt (or use log's)
- *  2. Find last compact_marker 鈫?API window start
- *  3. Insert compact_context if present
- *  4. Iterate entries, skip: apiRole===null, covered by summary, discarded, archived with null content
- *  5. Group by roundIndex to build assistant messages
+ * 算法：
+ *  1. 重新渲染系统提示词（或使用日志的）
+ *  2. 查找最后一个 compact_marker → API 窗口起始
+ *  3. 如果存在则插入 compact_context
+ *  4. 遍历条目，跳过：apiRole===null、被摘要覆盖、已丢弃、已归档且内容为 null
+ *  5. 按 roundIndex 分组构建 assistant 消息
  */
 export function projectToApiMessages(
   entries: LogEntry[],
@@ -667,7 +680,7 @@ export function projectToApiMessages(
       (entry.apiRole === "assistant" || entry.type === "reasoning") &&
       entry.roundIndex !== undefined
     ) {
-      // Collect ALL entries in this round, regardless of role interleaving.
+      // 收集此轮次的所有条目，无论角色交错如何。
       const roundIdx = entry.roundIndex;
       const turnIdx = entry.turnIndex;
       const assistantEntries: LogEntry[] = [];
@@ -690,14 +703,14 @@ export function projectToApiMessages(
         } else if (candidate.apiRole === "tool_result") {
           toolResultEntries.push(candidate);
         }
-        // Skip any other entry types within this round (e.g. token_update
-        // entries are already filtered out, but be defensive)
+        // 跳过此轮次内的任何其他条目类型（例如 token_update
+        // 条目已被过滤，但保持防御性）
         i++;
       }
 
       messages.push(buildAssistantMessage(assistantEntries, entries));
 
-      // Reorder tool_results to match tool_call declaration order.
+      // 重新排序 tool_results 以匹配 tool_call 声明顺序。
       const toolCallOrder = new Map<string, number>();
       let orderIdx = 0;
       for (const ae of assistantEntries) {
@@ -737,8 +750,8 @@ export function projectToApiMessages(
       messages.push(userMsg);
       i++;
     } else if (entry.apiRole === "tool_result") {
-      // Standalone tool_result not part of a round group (e.g. orphaned
-      // after interrupt). Emit as-is.
+      // 独立的 tool_result，不属于轮次组（例如中断后孤立）。
+      // 按原样发出。
       emitToolResult(entry);
       i++;
     } else {
@@ -771,6 +784,7 @@ export function projectToApiMessages(
   return projected;
 }
 
+/** 验证工具调用协议——确保每个 tool_call 都有匹配的 tool_result */
 function validateToolCallProtocol(messages: InternalMessage[]): void {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -799,12 +813,12 @@ function validateToolCallProtocol(messages: InternalMessage[]): void {
 }
 
 // ------------------------------------------------------------------
-// Image ref resolution
+// 图像引用解析
 // ------------------------------------------------------------------
 
 /**
- * Resolve image_ref blocks in content to inline base64 for API consumption.
- * If content is a string or resolver is not provided, returns as-is.
+ * 将内容中的 image_ref 块解析为内联 base64 供 API 使用。
+ * 如果内容是字符串或未提供解析器，则按原样返回。
  */
 function resolveImageRefs(
   content: unknown,
@@ -837,11 +851,11 @@ function resolveImageRefs(
 }
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
 /**
- * Build a single assistant API message from grouped round entries.
+ * 从分组的轮次条目构建单条 assistant API 消息。
  */
 function buildAssistantMessage(
   roundEntries: LogEntry[],
@@ -849,7 +863,7 @@ function buildAssistantMessage(
 ): InternalMessage {
   const msg: InternalMessage = { role: "assistant" };
 
-  // Extract reasoning
+  // 提取推理/思维链
   const reasoning = roundEntries.find((e) => e.type === "reasoning");
   if (reasoning) {
     const artifact = normalizeThinkingArtifact(
@@ -878,10 +892,10 @@ function buildAssistantMessage(
     }
   }
 
-  // Extract assistant_text
+  // 提取 assistant 文本
   const text = roundEntries.find((e) => e.type === "assistant_text");
 
-  // Extract tool_calls
+  // 提取工具调用
   const toolCalls = roundEntries
     .filter((e) => e.type === "tool_call")
     .map((e) => {
@@ -897,7 +911,7 @@ function buildAssistantMessage(
       };
     });
 
-  // Extract no_reply
+  // 提取无回复标记
   const noReply = roundEntries.find((e) => e.type === "no_reply");
 
   if (toolCalls.length > 0) {
@@ -911,7 +925,7 @@ function buildAssistantMessage(
     msg.content = text.content;
   }
 
-  // Preserve _context_id from the first entry with one
+  // 保留第一个具有 _context_id 的条目的值
   for (const e of roundEntries) {
     const ctxId = (e.meta as Record<string, unknown>)["contextId"];
     if (ctxId !== undefined) {
@@ -923,6 +937,7 @@ function buildAssistantMessage(
   return msg;
 }
 
+/** 将带标签的用户上下文注入到消息列表中 */
 function injectLabeledUserContext(
   messages: InternalMessage[],
   header: string,
@@ -930,25 +945,26 @@ function injectLabeledUserContext(
 ): void {
   const fullContent = header + content;
 
-  // Find position after system prompt(s)
+  // 查找系统提示词之后的位置
   let insertIdx = 0;
   while (insertIdx < messages.length && messages[insertIdx].role === "system") {
     insertIdx++;
   }
 
   if (insertIdx < messages.length && messages[insertIdx].role === "user") {
-    // Merge into first user message
+    // 合并到第一条用户消息
     const first = messages[insertIdx];
     messages[insertIdx] = {
       ...first,
       content: mergeMessageContent(fullContent, first.content, { ensureUserBoundary: true }),
     };
   } else {
-    // Insert standalone user message
+    // 插入独立的用户消息
     messages.splice(insertIdx, 0, { role: "user", content: fullContent });
   }
 }
 
+/** 截断 summarize_context 工具调用参数 */
 function truncateSummarizeContextToolArgs(
   messages: InternalMessage[],
 ): InternalMessage[] {
@@ -999,6 +1015,7 @@ function truncateSummarizeContextToolArgs(
   });
 }
 
+/** 合并消息内容（处理字符串和数组格式） */
 function mergeMessageContent(
   prefix: string,
   existing: unknown,

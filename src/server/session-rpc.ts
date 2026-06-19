@@ -1,11 +1,10 @@
 ﻿/**
- * RPC method bindings for Session.
+ * Session 的 RPC 方法绑定。
  *
- * Maps a curated subset of `Session` methods/properties to JSON-RPC method
- * names. Each binding takes raw `params` (as JSON value) and returns a
- * JSON-serializable result.
+ * 将精选的 `Session` 方法/属性子集映射到 JSON-RPC 方法名。
+ * 每个绑定接收原始 `params`（JSON 值）并返回可 JSON 序列化的结果。
  *
- * Also subscribes to Session log/state changes and emits events to the peer.
+ * 还订阅 Session 日志/状态变化，并向对端发出事件。
  */
 
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -26,29 +25,28 @@ export interface SessionRpcOptions {
   readonly server: RpcServer;
   readonly sessionDir: string | null;
   readonly workDir: string;
-  /** Called when the server has fully shut down. */
+  /** 在服务器完全关闭时调用。 */
   readonly onShutdown: () => Promise<void>;
 }
 
-/** A snapshot of a log entry suitable for JSON serialization. */
+/** 适合 JSON 序列化的日志条目快照。 */
 type SerializedLogEntry = LogEntry;
 
 /**
- * Wire-protocol version, advertised in the `ready` meta. Bump when an event
- * payload or method contract changes incompatibly. Capability strings let
- * clients feature-detect additive surface without version arithmetic.
+ * 线路协议版本，在 `ready` 元数据中公布。当事件负载或方法契约发生不兼容变化时递增。
+ * 能力字符串让客户端无需版本计算即可检测新增能力。
  */
 export const PROTOCOL_VERSION = 1;
 export const PROTOCOL_CAPABILITIES = [
   /** session.getProjectedLog / session.getProjectedChildLog */
   "projectedLog",
-  /** ask.pending / ask.resolved driven by a real runtime subscription (child asks included) */
+  /** ask.pending / ask.resolved 由真实运行时订阅驱动（包括子 ask） */
   "askEvents",
-  /** turn.started / turn.ended emitted by the runtime for ALL turns (incl. auto-resume) */
+  /** turn.started / turn.ended 由运行时为所有回合发出（包括自动恢复） */
   "turnLifecycle",
-  /** turn.ended may carry status "waiting" (turn parked on a pending ask) */
+  /** turn.ended 可能携带 status "waiting"（回合停驻在待处理 ask 上） */
   "waitingStatus",
-  /** server.crashed emitted on fatal process errors */
+  /** server.crashed 在致命进程错误时发出 */
   "crashEvent",
 ] as const;
 
@@ -488,8 +486,8 @@ function expectPermissionMode(
 }
 
 /**
- * Register all session-related RPC handlers on the given server, and wire
- * up event emission for log changes and state transitions.
+ * 在给定服务器上注册所有 session 相关 RPC 处理器，
+ * 并连接日志变化和状态转换的事件发射。
  */
 export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => void } {
   const { session, server, workDir, onShutdown } = opts;
@@ -520,7 +518,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     }
   };
 
-  // 鈹€鈹€ Lifecycle 鈹€鈹€
+  // ── 生命周期 ──
   server.on("server.hello", () => ({
     name: "swarmflow-server",
     protocolVersion: PROTOCOL_VERSION,
@@ -528,14 +526,14 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   }));
 
   server.on("server.shutdown", async () => {
-    // Schedule the shutdown so we can return a response first.
+    // 调度关闭，以便先返回响应。
     setImmediate(() => {
       void onShutdown();
     });
     return { ok: true };
   });
 
-  // 鈹€鈹€ Session metadata 鈹€鈹€
+  // ── Session 元数据 ──
   server.on("session.getMeta", () => buildMeta(session, workDir, sessionDir));
   server.on("session.getStatus", () => buildStatus(session));
 
@@ -577,14 +575,14 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return { ...meta, warnings: result.warnings };
   });
 
-  // 鈹€鈹€ Log access 鈹€鈹€
+  // ── 日志访问 ──
   server.on("session.getLogRevision", () => session.getLogRevision());
 
   server.on("session.getLogSnapshot", (params) => {
     const p = expectObject(params, "session.getLogSnapshot");
     const sinceRevision = optNumber(p, "sinceRevision");
-    // Always return the full log since we don't track per-entry revision.
-    // The `sinceRevision` arg is reserved for future incremental updates.
+    // 始终返回完整日志，因为我们不跟踪每个条目的修订版本。
+    // `sinceRevision` 参数保留给未来的增量更新。
     void sinceRevision;
     const entries: SerializedLogEntry[] = [...session.log];
     return {
@@ -601,11 +599,11 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return entries ? [...entries] : null;
   });
 
-  // 鈹€鈹€ Projected log (capability "projectedLog") 鈹€鈹€
-  // Returns the canonical TUI projection (ConversationEntry[]) computed
-  // server-side, so out-of-process UIs render the same conversation the TUI
-  // does instead of re-implementing pairing/filtering over raw LogEntry[].
-  // The raw-log methods above remain for legacy clients.
+  // ── 投影日志（能力 "projectedLog"） ──
+  // 返回服务端计算的规范 TUI 投影（ConversationEntry[]），
+  // 让进程外 UI 渲染与 TUI 相同的对话，
+  // 而不是在原始 LogEntry[] 上重新实现配对/过滤。
+  // 上方 raw-log 方法为旧客户端保留。
   server.on("session.getProjectedLog", () => ({
     revision: session.getLogRevision(),
     activeLogEntryId: session.activeLogEntryId,
@@ -623,16 +621,14 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
 
   server.on("session.getPlanState", () => session.getPlanState());
 
-  // 鈹€鈹€ Turn submission 鈹€鈹€
-  // Fire-and-forget: do not block the RPC response on the turn completion.
-  // turn.started / turn.ended come from the runtime's turn-lifecycle
-  // subscription (bottom of this function), which covers EVERY failure path
-  // inside the turn lock (pre-activation failures emit a lone ended(error))
-  // as well as turns with no RPC caller (auto-resume, post-approval resume).
-  // The catch only consumes the rejection so the server process never hits
-  // unhandledRejection.
+  // ── 回合提交 ──
+  // 即发即忘：不要让 RPC 响应阻塞到回合完成。
+  // turn.started / turn.ended 来自运行时的回合生命周期订阅（此函数底部），
+  // 它覆盖回合锁内的每条失败路径（预激活失败会发出单独 ended(error)），
+  // 也覆盖没有 RPC 调用者的回合（自动恢复、批准后恢复）。
+  // catch 只消费 rejection，确保服务器进程不会触发 unhandledRejection。
   const fireAndForgetTurn = (run: () => Promise<unknown>): { ok: true } => {
-    void run().catch(() => { /* surfaced by the runtime via log + lifecycle */ });
+    void run().catch(() => { /* 由运行时通过日志 + 生命周期暴露 */ });
     return { ok: true };
   };
 
@@ -673,7 +669,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return buildStatus(session);
   });
 
-  // 鈹€鈹€ Ask resolution 鈹€鈹€
+  // ── Ask 解析 ──
   server.on("session.getPendingAsk", () => session.getPendingAsk());
 
   server.on("session.resolveApprovalAsk", (params) => {
@@ -695,7 +691,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return { ok: true };
   });
 
-  // 鈹€鈹€ Model selection 鈹€鈹€
+  // ── 模型选择 ──
   server.on("session.listAvailableModels", () => {
     const cfg = session.config;
     return cfg.modelNames.map((name) => {
@@ -826,7 +822,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return buildAgentModelPins(session);
   });
 
-  // 鈹€鈹€ Skills 鈹€鈹€
+  // ── Skills ──
   server.on("session.listSkills", () => session.getAllSkillNames());
   server.on("session.setSkillEnabled", (params) => {
     const p = expectObject(params, "session.setSkillEnabled");
@@ -843,12 +839,12 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
         disabled_skills: disabledSkills.length > 0 ? disabledSkills : undefined,
       });
     } catch {
-      // Runtime skill state has already been updated; persistence is best effort.
+      // 运行时 skill 状态已经更新；持久化尽力而为。
     }
     return { ok: true, report };
   });
 
-  // 鈹€鈹€ Title 鈹€鈹€
+  // ── 标题 ──
   server.on("session.setTitle", (params) => {
     const p = expectObject(params, "session.setTitle");
     const title = expectString(p, "title", "session.setTitle");
@@ -879,11 +875,11 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return forkSessionDirectory(currentDir);
   });
 
-  // 鈹€鈹€ Runtime diagnostics 鈹€鈹€
+  // ── 运行时诊断 ──
   server.on("session.getMcpStatus", () => buildMcpStatus(session));
   server.on("session.getHooksStatus", () => buildHooksStatus(session));
 
-  // 鈹€鈹€ Manual context commands 鈹€鈹€
+  // ── 手动上下文命令 ──
   server.on("session.summarize", (params) => {
     const p = expectObject(params, "session.summarize");
     const targetContextIds = p["targetContextIds"] as string[] | undefined;
@@ -900,7 +896,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return fireAndForgetTurn(() => session.runManualCompact(instruction));
   });
 
-  // 鈹€鈹€ Background shells (badge / picker / detail tab) 鈹€鈹€
+  // ── 后台 shell（徽章 / 选择器 / 详情页签） ──
   server.on("session.getBackgroundShellSnapshots", () => session.getBackgroundShellSnapshots());
   server.on("session.getBackgroundShellDetail", (params) => {
     const p = expectObject(params, "session.getBackgroundShellDetail");
@@ -916,7 +912,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return { message: await session.stopBackgroundShell(id) };
   });
 
-  // 鈹€鈹€ Rewind 鈹€鈹€
+  // ── 回退 ──
   server.on("session.getRewindTargets", () => session.getRewindTargets());
   server.on("session.rewind", (params) => {
     const p = expectObject(params, "session.rewind");
@@ -927,7 +923,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return session.rewindConversation(toTurnIndex);
   });
 
-  // 鈹€鈹€ Summarize picker support 鈹€鈹€
+  // ── 总结选择器支持 ──
   server.on("session.getSummarizeTargets", () => session.getSummarizeTargets());
   server.on("session.getContextIdsForTurnRange", (params) => {
     const p = expectObject(params, "session.getContextIdsForTurnRange");
@@ -939,9 +935,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return session.getContextIdsForTurnRange(startTurn, endTurn);
   });
 
-  // 鈹€鈹€ Subscriptions 鈹€鈹€
-  // Coalesce log change emissions: TUI fires subscribeLog hundreds of times
-  // per turn. We schedule a microtask that emits once with the latest revision.
+  // ── 订阅 ──
+  // 合并日志变化发射：TUI 每回合会触发数百次 subscribeLog。
+  // 我们调度一个微任务，用最新 revision 只发射一次。
   let pendingLogEmit = false;
   let lastEmittedRevision = -1;
   const onLogChange = (): void => {
@@ -968,10 +964,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   const unsubscribePlan = session.subscribePlan(onPlanChange);
   disposers.push(unsubscribePlan);
 
-  // Ask events 鈥?driven by the runtime's real ask subscription (capability
-  // "askEvents"). Unlike the old log-change polling, this also observes
-  // child-session asks, which never touch the root log. The wire events and
-  // dedup behavior are unchanged for legacy clients.
+  // Ask 事件 — 由运行时真实 ask 订阅驱动（能力 "askEvents"）。
+  // 与旧的日志变化轮询不同，这也会观察永远不会触及根日志的子 session ask。
+  // 对旧客户端而言，线路事件和去重行为保持不变。
   let lastAskId: string | null = null;
   const onAskChange = (): void => {
     const ask = session.getPendingAsk();
@@ -985,10 +980,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   const unsubscribeAsk = session.subscribeAsk(onAskChange);
   disposers.push(unsubscribeAsk);
 
-  // Turn lifecycle 鈥?forwarded from the runtime (capability "turnLifecycle").
-  // Covers every activation-loop run, including auto-resume and post-approval
-  // resume turns that have no RPC caller. Status "waiting" means the turn
-  // parked on a pending ask (capability "waitingStatus").
+  // 回合生命周期 — 从运行时转发（能力 "turnLifecycle"）。
+  // 覆盖每次 activation-loop 运行，包括没有 RPC 调用者的自动恢复和批准后恢复回合。
+  // 状态 "waiting" 表示回合停驻在待处理 ask 上（能力 "waitingStatus"）。
   const unsubscribeLifecycle = session.subscribeTurnLifecycle((event) => {
     if (event.phase === "started") {
       server.emit("turn.started", { turnCount: session.turnCount });
@@ -1002,7 +996,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   });
   disposers.push(unsubscribeLifecycle);
 
-  // Save-on-checkpoint: Session expects an external persister.
+  // 检查点保存：Session 期望外部持久化器。
   session.onSaveRequest = () => {
     const previousDir = sessionDir;
     saveSessionLog();

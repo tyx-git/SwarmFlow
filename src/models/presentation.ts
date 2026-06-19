@@ -33,7 +33,7 @@ function humanizePresetSubLabel(label: string): string {
   return label.replace(/-/g, " ").trim();
 }
 
-// Brand / provider / vendor label tables, derived from the provider registry.
+// 品牌/提供者/厂商标签表，从提供者注册表派生。
 const BRAND_LABEL_OVERRIDES: Record<string, string> = Object.fromEntries(
   EFFECTIVE_PROVIDER_SPECS.map((s) => [s.id, s.brand]),
 );
@@ -47,12 +47,12 @@ const PROVIDER_LABEL_OVERRIDES: Record<string, string> = Object.fromEntries(
 const OPENROUTER_VENDOR_LABELS: Record<string, string> = OPENROUTER_VENDOR_BRAND;
 
 /**
- * canonicalized-id 鈫?displayName, derived from the model registry (single
- * source of truth). Replaces the old hand-maintained MODEL_LABEL_OVERRIDES and
- * the order-sensitive SLUG_FRAGMENTS regex fallback: every registered model
- * (incl. alias spellings) now resolves by exact canonical lookup, so the regex
- * table is gone. Unregistered ids fall through to humanizeUnknownModel's
- * word-heuristic, same as before.
+ * 规范化 id → displayName，从模型注册表派生（单一真实来源）。
+ * 替换旧的手动维护的 MODEL_LABEL_OVERRIDES 和
+ * 对顺序敏感的 SLUG_FRAGMENTS 正则回退：每个注册的模型
+ *（包括别名拼写）现在通过精确规范查找解析，因此正则
+ * 表已消失。未注册的 id 沿用 humanizeUnknownModel 的
+ * 单词启发式，与以前相同。
  */
 const MODEL_LABEL_OVERRIDES: Record<string, string> = EFFECTIVE_MODEL_TABLES.labelOverrides;
 

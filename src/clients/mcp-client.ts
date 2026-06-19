@@ -1,17 +1,17 @@
-﻿/**
- * MCP (Model Context Protocol) client manager.
+/**
+ * MCP（Model Context Protocol）客户端管理器。
  *
- * Connects to one or more MCP servers, discovers their tools, and makes
- * them available as swarmflow ToolDef objects that can be injected into
- * any Agent's tool list.
+ * 连接一个或多个 MCP 服务器，发现其工具，并将其作为 swarmflow ToolDef 对象提供，
+ * 可注入任意 Agent 的工具列表。
  *
- * Lifecycle:
- *
+ * 生命周期：
  *   const manager = new MCPClientManager(serverConfigs);
  *   await manager.connectAll();
  *   const tools = manager.getAllTools();
  *   const result = await manager.callTool(namespacedName, args);
  *   await manager.closeAll();
+ *
+ * 工具名称遵循 mcp__<server>__<tool> 命名空间隔离，避免与内置工具冲突。
  */
 
 import type { MCPServerConfig } from "./config/config.js";
@@ -23,55 +23,35 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 
 // ------------------------------------------------------------------
-// Dynamic MCP SDK imports (optional dependency)
+// 动态 MCP SDK 导入（可选依赖）
 // ------------------------------------------------------------------
 
-// These are populated lazily by _ensureMcpSdk()
+// 由 _ensureMcpSdk() 惰性填充
 let Client: any;
 let StdioClientTransport: any;
 let SSEClientTransport: any;
 let mcpAvailable: boolean | undefined;
 
+/** 默认环境变量允许列表（白名单 + 通配符支持）。 */
 export const DEFAULT_MCP_ENV_ALLOWLIST = [
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "SHELL",
-  "PWD",
-  "LANG",
-  "LC_*",
-  "TERM",
-  "COLORTERM",
-  "NO_COLOR",
-  "TZ",
-  "TMPDIR",
-  "TMP",
-  "TEMP",
-  "XDG_*",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "NO_PROXY",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "SSH_AUTH_SOCK",
-  "SYSTEMROOT",
-  "WINDIR",
-  "COMSPEC",
-  "PATHEXT",
-  "APPDATA",
-  "LOCALAPPDATA",
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "LANG", "LC_*",
+  "TERM", "COLORTERM", "NO_COLOR", "TZ", "TMPDIR", "TMP", "TEMP",
+  "XDG_*", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
+  "SSH_AUTH_SOCK", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "APPDATA", "LOCALAPPDATA",
 ];
 
+/** 将 glob 通配符模式转换为正则。 */
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
 }
 
+/** 环境变量名是否匹配 glob 模式。 */
 function envKeyMatchesPattern(key: string, pattern: string): boolean {
   return globToRegExp(pattern).test(key);
 }
 
+/** 判断环境变量名是否指向凭证文件路径（需要 0o600 权限）。 */
 function isCredentialFileEnvKey(key: string): boolean {
   const normalized = key.toUpperCase();
   if (normalized === "GOOGLE_APPLICATION_CREDENTIALS") return true;
@@ -85,6 +65,7 @@ function isCredentialFileEnvKey(key: string): boolean {
   ) || normalized.includes("CREDENTIALS_FILE");
 }
 
+/** 判断环境变量值是否像文件路径。 */
 function looksLikePathValue(value: string): boolean {
   if (!value) return false;
   if (value.startsWith("~")) return true;
@@ -93,6 +74,10 @@ function looksLikePathValue(value: string): boolean {
   return value.includes(path.sep);
 }
 
+/**
+ * 确保凭证文件权限为 0o600（仅所有者读写）。
+ * Windows 上跳过（不支持 POSIX 权限）。
+ */
 export function ensureCredentialFilePermissions(
   serverName: string,
   env: Record<string, string>,
@@ -126,6 +111,7 @@ export function ensureCredentialFilePermissions(
   }
 }
 
+/** 验证 SSE URL 格式（协议、凭证禁止嵌入）。 */
 export function validateMcpSseUrl(serverName: string, rawUrl: string): URL {
   let parsed: URL;
   try {
@@ -146,6 +132,10 @@ export function validateMcpSseUrl(serverName: string, rawUrl: string): URL {
   return parsed;
 }
 
+/**
+ * 构建 MCP 服务器的完整环境变量集合。
+ * 由继承的环境变量经过白名单过滤后与服务器特定变量合并。
+ */
 export function buildMcpServerEnv(
   cfg: MCPServerConfig,
   inheritedEnv: Record<string, string | undefined> = process.env,
@@ -163,6 +153,7 @@ export function buildMcpServerEnv(
   return out;
 }
 
+/** 惰性加载 MCP SDK，返回是否可用。 */
 async function ensureMcpSdk(): Promise<boolean> {
   if (mcpAvailable !== undefined) return mcpAvailable;
   try {
@@ -174,13 +165,13 @@ async function ensureMcpSdk(): Promise<boolean> {
   } catch {
     mcpAvailable = false;
   }
-  // SSE transport is optional even when the core SDK exists
+  // SSE transport 即使 SDK 存在也是可选的
   if (mcpAvailable && !SSEClientTransport) {
     try {
       const sseMod = await import("@modelcontextprotocol/sdk/client/sse.js");
       SSEClientTransport = sseMod.SSEClientTransport;
     } catch {
-      // SSE not available 鈥?that's fine
+      // SSE 不可用——没关系
     }
   }
   return mcpAvailable;
@@ -190,12 +181,6 @@ async function ensureMcpSdk(): Promise<boolean> {
 // MCPClientManager
 // ------------------------------------------------------------------
 
-/**
- * Manage connections to one or more MCP servers.
- *
- * Each server's tools are namespaced as `mcp__<server>__<tool>`
- * to avoid collisions with built-in swarmflow tools.
- */
 export type McpServerState = "disconnected" | "connecting" | "connected" | "failed";
 
 export interface McpServerStatus {
@@ -205,17 +190,23 @@ export interface McpServerStatus {
   error?: string;
 }
 
+/**
+ * MCPClientManager —— 管理到一个或多个 MCP 服务器的连接。
+ *
+ * 工具命名空间隔离（mcp__<server>__<tool>），连接状态追踪，
+ * 差量重配置（add/remove/change 检测）。
+ */
 export class MCPClientManager {
   private _configs: MCPServerConfig[];
   private _configByName: Map<string, MCPServerConfig>;
-  private _clients: Map<string, any> = new Map();        // server name -> Client
-  private _transports: Map<string, any> = new Map();     // server name -> Transport
-  private _toolDefs: Map<string, ToolDef> = new Map();   // namespaced -> ToolDef
-  private _toolServer: Map<string, string> = new Map();  // namespaced -> server name
-  private _toolOriginal: Map<string, string> = new Map();// namespaced -> original name
-  private _serverTools: Map<string, string[]> = new Map();// server -> [namespaced names]
-  private _serverState: Map<string, McpServerState> = new Map();
-  private _serverError: Map<string, string> = new Map();
+  private _clients = new Map<string, any>();
+  private _transports = new Map<string, any>();
+  private _toolDefs = new Map<string, ToolDef>();
+  private _toolServer = new Map<string, string>();
+  private _toolOriginal = new Map<string, string>();
+  private _serverTools = new Map<string, string[]>();
+  private _serverState = new Map<string, McpServerState>();
+  private _serverError = new Map<string, string>();
   private _connected = false;
 
   constructor(serverConfigs: MCPServerConfig[]) {
@@ -224,19 +215,16 @@ export class MCPClientManager {
   }
 
   // ------------------------------------------------------------------
-  // Connection
+  // 连接
   // ------------------------------------------------------------------
 
-  /**
-   * Connect to all configured MCP servers and discover tools.
-   * Idempotent 鈥?already connected servers are skipped.
-   */
+  /** 连接所有配置的 MCP 服务器并发现工具。幂等——已连接服务器跳过。 */
   async connectAll(): Promise<void> {
     const available = await ensureMcpSdk();
     if (!available) {
       throw new Error(
         "The '@modelcontextprotocol/sdk' package is required for MCP support. " +
-        "Install it with: npm install @modelcontextprotocol/sdk",
+          "Install it with: npm install @modelcontextprotocol/sdk",
       );
     }
 
@@ -261,6 +249,7 @@ export class MCPClientManager {
     this._connected = this._clients.size === this._configs.length;
   }
 
+  /** 连接单个 MCP 服务器并发现其工具。 */
   private async _connectServer(cfg: MCPServerConfig): Promise<void> {
     let transport: any;
 
@@ -276,8 +265,7 @@ export class MCPClientManager {
     } else if (cfg.transport === "sse") {
       if (!SSEClientTransport) {
         console.warn(
-          `SSE transport requested for MCP server '${cfg.name}' but ` +
-          "SSEClientTransport is not available",
+          `SSE transport requested for MCP server '${cfg.name}' but SSEClientTransport is not available`,
         );
         return;
       }
@@ -296,7 +284,7 @@ export class MCPClientManager {
     this._clients.set(cfg.name, client);
     this._transports.set(cfg.name, transport);
 
-    // Discover tools
+    // 发现工具并注册为 ToolDef
     const response = await client.listTools();
     const namespacedNames: string[] = [];
     for (const tool of response.tools) {
@@ -317,15 +305,15 @@ export class MCPClientManager {
   }
 
   // ------------------------------------------------------------------
-  // Tool queries
+  // 工具查询
   // ------------------------------------------------------------------
 
-  /** Return all discovered MCP tools as ToolDef objects. */
+  /** 返回所有已发现的 MCP 工具（ToolDef 数组）。 */
   getAllTools(): ToolDef[] {
     return Array.from(this._toolDefs.values());
   }
 
-  /** Return tools from a specific MCP server. */
+  /** 返回指定服务器的已发现工具。 */
   getToolsForServer(serverName: string): ToolDef[] {
     const names = this._serverTools.get(serverName) ?? [];
     return names
@@ -333,25 +321,26 @@ export class MCPClientManager {
       .filter((td): td is ToolDef => td !== undefined);
   }
 
-  /** Public reconnect 鈥?disconnect then reconnect a single server by name. */
+  /** 公开重连——按名称重连单个服务器。 */
   async reconnectServer(serverName: string): Promise<boolean> {
     return this._reconnectServer(serverName);
   }
 
-  /** Public disconnect 鈥?disconnect a single server by name. */
+  /** 公开断开——按名称断开单个服务器。 */
   async disconnectServer(serverName: string): Promise<void> {
     return this._disconnectServer(serverName);
   }
 
   // ------------------------------------------------------------------
-  // Tool execution
+  // 工具执行
   // ------------------------------------------------------------------
 
+  /** 重新连接服务器（断开旧连接 + 重新连接 + 重新发现工具）。 */
   private async _reconnectServer(serverName: string): Promise<boolean> {
     const cfg = this._configByName.get(serverName);
     if (!cfg) return false;
 
-    // 1. Clean up old tool registrations
+    // 1. 清理旧工具注册
     const oldTools = this._serverTools.get(serverName);
     if (oldTools) {
       for (const toolName of oldTools) {
@@ -362,21 +351,17 @@ export class MCPClientManager {
       this._serverTools.delete(serverName);
     }
 
-    // 2. Close old transport
+    // 2. 关闭旧 transport
     const oldTransport = this._transports.get(serverName);
     if (oldTransport) {
-      try {
-        await oldTransport.close();
-      } catch {
-        // ignore
-      }
+      try { await oldTransport.close(); } catch { /* ignore */ }
       this._transports.delete(serverName);
     }
 
-    // 3. Remove stale client
+    // 3. 移除旧 client
     this._clients.delete(serverName);
 
-    // 4. Reconnect
+    // 4. 重新连接
     try {
       await this._connectServer(cfg);
       return this._clients.has(cfg.name);
@@ -386,7 +371,7 @@ export class MCPClientManager {
     }
   }
 
-  /** Get status of all configured servers. */
+  /** 返回所有已配置服务器的状态。 */
   getServerStatuses(): McpServerStatus[] {
     return this._configs.map((cfg) => ({
       name: cfg.name,
@@ -396,7 +381,10 @@ export class MCPClientManager {
     }));
   }
 
-  /** Execute an MCP tool and return a swarmflow ToolResult. */
+  /**
+   * 执行 MCP 工具并返回 swarmflow ToolResult。
+   * 自动重连丢失的连接；区分连接错误和工具执行错误。
+   */
   async callTool(
     namespacedName: string,
     args: Record<string, unknown>,
@@ -435,7 +423,6 @@ export class MCPClientManager {
       const result = await client.callTool({ name: originalName, arguments: args });
       return new ToolResult({ content: extractText(result) });
     } catch (err) {
-      // Distinguish connection errors from tool execution errors
       const errMsg = err instanceof Error ? err.message : String(err);
       const isConnectionError = /ECONNREFUSED|EPIPE|ENOTFOUND|ETIMEDOUT|transport|disconnect/i.test(errMsg);
 
@@ -461,23 +448,23 @@ export class MCPClientManager {
         return new ToolResult({ content: `ERROR: MCP server '${serverName}' connection lost: ${errMsg}` });
       }
 
-      // Tool execution error 鈥?don't reconnect, just report
+      // 工具执行错误——不断开连接，仅报告
       return new ToolResult({ content: `ERROR: MCP tool '${originalName}' failed: ${errMsg}` });
     }
   }
 
   // ------------------------------------------------------------------
-  // Reconfigure 鈥?diff-based reload (add/remove/reconnect changed)
+  // 重配置——差量更新（新增/移除/变更/不变）
   // ------------------------------------------------------------------
 
   /**
-   * Apply a new set of server configs. Compared to the current set:
-   *   - Removed servers are disconnected and their tools unregistered.
-   *   - New servers are connected and their tools registered.
-   *   - Changed servers (different config) are disconnected then reconnected.
-   *   - Unchanged servers are left alone.
+   * 应用新服务器配置集。对比当前配置：
+   * - 移除的服务器：断开并注销工具
+   * - 新增的服务器：连接并注册工具
+   * - 变更的服务器：断开并重连
+   * - 不变的服务器：跳过
    *
-   * Returns a summary of what happened.
+   * 返回变更摘要。
    */
   async reconfigure(
     newConfigs: MCPServerConfig[],
@@ -494,7 +481,7 @@ export class MCPClientManager {
     const removed: string[] = [];
     const changed: string[] = [];
 
-    // 1. Remove servers no longer in config
+    // 1. 移除不再存在的服务器
     for (const name of oldByName.keys()) {
       if (!newByName.has(name)) {
         removed.push(name);
@@ -502,11 +489,11 @@ export class MCPClientManager {
       }
     }
 
-    // 2. Add new or reconnect changed servers
+    // 2. 新增或变更的服务器
     for (const [name, cfg] of newByName) {
       const old = oldByName.get(name);
       if (!old) {
-        // New server
+        // 新增
         added.push(name);
         this._serverState.set(name, "connecting");
         try {
@@ -518,7 +505,7 @@ export class MCPClientManager {
           this._serverError.set(name, err instanceof Error ? err.message : String(err));
         }
       } else if (!mcpConfigEqual(old, cfg)) {
-        // Config changed 鈥?reconnect
+        // 变更了配置——重连
         changed.push(name);
         await this._disconnectServer(name);
         this._serverState.set(name, "connecting");
@@ -531,10 +518,10 @@ export class MCPClientManager {
           this._serverError.set(name, err instanceof Error ? err.message : String(err));
         }
       }
-      // else: unchanged 鈥?skip
+      // 不变：跳过
     }
 
-    // 3. Update internal config references
+    // 3. 更新内部配置引用
     this._configs = newConfigs;
     this._configByName = newByName;
     this._connected = this._clients.size > 0;
@@ -542,7 +529,7 @@ export class MCPClientManager {
     return { added, removed, changed };
   }
 
-  /** Disconnect a server and clean up all its registrations. */
+  /** 断开单个服务器并清理所有相关注册。 */
   private async _disconnectServer(name: string): Promise<void> {
     const oldTools = this._serverTools.get(name);
     if (oldTools) {
@@ -565,16 +552,16 @@ export class MCPClientManager {
   }
 
   // ------------------------------------------------------------------
-  // Cleanup
+  // 清理
   // ------------------------------------------------------------------
 
-  /** Close all MCP server connections. */
+  /** 关闭所有 MCP 服务器连接。 */
   async closeAll(): Promise<void> {
-    for (const [name, transport] of Array.from(this._transports.entries())) {
+    for (const [, transport] of Array.from(this._transports.entries())) {
       try {
         await transport.close();
       } catch {
-        console.warn(`Error closing MCP server '${name}'`);
+        console.warn(`Error closing MCP server`);
       }
     }
     this._clients.clear();
@@ -587,7 +574,7 @@ export class MCPClientManager {
   }
 }
 
-/** Shallow comparison of two MCPServerConfig objects. */
+/** 两个 MCPServerConfig 是否浅层相等（用于 reconfigure 变更检测）。 */
 function mcpConfigEqual(a: MCPServerConfig, b: MCPServerConfig): boolean {
   if (a.transport !== b.transport) return false;
   if (a.command !== b.command) return false;

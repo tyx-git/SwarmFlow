@@ -1,58 +1,67 @@
 ﻿/**
- * Shared diff hunk model for file-modify tools (edit_file / write_file).
+ * 文件修改工具（edit_file / write_file）共享的 diff hunk 模型。
  *
- * Used by:
- *  - tool-loop.ts  (streaming context probing 鈫?best-effort hunks)
- *  - basic.ts      (tool execution 鈫?authoritative hunks)
- *  - presentation  (rendering 鈫?FileModifyBody)
+ * 用于：
+ *  - tool-loop.ts  (流式上下文探测 → 尽力生成 hunk)
+ *  - basic.ts      (工具执行 → 权威 hunk)
+ *  - presentation  (渲染 → FileModifyBody)
  */
 
 import { extname } from "node:path";
 
 // ------------------------------------------------------------------
-// Types
+// 类型定义
 // ------------------------------------------------------------------
 
-/** A single diff hunk 鈥?one contiguous region of change in a file. */
+/** 单个 diff hunk——文件中一个连续的变更区域 */
 export interface DiffHunk {
-  /** 1-based line number where the first *deletion* line sits in the original file. */
+  /** 原始文件中第一个*删除*行所在的行号（1 基） */
   startLine: number;
-  /** Context lines before the change. Empty array = no context (e.g. edit at line 1). */
+  /** 变更前的上下文行。空数组 = 无上下文（如第 1 行编辑） */
   contextBefore: string[];
-  /** Deleted lines (old content). */
+  /** 删除的行（旧内容） */
   deletions: string[];
-  /** Inserted lines (new content). */
+  /** 插入的行（新内容） */
   additions: string[];
-  /** Context lines after the change. Empty array = no context (e.g. edit at last line). */
+  /** 变更后的上下文行。空数组 = 无上下文（如最后一行编辑） */
   contextAfter: string[];
 }
 
-/** Complete file-modify display data 鈥?shared by streaming and completion. */
+/** 完整的文件修改显示数据——流式和完成阶段共享 */
 export interface FileModifyDisplayData {
+  /** 文件路径 */
   filePath: string;
+  /** 语言标识（用于语法高亮） */
   language?: string;
+  /** 模式：replace / append / write */
   mode: "replace" | "append" | "write";
-  /** Total line count of the original file (before edit). Used for 鈰?decisions. */
+  /** 原始文件总行数（编辑前）。用于 鈰?决策。 */
   totalLineCount: number;
-  /** Ordered list of diff hunks. Single-edit = 1 hunk. Multi-edit = N hunks. */
+  /** 有序的 diff hunk 列表。单次编辑 = 1 个 hunk。多次编辑 = N 个 hunk。 */
   hunks: DiffHunk[];
-  /** For write mode only: the full file content lines (no hunks). */
+  /** 仅 write 模式：完整文件内容行（无 hunk） */
   writeLines?: string[];
 }
 
-/** Per-edit probing state kept in PendingToolCallState during streaming. */
+/** 流式过程中保存在 PendingToolCallState 中的每次编辑探测状态 */
 export interface EditProbeState {
+  /** 是否已解析 */
   resolved: boolean;
+  /** 匹配偏移量 */
   matchOffset?: number;
+  /** 起始行号 */
   startLine?: number;
+  /** 变更前上下文 */
   contextBefore?: string[];
+  /** 变更后上下文 */
   contextAfter?: string[];
 }
 
 // ------------------------------------------------------------------
-// Language inference
+// 语言推断
 // ------------------------------------------------------------------
 
+/** 文件扩展名到 highlight.js 语言标识的映射 */
 const LANGUAGE_BY_EXT: Record<string, string> = {
   ".ts": "typescript", ".tsx": "typescript", ".mts": "typescript", ".cts": "typescript",
   ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
@@ -69,19 +78,18 @@ const LANGUAGE_BY_EXT: Record<string, string> = {
   ".vim": "vim", ".dockerfile": "dockerfile",
 };
 
-/** Infer highlight.js language from a file path's extension. */
+/** 根据文件路径的扩展名推断 highlight.js 语言 */
 export function inferLanguageByExt(filePath: string): string | undefined {
   return LANGUAGE_BY_EXT[extname(filePath).toLowerCase()];
 }
 
 // ------------------------------------------------------------------
-// Context computation
+// 上下文计算
 // ------------------------------------------------------------------
 
 /**
- * Extract up to `maxLines` context lines immediately before `offset` in `content`.
- * Returns lines in document order. Returns empty array if offset is at the start
- * of the file (no lines above).
+ * 提取 `content` 中 `offset` 之前紧邻的最多 `maxLines` 行上下文。
+ * 按文档顺序返回行。如果 offset 在文件开头（上方无行），返回空数组。
  */
 export function computeContextBefore(
   content: string,
@@ -89,27 +97,26 @@ export function computeContextBefore(
   maxLines: number,
 ): string[] {
   if (offset <= 0) return [];
-  // Find the newline just before offset (the end of the preceding line)
+  // 找到 offset 之前紧邻的换行符（前一行末尾）
   const precedingNewline = content.lastIndexOf("\n", offset - 1);
-  if (precedingNewline < 0) return []; // offset is on line 1, no context above
+  if (precedingNewline < 0) return []; // offset 在第 1 行，上方无上下文
 
-  // Walk backwards collecting lines
+  // 反向遍历，逐行收集
   const lines: string[] = [];
   let lineEnd = precedingNewline;
   for (let i = 0; i < maxLines; i++) {
     const lineStart = content.lastIndexOf("\n", lineEnd - 1) + 1;
     lines.push(content.slice(lineStart, lineEnd));
     lineEnd = lineStart - 1;
-    if (lineEnd < 0) break; // reached start of file
+    if (lineEnd < 0) break; // 已到达文件开头
   }
   lines.reverse();
   return lines;
 }
 
 /**
- * Extract up to `maxLines` context lines immediately after the region ending
- * at `offset` in `content`. Returns lines in document order. Returns empty
- * array if offset is at or past the end of the file.
+ * 提取 `content` 中 `offset` 结束的紧邻区域之后最多 `maxLines` 行上下文。
+ * 按文档顺序返回行。如果 offset 在文件末尾或之后，返回空数组。
  */
 export function computeContextAfter(
   content: string,
@@ -117,9 +124,9 @@ export function computeContextAfter(
   maxLines: number,
 ): string[] {
   if (offset >= content.length) return [];
-  // Find the newline at or after offset (end of the line containing offset)
+  // 找到 offset 处或之后的换行符（offset 所在行的末尾）
   const firstNewline = content.indexOf("\n", offset);
-  if (firstNewline < 0) return []; // no newline after 鈫?offset is on the last line
+  if (firstNewline < 0) return []; // 之后无换行 → offset 在最后一行
 
   const lines: string[] = [];
   let lineStart = firstNewline + 1;
@@ -137,8 +144,8 @@ export function computeContextAfter(
 }
 
 /**
- * Count lines in file content. A trailing newline does NOT count as an extra
- * empty line (matches editor convention: "a\nb\n" = 2 lines).
+ * 计算文件内容的行数。尾随换行符不计为额外的空行
+ * （匹配编辑器约定："a\nb\n" = 2 行）。
  */
 export function countFileLines(content: string): number {
   if (content.length === 0) return 0;
@@ -147,14 +154,15 @@ export function countFileLines(content: string): number {
 }
 
 // ------------------------------------------------------------------
-// Hunk builders
+// Hunk 构建器
 // ------------------------------------------------------------------
 
+/** 默认上下文行数 */
 const CONTEXT_LINES = 3;
 
 /**
- * Build a single DiffHunk from a match in the original file content.
- * Used for single-edit and as a building block for multi-edit.
+ * 从原始文件内容的匹配位置构建单个 DiffHunk。
+ * 用于单次编辑，也作为多次编辑的构建块。
  */
 export function buildHunkFromMatch(
   content: string,
@@ -177,15 +185,19 @@ export function buildHunkFromMatch(
   };
 }
 
+/** 匹配信息——描述单次编辑的位置和内容 */
 export interface MatchInfo {
+  /** 在原文中的字符偏移量 */
   index: number;
+  /** 被替换的旧字符串 */
   oldStr: string;
+  /** 替换后的新字符串 */
   newStr: string;
 }
 
 /**
- * Build DiffHunk[] from multiple sorted (by offset) matches.
- * Context lines are clamped so adjacent hunks don't overlap.
+ * 从多个已排序（按偏移量）的匹配构建 DiffHunk[]。
+ * 上下文行被裁剪以使相邻 hunk 不重叠。
  */
 export function buildMultiEditHunks(
   content: string,
@@ -200,24 +212,24 @@ export function buildMultiEditHunks(
     const m = matches[i];
     const hunk = buildHunkFromMatch(content, m.index, m.oldStr, m.newStr, contextLineCount);
 
-    // Clamp contextAfter of previous hunk and contextBefore of this hunk
-    // so they don't overlap in the gap between matches.
+    // 裁剪前一个 hunk 的 contextAfter 与当前 hunk 的 contextBefore，
+    // 使它们不会在两次匹配之间的间隔中重叠。
     if (i > 0) {
       const prevMatch = matches[i - 1];
       const prevEnd = prevMatch.index + prevMatch.oldStr.length;
       const gap = content.slice(prevEnd, m.index);
       const gapNewlines = gap.split("\n").length - 1;
-      // gapNewlines counts newline characters. Actual content lines between
-      // the two edits = gapNewlines - 1 (the first newline is just the line
-      // break ending the previous match's line).
+      // gapNewlines 统计换行符个数。两次编辑之间的实际内容行数
+      // = gapNewlines - 1（第一个换行符只是前一个匹配行的行尾）。
       const actualContentLines = Math.max(0, gapNewlines - 1);
       const prevHunk = hunks[hunks.length - 1];
 
       if (actualContentLines === 0) {
-        // Adjacent lines 鈥?no context between hunks, no 鈰?        prevHunk.contextAfter = [];
+        // 相邻的行 —— hunk 之间无上下文，无 ⋮
+        prevHunk.contextAfter = [];
         hunk.contextBefore = [];
       } else if (actualContentLines <= contextLineCount * 2) {
-        // Small gap 鈥?split content lines between the two hunks
+        // 间隔较小 —— 在两个 hunk 之间平分内容行
         const prevAfterCount = Math.min(contextLineCount, Math.floor(actualContentLines / 2));
         const currBeforeCount = Math.min(contextLineCount, actualContentLines - prevAfterCount);
         prevHunk.contextAfter = prevHunk.contextAfter.slice(0, prevAfterCount);
@@ -234,14 +246,14 @@ export function buildMultiEditHunks(
 }
 
 /**
- * Build FileModifyDisplayData for append mode.
+ * 为 append 模式构建 FileModifyDisplayData。
  */
 export function buildAppendDisplayData(
   filePath: string,
   appendStr: string,
   totalLineCount: number,
 ): FileModifyDisplayData {
-  // Append starts at the line after the last existing line
+  // append 从最后一行的下一行开始
   const appendStartLine = totalLineCount + 1;
   return {
     filePath,
@@ -259,7 +271,7 @@ export function buildAppendDisplayData(
 }
 
 /**
- * Build FileModifyDisplayData for write mode.
+ * 为 write 模式构建 FileModifyDisplayData。
  */
 export function buildWriteDisplayData(
   filePath: string,

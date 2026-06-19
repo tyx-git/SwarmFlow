@@ -2,22 +2,32 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+/** 可投影的文档扩展名集合 */
 export const PROJECTED_DOCUMENT_EXTENSIONS = new Set([".pdf", ".docx", ".xlsx", ".pptx"]);
+/** 投影缓存目录名 */
 const PROJECTION_CACHE_DIR = ".document-projections";
 
+/** 文档投影视图——投影后的文本内容 */
 export interface ProjectedDocumentView {
+  /** 源文件路径 */
   sourcePath: string;
+  /** 源文件扩展名 */
   sourceExt: string;
+  /** 投影后的文本内容 */
   text: string;
+  /** 文件大小（字节） */
   sizeBytes: number;
+  /** 文件修改时间（毫秒） */
   mtimeMs: number;
 }
 
+/** 标准化文档基础文件名，去除特殊字符 */
 function normalizeDocBaseName(filePath: string): string {
   const base = path.basename(filePath, path.extname(filePath)) || "document";
   return base.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").slice(0, 64) || "document";
 }
 
+/** 构建投影缓存文件路径 */
 function buildCachePath(filePath: string, artifactsDir: string, sizeBytes: number, mtimeMs: number): string {
   const ext = path.extname(filePath).toLowerCase();
   const safeBase = normalizeDocBaseName(filePath);
@@ -28,15 +38,17 @@ function buildCachePath(filePath: string, artifactsDir: string, sizeBytes: numbe
   return path.join(artifactsDir, PROJECTION_CACHE_DIR, `${safeBase}-${hash}${ext}.md`);
 }
 
+/** 检查文件路径是否为可投影的文档类型 */
 export function isProjectedDocumentPath(filePath: string): boolean {
   return PROJECTED_DOCUMENT_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 }
 
+/** 获取文档投影的标签文本（大写扩展名） */
 export function projectedDocumentLabel(filePath: string): string {
   return path.extname(filePath).toLowerCase().slice(1).toUpperCase() || "document";
 }
 
-// 鈹€鈹€ shared markdown helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ══ shared markdown helpers ═════════════════════════════════════════════════
 
 function escapeTableCell(text: string): string {
   return text.replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
@@ -94,22 +106,22 @@ async function loadZipXml(filePath: string): Promise<{
   };
 }
 
-// 鈹€鈹€ PDF (unpdf: serverless pdf.js build, no worker/DOM requirements) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── PDF（unpdf：无服务器 pdf.js 构建，无需 worker/DOM）──
 
+/** 将 PDF 文件转换为纯文本 */
 async function convertPdf(filePath: string): Promise<string> {
   const { extractText, getDocumentProxy } = await import("unpdf");
   const data = new Uint8Array(readFileSync(filePath));
-  // verbosity 0 = errors only; suppresses pdf.js font warnings ("TT: undefined function")
+  // verbosity 0 = 仅错误；抑制 pdf.js 字体警告（"TT: undefined function"）
   const pdf = await getDocumentProxy(data, { verbosity: 0 });
-  // No mergePages: it collapses ALL whitespace (including every newline) into
-  // single spaces, turning the document into one giant line that read_file's
-  // per-line cap then mangles. Per-page extraction keeps pdf.js's hasEOL line
-  // breaks intact; pages are joined as paragraphs.
+  // 不使用 mergePages：它会将所有空白（包括每个换行符）压缩为单个空格，
+  // 将文档变成一行巨型文本，然后被 read_file 的每行上限截断。
+  // 逐页提取保持 pdf.js 的 hasEOL 换行符完整；页面作为段落连接。
   const { text } = await extractText(pdf);
   return (text as string[]).map((page) => page.trim()).filter(Boolean).join("\n\n");
 }
 
-// 鈹€鈹€ DOCX (mammoth 鈫?HTML 鈫?turndown, same engines markitdown used) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── DOCX（mammoth → HTML → turndown，与 markitdown 使用相同的引擎）──
 
 async function convertDocx(filePath: string): Promise<string> {
   const [{ default: mammoth }, { default: TurndownService }, { gfm }] = await Promise.all([
@@ -119,7 +131,7 @@ async function convertDocx(filePath: string): Promise<string> {
   ]);
   const { value: html } = await mammoth.convertToHtml(
     { path: filePath },
-    // Skip image payloads: projection is text-only and base64 inlining bloats memory.
+    // 跳过图像负载：投影仅限文本，base64 内联会膨胀内存。
     { convertImage: mammoth.images.imgElement(async () => ({ src: "" })) },
   );
   const turndown = new TurndownService({
@@ -131,22 +143,25 @@ async function convertDocx(filePath: string): Promise<string> {
   return turndown.turndown(html);
 }
 
-// 鈹€鈹€ XLSX (zip + XML, read-only projection to markdown tables) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── XLSX（zip + XML，只读投影为 markdown 表格）──
 
+/** 内置日期格式 ID 集合 */
 const BUILTIN_DATE_NUMFMT_IDS = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47]);
 
+/** 检查格式代码是否看起来像日期格式 */
 function looksLikeDateFormat(formatCode: string): boolean {
-  // Strip quoted literals and [] sections, then look for date/time tokens.
+  // 剥离引号字面量和 [] 部分，然后查找日期/时间标记。
   const bare = formatCode.replace(/"[^"]*"/g, "").replace(/\[[^\]]*\]/g, "");
   return /[ymdhs]/i.test(bare) && !/^general$/i.test(bare.trim());
 }
 
-// Serial-number offsets to 1970-01-01 for Excel's two date systems. The
-// workbook-level <workbookPr date1904="1"/> flag (legacy Mac Excel default,
-// sticky once set) selects the 1904 system; everything else uses 1900.
+// Excel 两种日期系统到 1970-01-01 的序列号偏移量。
+// 工作簿级别的 <workbookPr date1904="1"/> 标志（旧版 Mac Excel 默认值，
+// 设置后保持不变）选择 1904 系统；其他所有情况使用 1900。
 const EXCEL_EPOCH_1900_OFFSET_DAYS = 25569;
 const EXCEL_EPOCH_1904_OFFSET_DAYS = 24107;
 
+/** 将 Excel 序列号转换为 ISO 日期字符串 */
 function excelSerialToIso(serial: number, epochOffsetDays: number): string {
   const ms = Math.round((serial - epochOffsetDays) * 86400 * 1000);
   const date = new Date(ms);
@@ -156,6 +171,7 @@ function excelSerialToIso(serial: number, epochOffsetDays: number): string {
   return hasTime ? iso.slice(0, 19).replace("T", " ") : iso.slice(0, 10);
 }
 
+/** 从单元格引用（如 "A1"）解析列索引 */
 function columnIndexFromRef(ref: string): number {
   let col = 0;
   for (const ch of ref) {
@@ -165,10 +181,12 @@ function columnIndexFromRef(ref: string): number {
   return Math.max(0, col - 1);
 }
 
+/** 从共享字符串 XML 元素中提取文本 */
 function sharedStringText(si: XmlElement): string {
   return byLocalName(si, "t").map((t) => t.textContent ?? "").join("");
 }
 
+/** 将 XLSX 文件转换为 markdown 表格文本 */
 async function convertXlsx(filePath: string): Promise<string> {
   const { readXml } = await loadZipXml(filePath);
 
@@ -197,7 +215,7 @@ async function convertXlsx(filePath: string): Promise<string> {
     for (const si of byLocalName(shared, "si")) sharedStrings.push(sharedStringText(si));
   }
 
-  // Style index 鈫?"is a date format" lookup, for serial鈫扞SO rendering.
+  // Style index →"is a date format" lookup, for serial→ISO rendering.
   const dateStyleIds = new Set<number>();
   const styles = await readXml("xl/styles.xml");
   if (styles) {
@@ -275,8 +293,9 @@ async function convertXlsx(filePath: string): Promise<string> {
   return sections.join("\n\n");
 }
 
-// 鈹€鈹€ PPTX (zip + XML, text runs / tables / speaker notes per slide) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── PPTX（zip + XML，每张幻灯片的文本段落/表格/演讲者备注）──
 
+/** 从 PPTX 文本框中提取段落文本 */
 function pptxParagraphs(txBody: XmlElement): string[] {
   const out: string[] = [];
   for (const p of byLocalName(txBody, "p")) {
@@ -286,6 +305,7 @@ function pptxParagraphs(txBody: XmlElement): string[] {
   return out;
 }
 
+/** 将 PPTX 表格转换为 markdown 表格 */
 function pptxTable(tbl: XmlElement): string {
   const rows: string[][] = [];
   for (const tr of byLocalName(tbl, "tr")) {
@@ -298,8 +318,10 @@ function pptxTable(tbl: XmlElement): string {
   return toMarkdownTable(rows);
 }
 
+/** XML 元素节点类型常量 */
 const ELEMENT_NODE = 1;
 
+/** 递归遍历幻灯片 XML 树，提取文本和表格 */
 function walkSlideTree(el: XmlElement, out: string[]): void {
   for (const child of Array.from(el.childNodes)) {
     if (child.nodeType !== ELEMENT_NODE) continue;
@@ -316,11 +338,11 @@ function walkSlideTree(el: XmlElement, out: string[]): void {
 }
 
 /**
- * Slide entries in presentation order. Part filenames (slideN.xml) fossilize
- * creation order 鈥?PowerPoint does not rename parts when slides are
- * rearranged. The displayed order is presentation.xml's sldIdLst sequence,
- * resolved through presentation.xml.rels. Falls back to part-number order
- * when those parts are missing or unparsable.
+ * 按演示顺序排列的幻灯片条目。部件文件名（slideN.xml）固化了创建顺序
+ * ——PowerPoint 在重新排列幻灯片时不重命名部件。
+ * 显示顺序是 presentation.xml 的 sldIdLst 序列，
+ * 通过 presentation.xml.rels 解析。当这些部件缺失或无法解析时，
+ * 回退到部件编号顺序。
  */
 async function orderedSlideEntries(
   readXml: (entry: string) => Promise<XmlElement | null>,
@@ -361,13 +383,14 @@ async function orderedSlideEntries(
   }
   if (ordered.length === 0) return byPartNumber;
 
-  // Defensive: physical slide parts absent from sldIdLst go last, in part order.
+  // 防御性：sldIdLst 中缺失的物理幻灯片部件排在最后，按部件顺序。
   for (const entry of byPartNumber) {
     if (!seen.has(entry)) ordered.push(entry);
   }
   return ordered;
 }
 
+/** 将 PPTX 文件转换为 markdown 文本 */
 async function convertPptx(filePath: string): Promise<string> {
   const { readXml, entryNames } = await loadZipXml(filePath);
   const slideEntries = await orderedSlideEntries(readXml, entryNames);
@@ -381,7 +404,7 @@ async function convertPptx(filePath: string): Promise<string> {
     const blocks: string[] = [];
     walkSlideTree(slide, blocks);
 
-    // Speaker notes, resolved through the slide's relationship file.
+    // 演讲者备注，通过幻灯片的关系文件解析。
     const slideDir = path.posix.dirname(entry);
     const slideRels = await readXml(`${slideDir}/_rels/${path.posix.basename(entry)}.rels`);
     if (slideRels) {
@@ -397,14 +420,14 @@ async function convertPptx(filePath: string): Promise<string> {
         if (notes) {
           const noteBlocks: string[] = [];
           walkSlideTree(notes, noteBlocks);
-          // Drop bare slide-number placeholders that notes masters inject.
+          // 丢弃备注母版注入的纯幻灯片编号占位符。
           const noteText = noteBlocks.filter((b) => !/^\d+$/.test(b));
           if (noteText.length) blocks.push(`**Notes:** ${noteText.join(" ")}`);
         }
       }
     }
 
-    // Position in the deck, not the part filename's fossilized number.
+    // 在演示文稿中的位置，而非部件文件名的固化编号。
     sections.push(`## Slide ${position + 1}`);
     if (blocks.length) sections.push(blocks.join("\n\n"));
   }
@@ -412,8 +435,9 @@ async function convertPptx(filePath: string): Promise<string> {
   return sections.join("\n\n");
 }
 
-// 鈹€鈹€ projection entry point 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── 投影入口点 ──
 
+/** 根据文件扩展名将文档转换为文本 */
 async function convertDocument(filePath: string, ext: string): Promise<string> {
   switch (ext) {
     case ".pdf":
@@ -429,6 +453,7 @@ async function convertDocument(filePath: string, ext: string): Promise<string> {
   }
 }
 
+/** 加载文档投影视图——从文件或缓存读取并转换为文本 */
 export async function loadProjectedDocumentView(
   filePath: string,
   artifactsDir?: string,

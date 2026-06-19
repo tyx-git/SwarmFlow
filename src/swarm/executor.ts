@@ -1,5 +1,5 @@
 /**
- * SwarmExecutor — high-level parallel execution engine.
+ * SwarmExecutor — high-level 并行执行 engine.
  *
  * Integrates TaskDAG, SwarmCoordinator, MessageBus, ContextBridge,
  * and recovery strategies into a single execution pipeline.
@@ -20,11 +20,11 @@ import type { TaskDAG, ExecutionResult, TaskResult, SwarmSnapshot, SwarmMetrics 
 import {
   AgentRole,
   AgentLifecycle,
-  SwarmTopology,
+  Swarm拓扑,
   RecoveryStrategy,
 } from "./types.js";
 
-/** Events emitted by the SwarmExecutor. */
+/** SwarmExecutor 发出的事件。 */
 export interface ExecutorEvents {
   onDagCreated?: (dag: TaskDAG) => void;
   onScheduleCreated?: (schedule: Schedule) => void;
@@ -39,24 +39,24 @@ export interface ExecutorEvents {
   onSnapshot?: (snapshot: SwarmSnapshot) => void;
 }
 
-/** High-level options for executing a swarm task. */
+/** 执行 swarm 任务的高级选项。 */
 export interface SwarmExecutionOptions {
-  /** Natural language task description. */
+  /** 自然语言任务描述。 */
   task: string;
-  /** Pre-built DAG (skip decomposition). */
+  /** 预构建 DAG（跳过分解）。 */
   dag?: TaskDAG;
-  /** Pattern name to use (e.g., "fan-out-fan-in"). */
+  /** 使用的模式名称（例如 "fan-out-fan-in"）。 */
   pattern?: string;
-  /** Number of parallel workers. */
+  /** 并行 worker 数量。 */
   parallelCount?: number;
-  /** Topology override. */
-  topology?: SwarmTopology;
+  /** 拓扑覆盖。 */
+  topology?: Swarm拓扑;
 }
 
 /**
- * SwarmExecutor — the single entry point for swarm execution.
+ * SwarmExecutor — the single 入口点 for swarm execution.
  *
- * Usage:
+ * 用法:
  * ```typescript
  * const executor = new SwarmExecutor({ templates, events: { ... } });
  * const result = await executor.run({ task: "Implement auth", pattern: "pipeline" });
@@ -79,7 +79,7 @@ export class SwarmExecutor {
     this.decomposer = new TaskDecomposer();
     this.scheduler = new SwarmScheduler();
 
-    // Wire up coordinator
+    // 连接协调器
     this.coordinator = new SwarmCoordinator({
       templates: opts.templates,
       poolConfig: opts.poolConfig,
@@ -91,43 +91,43 @@ export class SwarmExecutor {
       },
     });
 
-    // Wire up decomposer
+    // 连接分解器
     this.decomposer.onDecomposition = (dag) => {
       this._events.onDagCreated?.(dag);
     };
   }
 
   // ------------------------------------------------------------------
-  // Execution
+  // 执行
   // ------------------------------------------------------------------
 
   /**
-   * Run a swarm task end-to-end.
+   * 端到端运行 swarm 任务。
    *
-   * Flow:
-   * 1. Parse task description
-   * 2. Decompose into DAG (or use provided DAG/pattern)
-   * 3. Schedule execution
-   * 4. Execute level by level
-   * 5. Merge results
-   * 6. Return aggregated result
+   * 流程：
+   * 1. 解析任务描述
+   * 2. 分解为 DAG（或使用提供的 DAG/模式）
+   * 3. 调度执行
+   * 4. 按级别执行
+   * 5. 合并结果
+   * 6. 返回聚合结果
    */
   async run(opts: SwarmExecutionOptions): Promise<ExecutionResult> {
     try {
-      // Step 1: Build DAG
+      // 步骤 1：构建 DAG
       const dag = await this._buildDag(opts);
       if (!dag || dag.nodes.size === 0) {
         throw new Error("Failed to create task DAG");
       }
 
-      // Step 2: Schedule
+      // 步骤 2：调度
       const schedule = this.scheduler.schedule(dag);
       this._events.onScheduleCreated?.(schedule);
 
-      // Step 3: Execute via coordinator
+      // 步骤 3：通过协调器执行
       const result = await this.coordinator.executeDag(dag);
 
-      // Step 4: Merge (summarize)
+      // 步骤 4：合并（汇总）
       result.summary = mergeResults(
         [...result.results.values()],
         { strategy: "synthesize" },
@@ -141,7 +141,7 @@ export class SwarmExecutor {
       return {
         results: new Map(),
         success: false,
-        totalUsage: { inputTokens: 0, outputTokens: 0 },
+        total用法: { inputTokens: 0, outputTokens: 0 },
         totalDurationMs: 0,
         failedTaskIds: [],
         summary: `Execution failed: ${error.message}`,
@@ -157,11 +157,11 @@ export class SwarmExecutor {
   }
 
   // ------------------------------------------------------------------
-  // Status
+  // 状态
   // ------------------------------------------------------------------
 
   /**
-   * Get a snapshot of the current swarm state.
+   * 获取当前 swarm 状态的快照。
    */
   getSnapshot(): SwarmSnapshot {
     const now = Date.now();
@@ -190,7 +190,7 @@ export class SwarmExecutor {
   }
 
   // ------------------------------------------------------------------
-  // Private
+  // 私有
   // ------------------------------------------------------------------
 
   /**

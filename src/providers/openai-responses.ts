@@ -1,8 +1,8 @@
 ﻿/**
- * OpenAI Responses API provider adapter.
+ * OpenAI Responses API 提供者适配器。
  *
- * Uses `client.responses.create()` for o1/o3 and GPT-5 models.
- * Supports native reasoning items and web_search_preview.
+ * 使用 `client.responses.create()` 用于 o1/o3 和 GPT-5 模型。
+ * 支持原生 reasoning 项目和 web_search_preview。
  */
 
 import { arch as osArch, platform as osPlatform, release as osRelease } from "node:os";
@@ -31,7 +31,7 @@ import {
   type ThinkingArtifact,
 } from "../lib/thinking-artifact.js";
 
-// Models that don't support `temperature` on OpenAI Responses API.
+// 在 OpenAI Responses API 上不支持 `temperature` 的模型。
 const O_SERIES_RE = /^o\d/;
 const GPT5_SERIES_RE = /^gpt-5(?:$|[.-])/;
 
@@ -50,9 +50,9 @@ function supportsTemperature(model: string): boolean {
 
 export class OpenAIResponsesProvider extends BaseProvider {
   /**
-   * GPT-5 series uses independent input/output limits (input 鈮?72K, output 鈮?28K).
-   * The contextLength stores the input limit; compact check should compare against
-   * it directly without subtracting maxOutputTokens.
+   * GPT-5 系列使用独立的输入/输出限制（输入 ≥72K，输出 ≥28K）。
+   * contextLength 存储输入限制；compact 检查应直接与其比较，
+   * 而不是减去 maxOutputTokens。
    */
   override readonly budgetCalcMode = "full_context" as const;
 
@@ -76,22 +76,20 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   /**
-   * Responses backends we drive client-side (we never send `previous_response_id`).
-   * Reasoning is carried across turns ONLY by replaying sanitized reasoning round-trip
-   * items (type + summary + encrypted_content) together with
-   * `include: ["reasoning.encrypted_content"]` and `store: false`.
+   * 我们在客户端驱动的 Responses 后端（我们从不发送 `previous_response_id`）。
+   * 推理仅通过重放经过清理的推理往返项目（type + summary + encrypted_content）
+   * 以及 `include: ["reasoning.encrypted_content"]` 和 `store: false` 在各轮次之间传递。
    *
-   * Includes:
-   *   - openai (platform.openai.com/responses) 鈥?we manage the conversation ourselves
-   *     and never chain via previous_response_id, so server-side store=true would never
-   *     be read back; the only way to preserve the chain of thought (and the cache wins
-   *     from replaying it) is to request encrypted reasoning and echo it ourselves.
-   *   - openai-codex (chatgpt.com/backend-api/codex) 鈥?rejects store=true
-   *   - copilot (api.individual.githubcopilot.com/responses) 鈥?rejects store=true
+   * 包括：
+   *   - openai (platform.openai.com/responses) — 我们自己管理对话，
+   *     从不通过 previous_response_id 链接，所以服务器端 store=true 永远不会被读回；
+   *     保留思维链（以及从中获益的缓存）的唯一方法是请求加密推理并自己回显。
+   *   - openai-codex (chatgpt.com/backend-api/codex) — 拒绝 store=true
+   *   - copilot (api.individual.githubcopilot.com/responses) — 拒绝 store=true
    *
-   * Without encrypted_content these backends drop the echoed reasoning items, losing the
-   * chain of thought (and on codex/copilot producing 400 invalid_request_body) on the
-   * follow-up turn. Verified by experiments under `experiments/copilot-probe/`.
+   * 没有 encrypted_content，这些后端会丢弃回显的推理项目，丢失思维链
+   *（在 codex/copilot 上产生 400 invalid_request_body）在后续轮次中。
+   * 经 `experiments/copilot-probe/` 下的实验验证。
    */
   private _isStatelessResponsesBackend(): boolean {
     const p = this._config.provider;
@@ -109,12 +107,12 @@ export class OpenAIResponsesProvider extends BaseProvider {
     }
 
     if (this._isCodexProvider()) {
-      // Mirror the official Codex CLI wire contract (codex_cli_rs): an honest
-      // originator, a `<name>/<version> (<os> <release>; <arch>)` User-Agent, the
-      // real ChatGPT-Account-Id from the user's OAuth JWT, and `session_id`
-      // carrying the prompt-cache key. The CLI embeds its version only in the
-      // User-Agent (no separate `version` header) and sends `session_id` but no
-      // `conversation_id` header, so we match that exactly.
+      // 镜像官方 Codex CLI 线路协议（codex_cli_rs）：一个诚实的
+      // 发起者，一个 `<name>/<version> (<os> <release>; <arch>)` User-Agent，
+      // 来自用户 OAuth JWT 的真实 ChatGPT-Account-Id，以及 `session_id`
+      // 携带提示缓存密钥。CLI 仅在 User-Agent 中嵌入其版本（没有单独的 `version` 头），
+      // 并发送 `session_id` 但不发送 `conversation_id` 头，所以我们完全匹配。
+
       const headers: Record<string, string> = {
         originator: "swarmflow",
         "User-Agent": `swarmflow/${VERSION} (${osPlatform()} ${osRelease()}; ${osArch()})`,
@@ -190,10 +188,10 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   /**
-   * Shape captured reasoning items into the round-trip state we replay next turn.
-   * Reasoning-only: function_call items are replayed separately via `tool_calls`
-   * (see `_buildInput`), so bundling them here would duplicate them on the wire.
-   * Stateless backends get the sanitized form (encrypted_content preserved, id dropped).
+   * 将捕获的推理项目塑造成我们在下一轮重放的往返状态。
+   * 仅限推理：function_call 项目通过 `tool_calls` 单独重放
+   *（见 `_buildInput`），所以在这里捆绑它们会在线路上造成重复。
+   * 无状态后端获取清理后的形式（保留 encrypted_content，丢弃 id）。
    */
   private _reasoningRoundtripState(reasoningItems: Record<string, unknown>[]): unknown[] | null {
     if (reasoningItems.length === 0) return null;
@@ -220,7 +218,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Tool conversion
+  // 工具转换
   // ------------------------------------------------------------------
 
   private _convertTools(
@@ -234,7 +232,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
           hasWebSearch = true;
           continue;
         }
-        // No native support 鈥?fall through to register as a regular function tool
+        // 没有原生支持 — 继续注册为常规函数工具
       }
       result.push({
         type: "function",
@@ -247,7 +245,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Input conversion
+  // 输入转换
   // ------------------------------------------------------------------
 
   private _buildInput(messages: Message[]): Record<string, unknown>[] {
@@ -322,8 +320,8 @@ export class OpenAIResponsesProvider extends BaseProvider {
           }
         }
       } else if (role === "tool_result") {
-        // OpenAI Responses API only accepts string output;
-        // extract text from multimodal content blocks if present.
+        // OpenAI Responses API 仅接受字符串输出；
+        // 如果存在，则从多模态内容块中提取文本。
         const rawOutput = m["content"];
         const textOutput = Array.isArray(rawOutput)
           ? (rawOutput as Array<Record<string, unknown>>)
@@ -343,7 +341,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Response parsing
+  // 响应解析
   // ------------------------------------------------------------------
 
   private _parseResponse(response: Record<string, unknown>): ProviderResponse {
@@ -426,7 +424,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
       usage = new Usage(
         (respUsage["input_tokens"] as number) || 0,
         (respUsage["output_tokens"] as number) || 0,
-        0, // no cache creation for OpenAI
+        0, // OpenAI 没有缓存创建
         inputDetails?.["cached_tokens"] ?? 0,
       );
     }
@@ -450,7 +448,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Thinking / reasoning params
+  // Thinking / reasoning 参数
   // ------------------------------------------------------------------
 
   protected _applyThinkingParams(kwargs: Record<string, unknown>, options?: SendMessageOptions): void {
@@ -467,7 +465,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
     if (level && ["minimal", "low", "medium", "high", "xhigh"].includes(level)) {
       effort = level;
     } else {
-      // default: derive from budget
+      // 默认：从预算推导
       const budget = this._config.thinkingBudget;
       if (budget > 0 && budget < 5_000) {
         effort = "low";
@@ -541,7 +539,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Core API call
+  // 核心 API 调用
   // ------------------------------------------------------------------
 
   async sendMessage(
@@ -560,8 +558,8 @@ export class OpenAIResponsesProvider extends BaseProvider {
       input: inputItems,
     };
 
-    // Codex backend requires system prompt as top-level `instructions`,
-    // not as developer-role items in the input array.
+    // Codex 后端要求系统提示符作为顶层 `instructions`，
+    // 而不是 input 数组中的 developer-role 项。
     if (this._config.provider === "openai-codex") {
       const systemParts: string[] = [];
       const filtered: Record<string, unknown>[] = [];
@@ -578,10 +576,10 @@ export class OpenAIResponsesProvider extends BaseProvider {
       }
     }
 
-    // Codex backend does not support temperature or max_output_tokens.
+    // Codex 后端不支持 temperature 或 max_output_tokens。
     const isCodex = this._isCodexProvider();
 
-    // Temperature (skip for model families and Codex that reject this field).
+    // Temperature（跳过拒绝此字段的模型家族和 Codex）。
     if (!isCodex && supportsTemperature(this._config.model)) {
       const temp =
         options?.temperature !== undefined
@@ -612,28 +610,27 @@ export class OpenAIResponsesProvider extends BaseProvider {
     this._applyThinkingParams(kwargs, options);
     this._ensureStatelessInclude(kwargs);
 
-    // Client-managed conversation (no previous_response_id): force stateless so the
-    // backend relies on our replayed encrypted reasoning items rather than server state.
-    // openai defaults to store=true; codex/copilot reject store=true outright.
+    // 客户端管理的对话（无 previous_response_id）：强制无状态，
+    // 让后端依赖我们重放的加密 reasoning 项，而不是服务器状态。
+    // openai 默认 store=true；codex/copilot 会直接拒绝 store=true。
     if (this._isStatelessResponsesBackend()) {
       kwargs["store"] = false;
     }
 
-    // Prompt cache optimization
+    // Prompt cache 优化
     if (this._supportsPromptCacheKey() && options?.promptCacheKey) {
       kwargs["prompt_cache_key"] = options.promptCacheKey;
     }
-    // prompt_cache_retention: stateless backends (Codex, Copilot) reject it 鈥?they
-    // never persist responses in the first place. Other models gated by capability table.
+    // prompt_cache_retention：无状态后端（Codex、Copilot）会拒绝它 —
+    // 它们本来就从不持久化响应。其他模型由能力表门控。
     if (!this._isStatelessResponsesBackend() && getExtendedCacheSupport(this._config.model)) {
       kwargs["prompt_cache_retention"] = "24h";
     }
 
-    // The Codex backend (chatgpt.com) silently degrades 鈥?not 4xx 鈥?on fields the
-    // official Codex CLI never sends, which is one suspected source of fixed-latency
-    // slow paths (cf. openclaw #65260). Strip them last, after `extra` is merged, so
-    // nothing reintroduces them. We keep what the CLI does send (prompt_cache_key,
-    // service_tier, text, reasoning, include, store).
+    // Codex 后端（chatgpt.com）遇到官方 Codex CLI 从不发送的字段时会静默退化
+    //（不是 4xx），这被怀疑是固定延迟慢路径的来源之一（参见 openclaw #65260）。
+    // 在合并 `extra` 后最后剥离它们，避免被重新引入。我们保留 CLI 确实发送的字段
+    //（prompt_cache_key、service_tier、text、reasoning、include、store）。
     if (isCodex) {
       for (const field of [
         "temperature",
@@ -646,7 +643,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
       }
     }
 
-    // Codex backend requires stream=true for all requests.
+    // Codex 后端要求所有请求 stream=true。
     if (
       options?.onTextChunk
       || options?.onReasoningChunk
@@ -669,7 +666,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Streaming
+  // 流式传输
   // ------------------------------------------------------------------
 
   private async _callStream(
@@ -730,10 +727,9 @@ export class OpenAIResponsesProvider extends BaseProvider {
 
       let acc = toolAcc.get(requestedCallId);
 
-      // Standard Responses events stream argument deltas by output item id.
-      // Some Codex backend events may only be identifiable by output_index at
-      // first. Merge provisional records into the stable call_id record once an
-      // output_item event supplies it.
+      // 标准 Responses 事件按输出 item id 流式传输参数增量。
+      // 某些 Codex 后端事件最初可能只能通过 output_index 识别。
+      // 一旦 output_item 事件提供稳定 call_id，就把临时记录合并进去。
       if (!acc && ids.callId) {
         const provisionalKey =
           (itemId && toolAcc.has(itemId) ? itemId : undefined)
@@ -867,9 +863,9 @@ export class OpenAIResponsesProvider extends BaseProvider {
             : (acc?.rawArguments ?? "");
           closeToolCall(acc?.callId ?? (callId || itemId || activeFunctionCallId), argsStr);
         } else if (item?.["type"] === "reasoning") {
-          // Reasoning items (carrying encrypted_content) arrive here for both openai
-          // and codex. The codex backend leaves response.completed.output empty, so this
-          // is the only place the encrypted reasoning is observable 鈥?capture it now.
+          // openai 和 codex 的 reasoning 项（携带 encrypted_content）都会到达这里。
+          // Codex 后端会让 response.completed.output 为空，因此这是唯一能观察到
+          // 加密 reasoning 的位置 — 现在就捕获它。
           streamedReasoningItems.push(item);
         }
         this._appendWebSearchCallCitations(item, streamCitations);
@@ -896,16 +892,16 @@ export class OpenAIResponsesProvider extends BaseProvider {
       }
     }
 
-    // If we got a final response, use the full parse
+    // 如果拿到最终响应，使用完整解析
     if (finalResponse) {
       closeAllOpenToolCalls();
       const result = this._parseResponse(finalResponse);
       if (textParts.length > 0 && !result.text) {
         result.text = textParts.join("");
       }
-      // The streamed output_item.done events are the universal source of reasoning
-      // items (with encrypted_content) for both openai and codex. Prefer them over
-      // response.completed.output, which the codex backend returns empty.
+      // 流式 output_item.done 事件是 openai 和 codex reasoning 项
+      //（带 encrypted_content）的通用来源。优先使用它们，而不是 Codex 后端返回为空的
+      // response.completed.output。
       const streamedReasoningState = this._reasoningRoundtripState(streamedReasoningItems);
       if (streamedReasoningState) {
         const reasoningText = reasoningParts.join("") || result.reasoningContent || "";

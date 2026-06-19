@@ -1,22 +1,22 @@
 ﻿/**
- * Dynamic model discovery for local inference servers.
+ * 本地推理服务器的动态模型发现。
  *
- * Fetches available models from an OpenAI-compatible `/v1/models` endpoint
- * exposed by servers like oMLX and LM Studio.
+ * 从 oMLX 和 LM Studio 等服务器暴露的 OpenAI 兼容 `/v1/models` 端点
+ * 获取可用模型。
  */
 
 export interface DiscoveredModel {
   id: string;
-  /** Context length reported by the server, if available. */
+  /** 服务器报告的上下文长度（如果有）。*/
   contextLength?: number;
 }
 
 /**
- * Fetch available models from a local server's `/v1/models` endpoint.
+ * 从本地服务器的 `/v1/models` 端点获取可用模型。
  *
- * @param baseUrl  The base URL including `/v1`, e.g. `http://localhost:8000/v1`
- * @param timeoutMs  Request timeout in milliseconds (default 5000)
- * @returns Array of discovered models, or empty array on failure.
+ * @param baseUrl  包含 `/v1` 的基础 URL，例如 `http://localhost:8000/v1`
+ * @param timeoutMs  请求超时（毫秒）（默认 5000）
+ * @returns 发现的模型数组，或失败时返回空数组。
  */
 export async function fetchModelsFromServer(
   baseUrl: string,
@@ -45,7 +45,7 @@ export async function fetchModelsFromServer(
       .filter((m) => typeof m["id"] === "string" && m["id"])
       .map((m) => {
         const model: DiscoveredModel = { id: m["id"] as string };
-        // Some servers report context length in various fields
+        // 一些服务器在各种字段中报告上下文长度
         const ctxLen =
           (m["context_length"] as number) ??
           (m["max_model_len"] as number) ??

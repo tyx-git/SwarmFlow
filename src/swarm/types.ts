@@ -1,33 +1,33 @@
 /**
- * SwarmFlow core type definitions.
+ * SwarmFlow 核心类型定义。
  *
- * The swarm system enables multi-agent orchestration: task decomposition,
- * parallel execution, agent communication, and result aggregation.
+ * swarm 系统支持多 agent 编排：任务分解、
+ * 并行执行、agent 通信和结果聚合。
  *
  * @packageDocumentation
  */
 
 // ------------------------------------------------------------------
-// Agent roles
+// Agent 角色
 // ------------------------------------------------------------------
 
-/** Agent role within the swarm. */
+/** Swarm 中 Agent 的角色。*/
 export enum AgentRole {
-  /** Orchestrator — decomposes tasks and coordinates workers. Only one active. */
+  /** 编排器 — 分解任务并协调 worker。仅一个活动。*/
   Queen = "queen",
-  /** Read-only explorer — investigates codebase, searches, reads files. */
+  /** 只读探索者 — 研究代码库、搜索、读取文件。*/
   Scout = "scout",
-  /** Full-access executor — implements changes, runs tests, fixes bugs. */
+  /** 完全访问执行器 — 实现更改、运行测试、修复 bug。*/
   Worker = "worker",
-  /** Code reviewer — reviews changes, identifies issues, suggests improvements. */
+  /** 代码审查者 — 审查更改、识别问题、提出改进建议。*/
   Reviewer = "reviewer",
-  /** Safety guard — validates changes don't break security/permission rules. */
+  /** 安全守卫 — 验证更改不破坏安全/权限规则。*/
   Guard = "guard",
-  /** Result synthesizer — combines outputs from multiple agents, resolves conflicts. */
+  /** 结果综合器 — 组合多个 agent 的输出，解决冲突。*/
   Merger = "merger",
 }
 
-/** Human-readable labels for each role. */
+/** 每个角色的人类可读标签。*/
 export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   [AgentRole.Queen]: "Queen",
   [AgentRole.Scout]: "Scout",
@@ -38,50 +38,50 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
 };
 
 // ------------------------------------------------------------------
-// Swarm topology
+// Swarm 拓扑
 // ------------------------------------------------------------------
 
-/** Communication topology for the swarm. */
+/** Swarm 的通信拓扑。*/
 export enum SwarmTopology {
-  /** Queen directly manages all workers (simple delegation). */
+  /** Queen 直接管理所有 worker（简单委托）。*/
   Star = "star",
-  /** Pipeline: Scout → Worker → Reviewer → Guard. */
+  /** 管道：Scout → Worker → Reviewer → Guard。*/
   Chain = "chain",
-  /** Fully connected: any agent can communicate with any other. */
+  /** 全连接：任何 agent 可以与任何其他通信。*/
   Mesh = "mesh",
-  /** Hierarchical: Queen → Sub-Queens → Workers (for large swarms). */
+  /** 分层：Queen → Sub-Queens → Workers（用于大型 swarm）。*/
   Hierarchical = "hierarchical",
 }
 
 // ------------------------------------------------------------------
-// Agent lifecycle
+// Agent 生命周期
 // ------------------------------------------------------------------
 
-/** Fine-grained lifecycle states for a swarm agent. */
+/** swarm agent 的细粒度生命周期状态。*/
 export enum AgentLifecycle {
-  /** Agent is alive but idle. */
+  /** Agent 存活但空闲。*/
   Idle = "idle",
-  /** Agent is thinking / generating. */
+  /** Agent 正在思考/生成。*/
   Thinking = "thinking",
-  /** Agent is executing tool calls. */
+  /** Agent 正在执行工具调用。*/
   ToolCalling = "tool_calling",
-  /** Agent is generating text output. */
+  /** Agent 正在生成文本输出。*/
   Generating = "generating",
-  /** Agent is blocked waiting for user approval or input. */
+  /** Agent 阻塞等待用户批准或输入。*/
   Blocked = "blocked",
-  /** Agent encountered an error. */
+  /** Agent 遇到错误。*/
   Error = "error",
-  /** Agent has completed its task successfully. */
+  /** Agent 已成功完成任务。*/
   Completed = "completed",
-  /** Agent was cancelled. */
+  /** Agent 被取消。*/
   Cancelled = "cancelled",
 }
 
 // ------------------------------------------------------------------
-// Message types for agent-to-agent communication
+// agent-to-agent 通信的消息类型
 // ------------------------------------------------------------------
 
-/** Message types on the swarm message bus. */
+/** Swarm 消息总线的消息类型。*/
 export enum MessageType {
   TaskAssign = "task_assign",
   TaskResult = "task_result",
@@ -95,168 +95,168 @@ export enum MessageType {
   Broadcast = "broadcast",
 }
 
-/** A message exchanged between swarm agents. */
+/** swarm agent 之间交换的消息。*/
 export interface SwarmMessage {
-  /** Unique message ID. */
+  /** 唯一消息 ID。*/
   id: string;
-  /** Message type. */
+  /** 消息类型。*/
   type: MessageType;
-  /** Sender agent ID. */
+  /** 发送方 agent ID。*/
   sender: string;
-  /** Recipient agent ID (undefined = broadcast). */
+  /** 接收方 agent ID（undefined = 广播）。*/
   recipient?: string;
-  /** Topic for pub/sub routing. */
+  /** pub/sub 路由的主题。*/
   topic?: string;
-  /** Arbitrary payload. */
+  /** 任意负载。*/
   payload: unknown;
-  /** Unix timestamp (ms). */
+  /** Unix 时间戳（毫秒）。*/
   timestamp: number;
-  /** Time-to-live in milliseconds. */
+  /** 毫秒为单位的生存时间。*/
   ttl: number;
 }
 
 // ------------------------------------------------------------------
-// Task DAG
+// 任务 DAG
 // ------------------------------------------------------------------
 
-/** A single node in the task DAG. */
+/** 任务 DAG 中的单个节点。*/
 export interface TaskNode {
-  /** Unique task ID. */
+  /** 唯一任务 ID。*/
   id: string;
-  /** Required agent role for this task. */
+  /** 此任务需要的 agent 角色。*/
   role: AgentRole;
-  /** Human-readable task description. */
+  /** 人类可读的任务描述。*/
   description: string;
-  /** IDs of tasks that must complete before this one starts. */
+  /** 此任务开始前必须完成的任务 ID。*/
   dependencies: string[];
-  /** Template name for agent creation (optional). */
+  /** agent 创建的模板名称（可选）。*/
   template?: string;
-  /** Priority: 1 (critical), 2 (normal), 3 (background). */
+  /** 优先级：1（关键），2（正常），3（后台）。*/
   priority: 1 | 2 | 3;
-  /** Task timeout in milliseconds. */
+  /** 任务超时（毫秒）。*/
   timeoutMs?: number;
-  /** Custom system prompt additions (optional). */
+  /** 自定义 system prompt 添加（可选）。*/
   instructions?: string;
 }
 
-/** A directed acyclic graph of tasks. */
+/** 任务的有向无环图。*/
 export interface TaskDAG {
-  /** All task nodes, keyed by ID. */
+  /** 所有任务节点，按 ID 键控。*/
   nodes: Map<string, TaskNode>;
-  /** Entry-point task IDs (no dependencies). */
+  /** 入口点任务 ID（无依赖）。*/
   entryPoints: string[];
 }
 
 // ------------------------------------------------------------------
-// Execution plan
+// 执行计划
 // ------------------------------------------------------------------
 
-/** A single execution level — all tasks at this level can run in parallel. */
+/** 单个执行级别 — 此级别的所有任务可以并行运行。*/
 export interface ExecutionLevel {
-  /** Level index (0 = first). */
+  /** 级别索引（0 = 第一）。*/
   index: number;
-  /** Task IDs in this level. */
+  /** 此级别的任务 ID。 */
   taskIds: string[];
 }
 
-/** The complete execution plan derived from a TaskDAG. */
+/** 从 TaskDAG 导出的完整执行计划。 */
 export interface ExecutionPlan {
-  /** All levels, ordered by execution order. */
+  /** 所有级别，按执行顺序排列。 */
   levels: ExecutionLevel[];
-  /** Total estimated complexity (1-10). */
+  /** 总估计复杂度（1-10）。 */
   complexity: number;
 }
 
 // ------------------------------------------------------------------
-// Agent handle
+// Agent 句柄
 // ------------------------------------------------------------------
 
-/** Runtime handle for a swarm agent instance. */
+/** swarm agent 实例的运行时句柄。 */
 export interface SwarmAgentHandle {
-  /** Unique agent instance ID. */
+  /** 唯一 agent 实例 ID。 */
   id: string;
-  /** Agent role. */
+  /** Agent 角色。 */
   role: AgentRole;
-  /** Current lifecycle state. */
+  /** 当前生命周期状态。 */
   lifecycle: AgentLifecycle;
-  /** Assigned task IDs. */
+  /** 已分配的任务 ID。 */
   taskIds: string[];
-  /** Timestamp when this agent was created. */
+  /** 此 agent 创建时的时间戳。 */
   createdAt: number;
-  /** Timestamp of last activity. */
+  /** 最后活动时间的时间戳。 */
   lastActiveAt: number;
-  /** Accumulated token usage. */
+  /** 累计 token 使用量。 */
   tokenUsage: { inputTokens: number; outputTokens: number };
-  /** Error message if lifecycle === Error. */
+  /** 如果 lifecycle === Error 时的错误消息。 */
   error?: string;
 }
 
 // ------------------------------------------------------------------
-// Task result
+// 任务结果
 // ------------------------------------------------------------------
 
-/** Result from a single task execution. */
+/** 单个任务执行的结果。 */
 export interface TaskResult {
-  /** Task ID. */
+  /** 任务 ID。 */
   taskId: string;
-  /** Agent ID that executed the task. */
+  /** 执行任务的 Agent ID。 */
   agentId: string;
-  /** Whether the task succeeded. */
+  /** 任务是否成功。 */
   success: boolean;
-  /** Output text. */
+  /** 输出文本。 */
   output: string;
-  /** Files modified (for worker tasks). */
+  /** 修改的文件（用于 worker 任务）。 */
   modifiedFiles?: string[];
-  /** Token usage. */
+  /** Token 使用量。 */
   usage: { inputTokens: number; outputTokens: number };
-  /** Error message if !success. */
+  /** 如果 !success 时的错误消息。 */
   error?: string;
-  /** Duration in milliseconds. */
+  /** 持续时间（毫秒）。 */
   durationMs: number;
 }
 
 // ------------------------------------------------------------------
-// Execution result
+// 执行结果
 // ------------------------------------------------------------------
 
-/** Final aggregated result of a full execution plan. */
+/** 完整执行计划的最终聚合结果。 */
 export interface ExecutionResult {
-  /** All task results, keyed by task ID. */
+  /** 所有任务结果，按任务 ID 键控。 */
   results: Map<string, TaskResult>;
-  /** Whether the overall execution succeeded. */
+  /** 整体执行是否成功。 */
   success: boolean;
-  /** Aggregated token usage. */
+  /** 聚合的 token 使用量。 */
   totalUsage: { inputTokens: number; outputTokens: number };
-  /** Total duration in milliseconds. */
+  /** 总持续时间（毫秒）。 */
   totalDurationMs: number;
-  /** IDs of failed tasks. */
+  /** 失败任务的 ID。 */
   failedTaskIds: string[];
-  /** Summary text for the user. */
+  /** 给用户的摘要文本。 */
   summary: string;
 }
 
 // ------------------------------------------------------------------
-// Handoff context
+// 交接 context
 // ------------------------------------------------------------------
 
-/** Context passed from one agent to another during handoff. */
+/** 交接期间从一个 agent 传递给另一个 agent 的上下文。 */
 export interface HandoffContext {
-  /** Source agent ID. */
+  /** 源 agent ID。 */
   fromAgent: string;
-  /** Target agent ID. */
+  /** 目标 agent ID。 */
   toAgent: string;
-  /** Completed tasks so far. */
+  /** 到目前为止完成的任务。 */
   completedTasks: TaskResult[];
-  /** Shared context: decisions, findings, issues. */
+  /** 共享上下文：决策、发现、问题。 */
   sharedContext: {
     filesRead: string[];
     decisions: Array<{ subject: string; decision: string }>;
     keyFindings: string[];
     remainingIssues: string[];
   };
-  /** Pending to-do items. */
+  /** 待处理的任务项。 */
   pendingTodos: Array<{ id: string; description: string }>;
-  /** Workspace state. */
+  /** 工作区状态。 */
   workspaceSnapshot: {
     modifiedFiles: string[];
     createdFiles: string[];
@@ -265,97 +265,97 @@ export interface HandoffContext {
 }
 
 // ------------------------------------------------------------------
-// Swarm snapshot (for monitoring)
+// Swarm 快照（用于监控）
 // ------------------------------------------------------------------
 
-/** Point-in-time snapshot of the entire swarm. */
+/** 整个 swarm 的时间点快照。 */
 export interface SwarmSnapshot {
-  /** All active agent handles. */
+  /** 所有活动的 agent 句柄。 */
   agents: SwarmAgentHandle[];
-  /** Current topology. */
+  /** 当前拓扑。 */
   topology: SwarmTopology;
-  /** Task DAG being executed (if any). */
+  /** 正在执行的 Task DAG（如果有）。 */
   dag?: TaskDAG;
-  /** Execution plan (if any). */
+  /** 执行计划（如果有）。 */
   plan?: ExecutionPlan;
-  /** Completed task results. */
+  /** 已完成的任务结果。 */
   completedResults: TaskResult[];
-  /** Aggregated metrics. */
+  /** 聚合的指标。 */
   metrics: SwarmMetrics;
-  /** Timestamp. */
+  /** 时间戳。 */
   timestamp: number;
 }
 
-/** Aggregated swarm metrics. */
+/** 聚合的 swarm 指标。 */
 export interface SwarmMetrics {
-  /** Total tokens used. */
+  /** 使用的总 token 数。 */
   totalTokens: number;
-  /** Number of tasks completed. */
+  /** 已完成的任务数。 */
   tasksCompleted: number;
-  /** Number of tasks failed. */
+  /** 失败的任务数。 */
   tasksFailed: number;
-  /** Number of tasks still pending. */
+  /** 仍在等待的任务数。 */
   tasksPending: number;
-  /** Number of active agents. */
+  /** 活动 agent 的数量。 */
   activeAgents: number;
-  /** Total elapsed time in ms. */
+  /** 总 elapsed 时间（毫秒）。 */
   elapsedMs: number;
 }
 
 // ------------------------------------------------------------------
-// Recovery strategies
+// 恢复策略
 // ------------------------------------------------------------------
 
-/** Strategy for recovering from a task failure. */
+/** 从任务失败中恢复的策略。 */
 export enum RecoveryStrategy {
-  /** Immediate retry, up to maxRetries. */
+  /** 立即重试，最多 maxRetries 次。 */
   Retry = "retry",
-  /** Exponential backoff retry. */
+  /** 指数退避重试。 */
   RetryWithBackoff = "retry_with_backoff",
-  /** Use a fallback agent (e.g., cheaper model). */
+  /** 使用后备 agent（例如更便宜的模型）。 */
   Fallback = "fallback",
-  /** Mark as failed, use partial results. */
+  /** 标记为失败，使用部分结果。 */
   Partial = "partial",
-  /** Abort the entire swarm execution. */
+  /** 中止整个 swarm 执行。 */
   Abort = "abort",
 }
 
-/** Configuration for recovery behavior. */
+/** 恢复行为的配置。 */
 export interface RecoveryConfig {
-  /** Primary recovery strategy. */
+  /** 主要恢复策略。 */
   strategy: RecoveryStrategy;
-  /** Maximum retry attempts. */
+  /** 最大重试次数。 */
   maxRetries: number;
-  /** Whether to use a fallback model tier on retry. */
+  /** 重试时是否使用后备模型层级。 */
   useFallbackModel: boolean;
 }
 
 // ------------------------------------------------------------------
-// Orchestration patterns
+// 编排模式
 // ------------------------------------------------------------------
 
-/** Pre-defined orchestration pattern specification. */
+/** 预定义的编排模式规范。 */
 export interface SwarmPattern {
-  /** Pattern name. */
+  /** 模式名称。 */
   name: string;
-  /** Pattern description. */
+  /** 模式描述。 */
   description: string;
-  /** Communication topology. */
+  /** 通信拓扑。 */
   topology: SwarmTopology;
-  /** Stage definitions in execution order. */
+  /** 按执行顺序排列的阶段定义。 */
   stages: SwarmStage[];
 }
 
-/** A single stage in an orchestration pattern. */
+/** 编排模式中的单个阶段。 */
 export interface SwarmStage {
-  /** Agent role for this stage. */
+  /** 此阶段的 agent 角色。 */
   role: AgentRole;
-  /** Number of parallel agents of this role. */
+  /** 此角色的并行 agent 数量。 */
   count: number;
-  /** Stage description / goal. */
+  /** 阶段描述/目标。 */
   description: string;
-  /** For worker stages: how to partition work ('auto' | 'manual'). */
+  /** 对于 worker 阶段：如何划分工作（'auto' | 'manual'）。 */
   partitionStrategy?: "auto" | "manual";
-  /** For merger stages: how to merge results. */
+  /** 对于 merger 阶段：如何合并结果。 */
   mergeStrategy?: "concatenate" | "vote" | "synthesize" | "resolve_conflicts";
 }

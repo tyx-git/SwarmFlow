@@ -1,9 +1,9 @@
 ﻿/**
- * Qwen / DashScope Responses API provider adapter.
+ * Qwen / DashScope Responses API 提供者适配器。
  *
- * DashScope's OpenAI-compatible Responses endpoint mostly follows the OpenAI
- * Responses wire format, but Qwen-specific controls stay as top-level request
- * fields in the Node OpenAI SDK shape.
+ * DashScope 的 OpenAI 兼容 Responses 端点大体遵循 OpenAI
+ * Responses 线路格式，但 Qwen 特定控制项在 Node OpenAI SDK 形状中
+ * 仍作为顶层请求字段保留。
  */
 
 import type { SendMessageOptions } from "./base.js";

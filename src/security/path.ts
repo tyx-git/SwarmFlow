@@ -1,11 +1,11 @@
 ﻿/**
- * Unified path safety checks for file-accessing features.
+ * 文件访问功能的统一路径安全检查。
  *
- * Phase 1 scope:
- * - Enforce a directory boundary (project root / session artifacts)
- * - Prevent lexical traversal (`..`) and prefix-collision mistakes
- * - Reject symlink escapes via canonical (realpath) checks
- * - Support create paths by validating the nearest existing ancestor
+ * 第一阶段范围：
+ * - 强制执行目录边界（项目根目录 / 会话产物）
+ * - 防止词法遍历（`..`）和前缀碰撞错误
+ * - 通过规范（realpath）检查拒绝符号链接转义
+ * - 通过验证最近的现有祖先来支持创建路径
  */
 
 import { existsSync, realpathSync, statSync } from "node:fs";
@@ -95,15 +95,13 @@ export class SafePathError extends Error {
 }
 
 function isWithinBase(baseAbs: string, candidateAbs: string): boolean {
-  // On case-insensitive filesystems (default macOS APFS, Windows) `/Data`
-  // and `/data` are the same directory, so fold both sides before the
-  // relative computation. Otherwise a path differing only in case from
-  // the base is wrongly judged outside scope 鈥?and an external-path rule
-  // that the advisor case-folds to approve would then hard-fail here in
-  // the executor (the L-3 regression). Folding never WIDENS scope: a real
-  // prefix collision (`/base` vs `/base-evil`) still yields a
-  // `..`-prefixed relative path. On case-sensitive Linux, exact casing is
-  // preserved.
+  // 在大小写不敏感文件系统（默认 macOS APFS、Windows）上，`/Data`
+  // 和 `/data` 是同一目录，所以在相对路径计算前将两边折叠。
+  // 否则，仅在大小写上与 base 不同的路径会被错误判定为超出范围 —
+  // 并且 advisor 大小写折叠后批准的 external-path 规则
+  // 会在这里的 executor 中硬失败（L-3 回归）。折叠不会扩大范围：
+  // 真正的前缀碰撞（`/base` vs `/base-evil`）仍会产生
+  // `..`-前缀的相对路径。在大小写敏感的 Linux 上，精确大小写被保留。
   const [base, candidate] = osCapabilities.caseInsensitiveFilesystem
     ? [baseAbs.toLowerCase(), candidateAbs.toLowerCase()]
     : [baseAbs, candidateAbs];
@@ -184,7 +182,7 @@ export function safePath(opts: SafePathOptions): SafePathResult {
 
   const result = makeBaseResult(opts, baseDirResolved, resolvedPath);
 
-  // 1) Lexical boundary check
+  // 1) 词法边界检查
   const outsideLexical = !isWithinBase(baseDirResolved, resolvedPath);
   result.isOutsideByLexical = outsideLexical;
   if (outsideLexical) {
@@ -192,7 +190,7 @@ export function safePath(opts: SafePathOptions): SafePathResult {
     fail("PATH_OUTSIDE_SCOPE", result.reason, result);
   }
 
-  // 2) Existence / type checks
+  // 2) 存在性/类型检查
   const mustExist = opts.mustExist === true;
   const allowCreate = opts.allowCreate === true;
   const exists = existsSync(resolvedPath);
@@ -206,7 +204,7 @@ export function safePath(opts: SafePathOptions): SafePathResult {
     fail("PATH_NOT_FOUND", result.reason, result);
   }
 
-  // 3) Canonical (realpath) boundary check to prevent symlink escapes
+  // 3) 规范（realpath）边界检查，防止符号链接转义
   const followSymlinks = opts.followSymlinks !== false;
   if (followSymlinks) {
     let baseCanonical: string | undefined;
@@ -216,7 +214,7 @@ export function safePath(opts: SafePathOptions): SafePathResult {
         result.baseDirCanonical = baseCanonical;
       }
     } catch {
-      // If the base cannot be canonicalized, fall back to lexical checks.
+      // 如果 base 无法规范化，则回退到词法检查。
     }
 
     if (baseCanonical) {
@@ -235,7 +233,7 @@ export function safePath(opts: SafePathOptions): SafePathResult {
           }
         } catch (e) {
           if (e instanceof SafePathError) throw e;
-          // If canonicalization fails for an existing path, rely on lexical + stat checks.
+          // 如果现有路径的规范化失败，依赖词法+stat检查。
         }
       } else if (allowCreate) {
         const ancestor = nearestExistingAncestor(resolvedPath);
@@ -253,7 +251,7 @@ export function safePath(opts: SafePathOptions): SafePathResult {
             }
           } catch (e) {
             if (e instanceof SafePathError) throw e;
-            // ignore canonical failure; lexical check already passed
+            // 忽略规范化失败；词法检查已通过
           }
         }
       }

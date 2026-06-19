@@ -1,10 +1,10 @@
-﻿/**
- * SubAgentFactory 鈥?builds Agent instances for child sessions (P2.4a).
+/**
+ * SubAgentFactory —— 为子会话构建 Agent 实例（P2.4a）。
  *
- * Owns template lookup (predefined + on-disk), model resolution
- * (agent_models pin > model_level tier > parent model), comm-tool stripping,
- * and the child system-prompt layering. Model-entry resolution and status
- * fallback entries reach back into Session through the deps closures.
+ * 拥有模板查找（预定义 + 磁盘）、模型解析
+ *（agent_models pin > model_level tier > 父模型）、comm 工具剥离、
+ * 以及子会话 system-prompt 分层。模型条目解析和状态回退
+ * 通过 deps 闭包回调 Session。
  */
 
 import { readFileSync } from "node:fs";
@@ -17,6 +17,7 @@ import type { AgentModelEntry, ModelTierEntry } from "../config/persistence.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
 
+/** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
 const COMM_TOOL_NAMES = new Set([
   "spawn", "kill_agent", "check_status", "await_event", "show_context", "summarize_context", "ask", "skill",
   "bash_background", "bash_output", "kill_shell", "send",
@@ -34,20 +35,33 @@ export interface SubAgentFactoryDeps {
   getPromptsDirs(): string[] | undefined;
   resolveSessionArtifacts(): string;
   getParentModelConfig(): ModelConfig;
-  /** Wraps resolveAgentModelEntry(session, entry). */
+  /** 包装 resolveAgentModelEntry(session, entry)。 */
   resolvePinnedModel(entry: AgentModelEntry): ResolvedSubAgentModel;
-  /** Wraps resolveModelTierEntry(session, tier). */
+  /** 包装 resolveModelTierEntry(session, tier)。 */
   resolveTierModel(tier: ModelTierEntry): ResolvedSubAgentModel;
-  /** Append a status entry to the session log (model fallback notices). */
+  /** 追加状态条目到会话日志（模型回退通知）。 */
   appendStatus(message: string, statusType: string): void;
 }
 
+/**
+ * SubAgentFactory —— 为子会话构建 Agent 实例。
+ *
+ * 职责：
+ * - 模板查找：预定义模板（从 prompts/templates/）或磁盘模板
+ * - 模型解析优先级：agent_models pin > model_level tier > 父模型
+ * - 工具约束：剥离 comm 工具、剥离不可继承的 MCP 工具
+ * - System prompt 分层：模板 prompt + 模式 prompt（oneshot/persistent）
+ */
 export class SubAgentFactory {
   constructor(private readonly deps: SubAgentFactoryDeps) {}
 
+  /**
+   * 从预定义模板创建子 Agent。
+   * 模板从 getAgentTemplates() 获取（Session 初始化时加载）。
+   */
   createFromPredefined(templateName: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string } {
     const templates = this.deps.getAgentTemplates();
-    // Try exact match first, then case-insensitive fallback
+    // 优先精确匹配，再大小写不敏感回退
     let templateAgent = templates[templateName];
     if (!templateAgent) {
       const lower = templateName.toLowerCase();
@@ -66,13 +80,13 @@ export class SubAgentFactory {
     }
 
     const { modelConfig, thinkingLevel } = this._resolveSubAgentModel(templateName, modelLevel);
-    const tools = [...templateAgent.tools]; // Use template's tools, not primary agent's
+    const tools = [...templateAgent.tools]; // 使用模板的工具，非主 Agent 的
 
     const agent = new Agent({
       name: taskId,
       modelConfig,
-      // Pass the raw template prompt 鈥?the child Session layers memory, mode
-      // prompt, and path variables itself during its own assembly.
+      // 传递原始模板 prompt——子 Session 在自身组装期间分层 memory、mode
+      // prompt 和路径变量。
       systemPrompt: templateAgent.systemPrompt,
       tools,
       maxToolRounds: templateAgent.maxToolRounds,
@@ -82,6 +96,10 @@ export class SubAgentFactory {
     return { agent, thinkingLevel };
   }
 
+  /**
+   * 从磁盘模板路径创建子 Agent。
+   * 模板路径必须位于 SESSION_ARTIFACTS 内（安全约束）。
+   */
   createFromPath(templateDir: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string } {
     const templateAgent = loadTemplate(
       templateDir,
@@ -95,8 +113,6 @@ export class SubAgentFactory {
     const agent = new Agent({
       name: taskId,
       modelConfig,
-      // Pass the raw template prompt 鈥?the child Session layers memory, mode
-      // prompt, and path variables itself during its own assembly.
       systemPrompt: templateAgent.systemPrompt,
       tools: [...templateAgent.tools],
       maxToolRounds: templateAgent.maxToolRounds,
@@ -106,6 +122,10 @@ export class SubAgentFactory {
     return { agent, thinkingLevel };
   }
 
+  /**
+   * 解析并验证模板路径（必须在 SESSION_ARTIFACTS 内）。
+   * 执行符号链接安全检查，防止通过 symlink 逃逸。
+   */
   resolveTemplatePath(relPath: string): string {
     const artifactsDir = this.deps.resolveSessionArtifacts();
     let absPath: string;
@@ -140,9 +160,9 @@ export class SubAgentFactory {
   }
 
   /**
-   * Build a child session's full system prompt by layering:
-   * 1. Template system prompt
-   * 2. Mode-specific prompt
+   * 构建子会话的完整 system prompt，分层：
+   * 1. 模板 system prompt
+   * 2. 模式特定 prompt（oneshot.md / persistent.md）
    */
   buildSubAgentSystemPrompt(basePrompt: string, persistent: boolean): string {
     const parts = [basePrompt];
@@ -156,41 +176,43 @@ export class SubAgentFactory {
     return parts.join("\n\n");
   }
 
+  /** 应用子会话约束：剥离 comm 工具和不可继承的 MCP 工具。 */
   private _applySubAgentConstraints(agent: Agent): void {
-    // Strip comm tools 鈥?send is re-added later for interactive/team agents
+    // 剥离 comm 工具——send 等由 child Session 单独管理
     agent.tools = agent.tools.filter((t) => !COMM_TOOL_NAMES.has(t.name));
-    // Strip MCP tools when sub-agent inheritance is disabled. Parent's _ensureMcp
-    // attached MCP tool defs to template agents; without an executor in the child
-    // session the model would see them and fail on call.
+    // 当子代理继承 MCP 被禁用时剥离 MCP 工具。
+    // 父 Session 的 _ensureMcp 将 MCP 工具附加到模板 Agent；
+    // 子会话中没有执行器，模型会看到它们但调用失败。
     if (!this.deps.getConfig().subAgentInheritMcp) {
       agent.tools = agent.tools.filter((t) => !t.name.startsWith("mcp__"));
     }
-    // Lifecycle-specific constraints are injected via buildSubAgentSystemPrompt,
-    // not here 鈥?to avoid one-shot language leaking into interactive agents.
+    // 生命周期特定约束通过 buildSubAgentSystemPrompt 注入，
+    // 不在此处——以避免 one-shot 语言泄漏到交互式 Agent。
   }
 
   /**
-   * Resolve model for a predefined sub-agent template.
-   * Priority: agent_models pin > model_level tier > parent model.
+   * 解析预定义子 Agent 模板的模型。
+   * 优先级：agent_models pin > model_level tier > 父模型。
    */
   private _resolveSubAgentModel(templateName: string, modelLevel?: string): ResolvedSubAgentModel {
-    // Priority 1: agent_models[templateName] 鈥?silently ignores model_level
+    // 优先级 1：agent_models[templateName]——静默忽略 model_level
     try {
       const pinnedEntry = this.deps.getConfig().agentModels[templateName];
       if (pinnedEntry) {
         return this.deps.resolvePinnedModel(pinnedEntry);
       }
     } catch (err) {
-      // Pinned model configured but unavailable 鈥?fallback to parent model
+      // pinned 模型配置但不可用——回退到父模型
       const msg = `Pinned model for '${templateName}' unavailable: ${err instanceof Error ? err.message : String(err)}. Using parent model.`;
       this.deps.appendStatus(msg, "agent_model_fallback");
       return { modelConfig: this.deps.getParentModelConfig() };
     }
 
-    // Priority 2+3: tier or parent model
+    // 优先级 2+3：tier 或父模型
     return this._getSubAgentModelConfig(modelLevel);
   }
 
+  /** 根据 modelLevel tier 解析模型配置。 */
   private _getSubAgentModelConfig(modelLevel?: string): ResolvedSubAgentModel {
     if (modelLevel && (modelLevel === "high" || modelLevel === "medium" || modelLevel === "low")) {
       try {
@@ -208,6 +230,7 @@ export class SubAgentFactory {
     return { modelConfig: this.deps.getParentModelConfig() };
   }
 
+  /** 从 promptsDirs 读取提示文件（可选）。 */
   private _readPromptFile(relativePath: string): string {
     const promptsDirs = this.deps.getPromptsDirs();
     if (promptsDirs) {

@@ -1,13 +1,13 @@
 ﻿/**
- * NDJSON JSON-RPC over stdio.
+ * 基于 stdio 的 NDJSON JSON-RPC。
  *
- * Frame shapes:
+ * 帧形状：
  *   Request:  {"id": N, "method": "...", "params": ...}
- *   Response: {"id": N, "result": ...} or {"id": N, "error": {code, message}}
- *   Event:    {"method": "event.name", "params": ...}    // no id
+ *   Response: {"id": N, "result": ...} 或 {"id": N, "error": {code, message}}
+ *   Event:    {"method": "event.name", "params": ...}    // 无 id
  *
- * One frame per line. Used by `swarmflow --server` to talk to the GUI subprocess
- * supervisor (Electron main process).
+ * 每行一个帧。由 `swarmflow --server` 用于与 GUI 子进程监督者
+ *（Electron 主进程）通信。
  */
 
 export interface RpcRequest {
@@ -43,18 +43,17 @@ export const RPC_ERROR = {
 export type RpcHandler = (params: unknown) => unknown | Promise<unknown>;
 
 export interface RpcServer {
-  /** Register a request handler. */
+  /** 注册请求处理器。 */
   on(method: string, handler: RpcHandler): void;
-  /** Emit an event to the peer (no response expected). */
+  /** 向对端发出事件（不期望响应）。 */
   emit(method: string, params?: unknown): void;
-  /** Stop reading and writing. */
+  /** 停止读写。 */
   close(): void;
 }
 
 /**
- * Build an RPC server bound to the given streams. Reads NDJSON requests from
- * `input` and writes NDJSON responses/events to `output`. Each line is parsed
- * independently 鈥?partial lines are buffered.
+ * 构建绑定到给定流的 RPC 服务器。从 `input` 读取 NDJSON 请求，
+ * 并将 NDJSON 响应/事件写入 `output`。每行独立解析 — 部分行会被缓冲。
  */
 export function createRpcServer(
   input: NodeJS.ReadableStream,
@@ -69,7 +68,7 @@ export function createRpcServer(
     try {
       output.write(JSON.stringify(frame) + "\n");
     } catch {
-      // ignore write errors 鈥?peer disconnected
+      // 忽略写入错误 — 对端已断开
     }
   };
 
@@ -119,8 +118,8 @@ export function createRpcServer(
     while (nl >= 0) {
       const line = buffer.slice(0, nl);
       buffer = buffer.slice(nl + 1);
-      // Don't await 鈥?handle lines concurrently. Order is preserved per
-      // request because each frame has its own `id`.
+      // 不 await — 并发处理行。每个请求的顺序仍保留，
+      // 因为每个帧都有自己的 `id`。
       void handleLine(line.trim());
       nl = buffer.indexOf("\n");
     }

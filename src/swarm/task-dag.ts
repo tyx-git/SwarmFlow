@@ -1,5 +1,5 @@
 /**
- * TaskDAG — Directed Acyclic Graph operations for swarm task decomposition.
+ * TaskDAG — Directed Acyclic Graph operations for swarm 任务分解.
  *
  * Provides utilities for creating, validating, and manipulating task DAGs:
  * cycle detection, topological sort, level assignment, and dependency checks.
@@ -10,18 +10,18 @@
 import type { TaskNode, TaskDAG } from "./types.js";
 
 // ------------------------------------------------------------------
-// DAG creation
+// DAG 创建
 // ------------------------------------------------------------------
 
-/** Options for creating a TaskDAG. */
+/** 创建 TaskDAG 的选项。 */
 export interface TaskDAGOptions {
-  /** Task nodes. */
+  /** 任务节点。 */
   nodes?: TaskNode[];
 }
 
 /**
- * Create a new TaskDAG from an array of nodes.
- * Automatically computes entryPoints (nodes with no dependencies).
+ * 从节点数组创建新的 TaskDAG。
+ * 自动计算 entryPoints（无依赖的节点）。
  */
 export function createDAG(nodes: TaskNode[]): TaskDAG {
   const nodeMap = new Map<string, TaskNode>();
@@ -36,7 +36,7 @@ export function createDAG(nodes: TaskNode[]): TaskDAG {
 }
 
 /**
- * Create a single-node DAG (simplest case: one task, no dependencies).
+ * 创建单节点 DAG（最简单的情况：一个任务，无依赖）。
  */
 export function singleTaskDAG(id: string, role: string, description: string): TaskDAG {
   return createDAG([
@@ -45,31 +45,31 @@ export function singleTaskDAG(id: string, role: string, description: string): Ta
 }
 
 // ------------------------------------------------------------------
-// Validation
+// 验证
 // ------------------------------------------------------------------
 
-/** Result of DAG validation. */
+/** DAG 验证结果。 */
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
 
 /**
- * Validate a TaskDAG:
- * - All dependency IDs exist
- * - No cycles
- * - No duplicate IDs
- * - All entry points have no dependencies
+ * 验证 TaskDAG：
+ * - 所有依赖 ID 存在
+ * - 无环
+ * - 无重复 ID
+ * - 所有入口点无依赖
  */
 export function validateDAG(dag: TaskDAG): ValidationResult {
   const errors: string[] = [];
 
-  // Check for empty DAG
+  // 检查空 DAG
   if (dag.nodes.size === 0) {
     return { valid: false, errors: ["DAG is empty"] };
   }
 
-  // Check all dependencies exist
+  // 检查所有依赖是否存在
   for (const [id, node] of dag.nodes) {
     for (const depId of node.dependencies) {
       if (!dag.nodes.has(depId)) {
@@ -78,7 +78,7 @@ export function validateDAG(dag: TaskDAG): ValidationResult {
     }
   }
 
-  // Check for duplicate IDs
+  // 检查重复 ID
   const ids = new Set<string>();
   for (const id of dag.nodes.keys()) {
     if (ids.has(id)) {
@@ -96,8 +96,8 @@ export function validateDAG(dag: TaskDAG): ValidationResult {
 }
 
 /**
- * Check if a DAG contains a cycle.
- * Uses DFS with a visited set and a recursion stack.
+ * 检查 DAG 是否包含环。
+ * 使用带访问集合和递归栈的 DFS。
  */
 export function hasCycle(dag: TaskDAG): boolean {
   const visited = new Set<string>();
@@ -129,13 +129,13 @@ export function hasCycle(dag: TaskDAG): boolean {
 }
 
 // ------------------------------------------------------------------
-// Topological operations
+// 拓扑操作
 // ------------------------------------------------------------------
 
 /**
- * Topological sort — returns task IDs in execution order.
- * Tasks with no dependencies come first; dependent tasks come after.
- * Throws if a cycle is detected.
+ * 拓扑排序 — 按执行顺序返回任务 ID。
+ * 无依赖的任务优先；有依赖的任务排在后面。
+ * 如果检测到环则抛出异常。
  */
 export function topologicalSort(dag: TaskDAG): string[] {
   const visited = new Set<string>();
@@ -162,8 +162,8 @@ export function topologicalSort(dag: TaskDAG): string[] {
 }
 
 /**
- * Get execution levels: tasks in the same level can run in parallel.
- * Level 0 = entry points, Level N = depends on at least one task in Level N-1.
+ * 获取执行级别：同一级别的任务可以并行运行。
+ * Level 0 = 入口点，Level N = 依赖于 Level N-1 中的至少一个任务。
  */
 export function getLevels(dag: TaskDAG): Array<{ index: number; taskIds: string[] }> {
   const taskLevels = new Map<string, number>();
@@ -200,11 +200,11 @@ export function getLevels(dag: TaskDAG): Array<{ index: number; taskIds: string[
 }
 
 // ------------------------------------------------------------------
-// Manipulation
+// 操作
 // ------------------------------------------------------------------
 
 /**
- * Add a node to a DAG. Returns a new DAG (immutable).
+ * 向 DAG 添加节点。返回新 DAG（不可变的）。
  */
 export function addNode(dag: TaskDAG, node: TaskNode): TaskDAG {
   const newNodes = new Map(dag.nodes);
@@ -219,14 +219,14 @@ export function addNode(dag: TaskDAG, node: TaskNode): TaskDAG {
 }
 
 /**
- * Remove a node from a DAG. Also removes it from other nodes' dependencies.
- * Returns a new DAG (immutable).
+ * 从 DAG 中移除节点。同时从其他节点的依赖中移除它。
+ * 返回新 DAG（不可变的）。
  */
 export function removeNode(dag: TaskDAG, nodeId: string): TaskDAG {
   const newNodes = new Map(dag.nodes);
   newNodes.delete(nodeId);
 
-  // Remove from dependency lists
+  // 移除 from dependency lists
   for (const [id, node] of newNodes) {
     const newDeps = node.dependencies.filter((d) => d !== nodeId);
     if (newDeps.length !== node.dependencies.length) {
@@ -243,7 +243,7 @@ export function removeNode(dag: TaskDAG, nodeId: string): TaskDAG {
 }
 
 /**
- * Get all ancestor task IDs for a given task (tasks it depends on, directly or transitively).
+ * 获取给定任务的所有祖先任务 ID（直接或传递依赖的任务）。
  */
 export function getAncestors(dag: TaskDAG, taskId: string): string[] {
   const ancestors: string[] = [];
@@ -267,7 +267,7 @@ export function getAncestors(dag: TaskDAG, taskId: string): string[] {
 }
 
 /**
- * Get all descendant task IDs for a given task (tasks that depend on it, directly or transitively).
+ * 获取给定任务的所有后代任务 ID（直接或传递依赖于它的任务）。
  */
 export function getDescendants(dag: TaskDAG, taskId: string): string[] {
   const descendants: string[] = [];
@@ -284,7 +284,7 @@ export function getDescendants(dag: TaskDAG, taskId: string): string[] {
 }
 
 /**
- * Serialize a DAG to a plain JSON object (for LLM consumption).
+ * 将 DAG 序列化为普通 JSON 对象（供 LLM 消费）。
  */
 export function serializeDAG(dag: TaskDAG): object {
   return {
@@ -303,8 +303,8 @@ export function serializeDAG(dag: TaskDAG): object {
 }
 
 /**
- * Estimate the total number of execution rounds for a DAG.
- * Each level counts as 1 round regardless of how many tasks it contains.
+ * 估算 DAG 的总执行轮数。
+ * 每个级别计为 1 轮，无论它包含多少任务。
  */
 export function estimateRounds(dag: TaskDAG): number {
   return getLevels(dag).length;

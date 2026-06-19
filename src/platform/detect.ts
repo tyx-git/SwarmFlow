@@ -1,10 +1,9 @@
 ﻿/**
- * Platform + capability detection helpers used by PAL implementations.
+ * PAL 实现使用的平台 + 能力检测辅助函数。
  *
- * These helpers are the *only* place that consults `process.platform`
- * directly (alongside the per-OS implementation files in `shell/`,
- * `clipboard/`, etc.). Business code outside `src/platform/` must
- * never branch on `process.platform`.
+ * 这些辅助函数是直接咨询 `process.platform` 的*唯一*地方
+ *（以及 `shell/`、`clipboard/` 等中每个操作系统的实现文件）。
+ * `src/platform/` 之外的业务代码必须永远不要在 `process.platform` 上分支。
  */
 
 import { execFileSync } from "node:child_process";
@@ -14,18 +13,18 @@ export type SupportedPlatform = "darwin" | "linux" | "win32";
 export function currentPlatform(): SupportedPlatform {
   // Cast through the broader NodeJS.Platform union. Anything outside
   // the three we support will still reach this branch but be
-  // misclassified 鈥?that's intentional: the provider selectors throw
+  // misclassified —that's intentional: the provider selectors throw
   // explicitly on unsupported platforms so the unsupported case is
   // never silent.
   const p = process.platform;
   if (p === "darwin" || p === "linux" || p === "win32") return p;
-  // freebsd / openbsd / sunos / aix 鈫?treat as linux for tooling
+  // freebsd / openbsd / sunos / aix →treat as linux for tooling
   // purposes; the relevant providers will still need linux-side
   // tooling (xclip / wl-paste / xdg-open) to be present.
   return "linux";
 }
 
-/** True when running inside an SSH session 鈥?used to gate browser launches. */
+/** True when running inside an SSH session —used to gate browser launches. */
 export function isRemoteSession(): boolean {
   return Boolean(process.env["SSH_CLIENT"] || process.env["SSH_TTY"]);
 }

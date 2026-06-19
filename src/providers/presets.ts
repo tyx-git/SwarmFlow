@@ -1,10 +1,10 @@
 ﻿/**
- * Shared provider/model catalog used by setup and runtime model picker.
+ * 设置和运行时模型选择器使用的共享提供者/模型目录。
  *
- * PROVIDER_PRESETS is now DERIVED from the provider registry
- * (assets/model-registry/providers.json via FACTORY_PROVIDER_SPECS). This file
- * keeps the preset shape + the lookup helpers consumers rely on; the data lives
- * in the registry. See Docs/provider-model-maintainability-plan.md.
+ * PROVIDER_PRESETS 现在从提供者注册表派生
+ *（assets/model-registry/providers.json 通过 FACTORY_PROVIDER_SPECS）。此文件
+ * 保留使用者依赖的预设形状 + 查找辅助函数；数据位于
+ * 注册表中。参见 Docs/provider-model-maintainability-plan.md。
  */
 
 import {
@@ -20,17 +20,17 @@ import {
 } from "./providers/registry-effective.js";
 
 export interface ProviderPresetModel {
-  /** Stable selector used by `/model` and init choices. */
+  /** `/model` 和 init 选项使用的稳定选择器。 */
   key: string;
-  /** Actual API model ID sent to the provider. */
+  /** 发送给提供者的实际 API 模型 ID。 */
   id: string;
-  /** Human-friendly label used in docs and init. */
+  /** 文档和 init 中使用的人类友好标签。 */
   label: string;
-  /** Optional note appended in `/model` picker labels. */
+  /** 追加到 `/model` 选择器标签中的可选说明。 */
   optionNote?: string;
-  /** Backward-compatible selector aliases. */
+  /** 向后兼容的选择器别名。 */
   aliases?: string[];
-  /** Raw config overrides merged into generated/runtime model configs. */
+  /** 合并到生成/运行时模型配置中的原始配置覆盖。 */
   config?: Record<string, unknown>;
 }
 
@@ -39,27 +39,26 @@ export interface ProviderPreset {
   name: string;
   envVar: string;
   models: ProviderPresetModel[];
-  /** Group key for three-level picker grouping. */
+  /** 三层选择器分组的 group key。 */
   group?: string;
-  /** Display label for the group parent node in the picker. */
+  /** 选择器中组父节点的显示标签。 */
   groupLabel?: string;
-  /** Display label for this preset within its group (middle level). */
+  /** 该预设在其组内（中间层）的显示标签。 */
   subLabel?: string;
-  /** Whether this is a local inference server. */
+  /** 是否为本地推理服务器。 */
   localServer?: boolean;
-  /** Default base URL for local servers. */
+  /** 本地服务器的默认 base URL。 */
   defaultBaseUrl?: string;
 }
 
-/** model id (incl. alias spellings) 鈫?displayName, for inheriting labels on spec refs. */
+/** model id（包括别名拼写）→ displayName，用于在 spec 引用上继承标签。 */
 const DISPLAY_NAME_BY_ID: ReadonlyMap<string, string> = new Map(
   EFFECTIVE_MODEL_SPECS.flatMap((s) => modelSpecIds(s).map((id) => [id, s.displayName] as const)),
 );
 
 /**
- * Project ProviderSpec[] into the legacy ProviderPreset[] shape consumers expect.
- * Optional fields are added conditionally (never set to undefined) so the shape
- * is byte-identical to the old hand-written literals.
+ * 将 ProviderSpec[] 投影为使用者期望的旧 ProviderPreset[] 形状。
+ * 可选字段按条件添加（绝不设为 undefined），以确保形状与旧的手写字面量逐字节一致。
  */
 export function deriveProviderPresets(specs: readonly ProviderSpec[]): ProviderPreset[] {
   return specs.map((s) => {

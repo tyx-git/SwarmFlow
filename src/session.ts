@@ -1,9 +1,9 @@
 ﻿/**
- * Multi-turn conversation session with context management.
+ * 多轮对话会话与上下文管理。
  *
- * Provides the Session class 鈥?the core runtime orchestrator.
- * Manages the Primary Agent's conversation,
- * auto-compact, and sub-agent lifecycle.
+ * 提供 Session 类——核心运行时编排器。
+ * 管理主 Agent 的对话、
+ * 自动压缩和子代理生命周期。
  */
 
 import {
@@ -15,7 +15,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
 import { join, dirname, resolve, relative, isAbsolute } from "node:path";
-// child_process 鈥?now only used by BackgroundShellManager
+// child_process —now only used by BackgroundShellManager
 import * as yaml from "js-yaml";
 
 import { assembleSystemPrompt, getPromptLayers } from "./templates/loader.js";
@@ -220,7 +220,7 @@ type DrainPendingToolCallsResult =
   | { kind: "interrupted" };
 
 // ------------------------------------------------------------------
-// InlineImageInput 鈥?clipboard / drag-drop image passed to turn()
+// InlineImageInput —clipboard / drag-drop image passed to turn()
 // ------------------------------------------------------------------
 
 export interface InlineImageInput {
@@ -230,14 +230,14 @@ export interface InlineImageInput {
 }
 
 // ------------------------------------------------------------------
-// TurnLifecycleEvent 鈥?runtime-emitted turn start/end notifications
+// TurnLifecycleEvent —runtime-emitted turn start/end notifications
 // ------------------------------------------------------------------
 
 /** Terminal status of a turn. `waiting` = parked on a pending ask (not done). */
 export type TurnLifecycleStatus = "completed" | "interrupted" | "error" | "waiting";
 
 /**
- * Emitted by the Session around every activation-loop run 鈥?including
+ * Emitted by the Session around every activation-loop run —including
  * auto-resume and post-approval resume turns that have no external caller.
  * Subscribed by the RPC layer (forwarded as `turn.started` / `turn.ended`
  * wire events) and available to in-process UIs.
@@ -247,12 +247,12 @@ export type TurnLifecycleEvent =
   | { phase: "ended"; turnIndex: number; status: TurnLifecycleStatus; error?: string };
 
 // ------------------------------------------------------------------
-// MessageEnvelope 鈥?typed message envelope (see session-tree-types.ts)
+// MessageEnvelope —typed message envelope (see session-tree-types.ts)
 // ------------------------------------------------------------------
 
 
-// ChildSessionHandle / PreparedChildRestore 鈥?moved to ./session/child-session-manager.ts
-// BackgroundShellEntry 鈥?moved to ./background-shell-manager.ts
+// ChildSessionHandle / PreparedChildRestore —moved to ./session/child-session-manager.ts
+// BackgroundShellEntry —moved to ./background-shell-manager.ts
 
 interface PreparedSessionRestore {
   rootState: RestoredSessionState;
@@ -379,14 +379,14 @@ export class Session {
   private _mcpConnected = false;
   private _mcpReadyPromise?: Promise<void>;
 
-  /** Tool permission gate 鈥?add advisors to control tool execution. */
+  /** Tool permission gate —add advisors to control tool execution. */
   readonly toolGate = new ToolGate();
 
-  /** Permission advisor 鈥?classifies tools and enforces permission mode. */
+  /** Permission advisor —classifies tools and enforces permission mode. */
   private _permissionAdvisor!: PermissionAdvisor;
   private _permissionRuleStore!: PermissionRuleStore;
 
-  /** Hook runtime 鈥?fires events and evaluates hook commands. */
+  /** Hook runtime —fires events and evaluates hook commands. */
   readonly hookRuntime = new HookRuntime();
 
   private _createdAt: string;
@@ -395,7 +395,7 @@ export class Session {
   private _title: string | undefined;
   private _cachedSummary: string | undefined;
 
-  // Structured log 鈥?entries, revision, listeners, and id allocation live in
+  // Structured log —entries, revision, listeners, and id allocation live in
   // SessionLog (src/session/session-log.ts); these accessors keep the many
   // Session-internal `_log` / `_idAllocator` call sites unchanged.
   private _logStore = new SessionLog();
@@ -492,7 +492,7 @@ export class Session {
   // wired to their own stubbed fields on first use.
   private _subAgentFactory?: SubAgentFactory;
 
-  // Session tree / child sessions 鈥?state lives in ChildSessionManager.
+  // Session tree / child sessions —state lives in ChildSessionManager.
   // Same-name private accessors below keep internal call sites and tests stable.
   private _childSessionManager?: ChildSessionManager;
   private _shellManager!: BackgroundShellManager;
@@ -506,7 +506,7 @@ export class Session {
   private _lastToolCallSummary = "";
   private _recentSessionEvents: string[] = [];
 
-  // Active entry tracker 鈥?tracks which log entry is currently "live"
+  // Active entry tracker —tracks which log entry is currently "live"
   private _activeLogEntryId: string | null = null;
 
   /** Update the active entry tracker; implicitly marks previous reasoning as complete. */
@@ -537,7 +537,7 @@ export class Session {
   private _agentState: "working" | "idle" | "waiting" = "idle";
 
   // Inbox: holds messages for push delivery into tool results.
-  // Typed message inbox 鈥?all messages flow through _deliverMessage.
+  // Typed message inbox —all messages flow through _deliverMessage.
   private _inbox: MessageEnvelope[] = [];
   // True once a real user message has driven an activation (or was loaded from
   // a restored log). Gates tool-availability notices: skill/MCP changes made
@@ -547,12 +547,12 @@ export class Session {
   private _currentTurnSignal: AbortSignal | null = null;
   private _currentTurnAbortController: AbortController | null = null;
 
-  // Turn serialization 鈥?prevents concurrent turn() calls from corrupting state
+  // Turn serialization —prevents concurrent turn() calls from corrupting state
   private _turnInFlight: Promise<string | void> | null = null;
 
-  /** Callback for incremental persistence 鈥?called at save-worthy checkpoints. */
+  /** Callback for incremental persistence —called at save-worthy checkpoints. */
   onSaveRequest?: () => void;
-  /** Callback for MCP connection status 鈥?called after initial connect or reload. */
+  /** Callback for MCP connection status —called after initial connect or reload. */
   onMcpStatus?: (statuses: Array<{ name: string; state: string; toolCount: number; error?: string }>) => void;
 
   // Counters
@@ -573,7 +573,7 @@ export class Session {
   private _toolExecutorOverrides: Record<string, ToolExecutor> = {};
 
   // Ask state. All reads/writes go through the `_activeAsk` accessor pair so
-  // every transition (suspend/resolve/restore/reset) notifies ask subscribers 鈥?  // including sites added in the future.
+  // every transition (suspend/resolve/restore/reset) notifies ask subscribers —  // including sites added in the future.
   private _activeAskValue: AskRequest | null = null;
   private _askHistory: AskAuditRecord[] = [];
   private _pendingTurnState: PendingTurnState | null = null;
@@ -610,7 +610,7 @@ export class Session {
    * Subscribe to turn lifecycle events. Fires for every activation-loop run,
    * including auto-resume and post-approval resume turns that never pass
    * through an external entry point. `status: "waiting"` means the turn parked
-   * on a pending ask 鈥?it has not completed.
+   * on a pending ask —it has not completed.
    */
   subscribeTurnLifecycle(listener: (event: TurnLifecycleEvent) => void): () => void {
     this._turnLifecycleListeners.add(listener);
@@ -1015,7 +1015,7 @@ export class Session {
    * Run a synchronous Bun.gc at work boundaries to keep saw-tooth heap
    * growth in check during long sessions. Throttled to once per 10s so
    * rapid interrupt/restart cycles don't pile up GC pauses, and only on
-   * "completed" status 鈥?interrupted/error paths may be followed by an
+   * "completed" status —interrupted/error paths may be followed by an
    * immediate restart where pausing is more visible to the user.
    */
   private _maybeRunIdleGc(): void {
@@ -1062,7 +1062,7 @@ export class Session {
    * `_turnCount` (the "current input index" used by subsequent provider rounds)
    * advances to this new input ONLY when the agent is idle. While the agent
    * is working/waiting, the new input gets its own higher inputIndex but
-   * `_turnCount` stays put 鈥?round entries from the in-flight activation must
+   * `_turnCount` stays put —round entries from the in-flight activation must
    * keep using the current input's index until drain delivers the new one.
    */
   private _recordInputReceived(
@@ -1112,7 +1112,7 @@ export class Session {
     contextId: string,
     tuiVisible = true,
   ): void {
-    // The canonical point a real user message enters the model log 鈥?every
+    // The canonical point a real user message enters the model log —every
     // active-input and drain path funnels here. Mark the conversation started so
     // tool-availability notices are suppressed only before the first user
     // message, regardless of which path delivered it.
@@ -1242,7 +1242,7 @@ export class Session {
   private _deliverMessage(msg: MessageEnvelope): DeliverMessageResult {
     // Compacting rewrites the conversation; user input arriving mid-compact
     // would be folded behind the marker and effectively vanish. Reject it
-    // (Q6) 鈥?automatic messages still queue and are delivered after compact.
+    // (Q6) —automatic messages still queue and are delivered after compact.
     if (msg.type === "user_input" && this._compactInProgress) {
       return { accepted: false, reason: "compact_in_progress" };
     }
@@ -1414,7 +1414,7 @@ export class Session {
       if (entry.type !== "input_received") continue;
       const inputKind = entry.meta["inputKind"];
       // "compact" inputs are consumed by the compact phase itself and never
-      // await a model reply 鈥?counting them here would schedule ghost
+      // await a model reply —counting them here would schedule ghost
       // auto-resume turns after every /compact.
       if (inputKind !== "user" && inputKind !== "summarize") continue;
       const inputId = entry.meta["inputId"];
@@ -1432,7 +1432,7 @@ export class Session {
 
   /**
    * Check whether the inbox has pending WAKING messages. Ride-along messages
-   * (wake === false) don't block manual context commands 鈥?they are passive
+   * (wake === false) don't block manual context commands —they are passive
    * records (e.g. user-initiated kill notices) that wait for the next turn.
    */
   private _hasWakingInboxMessages(): boolean {
@@ -1450,7 +1450,7 @@ export class Session {
    *   2. The new active input is recorded.
    *
    * Delivery to the model-facing log (user_message vs status entry) stays with
-   * the caller 鈥?it legitimately differs per activation kind. The
+   * the caller —it legitimately differs per activation kind. The
    * "conversation started" flag is flipped at that delivery point
    * (_appendDeliveredUserMessage), so every user-message path sets it.
    */
@@ -1476,7 +1476,7 @@ export class Session {
   }
 
   // ------------------------------------------------------------------
-  // Background shells 鈥?UI surface (badge, picker, detail tab)
+  // Background shells —UI surface (badge, picker, detail tab)
   // ------------------------------------------------------------------
 
   /** Snapshots of all tracked background shells for UI surfaces. */
@@ -1492,7 +1492,7 @@ export class Session {
   /**
    * User-initiated stop of a background shell (Shells panel / detail tab).
    * When a kill is actually performed, a ride-along system notice is queued
-   * so the agent learns about it on its next turn 鈥?without being woken:
+   * so the agent learns about it on its next turn —without being woken:
    * the user is present and steering.
    */
   async stopBackgroundShell(id: string): Promise<string> {
@@ -1513,7 +1513,7 @@ export class Session {
   }
 
   // ------------------------------------------------------------------
-  // Inbox drain 鈥?per-entry rendering
+  // Inbox drain —per-entry rendering
   // ------------------------------------------------------------------
 
   /**
@@ -1521,7 +1521,7 @@ export class Session {
    *
    * User messages are displayed when received, then delivered here only after
    * the current provider round has finished. This preserves the API ordering:
-   * user A 鈫?assistant A 鈫?user B, even when user B was typed while assistant A
+   * user A →assistant A →user B, even when user B was typed while assistant A
    * was still streaming.
    */
   private _drainInboxAsEntries(): number {
@@ -1667,7 +1667,7 @@ export class Session {
   private async _withTurnLock<T>(fn: () => Promise<T>): Promise<T> {
     // Claim the lock SYNCHRONOUSLY (before any await): the old
     // check-then-claim around an await let two same-tick callers both see a
-    // free lock and run concurrently 鈥?e.g. two fire-and-forget submitTurn
+    // free lock and run concurrently —e.g. two fire-and-forget submitTurn
     // frames arriving in one stdin chunk. Everything layered on this lock
     // (turn serialization, the error-entry once-flag, lifecycle pairing)
     // assumes real mutual exclusion.
@@ -1704,10 +1704,10 @@ export class Session {
    */
   requestTurnInterrupt(): { accepted: true } {
     // Abort main turn ONLY. Sub-agents and background shells are independent
-    // background work 鈥?they continue running. Explicit Ctrl+X / Ctrl+K
+    // background work —they continue running. Explicit Ctrl+X / Ctrl+K
     // kills them separately.
     //
-    // A pending ask means there is no live turn to abort 鈥?the turn already
+    // A pending ask means there is no live turn to abort —the turn already
     // returned when it suspended. Every stop entry point resolves the ask as
     // deny-and-stop (Q9) so the log gets a definite outcome instead of an
     // orphan ask_request + unresolved tool_call.
@@ -1868,7 +1868,7 @@ export class Session {
     this._inbox = [];
     this._currentWorkId = null;
     this._currentWorkStartedAt = 0;
-    // _waitHandle removed 鈥?await_event uses polling now
+    // _waitHandle removed —await_event uses polling now
     this._activeAsk = null;
     this._askHistory = [];
     this._pendingTurnState = null;
@@ -2034,7 +2034,7 @@ export class Session {
     const removed = this._log.length - cutoff;
     const removedEntries = this._log.slice(cutoff);
     this._log.length = cutoff;
-    // Truncation bypasses SessionLog's append/replace paths 鈥?drop its lookup
+    // Truncation bypasses SessionLog's append/replace paths —drop its lookup
     // indexes (entry ids can even be reused after the allocator re-bases below).
     this._logStore.invalidateIndexes();
     this._restoreArchivesRescindedBy(removedEntries);
@@ -2046,7 +2046,7 @@ export class Session {
    * Release the full content of entries covered by a freshly landed summary:
    * the API projection already replaces them with the summary, and the TUI
    * scrollback renders from `display`, so the only consumer of the original
-   * content from here on is a rewind that rescinds the summary 鈥?which
+   * content from here on is a rewind that rescinds the summary —which
    * restores it from the archive file written here. Without this, both the
    * summary and all covered content stay resident until the next compaction.
    */
@@ -2066,12 +2066,12 @@ export class Session {
       const archived = archiveEntryContents(sessionDir, `summary-${summaryEntry.id}.json.gz`, targets);
       if (archived > 0) {
         // Stripping content is TUI-projection-visible (tool args / full
-        // text render from entry.content) 鈥?bump the revision so memoized
+        // text render from entry.content) —bump the revision so memoized
         // projections recompute.
         this._touchLog();
       }
     } catch {
-      // Disk error 鈥?write-then-strip left every content in place; the next
+      // Disk error —write-then-strip left every content in place; the next
       // compaction's archiveWindow picks the same entries up.
     }
   }
@@ -2080,7 +2080,7 @@ export class Session {
    * Rewind truncation can remove a summary entry or compact marker whose
    * covered / pre-compact entries had their content archived to disk. Those
    * entries are live context again after the rewind, but the API projection
-   * silently skips archived entries with null content 鈥?so restore their
+   * silently skips archived entries with null content —so restore their
    * content from the archive files, or the revived window would have holes.
    * Missing/corrupt archive files degrade to leaving the entries archived.
    */
@@ -2101,7 +2101,7 @@ export class Session {
         const archived = loadArchiveFile(sessionDir, fileName);
         if (archived) restoreArchiveToEntries(this._log, archived);
       } catch {
-        // Corrupt archive 鈥?keep the entries archived (today's behavior).
+        // Corrupt archive —keep the entries archived (today's behavior).
       }
     }
   }
@@ -2211,7 +2211,7 @@ export class Session {
       );
     }
 
-    // Parse on cloned data 鈥?everything that can fail (model resolution, log
+    // Parse on cloned data —everything that can fail (model resolution, log
     // surgery) happens here, so a failed restore never pollutes the live
     // session (see session-persistence.ts).
     const clonedEntries = structuredClone(entries) as LogEntry[];
@@ -2292,10 +2292,10 @@ export class Session {
 
     this._log = state.entries;
     // A restored log that already holds a real user message means the
-    // conversation has started 鈥?toggling MCP/skills after resume should queue
+    // conversation has started —toggling MCP/skills after resume should queue
     // notices normally. Seed the flag here (the single restore commit point).
     this._conversationStarted = this._entriesHaveRealUserMessage(state.entries);
-    // Do NOT reset the log revision 鈥?it is a transient change-detection
+    // Do NOT reset the log revision —it is a transient change-detection
     // counter that must stay monotonically increasing on *this* session so
     // that UI subscribers (shouldSyncTranscript) always detect the swap.
     this._idAllocator = state.idAllocator;
@@ -2349,7 +2349,7 @@ export class Session {
         outcome: handle.lastOutcome,
         order: handle.order,
         // Released one-shots have no Session (and by definition no live
-        // inbox) 鈥?this read must tolerate null or every root save after
+        // inbox) —this read must tolerate null or every root save after
         // the first settled one-shot would throw.
         inbox: handle.session && handle.session._inbox.length > 0
           ? [...handle.session._inbox]
@@ -2393,7 +2393,7 @@ export class Session {
   }
 
   /**
-   * Full reset for /new 鈥?equivalent to constructing a fresh Session.
+   * Full reset for /new —equivalent to constructing a fresh Session.
    * Leaves storage unbound; session/artifacts directories are created lazily
    * on the first subsequent turn.
    */
@@ -2497,7 +2497,7 @@ export class Session {
   // ==================================================================
 
   getAgentLog(agentId: string): readonly LogEntry[] | null {
-    // Same path as getChildSessionLog 鈥?the manager serves released
+    // Same path as getChildSessionLog —the manager serves released
     // children's logs from disk.
     return this.getChildSessionLog(agentId);
   }
@@ -2611,7 +2611,7 @@ export class Session {
     this._ensureSkillTool();
   }
 
-  /** Execute the `skill` tool 鈥?load and return skill instructions. */
+  /** Execute the `skill` tool —load and return skill instructions. */
   private _execSkill(
     args: Record<string, unknown>,
   ): ToolResult {
@@ -2655,7 +2655,7 @@ export class Session {
   }
 
   /** Scan-once helper: do the given entries contain a delivered real user
-   * message? Used only to seed _conversationStarted on restore 鈥?the live guard
+   * message? Used only to seed _conversationStarted on restore —the live guard
    * reads the cached flag, not this. */
   private _entriesHaveRealUserMessage(entries: Iterable<LogEntry>): boolean {
     for (const entry of entries) {
@@ -2850,7 +2850,7 @@ export class Session {
 
   // Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
   // (and the ride-along notice it queues) cannot overlap a turn's tool snapshot.
-  // The bare reloadMcp/reconnectMcpServer stay lock-free on purpose 鈥?the reload
+  // The bare reloadMcp/reconnectMcpServer stay lock-free on purpose —the reload
   // TOOL (_execReload) already runs inside the turn lock, and _withTurnLock is
   // not reentrant, so re-locking there would deadlock.
   async reloadMcpFromCommand(reason: string): Promise<string> {
@@ -2863,7 +2863,7 @@ export class Session {
 
   // The /mcp command warms up MCP status before showing the picker. That ensure
   // can connect servers (mutating agent.tools), so it must serialize against
-  // turns just like the reload/reconnect variants 鈥?no MCP connection work on
+  // turns just like the reload/reconnect variants —no MCP connection work on
   // the command side may run concurrently with a turn's tool snapshot.
   async ensureMcpReadyFromCommand(): Promise<void> {
     return this._withTurnLock(() => this.ensureMcpReady());
@@ -2893,7 +2893,7 @@ export class Session {
         reason: "the reload tool refreshed MCP configuration",
       }));
     } catch (err) {
-      report.push(`MCP: reload failed 鈥?${err instanceof Error ? err.message : String(err)}`);
+      report.push(`MCP: reload failed —${err instanceof Error ? err.message : String(err)}`);
     }
     const mcpAfter = this._snapshotMcpAvailability();
     const mcpServerDiff = this._diffNames(mcpBefore.servers, mcpAfter.servers);
@@ -2918,7 +2918,7 @@ export class Session {
 
   setTitle(title: string): void {
     this._title = title || undefined;
-    // No onSaveRequest 鈥?renaming should not update last_active_at.
+    // No onSaveRequest —renaming should not update last_active_at.
     // The caller (store:renameSession) writes title to disk directly.
   }
 
@@ -2981,7 +2981,7 @@ export class Session {
       this._planState = parsePlanFile(content);
       this._notifyPlanListeners();
     } catch {
-      // File read error 鈥?leave state unchanged.
+      // File read error —leave state unchanged.
     }
   }
 
@@ -3148,13 +3148,13 @@ export class Session {
   private _resolveThinkingLevelForModel(modelName: string, preferredLevel: string): string {
     const levels = getThinkingLevels(modelName);
     const highest = levels.length > 0 ? levels[levels.length - 1] : undefined;
-    // Non-thinking model 鈥?no thinking level to set
+    // Non-thinking model —no thinking level to set
     if (!highest) return "none";
-    // No preference or legacy "default" 鈥?use highest
+    // No preference or legacy "default" —use highest
     if (!preferredLevel || preferredLevel === "default") return highest;
-    // Preferred level valid for this model 鈥?use it
+    // Preferred level valid for this model —use it
     if (levels.includes(preferredLevel)) return preferredLevel;
-    // Preferred level not available on this model 鈥?use highest
+    // Preferred level not available on this model —use highest
     return highest;
   }
 
@@ -3196,7 +3196,7 @@ export class Session {
 
     const recipe = this.primaryAgent.promptRecipe;
 
-    // System Prompt (role body + knowledge 鈥?NOT tool docs)
+    // System Prompt (role body + knowledge —NOT tool docs)
     let estSystemPrompt = 0;
     let estToolDocs = 0;
     if (recipe) {
@@ -3402,7 +3402,7 @@ export class Session {
     return this._withTurnLock(async () => {
       // The catch must live INSIDE the lock: the failure flags are reset per
       // lock acquisition, and a queued claimant resumes before an outside
-      // catch would run 鈥?double-writing or suppressing the entry.
+      // catch would run —double-writing or suppressing the entry.
       try {
         this._ensureSessionStorageReady();
         await this._ensureMcp();
@@ -3517,7 +3517,7 @@ export class Session {
     },
   ): Promise<string> {
     return this._withTurnLock(async () => {
-      // In-lock catch 鈥?see runInjectedCommand for why it cannot sit outside.
+      // In-lock catch —see runInjectedCommand for why it cannot sit outside.
       try {
         return await this._runManualSummarizeBody(options);
       } catch (err) {
@@ -3574,10 +3574,10 @@ export class Session {
         `1. Call \`show_context\` to inspect the content and size of the range.`,
         `2. You may call \`read_file\`, \`grep\`, \`glob\`, or \`list_dir\` to verify details before writing the summary content.`,
         `3. Call \`summarize_context\` exactly once, with from="${rangeFrom}" and to="${rangeTo}". Do not split, shrink, or expand this range.`,
-        `4. If the range contains user messages 鈥?or summaries carrying <user-message> blocks 鈥?reproduce the user's original words verbatim inside a <user-message> block in your summary content, as a numbered list in chronological order. Never paraphrase, tighten, or omit any part of them. Two clarifications:`,
-        `   - File contents attached to user messages (e.g., inlined via @file references, pasted code blocks, or other resolved file refs) are not the user's words 鈥?they are data. Summarize them under the normal "preserve concrete facts" rules. The user's surrounding prose, including the @-reference itself, still goes verbatim into the <user-message> block.`,
+        `4. If the range contains user messages —or summaries carrying <user-message> blocks —reproduce the user's original words verbatim inside a <user-message> block in your summary content, as a numbered list in chronological order. Never paraphrase, tighten, or omit any part of them. Two clarifications:`,
+        `   - File contents attached to user messages (e.g., inlined via @file references, pasted code blocks, or other resolved file refs) are not the user's words —they are data. Summarize them under the normal "preserve concrete facts" rules. The user's surrounding prose, including the @-reference itself, still goes verbatim into the <user-message> block.`,
         `   - Only an explicit user instruction (e.g., in the focus prompt below) may relax verbatim preservation.`,
-        `5. For non-user-message content, match the information density of the original 鈥?preserve file paths with line numbers, key decisions and why, unresolved issues, code references you'd look back at, and any constraints the user stated.`,
+        `5. For non-user-message content, match the information density of the original —preserve file paths with line numbers, key decisions and why, unresolved issues, code references you'd look back at, and any constraints the user stated.`,
         `6. After summarizing, reply with a one-line description of what was summarized (e.g. "Summarized turns 3-5: auth exploration and test results"). Do not repeat the summary content.`,
         ``,
         `Do NOT continue the main task.`,
@@ -3606,7 +3606,7 @@ export class Session {
 
   async runManualCompact(instruction?: string, options?: { signal?: AbortSignal }): Promise<void> {
     return this._withTurnLock(async () => {
-      // In-lock catch 鈥?see runInjectedCommand for why it cannot sit outside.
+      // In-lock catch —see runInjectedCommand for why it cannot sit outside.
       try {
         return await this._runManualCompactBody(instruction, options);
       } catch (err) {
@@ -3756,7 +3756,7 @@ export class Session {
 
     // 0b. Artifacts-dir bypass: file tools (read/write/edit/list/glob/grep)
     //    operating inside session artifacts/ don't need approval (agent-owned
-    //    scratch space). Bash is excluded 鈥?its cwd-tracking is a separate gate.
+    //    scratch space). Bash is excluded —its cwd-tracking is a separate gate.
     const ARTIFACTS_BYPASS_TOOLS = new Set([
       "read_file", "write_file", "edit_file", "list_dir", "glob", "grep",
     ]);
@@ -3845,7 +3845,7 @@ export class Session {
 
       this._pendingTurnState = null;
       if (pending.stage === "pre_user_input") {
-        // Already inside the lock 鈥?call the inner turn logic directly
+        // Already inside the lock —call the inner turn logic directly
         return this._turnInner(pending.userInput ?? "", options);
       }
 
@@ -3855,7 +3855,7 @@ export class Session {
 
   /**
    * Continue a turn that suspended mid-activation (approval resolved, question
-   * answered). Single canonical resume path 鈥?turn() and resumePendingTurn()
+   * answered). Single canonical resume path —turn() and resumePendingTurn()
    * both land here, so pending approved tool_calls always execute and queued
    * messages are always delivered, whichever entry point the UI used.
    * Caller must hold the turn lock and have cleared _pendingTurnState.
@@ -3984,12 +3984,12 @@ export class Session {
 
   /**
    * Drain pending tool_calls in the current turn (in emission order).
-   * For each: gate 鈫?execute 鈫?append tool_result, updating tool_call meta.
+   * For each: gate →execute →append tool_result, updating tool_call meta.
    * Returns a structured result so approval suspension and interruption are
    * not collapsed into the same empty-string resume path.
    *
    * This is the single canonical path for executing tool_calls outside of
-   * the streaming tool-loop 鈥?used after approval resume and to handle
+   * the streaming tool-loop —used after approval resume and to handle
    * orphan parallel tool_calls.
    */
   private async _drainPendingToolCalls(signal?: AbortSignal): Promise<DrainPendingToolCallsResult> {
@@ -4091,7 +4091,7 @@ export class Session {
             isError = true;
           } else {
             const result = await executor(next.toolArgs, { signal });
-            // Keep toolExecState as "running" here 鈥?_completeMissingToolResultsFromLog
+            // Keep toolExecState as "running" here —_completeMissingToolResultsFromLog
             // uses it to distinguish "ran but interrupted" (partial effects) from "never ran".
             if (signal?.aborted) return { kind: "interrupted" };
             if (typeof result === "string") {
@@ -4266,7 +4266,7 @@ export class Session {
           throw err;
         }
 
-        // Check abort AFTER successful completion 鈥?handles providers that
+        // Check abort AFTER successful completion —handles providers that
         // don't throw AbortError (stream finishes before abort takes effect).
         if (activeSignal.aborted) {
           this._handleInterruption(logLenBeforeActivation, textAccumulator.text, {
@@ -4329,7 +4329,7 @@ export class Session {
           || (!_trimmedText && result.toolHistory.length === 0);
 
         if (_hasNoReply) {
-          // Strip the <NO_REPLY> marker (if present) 鈥?treat as empty response.
+          // Strip the <NO_REPLY> marker (if present) —treat as empty response.
           // Emit progress event so TUI can show a status message.
           if (_trimmedText.endsWith(NO_REPLY_MARKER)) {
             result.text = _trimmedText
@@ -4344,7 +4344,7 @@ export class Session {
           if (this._progress) {
             this._progress.onAgentNoReply(this.primaryAgent.name);
           }
-          // Fall through to normal response handling 鈥?turn ends naturally.
+          // Fall through to normal response handling —turn ends naturally.
         }
 
         if (result.text) {
@@ -4415,7 +4415,7 @@ export class Session {
             this._drainInboxAsEntries();
           }
           this.onSaveRequest?.();
-          // Always continue after compact 鈥?fresh context, reset activation budget.
+          // Always continue after compact —fresh context, reset activation budget.
           activationIdx = -1;
           continue;
         }
@@ -4431,7 +4431,7 @@ export class Session {
           continue;
         }
 
-        // Final output (no tool calls in the last provider call) 鈫?turn ends.
+        // Final output (no tool calls in the last provider call) →turn ends.
         // Sub-agent results are processed via auto-resume in a new turn.
         // Model should use await_event explicitly to wait for sub-agents.
         // Note: toolHistory.length is cumulative across all rounds in the tool
@@ -4441,7 +4441,7 @@ export class Session {
           turnEndStatus = "completed";
           break;
         }
-        // No explicit boundary drain here 鈥?the earlier drain check (above)
+        // No explicit boundary drain here —the earlier drain check (above)
         // already handles inbox messages before this break decision.
       }
 
@@ -4538,7 +4538,7 @@ export class Session {
   /** Inner turn logic, called from within the turn lock. */
   private async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
     // A pending ask owns the conversation: the turn cannot run until the user
-    // answers. New input is queued (Q5) and delivered when work resumes 鈥?    // never dropped, never run into the suspended round's bookkeeping.
+    // answers. New input is queued (Q5) and delivered when work resumes —    // never dropped, never run into the suspended round's bookkeeping.
     if (this._activeAsk) {
       if (!options?.skipUserInput && userInput.trim()) {
         this._deliverMessage({
@@ -4555,7 +4555,7 @@ export class Session {
 
     const signal = options?.signal;
     if (this._pendingTurnState) {
-      // Already inside the lock via turn() 鈥?resume inline (calling turn()
+      // Already inside the lock via turn() —resume inline (calling turn()
       // here would deadlock on the turn lock).
       const pending = this._pendingTurnState;
       this._pendingTurnState = null;
@@ -4695,7 +4695,7 @@ export class Session {
     const reasoningAccumulator = { text: "" };
     try {
       const result = await this._runTurnActivationLoop(signal, textAccumulator, reasoningAccumulator);
-      // Always notify parent 鈥?even for empty results.
+      // Always notify parent —even for empty results.
       if (!this._activeAsk) {
         this._turnOutputTarget?.(result?.trim() || "");
         if (result?.trim()) this._recordSessionEvent("returned output");
@@ -4733,7 +4733,7 @@ export class Session {
   private _lifecycleEndedEmitted = false;
 
   /**
-   * Write the user-visible error log entry for a failed turn 鈥?at most once
+   * Write the user-visible error log entry for a failed turn —at most once
    * per turn-lock execution, and never for user interrupts. The runtime owns
    * error visibility: all UIs see the entry via log projection. (Historically
    * the TUI's catch wrote this entry, which left server-mode UIs blind to
@@ -4791,7 +4791,7 @@ export class Session {
     this._pendingTurnState = null;
     this._activeLogEntryId = null;
     // Summaries staged by a summarize_context whose tool_result never landed
-    // must die with the interrupted turn 鈥?a later flush would append them
+    // must die with the interrupted turn —a later flush would append them
     // under the wrong turn.
     this._pendingSummaryEntries = [];
 
@@ -4824,7 +4824,7 @@ export class Session {
     // Generate contextual tool_results for closed tool_calls without results.
     this._completeMissingToolResultsFromLog(logLenBefore);
 
-    // Collect names of partial (unclosed) tool_calls 鈥?visible in TUI but
+    // Collect names of partial (unclosed) tool_calls —visible in TUI but
     // invisible in API context (apiRole=null). Agent needs to know about them.
     const partialToolNames: string[] = [];
     for (let i = logLenBefore; i < this._log.length; i++) {
@@ -4971,7 +4971,7 @@ export class Session {
       let lastStreamRound = -1;
 
       onTextChunk = (roundIndex: number, chunk: string) => {
-        // If switching from reasoning 鈫?text in same round, start fresh buffers + entry
+        // If switching from reasoning →text in same round, start fresh buffers + entry
         if (lastStreamRound === roundIndex && lastStreamKind === "reasoning") {
           streamedAssistantEntries.delete(roundIndex);
           textBuffers.delete(roundIndex);
@@ -5022,7 +5022,7 @@ export class Session {
         if (progress) progress.onReasoningChunk(agentName, chunk);
         this._setSelfPhase("thinking");
 
-        // If switching from text 鈫?reasoning in same round, start a new reasoning entry
+        // If switching from text →reasoning in same round, start a new reasoning entry
         if (lastStreamRound === roundIndex && lastStreamKind === "text") {
           streamedReasoningEntries.delete(roundIndex);
         }
@@ -5124,9 +5124,9 @@ export class Session {
       }
     };
 
-    // Streaming tool call callbacks 鈥?set active entry for early display
+    // Streaming tool call callbacks —set active entry for early display
     const onToolCallPartialCb = (_callId: string, _name: string, _rawArguments: string) => {
-      // Active entry tracking happens in tool-loop via appendEntry 鈫?_appendEntry;
+      // Active entry tracking happens in tool-loop via appendEntry →_appendEntry;
       // we find the just-appended pending tool_call entry and mark it active
       const lastEntry = this._log[this._log.length - 1];
       if (lastEntry && lastEntry.type === "tool_call") {
@@ -5265,7 +5265,7 @@ export class Session {
       meta?: Record<string, unknown>;
     }): void => {
       // Contract: the elapsed-pairing memo in log-projection folds each
-      // entry once 鈥?timestamp, meta.toolCallId and meta.execStartMs are
+      // entry once —timestamp, meta.toolCallId and meta.execStartMs are
       // fixed at append time and must not be patched here.
       const entry = this._logStore.findEntryById(entryId);
       if (!entry) return;
@@ -5286,7 +5286,7 @@ export class Session {
       if (entry.type === "tool_call" && patch.meta) {
         const execState = patch.meta["toolExecState"];
         const streamState = patch.meta["toolStreamState"];
-        // Check completion first 鈥?exec finished takes priority over stream state
+        // Check completion first —exec finished takes priority over stream state
         if (execState === "completed" || execState === "failed") {
           if (this._activeLogEntryId === entry.id) {
             this._setActiveLogEntry(null);
@@ -5365,7 +5365,7 @@ export class Session {
   // Tool argument helpers
   // ==================================================================
 
-  // Arg-validation helpers 鈥?delegates to standalone functions in tools/arg-helpers.ts
+  // Arg-validation helpers —delegates to standalone functions in tools/arg-helpers.ts
   private _toolArgError(toolName: string, message: string): ToolResult {
     return toolArgError(toolName, message);
   }
@@ -5496,11 +5496,11 @@ export class Session {
         const opt = q.options[j];
         const isSelected = answer?.selectedOptionIndex === j;
         const marker = isSelected ? "鈼? : "鈼?;
-        const desc = opt.description ? ` 鈥?${opt.description}` : "";
+        const desc = opt.description ? ` —${opt.description}` : "";
         lines.push(`  ${marker} ${opt.label}${desc}`);
       }
       if (answer && q.options[answer.selectedOptionIndex]?.kind === "custom_input") {
-        lines.push(`  鉁?${answer.answerText}`);
+        lines.push(`  ✓${answer.answerText}`);
       }
       if (answer?.note) {
         lines.push(`  馃摑 ${answer.note}`);
@@ -5721,8 +5721,8 @@ export class Session {
         : { origin: "agent" },
     );
 
-    // Defer summary entries 鈥?they must appear AFTER the tool_result to avoid
-    // breaking the tool_call 鈫?tool_result pairing in API projections.
+    // Defer summary entries —they must appear AFTER the tool_result to avoid
+    // breaking the tool_call →tool_result pairing in API projections.
     this._pendingSummaryEntries.push(...result.newEntries);
 
     this._annotateLatestSummarizeContextToolCall(result.results);
@@ -5784,7 +5784,7 @@ export class Session {
 
   /**
    * Hook to override a tool call's TUI visibility. Returning "hide" suppresses
-   * the call entirely 鈥?the runtime "hide" machinery is retained for future use,
+   * the call entirely —the runtime "hide" machinery is retained for future use,
    * but nothing uses it right now.
    *
    * Plan-file writes/edits are intentionally NOT hidden: they stay visible and
@@ -6123,7 +6123,7 @@ export class Session {
           archiveStartIdx,
           archiveEndIdx,
         );
-        // Stripping window content is TUI-projection-visible 鈥?same touch
+        // Stripping window content is TUI-projection-visible —same touch
         // contract as _archiveSummaryCoveredEntries.
         this._touchLog();
       }
@@ -6157,7 +6157,7 @@ export class Session {
   // ==================================================================
 
   private _saveChildSession(handle: ChildSessionHandle): boolean {
-    if (!handle.session) return true; // released 鈥?already persisted at settle
+    if (!handle.session) return true; // released —already persisted at settle
     try {
       const logData = handle.session.getLogForPersistence();
       saveLog(handle.sessionDir, logData.meta, [...logData.entries]);
@@ -6231,7 +6231,7 @@ export class Session {
   }
 
   // ==================================================================
-  // send tool 鈥?async message to interactive/team agent
+  // send tool —async message to interactive/team agent
   // ==================================================================
 
   private async _execSend(args: Record<string, unknown>): Promise<ToolResult> {
@@ -6259,7 +6259,7 @@ export class Session {
   }
 
   // ------------------------------------------------------------------
-  // await_event 鈥?blocking wait for sub-agent completion or new messages
+  // await_event —blocking wait for sub-agent completion or new messages
   // ------------------------------------------------------------------
 
   private async _execAwaitEvent(args: Record<string, unknown>): Promise<ToolResult> {
@@ -6275,7 +6275,7 @@ export class Session {
     }
 
     // Pre-check: if inbox already has messages, return immediately.
-    // Inbox content is NOT included in tool_result 鈥?the activation boundary
+    // Inbox content is NOT included in tool_result —the activation boundary
     // drain writes them as individual entries after this tool_result.
     if (this._hasInboxMessages()) {
       const brief = this._buildDetailedChildStatusReport();
@@ -6309,8 +6309,8 @@ export class Session {
     const elapsed = Math.round((Date.now() - startMs) / 1000);
     const hasMessages = this._hasInboxMessages();
     const header = hasMessages
-      ? `Waited for ${elapsed}s 鈥?new message arrived.`
-      : `Waited for ${elapsed}s 鈥?no new events.`;
+      ? `Waited for ${elapsed}s —new message arrived.`
+      : `Waited for ${elapsed}s —no new events.`;
     const brief = this._buildDetailedChildStatusReport();
     const shell = this._buildShellReport();
     const parts = [header, brief, shell].filter(Boolean);
@@ -6457,12 +6457,12 @@ export class Session {
     return this._subAgentFactoryInstance.buildSubAgentSystemPrompt(basePrompt, persistent);
   }
 
-  // _waitForAnyAgent removed 鈥?await_event uses 1s polling now, and the
+  // _waitForAnyAgent removed —await_event uses 1s polling now, and the
   // activation loop no longer does implicit waits. Model should call
   // await_event explicitly to wait for sub-agent completion.
 
   // ==================================================================
-  // Image file storage (v2 鈥?image_ref)
+  // Image file storage (v2 —image_ref)
   // ==================================================================
 
   private _imageCounter = 0;

@@ -1,9 +1,9 @@
 ﻿/**
- * InitService 鈥?pure-logic layer for the initialization wizard.
+ * InitService — 初始化向导的纯逻辑层。
  *
- * Provides all data queries and configuration actions needed by the init
- * wizard without any UI dependency. Both the TUI wizard (inquirer) and
- * the server-mode init RPC (for GUI) drive this same service.
+ * 提供初始化向导所需的所有数据查询和配置操作，
+ * 没有任何 UI 依赖。TUI 向导（inquirer）和
+ * 服务器模式 init RPC（用于 GUI）都驱动这个相同的服务。
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -84,10 +84,10 @@ export interface SearchApiOption {
 }
 
 export const SEARCH_API_OPTIONS: readonly SearchApiOption[] = [
-  { env: "SERPER_API_KEY",       name: "Serper",       url: "https://serper.dev",            free: "2,500 queries/month", configured: false },
-  { env: "TAVILY_API_KEY",       name: "Tavily",       url: "https://tavily.com",            free: "1,000 queries/month", configured: false },
-  { env: "EXA_API_KEY",          name: "Exa",          url: "https://exa.ai",                free: "one-time credit",     configured: false },
-  { env: "BRAVE_SEARCH_API_KEY", name: "Brave Search", url: "https://brave.com/search/api/", free: "$5 credit",           configured: false },
+  { env: "SERPER_API_KEY", name: "Serper", url: "https://serper.dev", free: "2,500 queries/month", configured: false },
+  { env: "TAVILY_API_KEY", name: "Tavily", url: "https://tavily.com", free: "1,000 queries/month", configured: false },
+  { env: "EXA_API_KEY", name: "Exa", url: "https://exa.ai", free: "one-time credit", configured: false },
+  { env: "BRAVE_SEARCH_API_KEY", name: "Brave Search", url: "https://brave.com/search/api/", free: "$5 credit", configured: false },
 ];
 
 // ------------------------------------------------------------------
@@ -103,7 +103,7 @@ export class InitService {
     this.configuredProviders = this.detectConfiguredProviders();
   }
 
-  // 鈹€鈹€ Config detection 鈹€鈹€
+  // ── Config detection ──
 
   checkConfigStatus(): ConfigStatus {
     const existingSettings = loadGlobalSettings(this.homeDir);
@@ -118,7 +118,7 @@ export class InitService {
     };
   }
 
-  // 鈹€鈹€ Provider presets 鈹€鈹€
+  // ── Provider presets ──
 
   listProviderPresets(): ProviderPresetInfo[] {
     return PROVIDER_PRESETS.map((preset) => ({
@@ -133,7 +133,7 @@ export class InitService {
     }));
   }
 
-  // 鈹€鈹€ Provider configuration 鈹€鈹€
+  // ── Provider configuration ──
 
   configureApiKeyProvider(providerId: string, apiKey: string): { ok: boolean; envVar: string } {
     const preset = PROVIDER_PRESETS.find((p) => p.id === providerId);
@@ -189,7 +189,7 @@ export class InitService {
     return { ok: true, envVar };
   }
 
-  // 鈹€鈹€ Model picker tree 鈹€鈹€
+  // ── Model picker tree ──
 
   buildModelPickerTree(currentSelection?: ModelSelection): ModelPickerNode[] {
     const session = this.createPickerSession(currentSelection);
@@ -227,7 +227,7 @@ export class InitService {
     return description.scopedDetailedLabel || selection.configName;
   }
 
-  // 鈹€鈹€ Thinking levels 鈹€鈹€
+  // ── Thinking levels ──
 
   getThinkingLevels(modelId: string): string[] {
     return getThinkingLevels(modelId);
@@ -237,7 +237,7 @@ export class InitService {
     return getTierEligibleThinkingLevels(modelId);
   }
 
-  // 鈹€鈹€ Web search 鈹€鈹€
+  // ── Web search ──
 
   getSearchApiOptions(): SearchApiOption[] {
     return SEARCH_API_OPTIONS.map((opt) => ({
@@ -252,7 +252,7 @@ export class InitService {
     }
   }
 
-  // 鈹€鈹€ Save final configuration 鈹€鈹€
+  // ── Save final configuration ──
 
   saveConfiguration(opts: {
     modelSelection?: ModelSelection;
@@ -293,7 +293,7 @@ export class InitService {
     }
   }
 
-  // 鈹€鈹€ Internal helpers 鈹€鈹€
+  // ── Internal helpers ──
 
   private detectConfiguredProviders(): Map<string, ProviderEntry> {
     const providers = new Map<string, ProviderEntry>();

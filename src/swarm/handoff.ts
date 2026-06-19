@@ -1,40 +1,40 @@
 /**
- * AgentHandoff — context transfer between swarm agents.
+ * AgentHandoff — swarm agent 之间的上下文转移。
  *
- * When one agent completes its task and the next agent takes over,
- * the handoff protocol packages the current state (decisions, findings,
- * workspace changes) so the receiving agent can continue seamlessly.
+ * 当一个 agent 完成其任务并由下一个 agent 接管时，
+ * 交接协议打包当前状态（决策、发现、
+ * 工作区更改），以便接收的 agent 能够无缝继续。
  *
  * @packageDocumentation
  */
 
 import type { HandoffContext, TaskResult } from "./types.js";
 
-/** Options for creating a handoff context. */
+/** 创建交接上下文的选项。 */
 export interface HandoffOptions {
-  /** Source agent ID. */
+  /** 源 agent ID。 */
   fromAgent: string;
-  /** Target agent ID. */
+  /** 目标 agent ID。 */
   toAgent: string;
-  /** Completed tasks. */
+  /** 已完成的任务。 */
   completedTasks: TaskResult[];
-  /** Decisions made so far. */
+  /** 迄今做出的决策。 */
   decisions?: Array<{ subject: string; decision: string }>;
-  /** Key findings. */
+  /** 关键发现。 */
   findings?: string[];
-  /** Remaining issues. */
+  /** 剩余问题。 */
   issues?: string[];
-  /** Files read during the session. */
+  /** 会话期间读取的文件。 */
   filesRead?: string[];
-  /** Pending to-do items. */
+  /** 待办事项。 */
   todos?: Array<{ id: string; description: string }>;
 }
 
 /**
- * Create a handoff context from completed tasks and options.
+ * 从已完成的任务和选项创建交接上下文。
  *
- * @param opts - Handoff options
- * @returns A ready-to-send HandoffContext
+ * @param opts - 交接选项
+ * @returns 准备发送的 HandoffContext
  */
 export function createHandoffContext(opts: HandoffOptions): HandoffContext {
   return {
@@ -53,8 +53,8 @@ export function createHandoffContext(opts: HandoffOptions): HandoffContext {
 }
 
 /**
- * Compute workspace snapshot from task results.
- * Scans all task outputs for file modification references.
+ * 从任务结果计算工作区快照。
+ * 扫描所有任务输出以查找文件修改引用。
  */
 export function computeWorkspaceSnapshot(tasks: TaskResult[]): HandoffContext["workspaceSnapshot"] {
   const modifiedFiles = new Set<string>();
@@ -65,17 +65,17 @@ export function computeWorkspaceSnapshot(tasks: TaskResult[]): HandoffContext["w
     if (task.modifiedFiles) {
       for (const f of task.modifiedFiles) {
         modifiedFiles.add(f);
-        // Heuristic: "new" or "create" in the task name suggests a new file
+        // 启发式：任务名中的 "new" 或 "create" 表示新文件
         if (/\bnew\b|\bcreate\b/i.test(task.taskId)) {
           createdFiles.add(f);
         }
       }
     }
 
-    // Scan output text for file paths
+    // 扫描输出文本中的文件路径
     const lines = task.output.split("\n");
     for (const line of lines) {
-      // Match patterns like "+ new file: path/to/file.ts" or "Created: path"
+      // 匹配类似 "+ new file: path/to/file.ts" 或 "Created: path" 的模式
       const createdMatch = line.match(/created:\s*(\S+)/i);
       if (createdMatch) createdFiles.add(createdMatch[1]!);
 
@@ -95,8 +95,8 @@ export function computeWorkspaceSnapshot(tasks: TaskResult[]): HandoffContext["w
 }
 
 /**
- * Format a handoff context as a prompt fragment for the receiving agent.
- * This is injected into the receiving agent's system prompt or first user message.
+ * 将交接上下文格式化为接收 agent 的提示片段。
+ * 这会被注入接收 agent 的系统提示或第一条用户消息。
  */
 export function formatHandoffPrompt(context: HandoffContext): string {
   const parts: string[] = [
@@ -151,7 +151,7 @@ export function formatHandoffPrompt(context: HandoffContext): string {
 }
 
 /**
- * Merge multiple handoff contexts into one (for fan-in scenarios).
+ * 将多个交接上下文合并为一个（用于扇入场景）。
  */
 export function mergeHandoffContexts(contexts: HandoffContext[], into: string): HandoffContext {
   const allTasks = contexts.flatMap((c) => c.completedTasks);

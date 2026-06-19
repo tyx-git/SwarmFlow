@@ -1,8 +1,7 @@
 ﻿/**
- * Composable message blocks for Agent input.
+ * 用于 Agent 输入的可组合消息块。
  *
- * Blocks can be combined with `add()` and rendered into a single
- * string with XML-tagged structure.
+ * 块可以通过 `add()` 组合，并渲染为带有 XML 标签结构的单个字符串。
  */
 
 // ------------------------------------------------------------------

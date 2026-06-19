@@ -1,10 +1,9 @@
 ﻿/**
- * show_context tool implementation.
+ * show_context 工具实现。
  *
- * Generates a self-contained Context Map for the tool_result.
- * All information (context IDs, sizes, types, content previews) is
- * returned in the tool result 鈥?nothing is injected into existing
- * messages, preserving prompt cache.
+ * 为 tool_result 生成自包含的上下文映射。
+ * 所有信息（上下文 ID、大小、类型、内容预览）都在工具结果中返回
+ * ——不注入到现有消息中，保留提示缓存。
  */
 
 import { encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
@@ -12,30 +11,36 @@ import type { LogEntry } from "./context/log-entry.js";
 import { buildActiveContextView, type ActiveContextGroup } from "./context/active-context.js";
 
 // ------------------------------------------------------------------
-// Types
+// 类型定义
 // ------------------------------------------------------------------
 
+/** 上下文分组——包含条目列表和 token 估算 */
 export interface ContextGroup {
+  /** 上下文 ID */
   contextId: string;
+  /** 条目列表 */
   entries: Array<{ entry: LogEntry; index: number }>;
+  /** 总 token 数 */
   totalTokens: number;
-  /** Per-entry token estimates. */
+  /** 每个条目的 token 估算 */
   entryTokens: number[];
 }
 
 // ------------------------------------------------------------------
-// Token display helpers
+// Token 显示辅助函数
 // ------------------------------------------------------------------
 
+/** 格式化 token 数为简短文本（如 "~5k"） */
 function formatTokens(tokens: number): string {
   if (tokens < 1000) return "<1k";
   return `~${Math.round(tokens / 1000)}k`;
 }
 
 // ------------------------------------------------------------------
-// Entry content serialization for token estimation
+// 条目内容序列化（用于 token 估算）
 // ------------------------------------------------------------------
 
+/** 估算单个条目的 token 数 */
 export function estimateEntryTokens(entry: LogEntry): number {
   let text: string;
   switch (entry.type) {
@@ -64,6 +69,7 @@ export function estimateEntryTokens(entry: LogEntry): number {
   return gptEncode(text).length;
 }
 
+/** 将内容序列化为文本字符串（用于 token 估算和显示） */
 function serializeContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -80,9 +86,10 @@ function serializeContent(content: unknown): string {
 }
 
 // ------------------------------------------------------------------
-// Text truncation
+// 文本截断
 // ------------------------------------------------------------------
 
+/** 截断文本到指定长度，超出部分用 "..." 替代 */
 function truncateText(text: string, maxLen = 60): string {
   const clean = text.replace(/\n/g, " ").trim();
   if (clean.length <= maxLen) return `"${clean}"`;
@@ -90,11 +97,13 @@ function truncateText(text: string, maxLen = 60): string {
 }
 
 // ------------------------------------------------------------------
-// Group classification
+// 分组分类
 // ------------------------------------------------------------------
 
+/** 分组类型 */
 type GroupKind = "user message" | "assistant" | "tool call" | "system" | "summary" | "compact" | "other";
 
+/** 对上下文分组进行分类 */
 function classifyGroup(group: ActiveContextGroup): GroupKind {
   for (const { entry } of group.entries) {
     if (entry.type === "summary") return "summary";
@@ -117,9 +126,10 @@ function classifyGroup(group: ActiveContextGroup): GroupKind {
 }
 
 // ------------------------------------------------------------------
-// Group detail line (second line under the header)
+// 分组详情行（标题下方的第二行）
 // ------------------------------------------------------------------
 
+/** 格式化分组的详情行 */
 function formatGroupDetail(group: ActiveContextGroup): string[] {
   const kind = classifyGroup(group);
   switch (kind) {
@@ -167,7 +177,7 @@ function formatGroupDetail(group: ActiveContextGroup): string[] {
             : formatToolResultBrief(name, resultStr);
         }
         const line = resultBrief
-          ? `  ${name}(${argsBrief}) 鈫?${resultBrief}`
+          ? `  ${name}(${argsBrief}) →${resultBrief}`
           : `  ${name}(${argsBrief})`;
         lines.push(line);
       }
@@ -187,15 +197,16 @@ function formatGroupDetail(group: ActiveContextGroup): string[] {
 }
 
 // ------------------------------------------------------------------
-// Tool call argument formatting (per-tool)
+// 工具调用参数格式化（按工具类型）
 // ------------------------------------------------------------------
 
+/** 格式化工具调用参数为简短文本 */
 function formatToolCallArgs(toolName: string, args: Record<string, unknown>): string {
   switch (toolName) {
     case "read_file": {
       const path = String(args["path"] ?? args["file"] ?? "");
       const parts = [path ? `"${path}"` : ""];
-      if (args["start_line"] !== undefined) parts.push(`${args["start_line"]}鈥?{args["end_line"] ?? "end"}`);
+      if (args["start_line"] !== undefined) parts.push(`${args["start_line"]}—{args["end_line"] ?? "end"}`);
       return parts.filter(Boolean).join(", ");
     }
     case "edit_file":
@@ -250,9 +261,10 @@ function formatToolCallArgs(toolName: string, args: Record<string, unknown>): st
 }
 
 // ------------------------------------------------------------------
-// Tool result brief formatting (per-tool)
+// 工具结果简短格式化（按工具类型）
 // ------------------------------------------------------------------
 
+/** 格式化工具结果简短摘要 */
 function formatToolResultBrief(toolName: string, resultStr: string): string {
   switch (toolName) {
     case "read_file":
@@ -322,12 +334,12 @@ function formatToolResultBrief(toolName: string, resultStr: string): string {
 }
 
 // ------------------------------------------------------------------
-// Context group builder
+// 上下文分组构建器
 // ------------------------------------------------------------------
 
 /**
- * Build context groups from log entries in the active window.
- * Returns groups in spatial (appearance) order.
+ * 从活动窗口中的日志条目构建上下文分组。
+ * 按空间（出现）顺序返回分组。
  */
 export function buildContextGroups(entries: LogEntry[]): ContextGroup[] {
   const view = buildActiveContextView(entries, { includeCompactContext: true });
@@ -343,9 +355,10 @@ export function buildContextGroups(entries: LogEntry[]): ContextGroup[] {
 }
 
 // ------------------------------------------------------------------
-// Context Map generation (self-contained, for tool_result)
+// 上下文映射生成（自包含，用于 tool_result）
 // ------------------------------------------------------------------
 
+/** 格式化摘要元数据 */
 function formatSummaryMeta(group: ActiveContextGroup): string {
   const parts: string[] = ["summary"];
   if (group.summaryDepth !== undefined) parts.push(`depth ${group.summaryDepth}`);
@@ -361,6 +374,7 @@ function formatSummaryMeta(group: ActiveContextGroup): string {
   return parts.join(" 路 ");
 }
 
+/** 生成上下文映射文本——自包含的上下文概览 */
 export function generateContextMap(
   groups: ActiveContextGroup[],
   tokensByGroup: Map<string, number>,
@@ -405,9 +419,10 @@ export function generateContextMap(
 }
 
 // ------------------------------------------------------------------
-// Combined entry point
+// 组合入口点
 // ------------------------------------------------------------------
 
+/** 生成 show_context 工具的完整输出 */
 export function generateShowContext(
   entries: LogEntry[],
   lastInputTokens: number,

@@ -1,48 +1,54 @@
 ﻿/**
- * Image compression / resizing.
+ * 图片压缩 / 调整大小。
  *
- * Implemented with `jimp` (pure JS, cross-platform). Same constraints
- * as the previous sips-based implementation:
- *   - Long edge 鈮?2000 px
- *   - File size  鈮?4.5 MB
+ * 使用 `jimp` 实现（纯 JS，跨平台）。约束与之前基于 sips 的实现相同：
+ *   - 长边 ≤ 2000 px
+ *   - 文件大小 ≤ 4.5 MB
  *
- * Behaviour:
- *   0. If the input is already a small PNG (long edge 鈮?2000 px and
- *      鈮?4.5 MB), return the original bytes unchanged. jimp's PNG
- *      encoder otherwise inflates real screenshots by 1.5鈥?.7脳 over
- *      what most capture tools produce, so the fast-path saves both
- *      payload size and a decode/encode round-trip.
- *   1. Decode the buffer into a Jimp image.
- *   2. If long edge > 2000 px, downscale preserving aspect ratio.
- *   3. If the encoded result fits under 4.5 MB, return PNG; otherwise
- *      progressively re-encode as JPEG with decreasing quality.
- *   4. Last resort: return the lowest-quality JPEG even if still
- *      slightly over the limit (matches the prior sips fallback).
+ * 行为：
+ *   0. 如果输入已经是小 PNG（长边 ≤ 2000 px 且 ≤ 4.5 MB），
+ *      直接返回原始字节。jimp 的 PNG 编码器会使真实截图
+ *      膨胀 1.5-2.7 倍，快速路径既节省载荷大小又避免
+ *      解码/编码往返。
+ *   1. 将缓冲区解码为 Jimp 图片。
+ *   2. 若长边 > 2000 px，按比例缩小保持宽高比。
+ *   3. 若编码结果 ≤ 4.5 MB，返回 PNG；否则
+ *      以降低质量的 JPEG 逐步重新编码。
+ *   4. 最后手段：即使仍略超限制也返回最低质量 JPEG
+ *      （与之前 sips 回退行为一致）。
  */
 
 import { Jimp } from "jimp";
 
+/** 长边最大像素数 */
 const MAX_LONG_EDGE = 2000;
+/** 最大文件大小（字节） */
 const MAX_SIZE_BYTES = 4.5 * 1024 * 1024; // 4.5 MB
 
-// Quality ladder used when the PNG output is too large. Each value
-// is the JPEG quality passed to `getBuffer("image/jpeg", { quality })`.
+// 当 PNG 输出过大时使用的 JPEG 质量阶梯。
+// 每个值作为 `getBuffer("image/jpeg", { quality })` 的 quality 参数。
 const JPEG_QUALITY_LADDER = [90, 85, 80, 70, 60];
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** 处理后的图片信息 */
 export interface ProcessedImage {
+  /** Base64 编码的图片数据 */
   base64: string;
+  /** 媒体类型 */
   mediaType: "image/png" | "image/jpeg";
+  /** 宽度 */
   width: number;
+  /** 高度 */
   height: number;
+  /** 文件大小（字节） */
   sizeBytes: number;
 }
 
 /**
- * Read width/height from the PNG IHDR chunk without doing a full
- * decode. IHDR is mandatory and always the first chunk after the
- * 8-byte signature; its width/height occupy bytes 16-23 of the file.
+ * 不做完整解码，从 PNG IHDR 块读取宽/高。
+ * IHDR 是强制的，总在 8 字节签名后的第一个块；
+ * 其宽/高占文件字节 16-23。
  */
 function readPngDimensions(buf: Buffer): { width: number; height: number } | null {
   if (buf.length < 24) return null;
@@ -57,7 +63,7 @@ function readPngDimensions(buf: Buffer): { width: number; height: number } | nul
 
 /**
  * Process an image buffer: resize if too large, compress if too heavy.
- * Cross-platform 鈥?runs on macOS, Linux, and Windows without external
+ * Cross-platform — runs on macOS, Linux, and Windows without external
  * binaries.
  */
 export async function processImage(
@@ -94,7 +100,7 @@ export async function processImage(
   const width = image.bitmap.width;
   const height = image.bitmap.height;
 
-  // 1. Try PNG first 鈥?lossless, fits most attachments.
+  // 1. Try PNG first — lossless, fits most attachments.
   const pngBuf = await image.getBuffer("image/png");
   if (pngBuf.length <= MAX_SIZE_BYTES) {
     return {
@@ -106,7 +112,7 @@ export async function processImage(
     };
   }
 
-  // 2. PNG too large 鈥?re-encode as JPEG with decreasing quality.
+  // 2. PNG too large — re-encode as JPEG with decreasing quality.
   let lastJpegBuf: Buffer | null = null;
   for (const quality of JPEG_QUALITY_LADDER) {
     const buf = await image.getBuffer("image/jpeg", { quality });

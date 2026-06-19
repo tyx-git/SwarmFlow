@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import type { ReconciledConversationEntry } from "../opentui-src/transcript/types.js";
-import { presentationTransform } from "../opentui-src/presentation/transform.js";
+import type { ReconciledConversationEntry } from "../external/opentui/transcript/types.js";
+import { presentationTransform } from "../external/opentui/presentation/transform.js";
 
 function reconciled(
   id: string,

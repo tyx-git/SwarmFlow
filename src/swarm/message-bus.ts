@@ -1,8 +1,8 @@
 /**
- * MessageBus — agent-to-agent communication within the swarm.
+ * MessageBus — swarm 内的 agent-to-agent 通信。
  *
- * Provides publish/subscribe, direct messaging, and request/response patterns.
- * All messages are timestamped and have a TTL for automatic expiry.
+ * 提供发布/订阅、直接消息传递和请求/响应模式。
+ * 所有消息都有时间戳和 TTL 用于自动过期。
  *
  * @packageDocumentation
  */
@@ -10,26 +10,26 @@
 import { MessageType } from "./types.js";
 import type { SwarmMessage } from "./types.js";
 
-/** Handler for incoming messages. */
+/** 传入消息的处理程序。 */
 export type MessageHandler = (message: SwarmMessage) => void;
 
-/** Subscription handle — call to unsubscribe. */
+/** 订阅句柄 — 调用以取消订阅。 */
 export interface Subscription {
-  /** Unique subscription ID. */
+  /** 唯一订阅 ID。 */
   id: string;
-  /** The topic or agent ID subscribed to. */
+  /** 订阅的主题或 agent ID。 */
   target: string;
-  /** Whether this is a topic subscription or direct subscription. */
+  /** 这是主题订阅还是直接订阅。 */
   type: "topic" | "direct";
-  /** Unsubscribe. */
+  /** 取消订阅。 */
   unsubscribe: () => void;
 }
 
-/** Message bus configuration. */
+/** Message bus 配置。 */
 export interface MessageBusConfig {
-  /** Maximum number of historical messages to retain. */
+  /** 保留的最大历史消息数量。 */
   historySize: number;
-  /** Default TTL for messages (ms). */
+  /** 消息的默认 TTL（毫秒）。 */
   defaultTTL: number;
 }
 
@@ -39,15 +39,15 @@ const DEFAULT_CONFIG: MessageBusConfig = {
 };
 
 /**
- * MessageBus — the central communication hub for swarm agents.
+ * MessageBus — swarm agents 的中央通信中心。
  *
- * Features:
- * - Topic-based pub/sub
- * - Direct agent-to-agent messaging
- * - Request/response pattern (with timeout)
- * - Message history (bounded)
- * - Auto-expiry of stale messages
- * - Delivery statistics
+ * 功能：
+ * - 基于主题的发布/订阅
+ * - 直接的 agent-to-agent 消息传递
+ * - 请求/响应模式（带超时）
+ * - 消息历史（有限）
+ * - 过期消息的自动清除
+ * - 投递统计
  */
 export class MessageBus {
   private _config: MessageBusConfig;
@@ -76,7 +76,7 @@ export class MessageBus {
   }
 
   // ------------------------------------------------------------------
-  // Publishing
+  // 发布
   // ------------------------------------------------------------------
 
   /**
@@ -176,7 +176,7 @@ export class MessageBus {
   }
 
   // ------------------------------------------------------------------
-  // Subscriptions
+  // 订阅
   // ------------------------------------------------------------------
 
   /**
@@ -252,7 +252,7 @@ export class MessageBus {
   }
 
   // ------------------------------------------------------------------
-  // History
+  // 历史
   // ------------------------------------------------------------------
 
   /**
@@ -281,7 +281,7 @@ export class MessageBus {
   }
 
   // ------------------------------------------------------------------
-  // Private
+  // 私有
   // ------------------------------------------------------------------
 
   private _nextId(): string {
@@ -346,7 +346,7 @@ export class MessageBus {
       }
     }
 
-    // Check for pending requests
+    // 检查 for pending requests
     if (message.type === MessageType.Answer) {
       const payload = message.payload as { inReplyTo?: string };
       if (payload?.inReplyTo) {

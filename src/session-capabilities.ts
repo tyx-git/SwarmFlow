@@ -1,4 +1,11 @@
-﻿export interface SessionCapabilities {
+﻿/**
+ * 会话能力配置。
+ *
+ * 定义根会话和子会话各自支持哪些工具和功能。
+ */
+
+/** 会话能力接口——标识支持的工具和功能。 */
+export interface SessionCapabilities {
   includeSpawnTool: boolean;
   includeKillTool: boolean;
   includeCheckStatusTool: boolean;

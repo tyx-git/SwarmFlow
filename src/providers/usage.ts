@@ -1,26 +1,26 @@
 ﻿/**
- * OpenAI Codex usage tracking 鈥?fetch rate-limit data and poll periodically.
+ * OpenAI Codex 用量跟踪 — 获取限速数据并定期轮询。
  *
- * Data source: GET https://chatgpt.com/backend-api/wham/usage
- * Requires a valid OAuth access token (same as Codex API calls).
+ * 数据源：GET https://chatgpt.com/backend-api/wham/usage
+ * 需要有效 OAuth access token（与 Codex API 调用相同）。
  */
 
 import { EventEmitter } from "node:events";
 
 // ------------------------------------------------------------------
-// Types
+// 类型
 // ------------------------------------------------------------------
 
 export interface UsageWindow {
-  /** Human label for the window, e.g. "5h", "Wk", "month". */
+  /** 窗口的人类可读标签，例如 "5h", "Wk", "month"。 */
   label: string;
-  /** Percentage of quota remaining (0鈥?00). */
+  /** 剩余额度百分比（0–100）。 */
   remainPercent: number;
-  /** Absolute reset time (ms since epoch), if available. */
+  /** 绝对重置时间（epoch 后毫秒），如果可用。 */
   resetAt?: number;
-  /** Absolute remaining count, when the provider exposes discrete integer quotas (Copilot). */
+  /** 当提供者暴露离散整数配额时的绝对剩余数量（Copilot）。 */
   absoluteRemaining?: number;
-  /** Absolute total entitlement, paired with absoluteRemaining (Copilot). */
+  /** 绝对总权益，与 absoluteRemaining 配对（Copilot）。 */
   absoluteTotal?: number;
 }
 
@@ -28,15 +28,15 @@ export interface UsageSnapshot {
   windows: UsageWindow[];
   plan?: string;
   error?: string;
-  /** Timestamp when this snapshot was fetched. */
+  /** 获取此快照时的时间戳。 */
   fetchedAt: number;
 }
 
 // ------------------------------------------------------------------
-// Fetch
+// 获取
 // ------------------------------------------------------------------
 
-/** Minimum gap (seconds) between secondary and primary reset to infer weekly. */
+/** 用于推断周窗口的 secondary 与 primary 重置之间的最小间隔（秒）。 */
 const WEEKLY_RESET_GAP_SECONDS = 3 * 24 * 60 * 60;
 
 type WhamResponse = {
@@ -78,8 +78,8 @@ function resolveSecondaryLabel(params: {
 }
 
 /**
- * Fetch Codex usage from the ChatGPT backend.
- * Returns a snapshot with rate-limit windows and optional plan info.
+ * 从 ChatGPT 后端获取 Codex 用量。
+ * 返回包含限速窗口和可选套餐信息的快照。
  */
 export async function fetchCodexUsage(token: string): Promise<UsageSnapshot> {
   const now = Date.now();
@@ -159,12 +159,12 @@ export async function fetchCodexUsage(token: string): Promise<UsageSnapshot> {
 }
 
 // ------------------------------------------------------------------
-// Format helpers
+// 格式化辅助函数
 // ------------------------------------------------------------------
 
 /**
- * Format a reset timestamp as a human-readable remaining string.
- * Uses "in Xh Ym" / "in Xd Yh" / "in Xm" format. No emoji.
+ * 将重置时间戳格式化为人类可读的剩余时间字符串。
+ * 使用 "Xh Ym" / "Xd Yh" / "Xm" 格式。不使用 emoji。
  */
 export function formatResetRemaining(resetAtMs?: number, now?: number): string | null {
   if (!resetAtMs) return null;
@@ -185,7 +185,7 @@ export function formatResetRemaining(resetAtMs?: number, now?: number): string |
 }
 
 // ------------------------------------------------------------------
-// Poller
+// 轮询器
 // ------------------------------------------------------------------
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000;
@@ -195,24 +195,24 @@ export interface UsagePollerEvents {
   error: [error: Error];
 }
 
-/** Function that fetches a usage snapshot given some credential token. */
+/** 给定某个凭据 token 后获取用量快照的函数。 */
 export type UsageFetchFn = (token: string) => Promise<UsageSnapshot>;
 
 export interface UsagePollerOptions {
-  /** Snapshot producer. Defaults to Codex fetch for backward compatibility. */
+  /** 快照生产器。为向后兼容默认使用 Codex 获取。 */
   fetchFn?: UsageFetchFn;
-  /** Poll interval in ms. Defaults to 60s. */
+  /** 轮询间隔，单位毫秒。默认 60s。 */
   intervalMs?: number;
 }
 
 /**
- * Periodically polls a quota/usage endpoint and emits "update" events.
+ * 定期轮询配额/用量端点并发出 "update" 事件。
  *
- * Usage:
+ * 用法：
  *   const poller = new UsagePoller({ fetchFn: fetchCopilotUsage });
  *   poller.on("update", (snapshot) => { ... });
  *   poller.start(token);
- *   // later:
+ *   // 之后：
  *   poller.stop();
  */
 export class UsagePoller extends EventEmitter {
@@ -224,7 +224,7 @@ export class UsagePoller extends EventEmitter {
 
   constructor(opts: UsagePollerOptions | number = {}) {
     super();
-    // Back-compat: constructor used to accept just an intervalMs number.
+    // 向后兼容：构造函数过去只接受 intervalMs 数字。
     if (typeof opts === "number") {
       this._intervalMs = opts;
       this._fetchFn = fetchCodexUsage;
@@ -245,7 +245,7 @@ export class UsagePoller extends EventEmitter {
   start(token: string): void {
     this.stop();
     this._token = token;
-    // Fetch immediately, then on interval.
+    // 获取 immediately, then on interval.
     void this._poll();
     this._timer = setInterval(() => void this._poll(), this._intervalMs);
   }
@@ -258,7 +258,7 @@ export class UsagePoller extends EventEmitter {
     this._token = null;
   }
 
-  /** Update the token without restarting the poll cycle. */
+  /** 更新 token 而不重启轮询周期。 */
   updateToken(token: string): void {
     this._token = token;
   }
@@ -276,7 +276,7 @@ export class UsagePoller extends EventEmitter {
 }
 
 // ------------------------------------------------------------------
-// Copilot usage fetch (legacy premium-request quota 鈥?annual plans only)
+// Copilot 用量获取（遗留 premium-request 配额 — 仅年度套餐）
 // ------------------------------------------------------------------
 
 type CopilotQuotaDetail = {
@@ -297,9 +297,9 @@ type CopilotUserResponse = {
 };
 
 /**
- * Fetch GitHub Copilot usage from api.github.com/copilot_internal/user.
- * Called with the LONG-LIVED GitHub OAuth token, NOT the short-lived Copilot
- * API token 鈥?this endpoint is on api.github.com, not api.githubcopilot.com.
+ * 从 api.github.com/copilot_internal/user 获取 GitHub Copilot 用量。
+ * 使用长生命周期 GitHub OAuth token 调用，而不是短生命周期 Copilot API token —
+ * 此端点位于 api.github.com，而非 api.githubcopilot.com。
  */
 export async function fetchCopilotUsage(
   githubToken: string,
@@ -375,17 +375,16 @@ export async function fetchCopilotUsage(
 }
 
 // ------------------------------------------------------------------
-// Formatting for the input-area usage indicator
+// 输入区域用量指示器的格式化
 // ------------------------------------------------------------------
 
 /**
- * Format a usage snapshot into a one-line string for the input-area
- * indicator. Returns null if no data is available (callers should hide
- * the indicator entirely in that case).
+ * 将用量快照格式化为输入区域指示器的一行字符串。
+ * 如果没有可用数据则返回 null（调用方应完全隐藏指示器）。
  *
- * Examples:
- *   "5h: 90% left | wk: 80% left"        (Codex, percent-based)
- *   "month: 300/300 left"                (Copilot, discrete count)
+ * 示例：
+ *   "5h: 90% left | wk: 80% left"        （Codex，基于百分比）
+ *   "month: 300/300 left"                （Copilot，离散计数）
  */
 export function formatUsageLine(
   snapshot: UsageSnapshot | null | undefined,

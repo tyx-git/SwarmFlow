@@ -3,8 +3,8 @@
 const PASTE_PREVIEW_CHARS = 20;
 
 /**
- * Build the display label for a collapsed paste placeholder.
- * Format: `[Build a CRM dashboard... Pasted Text #1 - 124 lines]`
+ * 为折叠的粘贴占位符构建显示标签。
+ * 格式：`[Build a CRM dashboard... Pasted Text #1 - 124 lines]`
  */
 export function buildPasteLabel(text: string, index: number, lineCount: number): string {
   const flat = text.replace(/\n/g, " ").trim();

@@ -55,7 +55,7 @@ export interface ChildSessionMetaRecord {
   inbox?: MessageEnvelope[];
 }
 
-/** Message type determines rendering category 鈥?not the sender string. */
+/** 消息类型决定渲染类别——而不是 sender 字符串。*/
 export type MessageType = "user_input" | "peer_message" | "system_notice";
 
 export type DeliverMessageRejectionReason =
@@ -69,12 +69,12 @@ export type DeliverMessageResult =
 /** Typed message envelope for inter-session communication. */
 export interface MessageEnvelope {
   type: MessageType;
-  sender: string;        // display only 鈥?not used for routing
+  sender: string;        // display only —not used for routing
   content: string;
   timestamp: number;
   /**
-   * Delivery class. `true` (default): waking 鈥?an idle recipient schedules an
-   * auto-resume turn to process it. `false`: ride-along 鈥?queued in the inbox
+   * Delivery class. `true` (default): waking —an idle recipient schedules an
+   * auto-resume turn to process it. `false`: ride-along —queued in the inbox
    * and delivered only when something else (user input, a waking message)
    * starts a turn. User-initiated kills send ride-along notices: the user is
    * present and steering; the agent must not start acting on its own.
@@ -97,7 +97,7 @@ export type AgentMessage = MessageEnvelope;
 
 /** Migrate a persisted message (old AgentMessage or new envelope) to MessageEnvelope. */
 export function migrateMessageEnvelope(raw: Record<string, unknown>): MessageEnvelope {
-  // New format already 鈥?pass through
+  // New format already —pass through
   if (raw.type && typeof raw.type === "string" &&
       ["user_input", "peer_message", "system_notice"].includes(raw.type as string)) {
     return raw as unknown as MessageEnvelope;

@@ -1,4 +1,10 @@
-﻿import type { ReconciledConversationEntry } from "../transcript/types.js";
+﻿// =============================================================================
+// SwarmFlow GUI — Presentation 条目转换
+// =============================================================================
+// 职责：将 ReconciledConversationEntry（Session log）转换为 PresentationEntry（UI 可渲染格式）
+// 转换逻辑：合并相关条目、提取用户文本、解析附件、构建工具组、处理 thinking 条目
+
+import type { ReconciledConversationEntry } from "../transcript/types.js";
 import type {
   PresentationEntry,
   PresentationState,
@@ -7,9 +13,7 @@ import type {
 import type { FileModifyDisplayData } from "../../src/diff-hunk.js";
 import { getToolProfile, HIDDEN_TOOLS } from "./tool-profiles.js";
 
-// ------------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------------
+// ── 辅助函数 ────────────────────────────────────────────────────────────────
 
 const QUEUED_PREFIX = "[Queued user message]\n";
 const MANUAL_SUMMARIZE = "[Manual summarize request]";

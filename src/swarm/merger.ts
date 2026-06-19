@@ -14,10 +14,10 @@
 import type { TaskResult, ExecutionResult } from "./types.js";
 
 // ------------------------------------------------------------------
-// Merge strategies
+// 合并 strategies
 // ------------------------------------------------------------------
 
-/** Available merge strategies. */
+/** 可用的合并策略。 */
 export type MergeStrategy =
   | "concatenate"
   | "merge"
@@ -25,13 +25,13 @@ export type MergeStrategy =
   | "synthesize"
   | "resolve_conflicts";
 
-/** Options for merging. */
+/** 合并选项。 */
 export interface MergeOptions {
-  /** The merge strategy to use. */
+  /** 使用的合并策略。 */
   strategy: MergeStrategy;
-  /** Language or format hint. */
+  /** 语言或格式提示。 */
   format?: string;
-  /** Maximum output length. */
+  /** 最大输出长度。 */
   maxLength?: number;
 }
 
@@ -41,12 +41,12 @@ const DEFAULT_OPTIONS: MergeOptions = {
 };
 
 // ------------------------------------------------------------------
-// Merge functions
+// 合并 functions
 // ------------------------------------------------------------------
 
 /**
- * Concatenate: simply join all results.
- * Best for: independent work on different files/topics.
+ * 连接：简单地将所有结果连接在一起。
+ * 适用于：不同文件/主题的独立工作。
  */
 function mergeConcatenate(results: TaskResult[], maxLength: number): string {
   const parts: string[] = [];
@@ -67,17 +67,17 @@ function mergeConcatenate(results: TaskResult[], maxLength: number): string {
 }
 
 /**
- * Merge with conflict detection.
- * Scans outputs for conflicting statements about the same file or topic.
+ * 带冲突检测的合并。
+ * 扫描输出中关于同一文件或主题的冲突声明。
  */
 function mergeWithConflictDetection(results: TaskResult[], maxLength: number): string {
   const conflicts: string[] = [];
 
-  // Simple conflict detection: check for contradictory statements
+  // 简单冲突检测：检查矛盾声明
   const allStatements: Array<{ taskId: string; statements: string[] }> = [];
 
   for (const r of results) {
-    // Extract key statements (lines with "should", "must", "is", "needs")
+    // 提取关键声明（包含 "should"、"must"、"is"、"needs" 的行）
     const statements = r.output
       .split("\n")
       .filter((line) => /\b(should|must|is\s+(not|a|the)|needs)\b/i.test(line))
@@ -86,7 +86,7 @@ function mergeWithConflictDetection(results: TaskResult[], maxLength: number): s
     allStatements.push({ taskId: r.taskId, statements });
   }
 
-  // Find contradictions between agents working on the same file
+  // 查找在同一文件上工作的 agent 之间的矛盾
   const fileOps = new Map<string, Map<string, string>>();
   for (const r of results) {
     if (r.modifiedFiles) {
@@ -105,7 +105,7 @@ function mergeWithConflictDetection(results: TaskResult[], maxLength: number): s
     }
   }
 
-  // Build output
+  // 构建输出
   const parts: string[] = [];
   if (conflicts.length > 0) {
     parts.push("## Conflicts Detected\n");
@@ -130,23 +130,23 @@ function mergeWithConflictDetection(results: TaskResult[], maxLength: number): s
 }
 
 /**
- * Vote: multiple solutions, rank and select the best.
- * Uses heuristics: longer, more detailed outputs are preferred.
+ * 投票：多个解决方案，排名并选择最佳。
+ * 使用启发式：偏好更长、更详细的输出。
  */
 function mergeVote(results: TaskResult[], maxLength: number): string {
   if (results.length === 0) return "";
 
-  // Score each result
+  // 为每个结果评分
   const scored = results.map((r) => ({
     result: r,
     score:
-      (r.output.length > 100 ? 10 : 0) + // Substantial output
-      (r.modifiedFiles ? r.modifiedFiles.length * 5 : 0) + // Modified files
-      (r.output.includes("```") ? 10 : 0) + // Contains code
-      (r.output.includes("step") || r.output.includes("Step") ? 5 : 0), // Structured
+      (r.output.length > 100 ? 10 : 0) + // 实质性输出
+      (r.modifiedFiles ? r.modifiedFiles.length * 5 : 0) + // 修改的文件
+      (r.output.includes("```") ? 10 : 0) + // 包含代码
+      (r.output.includes("step") || r.output.includes("Step") ? 5 : 0), // 有结构
   }));
 
-  // Sort by score descending
+  // 按分数降序排序
   scored.sort((a, b) => b.score - a.score);
 
   // Return the top result with a summary of alternatives
@@ -224,14 +224,14 @@ function mergeSynthesize(results: TaskResult[], maxLength: number): string {
 }
 
 /**
- * Resolve conflicts: handle conflicting changes from multiple agents.
- * Marks conflicts for user resolution and applies non-conflicting changes.
+ * 解决冲突：处理来自多个 agent 的冲突更改。
+ * 标记冲突供用户解决，并应用无冲突的更改。
  */
 function mergeResolveConflicts(results: TaskResult[], maxLength: number): string {
   // First, use conflict detection
   const conflictOutput = mergeWithConflictDetection(results, maxLength);
 
-  // Add resolution guidance
+  // 添加解决指导
   const parts = [
     conflictOutput,
     "",
@@ -291,8 +291,8 @@ export function mergeResults(
 }
 
 /**
- * Build a summary from an ExecutionResult.
- * Suitable for presenting to the user.
+ * 从 ExecutionResult 构建摘要。
+ * 适合呈现给用户。
  */
 export function formatExecutionResult(result: ExecutionResult): string {
   const parts: string[] = [
@@ -300,7 +300,7 @@ export function formatExecutionResult(result: ExecutionResult): string {
     ``,
     `**Status:** ${result.success ? "✅ All tasks succeeded" : "⚠️ Some tasks failed"}`,
     `**Duration:** ${(result.totalDurationMs / 1000).toFixed(1)}s`,
-    `**Tokens:** ${result.totalUsage.inputTokens.toLocaleString()} in / ${result.totalUsage.outputTokens.toLocaleString()} out`,
+    `**Tokens:** ${result.total用法.inputTokens.toLocaleString()} in / ${result.total用法.outputTokens.toLocaleString()} out`,
     `**Tasks:** ${result.results.size} total, ${result.failedTaskIds.length} failed`,
     ``,
   ];

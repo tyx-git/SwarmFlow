@@ -1,14 +1,15 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 
 /**
- * CLI entry point for swarmflow.
+ * SwarmFlow CLI 入口点。
  *
- * Usage:
- *
- *   swarmflow                       # auto-detect config
- *   swarmflow init                  # run initialization wizard
- *   swarmflow --templates ./tpls    # explicit templates path
- *   swarmflow --verbose             # enable debug logging
+ * 用法：
+ *   swarmflow                       # 自动检测配置
+ *   swarmflow init                  # 运行初始化向导
+ *   swarmflow --templates ./tpls    # 指定模板路径
+ *   swarmflow --verbose             # 启用调试日志
+ *   swarmflow --resume <id>         # 恢复指定会话
+ *   swarmflow --server              # 服务模式（Electron GUI 派生）
  */
 
 import { realpathSync } from "node:fs";
@@ -32,6 +33,10 @@ import { VERSION } from "./version.js";
 import { hasAnyManagedCredential } from "./config/managed-provider-credentials.js";
 import { findSessionById } from "./session-resume.js";
 
+/**
+ * main() 的依赖注入表面。
+ * 允许测试替换各环节实现（loadDotenv、checkForUpdates 等）。
+ */
 export interface MainDeps {
   launchTui?: () => Promise<void>;
   homeDir?: string;
@@ -41,6 +46,7 @@ export interface MainDeps {
   checkForUpdates?: typeof checkForUpdates;
   relaunchAfterUpdate?: (argv: string[]) => void;
   runInitWizard?: () => Promise<unknown>;
+  /** 服务模式入口（Electron 主进程调用）。 */
   runServerMode?: (opts: {
     workDir: string;
     sessionId?: string;
@@ -54,6 +60,7 @@ export interface MainDeps {
   hasGitHubTokens?: () => boolean;
 }
 
+/** 需要取值的命令行标志（用于别名处理）。 */
 const VALUE_FLAGS = new Set([
   "--resume",
   "--templates",
@@ -65,6 +72,10 @@ const VALUE_FLAGS = new Set([
   "--agent",
 ]);
 
+/**
+ * 用当前二进制重新启动自身（用于更新后的热重启）。
+ * 保留原 argv，去掉 bun 路径前缀或 node 路径前缀。
+ */
 function relaunchCurrentBinary(argv: string[]): void {
   const relaunchArgs = argv.length > 0 && argv[0] === process.execPath
     ? argv.slice(1)
@@ -77,13 +88,11 @@ function relaunchCurrentBinary(argv: string[]): void {
 }
 
 /**
- * Handle `swarmflow --resume <id>` before Commander parses argv.
+ * 在 Commander 解析 argv 之前处理 `swarmflow --resume <id>`。
  *
- * Looks the session up across all projects in the swarmflow home. If it lives
- * under a different cwd, prompts the user to switch (Y) or quit (N). On
- * success, stashes the resolved session dir in an env var so that
- * `launchTui()` can call `applySessionRestore` after bootstrap. The flag and
- * its argument are spliced out of argv so Commander never sees them.
+ * 在所有项目中查找该会话；若属于不同 cwd，询问用户是否切换。
+ * 成功后将会话目录存入环境变量，launchTui() 可在引导后调用 applySessionRestore。
+ * --resume 及其参数从 argv 中拼接，以免 Commander 看到它们。
  */
 async function maybeHandleResumeFlag(
   argv: string[],
@@ -115,7 +124,7 @@ async function maybeHandleResumeFlag(
         default: true,
       });
     } catch {
-      process.exit(130); // user Ctrl+C
+      process.exit(130); // 用户 Ctrl+C
     }
     if (!willCd) process.exit(0);
     try {
@@ -130,9 +139,10 @@ async function maybeHandleResumeFlag(
   argv.splice(idx, 2);
 }
 
-// Validate -c overrides up front and exit with a friendly message on bad
-// input 鈥?`parseSettingsOverrides` throws raw Errors, which bubble up as
-// stack traces if uncaught.
+/**
+ * 提前验证 -c 配置覆盖，若输入错误则给出友好提示并退出。
+ * parseSettingsOverrides 可能抛出原始 Error，不捕获会显示堆栈跟踪。
+ */
 function parseConfigOverridesOrExit(overrides: readonly string[]) {
   try {
     return parseSettingsOverrides(overrides);
@@ -142,6 +152,7 @@ function parseConfigOverridesOrExit(overrides: readonly string[]) {
   }
 }
 
+/** 将 -v 别名为 -V（Commader 的 --version 标志）。 */
 function normalizeLegacyVersionAlias(argv: string[]): void {
   for (let index = 2; index < argv.length; index += 1) {
     if (argv[index] !== "-v") continue;
@@ -150,6 +161,7 @@ function normalizeLegacyVersionAlias(argv: string[]): void {
   }
 }
 
+/** 检查是否已配置至少一个 Provider。 */
 function hasConfiguredProviders(
   settings: ReturnType<typeof loadGlobalSettings>,
   hasManagedCredential: typeof hasAnyManagedCredential = hasAnyManagedCredential,
@@ -162,6 +174,10 @@ function hasConfiguredProviders(
   );
 }
 
+/**
+ * 确保已配置 Provider。
+ * 若未配置且用户未提供凭证，启动初始化向导。
+ */
 async function ensureProvidersConfigured(
   homeDir: string,
   deps: Pick<MainDeps, "loadGlobalSettings" | "runInitWizard" | "hasAnyManagedCredential">,
@@ -194,6 +210,7 @@ async function ensureProvidersConfigured(
   return globalSettings;
 }
 
+/** 若配置了 Copilot 但未登录，显示警告。 */
 async function warnIfCopilotCredentialsMissing(
   settings: ReturnType<typeof loadGlobalSettings>,
   hasGitHubTokensOverride?: () => boolean,
@@ -209,31 +226,44 @@ async function warnIfCopilotCredentialsMissing(
   }
 }
 
+/**
+ * 从默认路径动态导入 opentui/main.js 并启动 TUI。
+ * 使用动态路径避免 external/opentui 进入 src/ 的 rootDir 类型检查范围。
+ */
 async function launchTuiFromDefaultEntry(): Promise<void> {
-  // Dynamic path to keep external/opentui out of src/'s rootDir typecheck scope.
-  // At runtime, tsx/bun/node resolves this relative to the current file.
   const opentuiEntry = "../external/opentui/main.js";
   const mod = (await import(opentuiEntry)) as { launchTui: () => Promise<void> };
   await mod.launchTui();
 }
 
 // ------------------------------------------------------------------
-// Main
+// 主入口
 // ------------------------------------------------------------------
 
+/**
+ * SwarmFlow CLI 主函数。
+ *
+ * 处理流程：
+ *   1. 解析 --resume（全局会话恢复）
+ *   2. 检测 --server（服务模式，跳过 TUI）
+ *   3. 注册子命令（init / oauth / update / sessions / fix）
+ *   4. 加载 .env、设置系统代理
+ *   5. 应用待生效的更新
+ *   6. 检查更新（后台）
+ *   7. 确保 Provider 已配置
+ *   8. 启动 TUI
+ */
 export async function main(argv: string[] = process.argv, deps: MainDeps = {}): Promise<void> {
   normalizeLegacyVersionAlias(argv);
 
   const homeDir = deps.homeDir ?? getSwarmflowHomeDir();
 
-  // 鈹€鈹€ --resume <id> short-circuit 鈹€鈹€
-  // Locate the session globally; if it lives under a different project, ask
-  // before chdir'ing. Has to run before Commander parses the rest of argv,
-  // so the session-resolved cwd is in effect for everything below.
+  // ─── --resume <id> 短路 ───
+  // 在 Commander 解析前运行，以便会话解析的 cwd 对后续所有步骤生效。
   await maybeHandleResumeFlag(argv, deps.findSessionById);
 
-  // Server mode short-circuit 鈥?bypass commander/TUI entirely.
-  // The GUI (Electron main process) spawns this with `--server --work-dir <path>`.
+  // ─── 服务模式短路 ───
+  // GUI（Electron 主进程）以此参数派生进程。
   if (argv.includes("--server")) {
     const args = argv.slice(2);
     const getFlag = (name: string): string | undefined => {
@@ -252,8 +282,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
         i += 1;
       }
     }
-    // Validate now so a bad override fails with a clean message instead of
-    // surfacing as a fatal stack trace from inside the server bootstrap.
+    // 提前验证配置覆盖，使错误信息清晰而非崩溃堆栈。
     parseConfigOverridesOrExit(configOverrides);
     const runServerMode = deps.runServerMode ?? (await import("./server/server-mode.js")).runServerMode;
     try {
@@ -267,6 +296,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     return;
   }
 
+  // ─── 子命令注册 ───
   const program = new Command();
   program
     .name("swarmflow")
@@ -279,8 +309,9 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     }, [])
     .option("--verbose", "Enable debug logging");
 
-  // Subcommands
   let ranSubcommand = false;
+
+  // init：初始化配置
   program
     .command("init")
     .description("Initialize swarmflow configuration")
@@ -290,6 +321,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       await runInitWizard();
     });
 
+  // oauth：OAuth 登录管理（Codex / Copilot）
   program
     .command("oauth [action] [service]")
     .description("Manage OAuth login for Codex or Copilot (login/status/logout)")
@@ -299,6 +331,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       await oauthCommand(action, service);
     });
 
+  // fix：修复会话存储（缺少 project.json / meta.json 时）
   program
     .command("fix")
     .description("Check and repair session storage (missing project.json / meta.json)")
@@ -317,12 +350,13 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
         }
       }
       if (result.projectsFixed === 0 && result.sessionsFixed === 0) {
-        console.log("\nAll good 鈥?no repairs needed.");
+        console.log("\nAll good — no repairs needed.");
       } else {
-        console.log(`\nDone 鈥?repaired ${result.projectsFixed + result.sessionsFixed} items.`);
+        console.log(`\nDone — repaired ${result.projectsFixed + result.sessionsFixed} items.`);
       }
     });
 
+  // sessions：列出项目保存的会话
   program
     .command("sessions")
     .description("List saved sessions for a project directory")
@@ -343,6 +377,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       }
     });
 
+  // update：检查并安装更新
   program
     .command("update")
     .description("Check for and install the latest version")
@@ -358,26 +393,22 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       }
     });
 
-  // Default action 鈥?prevents Commander from showing help and exiting
-  // when no subcommand is provided.
+  // 默认 action（防止无子命令时 Commander 显示帮助并退出）
   program.action(() => {});
 
-  // Load ~/.swarmflow/.env before dispatching any subcommand so `init`
-  // can detect previously saved keys and offer the expected reuse flow.
+  // 在派发任何子命令前加载 ~/.swarmflow/.env，
+  // 使 init 能检测之前保存的密钥并提供复用选项。
   (deps.loadDotenv ?? loadDotenv)(homeDir);
 
-  // Normalise the OS system proxy into HTTP(S)_PROXY before any fetch
-  // runs. Bun's fetch reads these env vars but ignores the Windows
-  // system proxy; without this an env-var-less proxy user hangs on
-  // blocked hosts (the symptom that surfaced as a stuck auto-update).
-  // Runs after dotenv so an explicit .env proxy still wins. Covers every
-  // path 鈥?update/init/server subcommands and the TUI 鈥?since it's
-  // before parseAsync dispatches.
+  // 将 OS 系统代理规范化为 HTTP(S)_PROXY。
+  // Bun 的 fetch 读取这些环境变量但忽略 Windows 系统代理；
+  // 没有这一行，无代理环境变量设置的用户会在阻塞主机上挂起。
+  // 在 dotenv 之后运行，明确的 .env 代理优先。
   applySystemProxyToEnv();
 
   await program.parseAsync(argv);
 
-  // If a subcommand ran, exit 鈥?don't continue into TUI
+  // 子命令已运行则退出，不继续进入 TUI。
   if (ranSubcommand) return;
 
   const opts = program.opts<{
@@ -388,7 +419,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
 
   parseConfigOverridesOrExit(opts.config ?? []);
 
-  // Apply staged update from a previous background download
+  // 应用后台下载的待生效更新
   const applyResult = (deps.applyStaged ?? applyStaged)(homeDir);
   if (applyResult.kind === "applied") {
     if (deps.relaunchAfterUpdate) {
@@ -404,7 +435,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     ? (applyResult.version ?? VERSION)
     : VERSION;
 
-  // Start update check in background (non-blocking) if enabled
+  // 若启用，后台启动更新检查（非阻塞）
   const loadSettings = deps.loadGlobalSettings ?? loadGlobalSettings;
   const autoUpdateSetting = loadSettings(homeDir).auto_update ?? true;
   if (autoUpdateSetting !== false) {
@@ -419,7 +450,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     }
   });
 
-  // Logging
+  // 调试日志
   if (opts.verbose) {
     const origDebug = console.debug;
     console.debug = (...args: unknown[]) => origDebug("[DEBUG]", ...args);
@@ -428,13 +459,13 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   const globalSettings = await ensureProvidersConfigured(homeDir, deps);
   await warnIfCopilotCredentialsMissing(globalSettings, deps.hasGitHubTokens);
 
-  // Best-effort, non-blocking: refresh the remote model registry for NEXT
-  // startup. No-ops until a signing public key is embedded (registry-fetch.ts).
+  // 最佳生效非阻塞：为下次启动预热远程模型注册表。
   startBackgroundRegistryRefresh();
 
   await (deps.launchTui ?? launchTuiFromDefaultEntry)();
 }
 
+/** 规范化为真实路径（解析符号链接）。 */
 function normalizeEntryPath(pathValue: string | undefined): string | null {
   if (!pathValue) return null;
   try {
@@ -444,6 +475,7 @@ function normalizeEntryPath(pathValue: string | undefined): string | null {
   }
 }
 
+/** 仅在直接执行时运行 main（而非被导入时）。 */
 const entryPath = normalizeEntryPath(process.argv[1]);
 const modulePath = normalizeEntryPath(fileURLToPath(import.meta.url));
 if (entryPath && modulePath && entryPath === modulePath) {

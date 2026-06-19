@@ -11,26 +11,26 @@ import type { TaskNode, TaskDAG, ExecutionPlan, ExecutionLevel } from "./types.j
 import { AgentRole } from "./types.js";
 import { getLevels, validateDAG } from "./task-dag.js";
 
-/** Timing estimation for a task. */
+/** 任务的计时估算。 */
 export interface TaskEstimate {
   taskId: string;
-  /** Estimated duration in ms. */
+  /** 预估持续时间（毫秒）。 */
   estimatedMs: number;
-  /** Estimated input tokens. */
+  /** 预估输入 tokens。 */
   estimatedInputTokens: number;
-  /** Estimated output tokens. */
+  /** 预估输出 tokens。 */
   estimatedOutputTokens: number;
 }
 
-/** Detailed schedule with estimates. */
+/** 带估算的详细计划。 */
 export interface Schedule {
   plan: ExecutionPlan;
   estimates: TaskEstimate[];
-  /** Estimated wall-clock time in ms. */
+  /** 预估墙上时间（毫秒）。 */
   estimatedWallTimeMs: number;
-  /** Estimated total tokens. */
+  /** 预估总 tokens。 */
   estimatedTotalTokens: number;
-  /** Maximum parallelism across all levels. */
+  /** 所有级别的最大并行度。 */
   maxParallelism: number;
 }
 
@@ -54,11 +54,11 @@ const ROLE_TIME_ESTIMATES: Record<AgentRole, number> = {
   [AgentRole.Merger]: 15000,
 };
 
-/** Scheduler configuration. */
+/** 调度器配置。 */
 export interface SchedulerConfig {
-  /** Maximum parallel agents. */
+  /** 最大并行 agent 数。 */
   maxConcurrency: number;
-  /** Token budget per level (aggregate). */
+  /** 每级 token 预算（合计）。 */
   levelTokenBudget: number;
 }
 
@@ -69,12 +69,12 @@ const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
 };
 
 /**
- * SwarmScheduler — plan execution of a TaskDAG.
+ * SwarmScheduler — 规划 TaskDAG 的执行。
  *
- * 1. Takes a validated DAG
- * 2. Assigns execution levels (topological sort)
- * 3. Estimates resource requirements
- * 4. Returns a Schedule for the Executor
+ * 1. 获取验证过的 DAG
+ * 2. 分配执行级别（拓扑排序）
+ * 3. 估算资源需求
+ * 4. 为 Executor 返回一个 Schedule
  */
 export class SwarmScheduler {
   private _config: SchedulerConfig;
@@ -83,17 +83,17 @@ export class SwarmScheduler {
     this._config = { ...DEFAULT_SCHEDULER_CONFIG, ...config };
   }
 
-  /** Current config. */
+  /** 当前配置。 */
   get config(): SchedulerConfig {
     return { ...this._config };
   }
 
   /**
-   * Create a schedule from a TaskDAG.
+   * 从 TaskDAG 创建计划。
    *
-   * @param dag - Validated task DAG
-   * @returns Complete schedule with estimates
-   * @throws If DAG is invalid
+   * @param dag - 验证过的任务 DAG
+   * @returns 带估算的完整计划
+   * @throws 如果 DAG 无效
    */
   schedule(dag: TaskDAG): Schedule {
     // Validate
@@ -133,7 +133,7 @@ export class SwarmScheduler {
   }
 
   /**
-   * Quick schedule without full validation (for hot paths).
+   * 无需完整验证的快速计划（用于热路径）。
    */
   scheduleFast(dag: TaskDAG): ExecutionPlan {
     const levels = getLevels(dag);
@@ -148,7 +148,7 @@ export class SwarmScheduler {
   // ------------------------------------------------------------------
 
   /**
-   * Estimate resource usage for each task.
+   * 估算每个任务的资源使用。
    */
   private _estimateTasks(dag: TaskDAG): TaskEstimate[] {
     const estimates: TaskEstimate[] = [];
@@ -167,8 +167,8 @@ export class SwarmScheduler {
   }
 
   /**
-   * Estimate total wall-clock time, accounting for parallelism.
-   * Each level = time of the longest task in that level.
+   * 估算总墙上时间，考虑并行度。
+   * 每级 = 该级中最长任务的耗时。
    */
   private _estimateWallTime(
     levels: Array<{ index: number; taskIds: string[] }>,
@@ -195,7 +195,7 @@ export class SwarmScheduler {
 }
 
 /**
- * Convenience: schedule a DAG with default config.
+ * 便捷函数：使用默认配置调度 DAG。
  */
 export function scheduleDAG(dag: TaskDAG): Schedule {
   const scheduler = new SwarmScheduler();

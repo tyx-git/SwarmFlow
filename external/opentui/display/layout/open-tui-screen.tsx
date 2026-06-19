@@ -1,5 +1,17 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — OpenTUI 主界面布局
+// =============================================================================
+// 职责：主渲染区域布局（Tab 栏 / 侧边栏 / 主内容 / 输入区 / Overlay 层叠）
+// 层级结构：
+//   OpenTuiScreen
+//   ├── HorizontalTabBar（顶部 Tab 栏）
+//   ├── RightSidebar（右侧栏，可折叠）
+//   ├── PresentationPanel（主会话内容）
+//   ├── InputArea（底部输入框）
+//   └── ToastStack / Overlay 层（UpdateToast / CopyToast / AskPanel / OAuth 等）
+
 import React from "react";
 
 import type { InputRenderable, KeyBinding, ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";

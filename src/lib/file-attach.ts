@@ -1,10 +1,9 @@
 ﻿/**
- * File attachment support for @filename references.
- *
- * Parses `@path/to/file` references in user input, reads and summarizes
- * file contents, and renders them as `<context label="User Files">` blocks
- * for injection into Talker messages.
- *
+ * 文件附件支持@filename引用。
+ * 
+ * 解析用户输入中的“@path/to/file”引用，读取并总结文件内容，
+ * 并将其呈现为“<context label=" user Files“> ”块，
+ * 以便注入到Talker消息中。
  * Usage:
  *
  *   import { process } from "./lib/file-attach.js";
@@ -73,22 +72,21 @@ export const IMAGE_MEDIA_TYPES: Record<string, string> = {
   ".tiff": "image/tiff",
 };
 
-// Use the unified exclude list so file-attach autocomplete, glob, grep,
-// and list_dir all share the same notion of "skipped by default".
+// 使用统一的排除列表，如文件附加自动完成，glob, grep，
+// 和list_dir都共享“默认跳过”的概念。
 const SCAN_EXCLUDE_DIRS = EXCLUDE_DIRS;
 
 // ------------------------------------------------------------------
-// File scanning for autocomplete
+// 文件扫描自动完成
 // ------------------------------------------------------------------
 
 /**
- * Scan `cwd` for files matching `prefix`, return relative path strings.
- *
- * - Empty prefix: list top-level files only (no recursion).
- * - Non-empty prefix: recursive scan up to `maxDepth`, matching paths
- *   that start with the prefix.
- * - Directories in `SCAN_EXCLUDE_DIRS` are skipped.
- * - Results sorted by path length (shortest first), capped at `maxResults`.
+ * 扫描‘ cwd ’查找匹配‘ prefix ’的文件，
+ * 返回相对路径字符串。
+ * —空前缀：只列出顶层文件（不递归）。
+ * -非空前缀：递归扫描到‘ maxDepth ’，
+ * 匹配以前缀开头的路径。—跳过‘ SCAN_EXCLUDE_DIRS ’中的目录。
+ * -结果排序的路径长度（最短的第一），上限为‘ maxResults ’。
  */
 export function scanCandidates(
   prefix: string,
@@ -135,10 +133,10 @@ export function scanCandidates(
     for (const name of entries) {
       if (SCAN_EXCLUDE_DIRS.has(name) || name.startsWith(".")) continue;
       const full = path.join(directory, name);
-      // path.relative returns OS-native separators (backslashes on
-      // Windows); the user's @-query and the directory suffix below use
-      // forward slashes, so normalize or nested-path completion breaks
-      // on Windows (the candidate never startsWith the typed prefix).
+      // 路径。相对返回操作系统本地分隔符（反斜杠）
+      //  Windows);用户的@-query和下面使用的目录后缀
+      // 正斜杠，因此规范化或嵌套路径完成中断
+      // 在Windows上（候选人从不以键入的前缀开始）。
       const rel = toPosixPath(path.relative(base, full));
       const relLower = rel.toLowerCase();
 
@@ -179,7 +177,7 @@ export function scanCandidates(
 // Data structures
 // ------------------------------------------------------------------
 
-/** Metadata and content for a single attached file. */
+/* 单个附加文件的元数据和内容。 */
 export interface FileInfo {
   originalRef: string; // raw @reference from user input
   path: string; // resolved absolute path
@@ -249,7 +247,7 @@ function summarizeTextContent(
   };
 }
 
-/** Result of processing @file references in user input. */
+/* 处理用户输入中的@file引用的结果。 */
 export interface FileAttachResult {
   cleanedText: string; // user message with @refs removed
   contextStr: string; // rendered <context> block (empty if no files)
@@ -257,12 +255,12 @@ export interface FileAttachResult {
   warnings: string[];
 }
 
-/** Whether any files were attached. */
+/* 是否附加了任何文件。 */
 export function hasFiles(result: FileAttachResult): boolean {
   return result.files.length > 0;
 }
 
-/** Whether any attached file has base64 image data for multimodal. */
+/* 是否任何附加文件有base64图像数据的多模态。 */
 export function hasImages(result: FileAttachResult): boolean {
   return result.files.some((f) => f.imageData !== null);
 }
@@ -272,10 +270,9 @@ export function hasImages(result: FileAttachResult): boolean {
 // ------------------------------------------------------------------
 
 /**
- * Extract @path references and return [cleanedText, paths].
- *
- * Email-like patterns (user@example.com) are not matched because
- * the regex requires @ to be preceded by whitespace or line start.
+ * 提取@path引用并返回[cleanedText， paths]。
+ * 不匹配类似电子邮件的模式（user@example.com），
+ * 因为regex要求@前面有空格或行开始。
  */
 export function parseReferences(text: string): [string, string[]] {
   const paths: string[] = [];
@@ -286,13 +283,13 @@ export function parseReferences(text: string): [string, string[]] {
     return "";
   });
 
-  // Collapse runs of whitespace left by removed references
+  // 折叠被删除的引用留下的空白
   const normalized = cleaned.replace(/ {2,}/g, " ").trim();
   return [normalized, paths];
 }
 
 /**
- * Resolve a raw path string to an absolute path.
+ *  将原始路径字符串解析为绝对路径。
  */
 export function resolvePath(raw: string, cwd?: string): string {
   if (path.isAbsolute(raw)) return raw;
@@ -301,8 +298,8 @@ export function resolvePath(raw: string, cwd?: string): string {
 }
 
 /**
- * Classify a file by extension.
- * Returns `[isImage, isBinary, projectedDocumentType]`.
+ * 按扩展名对文件进行分类。
+ * 返回‘ [isImage, isBinary, projectedDocumentType] ’。
  */
 export function classifyFile(
   filePath: string,
@@ -315,7 +312,7 @@ export function classifyFile(
 }
 
 /**
- * Read a file and produce a FileInfo with content/summary.
+ * 读取文件并生成包含内容/摘要的FileInfo。
  */
 export async function readAndSummarize(
   filePath: string,
@@ -431,7 +428,7 @@ export async function readAndSummarize(
     }
   }
 
-  // --- Other binary ---
+  // ——其他二进制——
   if (isBinary) {
     return makeFileInfo({
       originalRef: ref,
@@ -439,11 +436,11 @@ export async function readAndSummarize(
       exists: true,
       isBinary: true,
       sizeBytes: size,
-      content: "Binary file 鈥?path provided for reference.",
+      content: "Binary file — path provided for reference.",
     });
   }
 
-  // --- Text file ---
+  // ——文本文件——
   if (size > MAX_TEXT_FILE_SIZE) {
     return makeFileInfo({
       originalRef: ref,
@@ -476,7 +473,7 @@ export async function readAndSummarize(
 }
 
 /**
- * Format a list of FileInfo into numbered text entries.
+ * 将FileInfo列表格式化为编号的文本条目。
  */
 export function formatContextBlock(files: FileInfo[]): string {
   const entries: string[] = [];
@@ -559,15 +556,14 @@ export function formatContextBlock(files: FileInfo[]): string {
 }
 
 // ------------------------------------------------------------------
-// Main entry point
+// 主入口
 // ------------------------------------------------------------------
 
 /**
- * Process `@file` references in user input.
- *
- * This is the main entry point. It parses references, reads files,
- * and returns a FileAttachResult with cleaned text and a
- * rendered `<context>` block.
+ * 处理用户输入中的“@file”引用。
+ * 这是主要的入口。它解析引用、读取文件，
+ * 并返回一个FileAttachResult，
+ * 其中包含清理过的文本和呈现的“<context>”块。
  */
 export async function processFileAttachments(
   userInput: string,
@@ -622,11 +618,11 @@ export async function processFileAttachments(
             matchedExternal = extBase;
             break;
           } catch {
-            // try next approved external root
+            // 尝试下一个批准的外部根
           }
         }
         if (matchedExternal) {
-          // Continue with the matched approved external base.
+          // 继续使用匹配的经批准的外底座。
         } else {
           if (e.code === "PATH_OUTSIDE_SCOPE") {
             warnings.push(`${raw}: path is outside the project root boundary.`);

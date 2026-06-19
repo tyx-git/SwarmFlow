@@ -1,5 +1,12 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — 工具操作条目渲染
+// =============================================================================
+// 职责：渲染工具调用的参数、结果、状态条
+// 工具类型：Read/Edit/Write/List/Bash/Glob 等
+// 特性：流式输出（shimmer）、可点击文件路径（打开文件）、diff 展开/折叠
+
 import React, { useEffect, useRef, useState } from "react";
 import path from "node:path";
 
@@ -18,6 +25,7 @@ import type { DisplayTheme } from "../../display/theme/index.js";
 
 const BAR_COLOR = "#66635c";
 
+// 流式工具输出最多显示 10 行（后续折叠）
 const TOOL_STREAM_MAX_LINES = 10;
 
 // Tool call arg / result body two-tier dim palette (matches AgentRows done state).

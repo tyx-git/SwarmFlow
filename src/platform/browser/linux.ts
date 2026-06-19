@@ -1,8 +1,8 @@
 ﻿/**
- * Linux browser / system-file opener.
+ * Linux 浏览器 / 系统文件打开器。
  *
- * `xdg-open` is the standard freedesktop.org entry point for opening
- * URLs and files with the registered default handler.
+ * `xdg-open` 是打开 URL 和文件的标准 freedesktop.org 入口点，
+ * 使用注册的默认处理程序。
  */
 
 import { spawn } from "node:child_process";

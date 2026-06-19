@@ -7,11 +7,11 @@
  * @packageDocumentation
  */
 
-import { AgentRole, SwarmTopology } from "./types.js";
+import { AgentRole, Swarm拓扑 } from "./types.js";
 import type { SwarmPattern } from "./types.js";
 
 // ------------------------------------------------------------------
-// Built-in patterns
+// 内置模式
 // ------------------------------------------------------------------
 
 /**
@@ -23,7 +23,7 @@ import type { SwarmPattern } from "./types.js";
 export const FAN_OUT_FAN_IN: SwarmPattern = {
   name: "fan-out-fan-in",
   description: "Distribute work to parallel workers, then merge results",
-  topology: SwarmTopology.Star,
+  topology: Swarm拓扑.Star,
   stages: [
     {
       role: AgentRole.Scout,
@@ -55,7 +55,7 @@ export const FAN_OUT_FAN_IN: SwarmPattern = {
 export const PIPELINE: SwarmPattern = {
   name: "pipeline",
   description: "Sequential stages in a chain — each feeds into the next",
-  topology: SwarmTopology.Chain,
+  topology: Swarm拓扑.Chain,
   stages: [
     {
       role: AgentRole.Scout,
@@ -90,7 +90,7 @@ export const PIPELINE: SwarmPattern = {
 export const ENSEMBLE: SwarmPattern = {
   name: "ensemble",
   description: "Multiple agents solve independently, vote on best result",
-  topology: SwarmTopology.Star,
+  topology: Swarm拓扑.Star,
   stages: [
     {
       role: AgentRole.Worker,
@@ -116,7 +116,7 @@ export const ENSEMBLE: SwarmPattern = {
 export const DEBATE: SwarmPattern = {
   name: "debate",
   description: "Agents argue different perspectives, then synthesize",
-  topology: SwarmTopology.Mesh,
+  topology: Swarm拓扑.Mesh,
   stages: [
     {
       role: AgentRole.Scout,
@@ -147,7 +147,7 @@ export const DEBATE: SwarmPattern = {
 export const EXPLORATORY: SwarmPattern = {
   name: "exploratory",
   description: "Parallel scouts investigate different areas",
-  topology: SwarmTopology.Star,
+  topology: Swarm拓扑.Star,
   stages: [
     {
       role: AgentRole.Scout,
@@ -165,10 +165,10 @@ export const EXPLORATORY: SwarmPattern = {
 };
 
 // ------------------------------------------------------------------
-// Pattern registry
+// 模式注册表
 // ------------------------------------------------------------------
 
-/** All built-in patterns, keyed by name. */
+/** 所有内置模式，按名称键控。 */
 export const BUILTIN_PATTERNS: Record<string, SwarmPattern> = {
   [FAN_OUT_FAN_IN.name]: FAN_OUT_FAN_IN,
   [PIPELINE.name]: PIPELINE,
@@ -177,12 +177,12 @@ export const BUILTIN_PATTERNS: Record<string, SwarmPattern> = {
   [EXPLORATORY.name]: EXPLORATORY,
 };
 
-/** Get a pattern by name. Returns undefined if not found. */
+/** 按名称获取模式。如果未找到则返回 undefined。 */
 export function getPattern(name: string): SwarmPattern | undefined {
   return BUILTIN_PATTERNS[name];
 }
 
-/** List all available pattern names. */
+/** 列出所有可用的模式名称。 */
 export function listPatterns(): string[] {
   return Object.keys(BUILTIN_PATTERNS);
 }

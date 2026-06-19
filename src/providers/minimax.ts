@@ -1,17 +1,16 @@
 ﻿/**
- * @deprecated 2026-05 鈥?superseded by MiniMaxAnthropicProvider in `./minimax-anthropic.ts`.
+ * @deprecated 2026-05 — 已由 `./minimax-anthropic.ts` 中的 MiniMaxAnthropicProvider 取代。
  *
- * Kept in the tree for emergency rollback only. The registry no longer
- * dispatches the `minimax*` provider ids to this class. Once the new path
- * has soaked, delete this file.
+ * 仅保留在代码树中用于紧急回滚。注册表不再将 `minimax*` 提供者 id
+ * 分派到此类。新路径稳定后删除此文件。
  *
- * ---- Original docstring follows ----
+ * ---- 原始文档字符串如下 ----
  *
- * MiniMax provider adapter.
+ * MiniMax 提供者适配器。
  *
- * Extends OpenAIChatProvider with reasoning_split support.
- * MiniMax embeds reasoning in <think>...</think> tags within content
- * rather than using a separate reasoning_details field.
+ * 使用 reasoning_split 支持扩展 OpenAIChatProvider。
+ * MiniMax 会在 content 内的 <think>...</think> 标签中嵌入 reasoning，
+ * 而不是使用单独的 reasoning_details 字段。
  */
 
 import type { ModelConfig } from "../config/config.js";
@@ -23,13 +22,13 @@ import {
 } from "./base.js";
 import { OpenAIChatProvider } from "./openai-chat.js";
 
-/** Extract <think> block from text. Returns { reasoning, visible } or null if no think block. */
+/** 从文本中提取 <think> 块。返回 { reasoning, visible }，如果没有 think 块则返回 null。 */
 function extractThinkBlock(text: string): { reasoning: string; visible: string } | null {
   const trimmed = text.replace(/^\s*/, "");
   if (!trimmed.startsWith("<think>")) return null;
   const tagStart = text.indexOf("<think>") + "<think>".length;
   const closeIdx = text.indexOf("</think>", tagStart);
-  if (closeIdx < 0) return null; // incomplete
+  if (closeIdx < 0) return null; // 不完整
   const reasoning = text.slice(tagStart, closeIdx);
   const visible = text.slice(closeIdx + "</think>".length).replace(/^\r?\n+/, "");
   return { reasoning, visible };
@@ -70,8 +69,8 @@ export class MiniMaxProvider extends OpenAIChatProvider {
   ): Promise<ProviderResponse> {
     const result = await super.sendMessage(messages, tools, options);
 
-    // Streaming path: <think> extraction is handled in _callStream.
-    // Non-streaming path: extract reasoning from <think> tags in content.
+    // 流式路径：<think> 提取由 _callStream 处理。
+    // 非流式路径：从 content 中的 <think> 标签提取 reasoning。
     if (!result.reasoningContent && result.text) {
       const extracted = extractThinkBlock(result.text);
       if (extracted) {
@@ -81,7 +80,7 @@ export class MiniMaxProvider extends OpenAIChatProvider {
       }
     }
 
-    // Legacy: also check reasoning_details in raw response (older API versions)
+    // 遗留：还检查原始响应中的 reasoning_details（旧 API 版本）
     if (!result.reasoningContent) {
       try {
         const raw = result.raw as Record<string, unknown> | null;
@@ -105,7 +104,7 @@ export class MiniMaxProvider extends OpenAIChatProvider {
           }
         }
       } catch {
-        // ignore
+        // 忽略
       }
     }
 
@@ -126,8 +125,8 @@ export class MiniMaxProvider extends OpenAIChatProvider {
       const msg = converted[i];
       if (msg["role"] !== "assistant") continue;
 
-      // Re-embed reasoning as <think> block in content for multi-turn context,
-      // since MiniMax expects thinking content in the conversation history.
+      // 为多回合上下文将 reasoning 重新嵌入 content 的 <think> 块中，
+      // 因为 MiniMax 期望对话历史中包含 thinking 内容。
       const origIdx = assistantIndexMap.get(i);
       if (origIdx == null) continue;
 
@@ -137,7 +136,7 @@ export class MiniMaxProvider extends OpenAIChatProvider {
       if (reasoning && !content.includes("<think>")) {
         msg["content"] = `<think>\n${reasoning}\n</think>\n${content}`;
       }
-      // Also accept `_reasoning_state` when the upstream response provides it.
+      // 当上游响应提供 `_reasoning_state` 时也接受它。
       const blocks = orig["_reasoning_state"];
       if (blocks && Array.isArray(blocks)) {
         converted[i]["reasoning_details"] = blocks;
@@ -172,27 +171,27 @@ export class MiniMaxProvider extends OpenAIChatProvider {
       }
     };
 
-    // 1) Strong match: text + detailed tool signature.
+    // 1) 强匹配：文本 + 详细工具签名。
     assignUniqueMatches((orig, conv) =>
       !!orig.toolSignatureKey &&
       orig.toolSignatureKey === conv.toolSignatureKey &&
       orig.text === conv.text,
     );
 
-    // 2) Medium match: text + tool name sequence.
+    // 2) 中等匹配：文本 + 工具名称序列。
     assignUniqueMatches((orig, conv) =>
       !!orig.toolNamesKey &&
       orig.toolNamesKey === conv.toolNamesKey &&
       orig.text === conv.text,
     );
 
-    // 3) Weak match: text only.
+    // 3) 弱匹配：仅文本。
     assignUniqueMatches((orig, conv) =>
       !!orig.text && orig.text === conv.text,
     );
 
-    // 4) Final fallback: preserve order only when the remaining cardinality matches.
-    // This avoids the old "always ordinal" misalignment failure mode.
+    // 4) 最终回退：仅在剩余基数匹配时保留顺序。
+    // 这避免了旧的“始终按序号”错位失败模式。
     const remainingConverted = convertedAssistants.filter(
       (conv) => !mapped.has(conv.msgIndex),
     );

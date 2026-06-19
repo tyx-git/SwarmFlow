@@ -1,17 +1,15 @@
 ﻿/**
- * OSC 52 clipboard fallback.
+ * OSC 52 剪贴板回退。
  *
- * Writes text into the terminal emulator's clipboard via the OSC 52
- * escape sequence. Supported by most modern terminals (kitty, wezterm,
- * iTerm2, alacritty with config, recent gnome-terminal, tmux 2.6+
- * with `set -g set-clipboard on`).
+ * 通过 OSC 52 转义序列将文本写入终端模拟器的剪贴板。
+ * 被大多数现代终端支持（kitty、wezterm、iTerm2、alacritty（需配置）、
+ * 最近的 gnome-terminal、tmux 2.6+ 且 `set -g set-clipboard on`）。
  *
- * Used as a tail of the dispatch chain on Linux (when wl-copy/xclip
- * are missing) and as a graceful degradation everywhere.
+ * 用作 Linux 上调度链的尾部（当 wl-copy/xclip 缺失时）
+ * 和各地的优雅降级。
  *
- * Cannot read the clipboard 鈥?the protocol is write-only from the
- * application side without a cooperating terminal, which essentially
- * never works in practice.
+ * 无法读取剪贴板——该协议从应用程序端是只写的，没有协作终端，
+ * 这在实践中基本上永远不起作用。
  */
 
 import type { ClipboardImage, ClipboardProvider } from "../types.js";
@@ -22,9 +20,9 @@ import type { ClipboardImage, ClipboardProvider } from "../types.js";
  *
  * - tmux: emit the sequence UNCHANGED. tmux's `set-clipboard` (default
  *   `external`/`on` since 3.2) already intercepts an app's OSC 52 and
- *   forwards it to the outer terminal. The `\x1bPtmux;鈥 DCS-passthrough
- *   form would instead REQUIRE `allow-passthrough on` 鈥?OFF by default
- *   since tmux 3.3 鈥?and be silently dropped otherwise, regressing users
+ *   forwards it to the outer terminal. The `\x1bPtmux; DCS-passthrough
+ *   form would instead REQUIRE `allow-passthrough on` —OFF by default
+ *   since tmux 3.3 —and be silently dropped otherwise, regressing users
  *   whose copy previously worked via set-clipboard.
  * - screen: wrap as `\x1bP<seq>\x1b\\`. screen has no set-clipboard
  *   forwarding, so the DCS passthrough envelope is the only way out.
@@ -49,7 +47,7 @@ export const osc52Clipboard: ClipboardProvider = {
   async writeText(text: string): Promise<boolean> {
     try {
       // If stderr isn't a TTY the escape sequence can't reach a
-      // terminal 鈥?report failure honestly so the caller can fall
+      // terminal —report failure honestly so the caller can fall
       // through to a stronger path (e.g. the renderer's own OSC 52,
       // which is gated on real terminal capability detection) instead
       // of being told the copy succeeded when nothing happened.

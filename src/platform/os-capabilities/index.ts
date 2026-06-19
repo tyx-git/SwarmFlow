@@ -1,71 +1,70 @@
 ﻿/**
- * Coarse OS capability flags. Used to gate operations whose semantics
- * differ (or simply don't exist) on Windows without leaking
- * `process.platform` checks into business code.
+ * 粗粒度操作系统能力标志。用于门控语义不同
+ *（或根本不存在）于 Windows 上的操作，而不将
+ * `process.platform` 检查泄漏到业务代码中。
  */
 
 import type { OsCapabilities } from "../types.js";
 import { currentPlatform } from "../detect.js";
 
-// Fields shared by both POSIX platforms (macOS + Linux). They diverge
-// only on caseInsensitiveFilesystem, so each spreads this base and
-// sets that flag explicitly below.
+// macOS + Linux 两个 POSIX 平台共用的字段。它们只在
+// caseInsensitiveFilesystem 上有差异，因此每个平台扩展此基类并
+// 在下面显式设置该标志。
 const POSIX_SHARED: Omit<OsCapabilities, "caseInsensitiveFilesystem"> = {
   supportsPosixPermissions: true,
-  // POSIX has no platform-specific danger/catastrophic commands beyond
-  // the shared POSIX sets already in classify.ts (rm/sudo/chmod and
-  // mkfs/fdisk/dd respectively).
+  // POSIX 没有超出 classify.ts 中已共享的 POSIX 集合的平台特定危险/灾难性命令
+  //（分别是 rm/sudo/chmod 和 mkfs/fdisk/dd）。
   platformSpecificDangerCommands: new Set(),
   platformSpecificCatastrophicCommands: new Set(),
-  // POSIX execs every $PATH entry directly 鈥?no shell needed for shims.
+  // POSIX 直接执行每个 $PATH 条目 — shims 不需要 shell。
   scriptShimsRequireShell: false,
-  toolIndicatorGlyph: "鈴?, // 鈴?BLACK CIRCLE FOR RECORD
+  toolIndicatorGlyph: "●", // ● 录制黑色圆圈
   conversationScrollMultiplier: 1,
 };
 
 const DARWIN_CAPS: OsCapabilities = {
   ...POSIX_SHARED,
-  // Default macOS APFS/HFS+ is case-insensitive, so the shell resolves
-  // `RM`/`SUDO` to the same binary as the lowercase form.
+  // 默认 macOS APFS/HFS+ 是大小写不敏感的，所以 shell 将
+  // `RM`/`SUDO` 解析为与小写形式相同的二进制文件。
   caseInsensitiveFilesystem: true,
 };
 
 const LINUX_CAPS: OsCapabilities = {
   ...POSIX_SHARED,
-  // Default Linux ext4/btrfs are case-sensitive.
+  // 默认 Linux ext4/btrfs 是大小写敏感的。
   caseInsensitiveFilesystem: false,
 };
 
-// Lowercased 鈥?see OsCapabilities.platformSpecificDangerCommands
-// JSDoc for the case-insensitivity rationale.
+// 小写化 — 见 OsCapabilities.platformSpecificDangerCommands
+// JSDoc 用于解释大小写不敏感的原因。
 const WIN32_DANGER_COMMANDS: ReadonlySet<string> = new Set([
-  "reg",        // registry editor
-  "bcdedit",    // boot configuration
-  "netsh",      // network configuration
-  "taskkill",   // kill processes by name/pid
-  "wmic",       // WMI command-line
+  "reg",        // 注册表编辑器
+  "bcdedit",    // 启动配置
+  "netsh",      // 网络配置
+  "taskkill",   // 按名称/pid 终止进程
+  "wmic",       // WMI 命令行
 ]);
 
-// Irreversible disk-wipe executables 鈥?escalate to catastrophic (the
-// only class that still prompts in yolo mode), not merely write_danger.
+// 不可逆的磁盘擦除可执行文件 — 升级为 catastrophic（这是 yolo 模式下
+// 仍会提示的唯一类别），而不仅仅是 write_danger。
 const WIN32_CATASTROPHIC_COMMANDS: ReadonlySet<string> = new Set([
-  "format",     // disk format
-  "diskpart",   // disk partitioning
+  "format",     // 磁盘格式化
+  "diskpart",   // 磁盘分区
 ]);
 
 const WIN32_CAPS: OsCapabilities = {
   supportsPosixPermissions: false,
-  // NTFS and Git Bash (MSYS2) resolve command names case-insensitively.
+  // NTFS 和 Git Bash (MSYS2) 大小写不敏感地解析命令名称。
   caseInsensitiveFilesystem: true,
   platformSpecificDangerCommands: WIN32_DANGER_COMMANDS,
   platformSpecificCatastrophicCommands: WIN32_CATASTROPHIC_COMMANDS,
-  // `.cmd`/`.bat` shims (npm/npx/prettier) need a shell to launch.
+  // `.cmd`/`.bat` shims（npm/npx/prettier）需要 shell 来启动。
   scriptShimsRequireShell: true,
-  toolIndicatorGlyph: "猬?, // 猬?BLACK LARGE CIRCLE 鈥?see OsCapabilities JSDoc
-  // Windows Terminal / PowerShell deliver raw wheel ticks without
-  // OS-level acceleration. 3脳 brings the perceived scroll speed
-  // closer to the macOS default, which is what most users compare
-  // against. See OsCapabilities JSDoc for the rationale.
+  toolIndicatorGlyph: "●", // ● 黑色大圆圈 — 见 OsCapabilities JSDoc
+  // Windows Terminal / PowerShell 直接传递原始滚轮刻度，
+  // 没有 OS 级加速。3× 使感知到的滚动速度
+  // 更接近 macOS 默认值，这是大多数用户比较的标准。
+  // 见 OsCapabilities JSDoc 了解原理。
   conversationScrollMultiplier: 3,
 };
 

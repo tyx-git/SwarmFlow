@@ -1,7 +1,7 @@
 ﻿/**
- * macOS browser / system-file opener.
+ * macOS 浏览器 / 系统文件打开器。
  *
- * The same `open` command handles both URLs and local file paths.
+ * 相同的 `open` 命令处理 URL 和本地文件路径。
  */
 
 import { spawn } from "node:child_process";
@@ -15,7 +15,7 @@ function safeOpen(arg: string): void {
     child.on("error", () => { /* ignore */ });
     child.unref();
   } catch {
-    // ignore 鈥?caller has no recourse anyway
+    // ignore —caller has no recourse anyway
   }
 }
 

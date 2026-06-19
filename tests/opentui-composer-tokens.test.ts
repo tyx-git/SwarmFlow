@@ -9,7 +9,7 @@ import {
   getTextDiffRange,
   serializeVisibleTextWithTokens,
   sliceTextByOffset,
-} from "../opentui-src/composer-token-logic.js";
+} from "../external/opentui/composer-token-logic.js";
 
 describe("opentui composer tokens", () => {
   it("counts display width with newlines", () => {

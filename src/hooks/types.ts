@@ -1,20 +1,20 @@
 ﻿/**
- * Hook system types.
+ * Hook 系统类型。
  *
- * Hooks are local command-based event handlers. A hook manifest (hook.json)
- * declares which events to listen to and what command to run.
+ * Hooks 是本地基于命令的事件处理器。Hook 清单（hook.json）
+ * 声明要监听的事件以及要运行的命令。
  *
- * Supported events:
+ * 支持的事件：
  *   SessionStart, SessionEnd, UserPromptSubmit,
  *   PreToolUse, PostToolUse, PostToolUseFailure,
  *   SubagentStart, SubagentStop, Stop
  *
- * Hook commands receive event payload as JSON on stdin and return
- * a JSON object on stdout with optional decision/updatedInput/additionalContext.
+ * Hook 命令接收事件负载作为 stdin 上的 JSON，并返回
+ * stdout 上的 JSON 对象，包含可选的 decision/updatedInput/additionalContext。
  */
 
 // ------------------------------------------------------------------
-// Hook events
+// 钩子事件
 // ------------------------------------------------------------------
 
 export type HookEvent =
@@ -28,22 +28,22 @@ export type HookEvent =
   | "SubagentStop"
   | "Stop";
 
-/** Events that support the `decision` field in hook output. */
+/** 支持钩子输出中 `decision` 字段的事件。 */
 export const DECISION_EVENTS = new Set<HookEvent>(["UserPromptSubmit", "PreToolUse"]);
 
-/** Events that support `failClosed` (hook failure = deny). */
+/** 支持 `failClosed`（钩子失败 = 拒绝）的事件。 */
 export const FAIL_CLOSED_EVENTS = new Set<HookEvent>(["SessionStart", "UserPromptSubmit", "PreToolUse"]);
 
-/** Events that support `additionalContext` in hook output. */
+/** 支持钩子输出中 `additionalContext` 的事件。 */
 export const CONTEXT_EVENTS = new Set<HookEvent>([
   "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
 ]);
 
-/** Events that support `updatedInput` in hook output. */
+/** 支持钩子输出中 `updatedInput` 的事件。 */
 export const INPUT_UPDATE_EVENTS = new Set<HookEvent>(["PreToolUse"]);
 
 // ------------------------------------------------------------------
-// Hook manifest (hook.json)
+// 钩子清单（hook.json）
 // ------------------------------------------------------------------
 
 export interface HookManifest {
@@ -53,17 +53,17 @@ export interface HookManifest {
   command: string;
   args?: string[];
   env?: Record<string, string>;
-  /** Matcher 鈥?if set, hook only fires when matcher conditions are met. */
+  /** 匹配器 — 如果设置，则仅在满足匹配器条件时触发钩子。 */
   matcher?: HookMatcher;
-  /** Timeout for hook execution in milliseconds. Default: 10000. */
+  /** 钩子执行超时时间，单位为毫秒。默认值：10000。 */
   timeoutMs?: number;
-  /** If true, hook failure = deny (only for SessionStart, UserPromptSubmit, PreToolUse). */
+  /** 如果为 true，钩子失败 = 拒绝（仅用于 SessionStart、UserPromptSubmit、PreToolUse）。 */
   failClosed?: boolean;
-  /** If true, hook is disabled and will not fire. */
+  /** 如果为 true，钩子被禁用且不会触发。 */
   disabled?: boolean;
-  /** Source path of the hook.json file (set by loader). */
+  /** hook.json 文件的源路径（由加载器设置）。 */
   _sourcePath?: string;
-  /** Discovery scope (set by loader). */
+  /** 发现作用域（由加载器设置）。 */
   _scope?: "project" | "global";
 }
 
@@ -73,36 +73,36 @@ export interface HookMatcher {
 }
 
 // ------------------------------------------------------------------
-// Hook event payload (sent to stdin)
+// 钩子事件负载（发送到 stdin）
 // ------------------------------------------------------------------
 
 export interface HookPayload {
   event: HookEvent;
   timestamp: number;
   sessionId?: string;
-  /** Tool-specific fields (PreToolUse / PostToolUse / PostToolUseFailure). */
+  /** 工具特定字段（PreToolUse / PostToolUse / PostToolUseFailure）。 */
   toolName?: string;
   toolArgs?: Record<string, unknown>;
   toolCallId?: string;
   toolResult?: string;
-  /** User prompt (UserPromptSubmit). */
+  /** 用户提示（UserPromptSubmit）。 */
   userPrompt?: string;
-  /** Agent fields (SubagentStart / SubagentStop). */
+  /** Agent 字段（SubagentStart / SubagentStop）。 */
   agentId?: string;
   agentTemplate?: string;
 }
 
 // ------------------------------------------------------------------
-// Hook output (parsed from stdout)
+// 钩子输出（从 stdout 解析）
 // ------------------------------------------------------------------
 
 export interface HookOutput {
-  /** "allow" or "deny" 鈥?only for UserPromptSubmit and PreToolUse. */
+  /** "allow" 或 "deny" — 仅用于 UserPromptSubmit 和 PreToolUse。 */
   decision?: "allow" | "deny";
-  /** Replacement tool arguments 鈥?only for PreToolUse. */
+  /** 替换工具参数 — 仅用于 PreToolUse。 */
   updatedInput?: Record<string, unknown>;
-  /** Extra context to inject into the system prompt for the next round. */
+  /** 要注入下一轮系统提示符的额外上下文。 */
   additionalContext?: string;
-  /** Human-readable reason for the decision. */
+  /** 决策的人类可读原因。 */
   reason?: string;
 }

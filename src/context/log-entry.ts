@@ -1,17 +1,18 @@
 ﻿/**
- * Structured log entry types and factory functions.
+ * 结构化日志条目类型和工厂函数。
  *
- * Core data structure for the Session Log Architecture v2.
- * Every event in a session is recorded as a LogEntry.
- * TUI and API views are projected from the log.
+ * 会话日志架构 v2 的核心数据结构。
+ * 会话中的每个事件都记录为一个 LogEntry。
+ * TUI 和 API 视图从日志中投影。
  */
 
 // ------------------------------------------------------------------
-// Enums
+// 枚举类型
 // ------------------------------------------------------------------
 
 import type { ThinkingArtifact } from "./lib/thinking-artifact.js";
 
+/** 日志条目类型——决定内容结构和投影规则 */
 export type LogEntryType =
   | "system_prompt"
   | "work_start"
@@ -39,9 +40,12 @@ export type LogEntryType =
   | "error"
   | "token_update";
 
+/** Turn 类型 */
 export type TurnKind = "user" | "summarize" | "compact";
+/** 输入来源类型 */
 export type InputKind = "user" | "system" | "peer" | "summarize" | "compact";
 
+/** TUI 显示类型——决定条目在终端中的渲染方式 */
 export type TuiDisplayKind =
   | "user"
   | "agent_result"
@@ -55,77 +59,86 @@ export type TuiDisplayKind =
   | "tool_result";
 
 // ------------------------------------------------------------------
-// LogEntry interface
+// LogEntry 接口
 // ------------------------------------------------------------------
 
+/** 日志条目——会话中每个事件的结构化记录 */
 export interface LogEntry {
-  /** Unique entry ID (type prefix + sequence number, e.g. "user-001", "tc-005"). */
+  /** 唯一条目 ID（类型前缀 + 序列号，例如 "user-001"、"tc-005"） */
   id: string;
 
-  /** Entry type 鈥?determines content structure and projection rules. */
+  /** 条目类型——决定内容结构和投影规则 */
   type: LogEntryType;
 
-  /** Unix millisecond timestamp. */
+  /** Unix 毫秒时间戳 */
   timestamp: number;
 
   /**
-   * User-visible input index (starts at 1, increments on each real user
-   * input). This field is intentionally still named turnIndex during the
-   * runtime migration; semantically it is no longer a work lifecycle id.
+   * 用户可见的输入索引（从 1 开始，每次真实用户输入时递增）。
+   * 此字段在运行时迁移期间仍命名为 turnIndex；
+   * 语义上不再是工作生命周期 ID。
    */
   turnIndex: number;
 
   /**
-   * Provider call round within the same turn (0-based).
-   * Groups assistant_text + tool_call entries into one API message.
-   * Only present on provider-related entries (assistant_text, reasoning,
-   * tool_call, tool_result, no_reply).
+   * 同一 turn 内的提供商调用轮次（从 0 开始）。
+   * 将 assistant_text + tool_call 条目分组为一条 API 消息。
+   * 仅出现在提供商相关条目（assistant_text、reasoning、
+   * tool_call、tool_result、no_reply）上。
    */
   roundIndex?: number;
 
-  // ---- TUI projection layer ----
+  // ---- TUI 投影层 ----
 
-  /** Whether this entry is visible in TUI. */
+  /** 此条目在 TUI 中是否可见 */
   tuiVisible: boolean;
 
-  /** TUI rendering style. null when tuiVisible is false. */
+  /** TUI 渲染样式。tuiVisible 为 false 时为 null */
   displayKind: TuiDisplayKind | null;
 
-  /** TUI display text. Always retained in the active log. */
+  /** TUI 显示文本。始终保留在活动日志中 */
   display: string;
 
-  // ---- API projection layer ----
+  // ---- API 投影层 ----
 
-  /** The API role this entry maps to. null = not part of API projection. */
+  /** 此条目映射的 API 角色。null = 不参与 API 投影 */
   apiRole: "system" | "user" | "assistant" | "tool_result" | null;
 
-  /** Full content for API projection. null after archiving. */
+  /** 用于 API 投影的完整内容。归档后为 null */
   content: unknown;
 
-  /** Whether content has been archived to a separate file. */
+  /** 内容是否已归档到单独文件 */
   archived: boolean;
 
-  // ---- State markers ----
+  // ---- 状态标记 ----
 
-  /** Discarded entry (skip in projections). Used for compact rollback etc. */
+  /** 已丢弃的条目（在投影中跳过）。用于压缩回滚等 */
   discarded?: boolean;
 
-  // ---- Type-specific metadata ----
+  // ---- 类型特定元数据 ----
 
-  /** Structured metadata varying by entry type. */
+  /** 随条目类型变化的结构化元数据 */
   meta: Record<string, unknown>;
 }
 
+/** 工具调用日志内容 */
 export interface ToolCallLogContent {
+  /** 工具调用 ID */
   id: string;
+  /** 工具名称 */
   name: string;
+  /** 原始参数字符串 */
   rawArguments?: string;
+  /** 解析后的参数对象 */
   arguments: Record<string, unknown>;
+  /** 参数解析错误信息 */
   parseError?: string | null;
 }
 
+/** agent_result TUI 预览的最大行数 */
 export const AGENT_RESULT_TUI_PREVIEW_LINES = 8;
 
+/** 构建 agent_result 的 TUI 预览文本 */
 export function buildAgentResultTuiPreview(
   content: string,
   maxLines = AGENT_RESULT_TUI_PREVIEW_LINES,
@@ -144,10 +157,10 @@ export function buildAgentResultTuiPreview(
 }
 
 // ------------------------------------------------------------------
-// ID Allocator
+// ID 分配器
 // ------------------------------------------------------------------
 
-/** Map from LogEntryType to its ID prefix. */
+/** 日志条目类型到 ID 前缀的映射 */
 const TYPE_PREFIX_MAP: Record<LogEntryType, string> = {
   system_prompt: "sys",
   work_start: "ws",
@@ -177,13 +190,13 @@ const TYPE_PREFIX_MAP: Record<LogEntryType, string> = {
 };
 
 /**
- * Generates sequential IDs like "user-001", "tc-005".
- * Maintains per-prefix counters.
+ * 生成顺序 ID，如 "user-001"、"tc-005"。
+ * 维护每个前缀的计数器。
  */
 export class LogIdAllocator {
   private _counters = new Map<string, number>();
 
-  /** Allocate the next ID for a given entry type. */
+  /** 为指定条目类型分配下一个 ID */
   next(type: LogEntryType): string {
     const prefix = TYPE_PREFIX_MAP[type];
     const count = (this._counters.get(prefix) ?? 0) + 1;
@@ -192,8 +205,8 @@ export class LogIdAllocator {
   }
 
   /**
-   * Restore counters from an existing log (e.g. after loadLog).
-   * Scans all entries and sets each prefix counter to the max seen.
+   * 从现有日志恢复计数器（例如 loadLog 之后）。
+   * 扫描所有条目并将每个前缀计数器设置为看到的最大值。
    */
   restoreFrom(entries: LogEntry[]): void {
     this._counters.clear();
@@ -211,7 +224,7 @@ export class LogIdAllocator {
     }
   }
 
-  /** Get the current counter value for a prefix (for testing). */
+  /** 获取前缀的当前计数器值（用于测试） */
   getCounter(type: LogEntryType): number {
     const prefix = TYPE_PREFIX_MAP[type];
     return this._counters.get(prefix) ?? 0;
@@ -219,9 +232,10 @@ export class LogIdAllocator {
 }
 
 // ------------------------------------------------------------------
-// Factory helpers
+// 工厂辅助函数
 // ------------------------------------------------------------------
 
+/** 创建日志条目的基础工厂函数 */
 function baseEntry(
   id: string,
   type: LogEntryType,
@@ -245,9 +259,10 @@ function baseEntry(
 }
 
 // ------------------------------------------------------------------
-// Factory functions 鈥?one per entry type
+// 工厂函数——每种条目类型一个
 // ------------------------------------------------------------------
 
+/** 创建系统提示词条目 */
 export function createSystemPrompt(
   id: string,
   content: string,
@@ -258,6 +273,7 @@ export function createSystemPrompt(
   });
 }
 
+/** 创建工作开始条目 */
 export function createWorkStart(
   id: string,
   turnIndex: number,
@@ -268,6 +284,7 @@ export function createWorkStart(
   });
 }
 
+/** 创建工作结束条目 */
 export function createWorkEnd(
   id: string,
   turnIndex: number,
@@ -284,6 +301,7 @@ export function createWorkEnd(
   });
 }
 
+/** 创建输入接收条目 */
 export function createInputReceived(
   id: string,
   turnIndex: number,
@@ -309,6 +327,7 @@ export function createInputReceived(
   });
 }
 
+/** 创建 turn 开始条目 */
 export function createTurnStart(
   id: string,
   turnIndex: number,
@@ -319,6 +338,7 @@ export function createTurnStart(
   });
 }
 
+/** 创建 turn 结束条目 */
 export function createTurnEnd(
   id: string,
   turnIndex: number,
@@ -334,6 +354,7 @@ export function createTurnEnd(
   });
 }
 
+/** 创建用户消息条目 */
 export function createUserMessage(
   id: string,
   turnIndex: number,
@@ -356,6 +377,7 @@ export function createUserMessage(
   });
 }
 
+/** 创建代理结果条目 */
 export function createAgentResult(
   id: string,
   turnIndex: number,
@@ -391,6 +413,7 @@ export function createAgentResult(
   });
 }
 
+/** 创建 assistant 文本条目 */
 export function createAssistantText(
   id: string,
   turnIndex: number,
@@ -410,6 +433,7 @@ export function createAssistantText(
   });
 }
 
+/** 创建推理/思维链条目 */
 export function createReasoning(
   id: string,
   turnIndex: number,
@@ -435,6 +459,7 @@ export function createReasoning(
   });
 }
 
+/** 创建工具调用条目 */
 export function createToolCall(
   id: string,
   turnIndex: number,
@@ -465,6 +490,7 @@ export function createToolCall(
   });
 }
 
+/** 创建工具结果条目 */
 export function createToolResult(
   id: string,
   turnIndex: number,
@@ -509,6 +535,7 @@ export function createToolResult(
   });
 }
 
+/** 创建无回复条目 */
 export function createNoReply(
   id: string,
   turnIndex: number,
@@ -524,6 +551,7 @@ export function createNoReply(
   });
 }
 
+/** 创建压缩标记条目 */
 export function createCompactMarker(
   id: string,
   turnIndex: number,
@@ -539,6 +567,7 @@ export function createCompactMarker(
   });
 }
 
+/** 创建压缩上下文条目 */
 export function createCompactContext(
   id: string,
   turnIndex: number,
@@ -553,6 +582,7 @@ export function createCompactContext(
   });
 }
 
+/** 创建摘要条目 */
 export function createSummary(
   id: string,
   turnIndex: number,
@@ -585,6 +615,7 @@ export function createSummary(
   });
 }
 
+/** 创建中断标记条目 */
 export function createInterruptionMarker(
   id: string,
   turnIndex: number,
@@ -601,6 +632,7 @@ export function createInterruptionMarker(
   });
 }
 
+/** 创建子代理开始条目 */
 export function createSubAgentStart(
   id: string,
   turnIndex: number,
@@ -617,6 +649,7 @@ export function createSubAgentStart(
   });
 }
 
+/** 创建子代理工具调用条目 */
 export function createSubAgentToolCall(
   id: string,
   turnIndex: number,
@@ -634,6 +667,7 @@ export function createSubAgentToolCall(
   });
 }
 
+/** 创建子代理结束条目 */
 export function createSubAgentEnd(
   id: string,
   turnIndex: number,
@@ -651,6 +685,7 @@ export function createSubAgentEnd(
   });
 }
 
+/** 创建状态条目 */
 export function createStatus(
   id: string,
   turnIndex: number,
@@ -665,6 +700,7 @@ export function createStatus(
   });
 }
 
+/** 创建错误条目 */
 export function createError(
   id: string,
   turnIndex: number,
@@ -679,6 +715,7 @@ export function createError(
   });
 }
 
+/** 创建 token 更新条目 */
 export function createTokenUpdate(
   id: string,
   turnIndex: number,
@@ -694,6 +731,7 @@ export function createTokenUpdate(
   return baseEntry(id, "token_update", turnIndex, { meta });
 }
 
+/** 创建 ask 请求条目 */
 export function createAskRequest(
   id: string,
   turnIndex: number,
@@ -712,6 +750,7 @@ export function createAskRequest(
   });
 }
 
+/** 创建 ask 解析条目 */
 export function createAskResolution(
   id: string,
   turnIndex: number,

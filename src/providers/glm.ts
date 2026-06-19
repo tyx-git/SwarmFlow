@@ -1,8 +1,8 @@
 ﻿/**
- * GLM (Zhipu AI) provider adapter.
+ * GLM（Zhipu AI）提供者适配器。
  *
- * Extends OpenAIChatProvider with thinking support and
- * native web_search tool format.
+ * 在 OpenAIChatProvider 之上扩展 thinking 支持和
+ * 原生 web_search 工具格式。
  */
 
 import type { ModelConfig } from "../config/config.js";
@@ -55,7 +55,7 @@ export class GLMProvider extends OpenAIChatProvider {
           });
           continue;
         }
-        // No native support 鈥?fall through to register as a regular function tool
+        // 没有原生支持 — 继续注册为常规函数工具
       }
       result.push({
         type: "function",

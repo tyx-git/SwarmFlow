@@ -1,8 +1,7 @@
 /**
- * AgentPool — manages agent instances for the swarm.
+ * AgentPool — 管理 swarm 的 agent 实例。
  *
- * Acquires agents by role from template definitions, handles lifecycle
- * tracking, resource quotas, and cleanup.
+ * 从模板定义按角色获取 agent，处理生命周期追踪、资源配额和清理。
  *
  * @packageDocumentation
  */
@@ -11,17 +10,17 @@ import { Agent } from "../agents/agent.js";
 import type { AgentRole, SwarmAgentHandle } from "./types.js";
 import { AgentLifecycle, AGENT_ROLE_LABELS } from "./types.js";
 
-/** Configuration for the AgentPool. */
+/** AgentPool 的配置。 */
 export interface AgentPoolConfig {
-  /** Maximum number of concurrent agents. */
+  /** 最大并发 agent 数量。 */
   maxConcurrency: number;
-  /** Maximum total token budget across all agents. */
+  /** 所有 agent 的最大总 token 预算。 */
   maxTokenBudget: number;
-  /** Template names mapped by role (fallback). */
+  /** 按角色映射的模板名称（后备）。 */
   roleTemplates: Partial<Record<AgentRole, string>>;
 }
 
-/** Default pool configuration. */
+/** 默认池配置。 */
 export const DEFAULT_POOL_CONFIG: AgentPoolConfig = {
   maxConcurrency: 5,
   maxTokenBudget: 2_000_000,
@@ -36,13 +35,13 @@ export const DEFAULT_POOL_CONFIG: AgentPoolConfig = {
 };
 
 /**
- * Manages a pool of agent instances.
+ * 管理 agent 实例池。
  *
- * Responsibilities:
- * - Acquire agents by role (create from template or reuse)
- * - Track lifecycle states
- * - Enforce concurrency and token budgets
- * - Release and cleanup agents
+ * 职责：
+ * - 按角色获取 agent（从模板创建或复用）
+ * - 追踪生命周期状态
+ * - 强制执行并发和 token 预算
+ * - 释放和清理 agent
  */
 export class AgentPool {
   private _handles: Map<string, SwarmAgentHandle> = new Map();

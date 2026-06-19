@@ -1,10 +1,9 @@
 /**
- * Lightweight markdown renderer using `marked` with default rendering.
+ * 使用 `marked` 的轻量级 markdown 渲染器，默认渲染。
  *
- * Styling is applied via descendant CSS selectors in globals.css under
- * `.markdown-body`. Code blocks get post-render Shiki highlighting which
- * is folded back into the rendered HTML so that subsequent re-renders
- * (very frequent during streaming) don't wipe the highlights.
+ * 样式通过 globals.css 中的后代 CSS 选择器应用于 `.markdown-body`。
+ * 代码块在渲染后获得 Shiki 高亮，然后合并回渲染后的 HTML，
+ * 以便后续重新渲染（流式传输时非常频繁）不会清除高亮。
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -38,15 +37,14 @@ export function Markdown({
 
   const theme = useSessionStore((s) => s.theme)
 
-  // Cache: theme|codeText|lang -> highlighted innerHTML. Including the
-  // theme in the key invalidates cached highlights on theme switch.
+  // 缓存：theme|codeText|lang -> 高亮的 innerHTML。
+  // 将 theme 包含在 key 中会在主题切换时使缓存的高亮失效。
   const [highlightCache, setHighlightCache] = useState<Map<string, string>>(
     () => new Map(),
   )
 
-  // Build the final HTML by replacing each <pre><code> with its highlighted
-  // version (if cached). Unhighlighted blocks render plain until Shiki
-  // resolves and triggers a re-render.
+  // 通过将每个 <pre><code> 替换为高亮版本（如果已缓存）来构建最终 HTML。
+  // 未高亮的块会先以纯文本形式渲染，直到 Shiki 解析完毕并触发重新渲染。
   const html = useMemo(() => {
     return baseHtml.replace(
       CODE_BLOCK_RE,
@@ -61,8 +59,8 @@ export function Markdown({
     )
   }, [baseHtml, highlightCache, theme])
 
-  // After render, find any unhighlighted code blocks and request highlighting.
-  // Results go into `highlightCache` which triggers a re-render.
+  // 渲染后，找到所有未高亮的代码块并请求高亮。
+  // 结果进入 `highlightCache`，触发重新渲染。
   useEffect(() => {
     const matches = [...baseHtml.matchAll(CODE_BLOCK_RE)]
     if (matches.length === 0) return

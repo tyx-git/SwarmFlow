@@ -1,21 +1,21 @@
 ﻿/**
- * Web search tool definition, client-side executor, and pass-through handler.
+ * Web search 工具定义、客户端执行器和直通车处理器。
  *
- * Providers with native search (Anthropic, OpenAI, GLM, Kimi) replace this
- * ToolDef in their `convertTools()` with provider-specific formats.
- * Providers without native search keep it as a regular function tool;
- * the client-side executor handles it via a priority chain:
+ * 具有原生搜索功能的提供商（Anthropic、OpenAI、GLM、Kimi）
+ * 在其 `convertTools()` 中用特定于提供商的格式替换此 ToolDef。
+ * 没有原生搜索的提供商将其保留为常规函数工具；
+ * 客户端执行器通过优先级链处理：
  *
- *   1. API key backends (SERPER 鈫?TAVILY 鈫?EXA 鈫?BRAVE)
- *   2. Exa free MCP endpoint (zero-config)
- *   3. Parallel Web Search MCP (zero-config, own index)
- *   4. DuckDuckGo lite scraping (zero-config fallback)
+ *   1. API key 后端（SERPER →TAVILY →EXA →BRAVE）
+ *   2. Exa 免费 MCP 端点（零配置）
+ *   3. Parallel Web Search MCP（零配置，自有索引）
+ *   4. DuckDuckGo 轻量抓取（零配置后备）
  */
 
 import type { ToolDef } from "../providers/base.js";
 
 // ------------------------------------------------------------------
-// Tool definition
+// 工具定义
 // ------------------------------------------------------------------
 
 export const WEB_SEARCH: ToolDef = {
@@ -43,7 +43,7 @@ export const WEB_SEARCH: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// Pass-through for Kimi $web_search
+// Kimi $web_search 的直通车
 // ------------------------------------------------------------------
 
 export function toolBuiltinWebSearchPassthrough(
@@ -53,7 +53,7 @@ export function toolBuiltinWebSearchPassthrough(
 }
 
 // ------------------------------------------------------------------
-// Client-side web search executor
+// 客户端 Web 搜索执行器
 // ------------------------------------------------------------------
 
 interface SearchResult {
@@ -103,22 +103,22 @@ function cleanResultText(text: string): string {
 
 function truncateResultText(text: string, limit: number): string {
   if (text.length <= limit) return text;
-  if (limit <= 1) return "鈥?;
+  if (limit <= 1) return "—;
 
   const lookaheadEnd = Math.min(text.length, limit + SOFT_TRUNCATE_LOOKAHEAD_CHARS);
   for (let i = limit; i < lookaheadEnd; i++) {
     if (/\s/.test(text[i])) {
-      return text.slice(0, i).trimEnd() + "鈥?;
+      return text.slice(0, i).trimEnd() + "—;
     }
   }
 
   for (let i = limit - 1; i > 0; i--) {
     if (/\s/.test(text[i])) {
-      return text.slice(0, i).trimEnd() + "鈥?;
+      return text.slice(0, i).trimEnd() + "—;
     }
   }
 
-  return text.slice(0, limit - 1).trimEnd() + "鈥?;
+  return text.slice(0, limit - 1).trimEnd() + "—;
 }
 
 function firstNonEmptyLine(text: string): string {
@@ -164,7 +164,7 @@ function normalizeHighlights(highlights: string[]): { highlights: string[]; omit
     const next = truncateResultText(excerpt, remaining);
     visible.push(next);
     remaining -= next.length;
-    if (next.endsWith("鈥?)) break;
+    if (next.endsWith("—)) break;
   }
 
   return {
@@ -792,11 +792,11 @@ export async function toolWebSearch(
     }
 
     return (
-      "Web search failed 鈥?no results from any backend.\n\n" +
+      "Web search failed —no results from any backend.\n\n" +
       "For more reliable search, set one of these environment variables:\n" +
-      "  SERPER_API_KEY (serper.dev 鈥?2,500 free queries/month)\n" +
-      "  TAVILY_API_KEY (tavily.com 鈥?1,000 free queries/month)\n" +
-      "  EXA_API_KEY (exa.ai 鈥?2,000 free queries one-time)\n" +
+      "  SERPER_API_KEY (serper.dev —2,500 free queries/month)\n" +
+      "  TAVILY_API_KEY (tavily.com —1,000 free queries/month)\n" +
+      "  EXA_API_KEY (exa.ai —2,000 free queries one-time)\n" +
       "  BRAVE_SEARCH_API_KEY (brave.com/search/api)"
     );
   } catch (e) {

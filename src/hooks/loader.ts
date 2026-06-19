@@ -1,9 +1,9 @@
 ﻿/**
- * Hook discovery and loading.
+ * 钩子发现与加载。
  *
- * Hooks are defined as hook.json files inside hook directories.
- * Discovery order: project (.swarmflow/hooks/) > global (~/.swarmflow/hooks/).
- * Same-name hooks in project scope override global.
+ * 钩子定义为钩子目录内的 hook.json 文件。
+ * 发现顺序：项目（.swarmflow/hooks/）> 全局（~/.swarmflow/hooks/）。
+ * 项目作用域中同名钩子会覆盖全局钩子。
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -18,8 +18,8 @@ const VALID_EVENTS = new Set<string>([
 ]);
 
 /**
- * Load all hook manifests from a hooks directory.
- * Each subdirectory containing a hook.json is treated as a hook.
+ * 从钩子目录加载所有钩子清单。
+ * 每个包含 hook.json 的子目录都被视为一个钩子。
  */
 export function loadHooksFromDir(
   hooksDir: string,
@@ -50,8 +50,8 @@ export function loadHooksFromDir(
 }
 
 /**
- * Load hooks from multiple directories in priority order.
- * Later entries override earlier ones by hook name.
+ * 按优先级顺序从多个目录加载钩子。
+ * 后面的条目按钩子名称覆盖前面的条目。
  */
 export function loadHooksMulti(
   roots: Array<{ dir: string; scope: "global" | "project" | "workspace" }>,

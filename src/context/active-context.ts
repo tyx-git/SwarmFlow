@@ -1,53 +1,83 @@
 ﻿import type { LogEntry } from "./context/log-entry.js";
 
+/** 摘要来源类型 */
 export type SummaryOrigin = "agent" | "manual";
 
+/** 活动上下文分组——将具有相同 contextId 的条目聚合在一起 */
 export interface ActiveContextGroup {
+  /** 上下文 ID */
   contextId: string;
+  /** 分组中的条目列表 */
   entries: Array<{ entry: LogEntry; index: number }>;
+  /** 分组中第一个条目的全局索引 */
   firstIndex: number;
+  /** 分组中最后一个条目的全局索引 */
   lastIndex: number;
+  /** 分组覆盖的起始 turnIndex */
   turnStart: number;
+  /** 分组覆盖的结束 turnIndex */
   turnEnd: number;
+  /** 分组是否包含用户消息 */
   hasUserMessage: boolean;
   /**
-   * The turn this group belongs to in the assembled view. Summaries belong
-   * to the turn of the nearest preceding surviving user message; all other
-   * groups keep their own turn. Computed after ordering.
+   * 此分组在组装视图中所属的 turn。摘要属于最近的前一个存活用户消息的 turn；
+   * 所有其他分组保持自己的 turn。在排序后计算。
    */
   assignedTurn: number;
+  /** 是否为摘要条目 */
   isSummary: boolean;
+  /** 摘要来源 */
   summaryOrigin?: SummaryOrigin;
+  /** 摘要深度 */
   summaryDepth?: number;
+  /** 此摘要覆盖的上下文 ID 列表 */
   coveredContextIds?: string[];
 }
 
+/** 活动上下文中的单个条目项 */
 export interface ActiveContextEntryItem {
+  /** 项类型标识 */
   kind: "entry";
+  /** 日志条目 */
   entry: LogEntry;
+  /** 全局索引 */
   index: number;
 }
 
+/** 活动上下文中的分组项 */
 export interface ActiveContextGroupItem {
+  /** 项类型标识 */
   kind: "group";
+  /** 上下文分组 */
   group: ActiveContextGroup;
 }
 
+/** 活动上下文项——单个条目或分组 */
 export type ActiveContextItem = ActiveContextEntryItem | ActiveContextGroupItem;
 
+/** 活动上下文视图——用于 UI 展示和 API 投影 */
 export interface ActiveContextView {
+  /** 活动窗口起始索引（最后一个 compact_marker 之后） */
   windowStartIdx: number;
+  /** 视图中的项列表（条目和分组的混合） */
   items: ActiveContextItem[];
+  /** 所有分组 */
   groups: ActiveContextGroup[];
+  /** 按 contextId 索引的分组映射 */
   groupByContextId: Map<string, ActiveContextGroup>;
+  /** 分组的上下文 ID 顺序 */
   order: string[];
 }
 
+/** 活动上下文视图选项 */
 export interface ActiveContextViewOptions {
+  /** 是否包含压缩上下文条目。默认 true */
   includeCompactContext?: boolean;
+  /** 是否包含无上下文 ID 的条目。默认 false */
   includeEntriesWithoutContext?: boolean;
 }
 
+/** 获取条目的上下文 ID，不存在或已丢弃时返回 null */
 export function getEntryContextId(entry: LogEntry): string | null {
   if (entry.discarded) return null;
   const ctxId = (entry.meta as Record<string, unknown>)["contextId"];
@@ -55,6 +85,7 @@ export function getEntryContextId(entry: LogEntry): string | null {
   return String(ctxId);
 }
 
+/** 查找活动窗口起始位置（最后一个 compact_marker 之后的索引） */
 export function findActiveWindowStart(entries: LogEntry[]): number {
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i].type === "compact_marker" && !entries[i].discarded) {
@@ -64,21 +95,23 @@ export function findActiveWindowStart(entries: LogEntry[]): number {
   return 0;
 }
 
+/** 安全地将值转换为字符串数组 */
 function getStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
+/** 从条目元数据中提取摘要来源 */
 function getSummaryOrigin(entry: LogEntry): SummaryOrigin | undefined {
   const raw = (entry.meta as Record<string, unknown>)["summaryOrigin"];
   return raw === "manual" || raw === "agent" ? raw : undefined;
 }
 
+/** 检查条目是否为用户自己的消息（受保护的用户上下文） */
 function isUserContextEntry(entry: LogEntry): boolean {
-  // Only the user's own messages are protected. System notices, peer
-  // messages, and injected command prompts share the user_message entry
-  // type but are not the user's words (entries without inputKind predate
-  // the tag and are treated as user messages for safety).
+  // 只有用户自己的消息受保护。系统通知、对等消息和注入的命令提示
+  // 共享 user_message 条目类型，但不是用户的话
+  // （没有 inputKind 的条目早于该标签，为安全起见视为用户消息）。
   if (entry.type === "user_message") {
     const inputKind = (entry.meta as Record<string, unknown>)["inputKind"];
     return inputKind === undefined || inputKind === "user";
@@ -88,6 +121,7 @@ function isUserContextEntry(entry: LogEntry): boolean {
   return inputKind === "user";
 }
 
+/** 构建新的上下文分组 */
 function buildGroup(ctxId: string, entry: LogEntry, index: number): ActiveContextGroup {
   const meta = entry.meta as Record<string, unknown>;
   const coveredTurnStart = typeof meta["coveredTurnStart"] === "number"
@@ -116,6 +150,7 @@ function buildGroup(ctxId: string, entry: LogEntry, index: number): ActiveContex
   };
 }
 
+/** 将条目追加到现有分组中 */
 function appendToGroup(group: ActiveContextGroup, entry: LogEntry, index: number): void {
   const meta = entry.meta as Record<string, unknown>;
   group.entries.push({ entry, index });
@@ -140,10 +175,12 @@ function appendToGroup(group: ActiveContextGroup, entry: LogEntry, index: number
   }
 }
 
+/** 在项列表中查找指定 contextId 分组的索引 */
 function itemIndexForGroup(items: ActiveContextItem[], contextId: string): number {
   return items.findIndex((item) => item.kind === "group" && item.group.contextId === contextId);
 }
 
+/** 构建活动上下文视图——将日志条目分组并排序用于 UI 展示 */
 export function buildActiveContextView(
   entries: LogEntry[],
   options: ActiveContextViewOptions = {},
@@ -213,19 +250,18 @@ export function buildActiveContextView(
     insertGroup(group, insertAt);
   }
 
-  // Stable-sort items by turn so that queued inputs (written to the log
-  // mid-turn with a higher turnIndex) never appear before the current
-  // turn's groups.  Within the same turn, original log order is preserved.
+  // 按 turn 稳定排序项，使得队列中的输入（在 turn 中途以更高 turnIndex
+  // 写入日志）永远不会出现在当前 turn 的分组之前。
+  // 同一 turn 内，保持原始日志顺序。
   items.sort((a, b) => {
     const aTurn = a.kind === "group" ? a.group.turnStart : a.entry.turnIndex;
     const bTurn = b.kind === "group" ? b.group.turnStart : b.entry.turnIndex;
     return aTurn - bTurn;
   });
 
-  // Assign each group to its view turn. Summaries belong to the turn of the
-  // nearest preceding surviving user message (so summaries whose covered
-  // anchors are gone fold into the previous live turn, and adjacent such
-  // summaries land in the same turn); all other groups keep their own turn.
+  // 将每个分组分配到其视图 turn。摘要属于最近的前一个存活用户消息的
+  // turn（因此覆盖锚点已消失的摘要折叠到前一个活跃 turn 中，
+  // 相邻的此类摘要落在同一 turn 中）；所有其他分组保持自己的 turn。
   let lastAnchorTurn = -1;
   for (const item of items) {
     if (item.kind !== "group") continue;
@@ -251,6 +287,7 @@ export function buildActiveContextView(
   };
 }
 
+/** 将活动上下文视图展平为日志条目列表 */
 export function flattenActiveContextEntries(view: ActiveContextView): LogEntry[] {
   const out: LogEntry[] = [];
   for (const item of view.items) {
@@ -265,6 +302,7 @@ export function flattenActiveContextEntries(view: ActiveContextView): LogEntry[]
   return out;
 }
 
+/** 展开上下文范围——返回从 from 到 to 之间的所有上下文 ID */
 export function expandContextRange(
   from: string,
   to: string,

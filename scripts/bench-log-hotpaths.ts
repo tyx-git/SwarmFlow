@@ -1,12 +1,12 @@
 /**
- * Microbenchmark for the batch-B hot-path work (Docs/perf-plan-2026-06-12.md).
+ * batch-B 热路径工作的微基准测试 (Docs/perf-plan-2026-06-12.md)。
  *
- * Synthesizes a realistic long-session log and times each optimized path
- * against the naive implementation it replaced. Run:
+ * 综合一个现实的长时间会话日志，计时每个优化路径
+ * 相对于被替换的朴素实现。运行：
  *
  *   bun scripts/bench-log-hotpaths.ts [entryCount]
  *
- * Not wired into CI — numbers are recorded in the perf plan doc.
+ * 未接入 CI — 数值记录在 perf plan 文档中。
  */
 
 import type { LogEntry } from "../src/log-entry.js";
@@ -72,7 +72,7 @@ function buildLog(count: number): LogEntry[] {
 }
 
 function time(label: string, iterations: number, fn: () => void): number {
-  // Warmup
+  // 预热
   for (let i = 0; i < Math.min(5, iterations); i++) fn();
   const t0 = performance.now();
   for (let i = 0; i < iterations; i++) fn();
@@ -88,7 +88,7 @@ function speedup(naive: number, fast: number): string {
 console.log(`log size: ${N} entries\n`);
 const entries = buildLog(N);
 
-// ── 1. Entry-by-id lookup (updateEntry/discardEntry hot path) ──
+// ── 1. 按 ID 查找条目 (updateEntry/discardEntry 热路径) ──
 {
   console.log("1. entry-by-id lookup (2000 lookups spread over the log)");
   const ids = Array.from({ length: 2000 }, (_, k) => `e-${Math.floor((k / 2000) * N)}`);
@@ -103,7 +103,7 @@ const entries = buildLog(N);
   console.log(`  → ${speedup(naive, fast)}\n`);
 }
 
-// ── 2. tool_call lookup by callId (exec-state update path) ──
+// ── 2. 按 callId 查找 tool_call (exec-state 更新路径) ──
 {
   console.log("2. tool_call lookup by callId (2000 lookups)");
   const callIds = Array.from({ length: 2000 }, (_, k) => `call-${Math.floor((k / 2000) * (N * 0.15))}`);
@@ -120,11 +120,11 @@ const entries = buildLog(N);
   console.log(`  → ${speedup(naive, fast)}\n`);
 }
 
-// ── 3. pending tool_call scan (two-pass vs single-pass) ──
-// Verdict (2026-06-12, 10k log): single-pass measured ~2.8x SLOWER — the
-// pending-map insert/delete churn costs more than the second pass saves.
-// The shipped implementation keeps the two-pass algorithm (shared helper);
-// this comparison stays here as the record of why.
+// ── 3. pending tool_call 扫描 (两遍 vs 单遍) ──
+// 结论 (2026-06-12, 10k 日志): 单遍测得约慢 2.8 倍 —
+// pending-map 的插入/删除开销大于第二遍节省的开销。
+// 发货的实现保持两遍算法（共享辅助函数）；
+// 此比较保留在此处作为记录。
 {
   console.log("3. pending tool_call scan over the full window");
   const twoPass = (): number => {
@@ -167,9 +167,9 @@ const entries = buildLog(N);
   console.log(`  → ${speedup(naive, fast)}\n`);
 }
 
-// ── 4. Projection cost per call (for the record — both projections run
-// per provider round / per poll; the memos that cached them were reverted
-// because they traded resident memory for marginal CPU). ──
+// ── 4. 每次调用的投影成本（记录用——两个投影都在
+// 每个 provider 轮次/每次轮询时运行；缓存它们的 memo 被回滚了，
+// 因为它们用驻留内存换取了微不足道的 CPU）。 ──
 {
   console.log("4. projection cost per call (not memoized — measured for the record)");
   const options = { systemPrompt: "bench prompt", enforceToolCallProtocol: false };
@@ -178,7 +178,7 @@ const entries = buildLog(N);
   console.log();
 }
 
-// ── 6. B7 input bookkeeping scans (measured for the record; left naive) ──
+// ── 6. B7 input 记账扫描（记录用，未索引） ──
 {
   console.log("6. input bookkeeping scans (per user action — recorded, not indexed)");
   time("max input-index scan", 50, () => {

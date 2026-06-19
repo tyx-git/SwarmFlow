@@ -1,10 +1,20 @@
 /**
- * Main-process registry of GUI tabs. One tab ↔ one swarmflow subprocess.
+ * GUI tab 的主进程注册表。一个 tab ↔ 一个 swarmflow 子进程。
  *
- * Forwards subprocess events to the renderer via `webContents.send('rpc:event',
- * { tabId, method, params })`. Renderer issues `rpc:request` calls back via
- * the preload bridge.
+ * 职责：
+ *   - 管理所有 SessionProcess 实例（生命周期、事件路由）
+ *   - 将子进程的 NDJSON 事件转发给渲染器
+ *   - 转发渲染器的 RPC 请求给对应 Tab 的子进程
+ *
+ * 事件流向：
+ *   swarmflow 子进程 → SessionProcess → SessionManager → webContents.send → 渲染器
+ *   渲染器 → ipcMain.handle → SessionManager → SessionProcess.request → 子进程
  */
+
+// =============================================================================
+// TabRecord — 单个 Tab 的运行时状态
+// =============================================================================
+
 import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import { SessionProcess, type SessionProcessOptions, type ReadyMeta } from './sessionProcess.js'
@@ -41,18 +51,30 @@ function snapshot(r: TabRecord): SessionTab {
   }
 }
 
-export class SessionManager {
-  readonly #tabs = new Map<string, TabRecord>()
-  #webContents: WebContents | null = null
+// =============================================================================
+// SessionManager — Tab 注册表
+// =============================================================================
 
+export class SessionManager {
+  readonly #tabs = new Map<string, TabRecord>()   // tabId → TabRecord
+  #webContents: WebContents | null = null          // 当前 BrowserWindow
+
+  /** 绑定渲染进程的 webContents，用于向渲染器推送事件 */
   bindWebContents(webContents: WebContents): void {
     this.#webContents = webContents
   }
 
+  /** 列出所有 Tab 的快照（不含 process 引用） */
   listTabs(): readonly SessionTab[] {
     return [...this.#tabs.values()].map(snapshot)
   }
 
+  /**
+   * 创建新 Tab：
+   *   1. 创建 SessionProcess（启动 swarmflow --server 子进程）
+   *   2. 监听 ready 事件以获取 sessionId
+   *   3. 等待子进程 ready（20s 超时）
+   */
   async createTab(options: SessionProcessOptions): Promise<SessionTab> {
     const tabId = randomUUID()
     const proc = new SessionProcess(options)
@@ -134,7 +156,7 @@ export class SessionManager {
     try {
       wc.send('rpc:event', { tabId, method, params })
     } catch {
-      // ignore
+      // 忽略
     }
   }
 }

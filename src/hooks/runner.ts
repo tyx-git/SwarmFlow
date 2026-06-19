@@ -1,8 +1,8 @@
 ﻿/**
- * Hook command runner.
+ * 钩子命令运行器。
  *
- * Spawns a hook command, writes the event payload as JSON to stdin,
- * reads JSON output from stdout, enforces timeout.
+ * 生成钩子命令，将事件负载作为 JSON 写入 stdin，
+ * 从 stdout 读取 JSON 输出，执行超时限制。
  */
 
 import { spawn } from "node:child_process";
@@ -19,7 +19,7 @@ export interface HookRunResult {
 }
 
 /**
- * Execute a hook command and parse its JSON output.
+ * 执行一个钩子命令并解析其 JSON 输出。
  */
 export async function runHookCommand(
   manifest: HookManifest,
@@ -32,21 +32,19 @@ export async function runHookCommand(
     const env: Record<string, string | undefined> = { ...process.env, ...manifest.env };
     let child;
     try {
-      // Only ROUTE THROUGH cmd.exe when we actually need it. A command
-      // with an explicit native-executable extension (.exe/.com) is
-      // spawned directly (argv array, no shell) on every platform 鈥?cmd
-      // reparsing would mangle args containing its metacharacters
-      // (`&`, `|`, `<`, `>`, `%VAR%`), a regression for native hooks like
-      // `node.exe ... R&D`. Only bare names and .cmd/.bat shims (npm/npx/
-      // prettier) need the shell: a bare exec can't launch a .cmd shim and
-      // modern Node throws EINVAL for it.
+      // 仅在真正需要时才通过 cmd.exe 路由。带有显式本机可执行文件扩展名
+      //（.exe/.com）的命令会在每个平台上直接生成（argv 数组，无 shell）；
+      // cmd 重新解析会破坏包含其元字符的参数（`&`, `|`, `<`, `>`, `%VAR%`），
+      // 这会让 `node.exe ... R&D` 这样的本机钩子退化。只有裸名称和
+      // .cmd/.bat 垫片（npm/npx/prettier）需要 shell：裸 exec 无法启动
+      // .cmd 垫片，现代 Node 会为此抛出 EINVAL。
       const isNativeExe = /\.(exe|com)$/i.test(manifest.command);
       if (osCapabilities.scriptShimsRequireShell && !isNativeExe) {
-        // Pre-quote each token into one command line so a path with spaces
-        // (C:\Program Files\...) isn't split, and so cmd metacharacters are
-        // protected: inside double quotes cmd treats &, |, <, >, (, )
-        // literally. (%VAR% still expands even when quoted 鈥?an inherent
-        // cmd /c limitation; native .exe hooks above avoid cmd entirely.)
+        // 将每个 token 预引用为一条命令行，这样带空格的路径
+        //（C:\Program Files\...）不会被分割，且 cmd 元字符
+        // 受保护：双引号内 cmd 将 &, |, <, >, (, )
+        // 作为字面量。（%VAR% 即使在引号内仍会展开 — 固有的
+        // cmd /c 限制；上面的本机 .exe 钩子完全避免 cmd。）
         const quote = (s: string) =>
           /[\s"&|<>()^]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         const commandLine = [manifest.command, ...(manifest.args ?? [])].map(quote).join(" ");
@@ -56,11 +54,10 @@ export async function runHookCommand(
           cwd: process.cwd(),
           stdio: ["pipe", "pipe", "pipe"],
           timeout: timeoutMs,
-          // shell:true launches cmd.exe (a console-subsystem program). In
-          // GUI/server mode the parent has no inherited console, so Windows
-          // would allocate a fresh console window per child and flash a
-          // black box on every hook firing (PreToolUse/PostToolUse run on
-          // each tool call). Hide it, matching every other win32 spawn.
+          // shell:true 启动 cmd.exe（控制台子系统程序）。在 GUI/服务器模式下，
+          // 父进程没有继承的控制台，因此 Windows 会为每个子进程分配新的
+          // 控制台窗口，并在每次钩子触发时闪烁黑框（PreToolUse/PostToolUse
+          // 在每次工具调用时运行）。隐藏它，与其他所有 win32 生成一致。
           windowsHide: true,
         });
       } else {
@@ -99,7 +96,7 @@ export async function runHookCommand(
     });
 
     const timer = setTimeout(() => {
-      try { child.kill("SIGKILL"); } catch { /* best effort */ }
+      try { child.kill("SIGKILL"); } catch { /* 尽力而为 */ }
       settle({
         success: false,
         output: {},
@@ -166,12 +163,12 @@ export async function runHookCommand(
       });
     });
 
-    // Write payload to stdin
+    // 将负载写入 stdin
     try {
       child.stdin?.write(JSON.stringify(payload));
       child.stdin?.end();
     } catch {
-      // stdin may already be closed if process exited immediately
+      // 如果进程立即退出，stdin 可能已经关闭
     }
   });
 }

@@ -12,23 +12,33 @@ import {
 import { allocateContextId, stripContextTags } from "./context/context-rendering.js";
 import { projectToApiMessages, type InternalMessage } from "./context/log-projection.js";
 
+/** 临时日志状态——管理内存中的日志条目和消息投影 */
 export interface EphemeralLogState {
+  /** 日志条目列表 */
   entries: LogEntry[];
+  /** 获取投影后的 API 消息列表 */
   getMessages: () => InternalMessage[];
+  /** 追加日志条目 */
   appendEntry: (entry: LogEntry) => void;
+  /** 分配新的条目 ID */
   allocId: (type: LogEntry["type"]) => string;
+  /** 分配新的上下文 ID */
   allocateContextId: () => string;
+  /** 计算下一个轮次索引 */
   computeNextRoundIndex: () => number;
 }
 
+/** 创建临时日志状态——从初始消息导入并管理内存中的日志 */
 export function createEphemeralLogState(
   initialMessages: InternalMessage[],
   opts?: {
+    /** 是否需要严格交替角色。默认 false */
     requiresAlternatingRoles?: boolean;
+    /** 当前 turnIndex */
     turnIndex?: number;
-    /** Use an external entries array (for persistent sub-agents). */
+    /** 使用外部条目数组（用于持久子代理） */
     externalEntries?: LogEntry[];
-    /** Use an external ID allocator (for persistent sub-agents). */
+    /** 使用外部 ID 分配器（用于持久子代理） */
     externalIdAllocator?: LogIdAllocator;
   },
 ): EphemeralLogState {
@@ -57,8 +67,8 @@ export function createEphemeralLogState(
     entries.push(entry);
   };
 
-  // If external entries were provided and already have content, skip import
-  // (re-activation path for persistent sub-agents).
+  // 如果提供了外部条目且已有内容，跳过导入
+  // （持久子代理的重新激活路径）。
   if (opts?.externalEntries && opts.externalEntries.length > 0) {
     // Rebuild usedContextIds from existing entries
     for (const entry of entries) {
@@ -69,7 +79,7 @@ export function createEphemeralLogState(
         lastAssistantRoundIndex = Math.max(lastAssistantRoundIndex, entry.roundIndex);
       }
     }
-    // Skip the import loop below 鈥?go straight to the return
+    // 跳过下面的导入循环——直接返回
   } else {
 
   for (const msg of initialMessages) {
@@ -233,11 +243,13 @@ export function createEphemeralLogState(
   };
 }
 
+/** 从消息中解析 assistant 文本内容 */
 function resolveAssistantText(message: InternalMessage): string {
   if (typeof message["text"] === "string") return message["text"];
   return normalizeTextContent(message["content"]);
 }
 
+/** 将内容标准化为纯文本字符串 */
 function normalizeTextContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
@@ -255,6 +267,7 @@ function normalizeTextContent(content: unknown): string {
   return String(content);
 }
 
+/** 生成用于显示的内容摘要（剥离上下文标签） */
 function summarizeContentForDisplay(content: unknown): string {
   if (typeof content === "string") return stripContextTags(content);
   if (Array.isArray(content)) {
@@ -264,6 +277,7 @@ function summarizeContentForDisplay(content: unknown): string {
   return String(content ?? "");
 }
 
+/** 深拷贝内容（浅拷贝对象块） */
 function cloneContent(content: unknown): unknown {
   if (Array.isArray(content)) {
     return content.map((block) =>
@@ -275,6 +289,7 @@ function cloneContent(content: unknown): unknown {
   return content;
 }
 
+/** 将值安全转换为 Record 类型 */
 function asRecord(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     return { ...(value as Record<string, unknown>) };

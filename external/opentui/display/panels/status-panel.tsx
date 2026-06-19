@@ -1,5 +1,9 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — 状态面板（Agent 列表 + Todo 列表）
+// =============================================================================
+
 import React from "react";
 import { StyledText, RGBA, createTextAttributes, type TextChunk } from "@opentui/core";
 
@@ -9,7 +13,7 @@ import type { ConversationPalette } from "../../components/conversation-types.js
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { formatCompactTokensShort } from "../utils/format.js";
 
-// 鈹€鈹€ Color spec 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── 颜色规范 ─────────────────────────────────────────────────────────────────
 const AGENT_TITLE_COLOR = "#b4a0ec"; // matches input-area agent badge
 const TODO_TITLE_COLOR = "#86ded4";  // matches input-area todo badge
 

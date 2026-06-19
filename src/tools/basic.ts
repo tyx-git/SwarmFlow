@@ -1,9 +1,9 @@
 ﻿/**
- * Built-in tool definitions and executors.
+ * 内置工具定义和执行器。
  *
- * 13 tools: read_file, list_dir, glob, grep, edit_file, write_file,
- * bash, bash_background, bash_output, kill_shell,
- * time, web_search, web_fetch.
+ * 包含 13 个工具：read_file、list_dir、glob、grep、edit_file、write_file、
+ * bash、bash_background、bash_output、kill_shell、
+ * time、web_search、web_fetch。
  */
 
 import fs from "node:fs/promises";
@@ -55,7 +55,7 @@ import {
 } from "../lib/diff-hunk.js";
 
 // ------------------------------------------------------------------
-// File mutation tracking (for rewind file revert)
+// 文件变更追踪（用于回滚文件还原）
 // ------------------------------------------------------------------
 
 export interface FileMutation {
@@ -69,24 +69,24 @@ export interface FileMutation {
 }
 
 // ------------------------------------------------------------------
-// Bash mutation tracking (mkdir/cp/mv)
+// Bash 变更追踪 (mkdir/cp/mv)
 // ------------------------------------------------------------------
 
 export interface BashMutationEntry {
   kind: "mkdir" | "cp" | "mv";
-  /** mkdir: directories created (in creation order, revert removes deepest first). */
+  /** mkdir：创建的目录（按创建顺序， 回滚时从最深层开始移除）。 */
   createdDirs?: string[];
-  /** cp/mv: source path. */
+  /** cp/mv：源路径。 */
   source?: string;
-  /** cp/mv: target path. */
+  /** cp/mv：目标路径。 */
   target?: string;
-  /** Whether the target file existed before the operation. */
+  /** 操作前目标文件是否存在。 */
   targetExisted?: boolean;
-  /** Path to backup of overwritten file (in session artifacts). */
+  /** 被覆盖文件的备份路径（在 session artifacts 中）。 */
   backupPath?: string;
-  /** cp -r: recursive copy created a new directory tree. */
+  /** cp -r：递归复制创建的新目录树。 */
   recursive?: boolean;
-  /** SHA256 of the target file after execution (for conflict detection). */
+  /** 执行后目标文件的 SHA256（用于冲突检测）。 */
   postImageSha?: string;
 }
 
@@ -96,23 +96,23 @@ export interface BashMutation {
 }
 
 // ------------------------------------------------------------------
-// Bash mutation tracking: pre-exec snapshot 鈫?execute 鈫?post-exec record
+// Bash 变更追踪：执行前快照 → 执行 → 执行后记录
 // ------------------------------------------------------------------
 
 interface BashPreExecState {
   kind: "mkdir" | "cp" | "mv";
   args: string[];
-  /** mkdir -p: which path segments already existed before execution. */
+  /** mkdir -p：执行前已存在的路径段。 */
   existingAncestors?: string[];
-  /** cp/mv: resolved target path. */
+  /** cp/mv：解析后的目标路径。 */
   targetPath?: string;
-  /** cp/mv: whether target existed before. */
+  /** cp/mv：目标之前是否存在。 */
   targetExisted?: boolean;
-  /** cp/mv: backup file path (if target was an existing file). */
+  /** cp/mv：备份文件路径（如果目标是现有文件）。 */
   backupPath?: string;
-  /** cp -r flag. */
+  /** cp -r 标志。 */
   recursive?: boolean;
-  /** cp/mv: source path. */
+  /** cp/mv：源路径。 */
   sourcePath?: string;
 }
 
@@ -125,10 +125,10 @@ export interface TrackableBashParsed {
 }
 
 /**
- * Parse a bash segment into a trackable mutation command.
- * Returns null for unsupported syntax (multi-source, -t flag, complex quoting, etc.).
- * Classifier and tracker both call this to enforce the contract:
- * if this returns null, the command cannot be accurately tracked for rewind.
+ * 将 bash 片段解析为可追踪的变更命令。
+ * 对不支持的语法（多源、-t 标志、复杂引号等）返回 null。
+ * 分类器和追踪器都调用此函数以强制执行契约：
+ * 如果返回 null，则该命令无法被准确追踪以用于回滚。
  */
 export function parseTrackableBashMutation(segment: string): TrackableBashParsed | null {
   const trimmed = segment.trim();
@@ -151,7 +151,7 @@ export function parseTrackableBashMutation(segment: string): TrackableBashParsed
     current += ch;
   }
   if (current) tokens.push(current);
-  // Unclosed quotes 鈫?can't parse reliably
+  // Unclosed quotes →can't parse reliably
   if (inSingle || inDouble) return null;
 
   if (tokens.length < 2) return null;
@@ -180,9 +180,9 @@ export function parseTrackableBashMutation(segment: string): TrackableBashParsed
 }
 
 /**
- * Check if a bash segment is a trackable mutation that can be accurately
- * recorded for rewind. Used by the permission classifier to enforce the
- * contract: if not trackable, the command must not be classified as write_reversible.
+ * 检查 bash 片段是否是可以准确记录用于回滚的可追踪变更。
+ * 由权限分类器使用以强制执行契约：如果不可追踪，
+ * 则该命令不得被分类为 write_reversible。
  */
 export function isTrackableBashMutation(segment: string): boolean {
   return parseTrackableBashMutation(segment) !== null;
@@ -335,8 +335,8 @@ function splitCompoundBash(command: string): string[] {
 }
 
 /**
- * Extract cd target from a bash segment (for mutation tracking).
- * Inline version 鈥?avoids importing cd-context.ts to prevent circular deps.
+ * 从 bash 片段中提取 cd 目标（用于变更追踪）。
+ * 内联版本 — 避免导入 cd-context.ts 以防止循环依赖。
  */
 function extractCdTargetForBash(segment: string): string | null {
   const trimmed = segment.trim().replace(/^(\s*[A-Za-z_][A-Za-z0-9_]*=[^\s]*\s+)+/, "");
@@ -399,7 +399,7 @@ function buildFileMutation(
 }
 
 // ------------------------------------------------------------------
-// Bash safety limits
+// Bash 安全限制
 // ------------------------------------------------------------------
 
 const BASH_MAX_TIMEOUT = 600; // 10 minutes hard cap (seconds)
@@ -409,7 +409,7 @@ const BASH_TIMEOUT_KILL_SIGNAL: NodeJS.Signals = "SIGKILL";
 // allowlist used to be defined here as BASH_ENV_ALLOWLIST.
 
 // ------------------------------------------------------------------
-// Read limits
+// 读取限制
 // ------------------------------------------------------------------
 
 const READ_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -421,7 +421,7 @@ const READ_LINE_CHARS_CEILING = READ_MAX_CHARS - 1; // a longer line could never
 const READ_MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB limit for images
 
 // ------------------------------------------------------------------
-// Search safety limits
+// 搜索安全限制
 // ------------------------------------------------------------------
 
 const SEARCH_MAX_DEPTH = 8;
@@ -437,13 +437,13 @@ const SEARCH_LINE_MAX_CHARS = 2_000; // per-line truncation cap
 const SEARCH_OUTPUT_CHAR_CAP = 60_000; // overall output cap (head+tail middle-cut)
 
 // ------------------------------------------------------------------
-// File write safety (Phase 5)
+// 文件写入安全（第 5 阶段）
 // ------------------------------------------------------------------
 
 const FILE_WRITE_LOCKS = new Map<string, Promise<void>>();
 
 // ======================================================================
-// Tool definitions (provider-agnostic JSON Schema)
+// 工具定义（provider-agnostic JSON Schema）
 // ======================================================================
 
 const READ: ToolDef = {
@@ -543,9 +543,9 @@ const EDIT: ToolDef = {
   description:
     "Apply a patch to an existing file. Each edit replaces an `old_str` with a `new_str`; " +
     "by default `old_str` must appear exactly once in the file (or the call fails with the line numbers of all matches so you can disambiguate). " +
-    "Set `replace_all: true` on an edit to replace every occurrence 鈥?useful for renames. " +
+    "Set `replace_all: true` on an edit to replace every occurrence —useful for renames. " +
     "Multiple edits in one call are applied atomically and must not overlap. " +
-    "Use `append_str` to add content at the end of the file (can be combined with edits 鈥?appends run last). " +
+    "Use `append_str` to add content at the end of the file (can be combined with edits —appends run last). " +
     "Refuses no-op edits where `old_str === new_str`.",
   parameters: {
     type: "object",
@@ -590,7 +590,7 @@ const WRITE: ToolDef = {
   name: "write_file",
   description:
     "Create or overwrite a file with the given content. Parent directories are created automatically. " +
-    "Prefer write_file over edit_file when you intend to replace the entire file 鈥?it is fewer tokens " +
+    "Prefer write_file over edit_file when you intend to replace the entire file —it is fewer tokens " +
     "than echoing the full existing content into edit_file. Use edit_file for targeted modifications.",
   parameters: {
     type: "object",
@@ -611,25 +611,25 @@ const WRITE: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// Shell-aware bash tool description
+// Shell 感知的 bash 工具描述
 // ------------------------------------------------------------------
 
 import type { ShellKind } from "../platform/index.js";
 
 const BASH_DESCRIPTION_BASE =
   "Execute a synchronous shell command and return stdout, stderr, and exit code.\n\n" +
-  "TIMEOUT is REQUIRED 鈥?it is the synchronous wait budget, not a kill switch. If the " +
+  "TIMEOUT is REQUIRED —it is the synchronous wait budget, not a kill switch. If the " +
   "command finishes in time you get its full output as usual. If the timeout elapses, " +
   "the command is NOT killed: it keeps running and is moved to a tracked background " +
-  "shell. The tool returns the output captured so far plus the shell id 鈥?poll it with " +
+  "shell. The tool returns the output captured so far plus the shell id —poll it with " +
   "`bash_output`, wait with `await_event`, or stop it with `kill_shell`. Never re-run a " +
-  "command just because it timed out: its side effects are still in progress 鈥?poll the " +
+  "command just because it timed out: its side effects are still in progress —poll the " +
   "shell instead.\n\n" +
   "Choose the timeout to match how long you are willing to block on the result. " +
   "Known long-running jobs are better started with bash_background directly (clearer " +
-  "intent, cleaner logs). Persistent processes that never exit on their own 鈥?dev " +
+  "intent, cleaner logs). Persistent processes that never exit on their own —dev " +
   "servers, file watchers, daemons, `npm run dev`, `vite`, `next dev`, `cargo watch`, " +
-  "`tail -f` 鈥?should ALWAYS use bash_background.\n\n" +
+  "`tail -f` —should ALWAYS use bash_background.\n\n" +
   "After a timeout hand-off, look at the partial output: if the command appears stuck " +
   "or was waiting for interactive input, remember to kill_shell it rather than leaving " +
   "a zombie shell behind.";
@@ -647,7 +647,7 @@ function shellAwareDescription(kind: ShellKind): string {
   const prefix = `Shell: ${label}. `;
   if (kind === "pwsh" || kind === "powershell") {
     return prefix +
-      "All commands run through PowerShell 鈥?write PowerShell syntax, not bash. " +
+      "All commands run through PowerShell —write PowerShell syntax, not bash. " +
       "See the system prompt for full PowerShell syntax guidance.\n\n" +
       BASH_DESCRIPTION_BASE;
   }
@@ -698,13 +698,13 @@ const TIME: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// Glob tool
+// Glob 工具
 // ------------------------------------------------------------------
 
 const GLOB_DEFAULT_LIMIT = 200;
 const GLOB_MAX_LIMIT = 1_000;
 const GLOB_MAX_FILES_SCANNED = 50_000;
-// Generous depth guard 鈥?real projects rarely nest >12 deep, but pathological
+// Generous depth guard —real projects rarely nest >12 deep, but pathological
 // symlink loops can recurse forever before the file-count guard fires.
 const GLOB_MAX_DEPTH = 16;
 
@@ -742,14 +742,14 @@ const GLOB: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// Grep tool (enhanced search)
+// Grep 工具（增强搜索）
 // ------------------------------------------------------------------
 
 const GREP: ToolDef = {
   name: "grep",
   description:
     "Search file contents by regex. Pattern can be a single string OR an array of strings " +
-    "(matches lines that contain ANY of the patterns 鈥?useful for snake_case/camelCase/PascalCase variants in one call). " +
+    "(matches lines that contain ANY of the patterns —useful for snake_case/camelCase/PascalCase variants in one call). " +
     "Smart case: an all-lowercase pattern is matched case-insensitively unless `-i` is set explicitly. " +
     "Defaults: returns up to 100 results overall and 15 matching lines per file in content mode; " +
     "individual lines longer than 2000 chars are truncated. " +
@@ -760,7 +760,7 @@ const GREP: ToolDef = {
       pattern: {
         description:
           "Regex pattern, or an array of regex patterns combined with OR logic. " +
-          "Plain identifiers are best 鈥?keep regex simple to avoid 0 matches.",
+          "Plain identifiers are best —keep regex simple to avoid 0 matches.",
         oneOf: [
           { type: "string" },
           { type: "array", items: { type: "string" } },
@@ -823,7 +823,7 @@ const GREP: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// Background shell tools (tracked by Session)
+// 后台 shell 工具（由 Session 追踪）
 // ------------------------------------------------------------------
 
 export const BASH_BACKGROUND_TOOL: ToolDef = {
@@ -833,7 +833,7 @@ export const BASH_BACKGROUND_TOOL: ToolDef = {
     "Use for dev servers, watchers, and long-running commands whose output you want to inspect later.\n\n" +
     "Don't leave zombie shells behind: when a background shell is no longer needed for your work " +
     "AND has no value to the user, remember to kill_shell it. The exception is processes the user " +
-    "benefits from directly 鈥?a dev server they are clicking around in (`npm run dev`, `vite`) " +
+    "benefits from directly —a dev server they are clicking around in (`npm run dev`, `vite`) " +
     "should keep running unless they say otherwise.",
   parameters: {
     type: "object",
@@ -880,8 +880,8 @@ export const KILL_SHELL_TOOL: ToolDef = {
   name: "kill_shell",
   description:
     "Terminate one or more tracked background shells. " +
-    "The signal is sent to the entire process group so children (npm 鈫?vite, etc.) are killed in full. " +
-    "After kill the shell entry stays so you can read its final log via bash_output, but the process is gone 鈥?" +
+    "The signal is sent to the entire process group so children (npm →vite, etc.) are killed in full. " +
+    "After kill the shell entry stays so you can read its final log via bash_output, but the process is gone —" +
     "killed shells do not auto-restart, and HMR / file-watching stops. " +
     "You can reuse the same id in a new bash_background once the prior shell has stopped.",
   parameters: {
@@ -904,7 +904,7 @@ export const KILL_SHELL_TOOL: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// Exports: tool lists
+// 导出：工具列表
 // ------------------------------------------------------------------
 
 export const BASIC_TOOLS: ToolDef[] = [
@@ -928,7 +928,7 @@ export const BASIC_TOOLS_MAP: Record<string, ToolDef> = Object.fromEntries(
 );
 
 // ======================================================================
-// Tool executors
+// 工具执行器
 // ======================================================================
 
 // ------------------------------------------------------------------
@@ -963,7 +963,7 @@ async function toolReadFile(
     return `ERROR: Not a file: ${filePath}`;
   }
 
-  // --- Image file handling ---
+  // --- 图片文件处理 ---
   const [isImage] = classifyFile(filePath);
   if (isImage) {
     if (!supportsMultimodal) {
@@ -1110,15 +1110,15 @@ async function toolReadFile(
     } else {
       // A line this long cannot fit the per-call char budget at all, so point
       // the model at a read-class shell escape hatch. The command and quoting
-      // depend on the resolved shell 鈥?head/tail/cut don't exist under
-      // PowerShell and its single-quote escaping differs 鈥?so render a
+      // depend on the resolved shell —head/tail/cut don't exist under
+      // PowerShell and its single-quote escaping differs —so render a
       // shell-appropriate hint. Use the full absolute path so the model can
       // paste it verbatim from any working directory.
       const isPwsh = shell.kind === "pwsh" || shell.kind === "powershell";
       let escapeHatch: string;
       if (isPwsh) {
         const psPath = filePath.replace(/'/g, "''");
-        // @(...) forces an array even for a single-line/minified file 鈥?        // without it Get-Content returns a bare string, indexing yields a
+        // @(...) forces an array even for a single-line/minified file —        // without it Get-Content returns a bare string, indexing yields a
         // [char], and .Substring throws. This windowing form may prompt for
         // approval (it's not on the pre-approved read list like the bash
         // pipeline below).
@@ -1133,7 +1133,7 @@ async function toolReadFile(
       }
       result +=
         `\n\n[Note: ${lineTrimCount} line${plural} exceeded ${lineCap} chars and ${wasWere} truncated ` +
-        `(longest is ${longestLineChars} chars 鈥?too long for the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget). ` +
+        `(longest is ${longestLineChars} chars —too long for the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget). ` +
         `To read a slice of a specific long line, ${escapeHatch}]`;
     }
   }
@@ -1189,7 +1189,7 @@ async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>): Promi
     }
 
     // Stat entries first, then apply directory-only exclusion. A regular
-    // file named "build" or "dist" should still be shown 鈥?only same-named
+    // file named "build" or "dist" should still be shown —only same-named
     // *directories* are skipped.
     const candidates: string[] = [];
     for (const name of entries) {
@@ -1217,7 +1217,7 @@ async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>): Promi
       .filter((entry) => {
         // Skip excluded directories only after we confirm it IS a directory.
         // If stat failed but the name matches the exclude list, keep the
-        // conservative "skip" behaviour 鈥?almost certainly an inaccessible
+        // conservative "skip" behaviour —almost certainly an inaccessible
         // node_modules / target / etc. rather than a regular file.
         const excludedByName = isExcludedDirName(entry.name);
         if (excludedByName && (entry.isDir || !entry.statOk)) {
@@ -1256,10 +1256,10 @@ async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>): Promi
   if (truncated) {
     const suggestion = Math.min(options.maxEntries * 4, LIST_MAX_ENTRIES_CAP);
     if (suggestion > options.maxEntries) {
-      notices.push(`Output truncated at ${options.maxEntries} entries 鈥?pass max_entries=${suggestion} or narrow the path.`);
+      notices.push(`Output truncated at ${options.maxEntries} entries —pass max_entries=${suggestion} or narrow the path.`);
     } else {
       // Already at the cap; raising max_entries won't help.
-      notices.push(`Output truncated at ${options.maxEntries} entries (cap reached) 鈥?narrow the path or use glob/grep instead.`);
+      notices.push(`Output truncated at ${options.maxEntries} entries (cap reached) —narrow the path or use glob/grep instead.`);
     }
   }
   if (skippedDirs > 0) {
@@ -1318,8 +1318,8 @@ function validateExpectedMtime(
   current: FileVersionSnapshot,
 ): void {
   if (expectedMtimeMs == null) return;
-  if (!current.exists) return; // new file 鈥?mtime guard is meaningless
-  if (current.size === 0) return; // empty file 鈥?nothing to protect
+  if (!current.exists) return; // new file —mtime guard is meaningless
+  if (current.size === 0) return; // empty file —nothing to protect
   if (current.mtimeMs !== expectedMtimeMs) {
     throw new FileVersionConflictError(
       `File changed since last read (mtime conflict): ${filePath} ` +
@@ -1432,7 +1432,7 @@ async function toolEditFileAppend(
 // edit_file multi-edit
 // ------------------------------------------------------------------
 
-/** Find every occurrence of needle in haystack as character offsets. */
+/** 在 haystack 中查找 needle 的所有出现位置，以字符偏移量表示。 */
 function findAllOffsets(haystack: string, needle: string): number[] {
   if (!needle) return [];
   const out: number[] = [];
@@ -1447,10 +1447,10 @@ function findAllOffsets(haystack: string, needle: string): number[] {
 }
 
 /**
- * Sorted list of every newline offset in `content`. Pair with
- * `offsetToLineWithIndex` to convert character offsets to line numbers in
- * O(log n) per query 鈥?used by edit_file's ambiguous-match error path to
- * avoid scanning the file once per duplicate match.
+ * `content` 中每个换行符偏移量的排序列表。与
+ * `offsetToLineWithIndex` 配对，将字符偏移量转换为
+ * O(log n) 每查询的行号 — 由 edit_file 的歧义匹配错误路径使用，
+ * 以避免每个重复匹配扫描文件一次。
  */
 function buildNewlineIndex(content: string): number[] {
   const out: number[] = [];
@@ -1460,7 +1460,7 @@ function buildNewlineIndex(content: string): number[] {
   return out;
 }
 
-/** Convert a character offset to a 1-indexed line number via a pre-built newline index. */
+/** 通过预建的换行符索引将字符偏移量转换为 1索引的行号。 */
 function offsetToLineWithIndex(newlineIndex: readonly number[], offset: number): number {
   // Count of newlines strictly before `offset` (binary search).
   let lo = 0;
@@ -1473,18 +1473,18 @@ function offsetToLineWithIndex(newlineIndex: readonly number[], offset: number):
   return lo + 1;
 }
 
-/** Truncate a snippet for inclusion in error messages. */
+/** 截断片段以包含在错误消息中。 */
 function snippetFor(s: string, maxLen = 60): string {
-  return s.length > maxLen ? s.slice(0, maxLen) + "鈥? : s;
+  return s.length > maxLen ? s.slice(0, maxLen) + "—" : s;
 }
 
 /**
- * The dominant line ending of a file's contents, by majority vote.
- * A file is treated as CRLF only when CRLF lines outnumber lone-LF lines.
- * "Any CRLF present" was too aggressive: a single stray CRLF in an
- * otherwise-LF file would force the model's LF old_str to CRLF and then
- * match nothing 鈥?the edit silently fails while read_file shows LF-only
- * content, so the model can't see the CR and can't self-correct.
+ * 文件内容的主要换行符，通过多数投票决定。
+ * 只有当 CRLF 行超过单独的 LF 行时，文件才被视为 CRLF。
+ * "任何 CRLF 存在" 太激进：一个单独的零散 CRLF 在本应是 LF 的文件中，
+ * 会迫使模型的 LF old_str 变成 CRLF，然后什么都匹配不到 —
+ * 编辑静默失败，而 read_file 显示纯 LF 内容，
+ * 所以模型看不到 CR，也无法自我修正。
  */
 function detectFileEol(content: string): "\r\n" | "\n" {
   const crlf = (content.match(/\r\n/g) ?? []).length;
@@ -1493,13 +1493,12 @@ function detectFileEol(content: string): "\r\n" | "\n" {
 }
 
 /**
- * Re-encode a string's line endings to the target file's convention.
- * read_file presents content as LF-only (it strips CR), so a multi-line
- * old_str copied from that output is LF even when the file on disk is
- * CRLF 鈥?a literal byte match would then never succeed. Normalizing
- * CRLF鈫扡F first makes this idempotent regardless of what the caller
- * passed. Applied to new_str too, so a replacement preserves the file's
- * existing EOL instead of seeding lone-LF lines into a CRLF file.
+ * 将字符串的换行符重新编码为目标文件的约定。
+ * read_file 将内容呈现为纯 LF（它会剥离 CR），所以从该输出复制的
+ * 多行 old_str 即使磁盘上的文件是 CRLF 也是 LF — 这样就永远无法进行字面字节匹配。
+ * 首先规范化 CRLF→LF 使其无论调用者传递什么都是幂等的。
+ * 也应用于 new_str，所以替换会保留文件的现有 EOL，
+ * 而不是将单独的 LF 行植入 CRLF 文件。
  */
 function reencodeEol(s: string, eol: "\r\n" | "\n"): string {
   const lf = s.replace(/\r\n/g, "\n");
@@ -1542,7 +1541,7 @@ async function toolEditFileMulti(
     // Find all matches; validate uniqueness unless replace_all is opted in.
     // No-op edits (old_str === new_str) are rejected so the model doesn't
     // confuse itself with diffs that don't change anything.
-    // Lazily build a newline index 鈥?only when we actually need to format
+    // Lazily build a newline index —only when we actually need to format
     // an ambiguous-match error. Avoids scanning the file on the happy path.
     let newlineIndex: number[] | null = null;
     const lineOf = (offset: number): number => {
@@ -1559,7 +1558,7 @@ async function toolEditFileMulti(
       const newStr = reencodeEol(edit.new_str, fileEol);
       if (oldStr === newStr) {
         return (
-          `ERROR: edit #${editIdx + 1} has identical old_str and new_str 鈥?` +
+          `ERROR: edit #${editIdx + 1} has identical old_str and new_str —` +
           `this is a no-op. Adjust new_str or remove the edit.`
         );
       }
@@ -1570,7 +1569,7 @@ async function toolEditFileMulti(
       if (offsets.length > 1 && !edit.replace_all) {
         const lines = offsets.map(lineOf);
         const lineList = lines.length > 6
-          ? lines.slice(0, 6).join(", ") + `, 鈥?(${lines.length} total)`
+          ? lines.slice(0, 6).join(", ") + `, —(${lines.length} total)`
           : lines.join(", ");
         return (
           `ERROR: edit #${editIdx + 1}: old_str appears ${offsets.length} times ` +
@@ -1694,7 +1693,7 @@ async function toolWriteFile(
 
       // Preserve the existing file's line-ending convention. The model
       // composes content with LF (read_file only ever shows LF), so
-      // writing it verbatim would silently rewrite a CRLF file to LF 鈥?      // spurious git churn, broken CRLF-expecting toolchains, and a diff
+      // writing it verbatim would silently rewrite a CRLF file to LF —      // spurious git churn, broken CRLF-expecting toolchains, and a diff
       // that shows every line as changed (before's lines keep `\r`,
       // after's don't, so nothing aligns). Re-encode to the file's
       // native EOL; new files keep the content exactly as authored.
@@ -1795,23 +1794,21 @@ async function atomicWriteTextFile(
 // ------------------------------------------------------------------
 
 /**
- * Build the env passed to a bash child. Thin re-export of the
- * platform-shell provider so callers don't need to import from
- * `src/platform/`. Kept as a named export for backwards compatibility
- * with existing imports (BackgroundShellManager).
+ * 构建传递给 bash 子进程的环境。这是 platform-shell provider
+ * 的薄重导出，这样调用者不需要从 `src/platform/` 导入。
+ * 保持命名导出是为了与现有导入（BackgroundShellManager）向后兼容。
  */
 export function buildBashEnv(): NodeJS.ProcessEnv {
   return shell.buildChildEnv();
 }
 
 /**
- * Spill a full text payload to a session-scoped temp file. Returns the
- * absolute path. Best-effort: returns null on failure (we don't want a
- * spill failure to mask the original tool result).
+ * 将完整的文本负载溢出到会话范围的临时文件。返回绝对路径。
+ * 尽力而为：失败时返回 null（我们不希望溢出失败掩盖原始工具结果）。
  *
- * Keeps a soft cap of `BASH_SPILL_KEEP_LAST` files in the spill directory:
- * before writing, prune the oldest entries (by mtime) to that count 鈭?1.
- * Long sessions could otherwise accumulate dozens of multi-MB log files.
+ * 在溢出目录中保持 `BASH_SPILL_KEEP_LAST` 个文件的软上限：
+ * 写入前，按 mtime 修剪最旧的条目到该数量减 1。
+ * 长时间运行的会话可能会累积数十个多 MB 的日志文件。
  */
 const BASH_SPILL_KEEP_LAST = 32;
 
@@ -1825,7 +1822,7 @@ function spillOutputToFile(
     mkdirSync(dir, { recursive: true });
 
     // Prune oldest spill files to keep the directory bounded. Best-effort
-    // 鈥?any error here is ignored; spilling is more important than tidiness.
+    // —any error here is ignored; spilling is more important than tidiness.
     try {
       const entries = readdirSync(dir)
         .filter((name) => name.endsWith(".log"))
@@ -1896,7 +1893,7 @@ async function toolBash(
       // On the timeout / abort path, each stream is truncated at `half`
       // (not BASH_MAX_OUTPUT_CHARS), since we have two streams to fit
       // inside the overall budget. So the spill check must use `half` too
-      // 鈥?otherwise a 150K-stdout command that times out loses 50K of
+      // —otherwise a 150K-stdout command that times out loses 50K of
       // output silently because total < BASH_MAX_OUTPUT_CHARS.
       const half = Math.floor(BASH_MAX_OUTPUT_CHARS / 2);
       const parts: string[] = [];
@@ -1930,7 +1927,7 @@ async function toolBash(
       resolve(text);
     };
 
-    // Timeout hand-off: the command is NOT killed 鈥?it keeps running as a
+    // Timeout hand-off: the command is NOT killed —it keeps running as a
     // tracked background shell. Output captured so far seeds the shell log;
     // from here on the shell manager owns the child's stdio. stdin is
     // closed (EOF) so commands stuck waiting for input get an honest "no
@@ -1954,12 +1951,12 @@ async function toolBash(
           startedAt: spawnedAt,
         });
       } catch {
-        return false; // adoption failed 鈥?caller falls back to the kill path
+        return false; // adoption failed —caller falls back to the kill path
       }
       try { child.stdin?.destroy(); } catch {}
       const partial = collectPartial();
       const header =
-        `MOVED TO BACKGROUND: the command did not finish within ${timeout}s. It was NOT killed 鈥?` +
+        `MOVED TO BACKGROUND: the command did not finish within ${timeout}s. It was NOT killed —` +
         `it continues running as background shell '${adopted.id}' (log: ${adopted.logPath}).\n` +
         `Do not re-run it: its side effects are still in progress. Poll with \`bash_output(id="${adopted.id}")\`, ` +
         `wait with \`await_event\`, or stop it with \`kill_shell\` when it is no longer needed.\n` +
@@ -1974,7 +1971,7 @@ async function toolBash(
       const header =
         cause === "timeout"
           ? `ERROR: Command timed out after ${timeout}s and was killed (SIGKILL on process group; ` +
-            `background hand-off was unavailable). NOTE: a timeout is NOT automatically a failure 鈥?` +
+            `background hand-off was unavailable). NOTE: a timeout is NOT automatically a failure —` +
             `for mutating commands, side effects up to the kill point may have completed. Inspect the ` +
             `partial output and resulting filesystem / state before deciding to retry.`
           : `ERROR: Command was interrupted and killed (SIGKILL on process group) before completing.`;
@@ -2063,7 +2060,7 @@ async function toolBash(
 }
 
 // ------------------------------------------------------------------
-// diff preview helpers (used by edit_file / write_file)
+// diff 预览辅助函数（用于 edit_file / write_file）
 // ------------------------------------------------------------------
 
 function buildUnifiedDiffPreview(
@@ -2147,7 +2144,7 @@ function buildUnifiedDiffPreview(
 }
 
 /**
- * Minimal unified diff: generates a unified diff string from two line arrays.
+ * 最小化 unified diff：从两个行数组生成 unified diff 字符串。
  */
 function simpleUnifiedDiff(
   a: string[],
@@ -2270,7 +2267,7 @@ function simpleUnifiedDiff(
 }
 
 function formatUtcOffset(date: Date): string {
-  // getTimezoneOffset returns minutes behind UTC; invert for UTC卤HH:MM.
+  // getTimezoneOffset returns minutes behind UTC; invert for UTC offset HH:MM.
   const offsetMinutes = -date.getTimezoneOffset();
   const sign = offsetMinutes >= 0 ? "+" : "-";
   const abs = Math.abs(offsetMinutes);
@@ -2301,23 +2298,23 @@ function toolTime(): string {
 // ======================================================================
 
 /**
- * Per-session static context captured by the dispatch closures.
+ * 由调度闭包捕获的每个会话静态上下文。
  *
- * `signal` is optional here because `executeTool` accepts it in the same
- * ctx object for caller convenience, but it's a per-call runtime value
- * that is extracted and passed to each executor as a separate argument.
+ * 这里的 `signal` 是可选的，因为 `executeTool` 在同一个 ctx 对象中接受它
+ * 是为了调用者方便，但它是一个按调用运行的运行时值，
+ * 被提取并作为单独参数传递给每个执行器。
  */
 /**
- * Hand a live, timed-out synchronous bash process over to the session's
- * background shell manager. Returns the tracked shell's id and log path.
+ * 将一个活的、超时的同步 bash 进程移交给会话的后台 shell 管理器。
+ * 返回被追踪 shell 的 id 和日志路径。
  */
 export interface AdoptShellRequest {
   child: import("node:child_process").ChildProcess;
   command: string;
   cwd: string;
-  /** Output captured during the synchronous phase, seeded into the shell log. */
+  /** 在同步阶段捕获的输出，播种到 shell 日志中。 */
   seedOutput: string;
-  /** performance.now() timestamp of the original spawn. */
+  /** 原始生成的 performance.now() 时间戳。 */
   startedAt: number;
 }
 export type AdoptShellFn = (req: AdoptShellRequest) => { id: string; logPath: string };
@@ -2329,8 +2326,8 @@ export interface ExecuteToolContext {
   supportsMultimodal?: boolean;
   signal?: AbortSignal;
   /**
-   * When present, a synchronous bash command whose timeout elapses is moved
-   * to a tracked background shell instead of being killed.
+   * 当存在时，超时的同步 bash 命令会被移动到
+   * 被追踪的后台 shell，而不是被杀死。
    */
   adoptShell?: AdoptShellFn;
 }
@@ -2425,12 +2422,11 @@ function optionalStringArg(
 }
 
 /**
- * Like `requiredStringArg` but for filesystem paths: after the type check, it
- * unwraps the degenerate markdown auto-link some models emit into a path field
- * (`"[notes.md](http://notes.md)"` 鈫?`"notes.md"`). Only the degenerate case
- * is touched; genuine links are left for the path validator to reject. Apply
- * to path/file arguments only 鈥?never to `content`, which may legitimately
- * contain markdown links.
+ * 类似 `requiredStringArg`，但用于文件系统路径：在类型检查之后，
+ * 解包一些模型发送到路径字段的退化 markdown 自动链接
+ *（`"[notes.md](http://notes.md)"` → `"notes.md"`）。只触碰退化情况；
+ * 真正的链接留给路径验证器拒绝。只能应用于 path/file 参数
+ * — 永远不要用于 `content`，它可能合法地包含 markdown 链接。
  */
 function requiredPathArg(
   toolName: string,
@@ -2441,7 +2437,7 @@ function requiredPathArg(
   return coercePathString(toolName, key, requiredStringArg(toolName, args, key, opts));
 }
 
-/** Optional-path variant of `requiredPathArg` (see its doc). */
+/** `requiredPathArg` 的可选路径变体（见其文档）。 */
 function optionalPathArg(
   toolName: string,
   args: Record<string, unknown>,
@@ -2466,10 +2462,10 @@ function optionalIntegerArg(
 }
 
 /**
- * Like `optionalIntegerArg`, but rejects values < 1 with a clear error
- * instead of silently clamping. Use for any "limit / size / count" param
- * where 0 or negative is meaningless 鈥?otherwise the model gets surprising
- * default-fallback behavior (e.g. `limit: 0` returning the default 200).
+ * 类似 `optionalIntegerArg`，但用清晰的错误拒绝 < 1 的值，
+ * 而不是静默地限制。用于任何 "limit / size / count" 参数，
+ * 其中 0 或负数是无意义的 — 否则模型会得到令人惊讶的
+ * 默认回退行为（例如 `limit: 0` 返回默认值 200）。
  */
 function optionalPositiveIntegerArg(
   toolName: string,
@@ -2616,9 +2612,9 @@ function globToRegex(pattern: string): RegExp {
 }
 
 /**
- * Auto-prepend `**\/` to patterns that don't include a slash, so that
- * `*.ts` matches anywhere in the tree (matches Cursor's glob_file_search
- * behavior 鈥?what the model usually means by a "search by extension").
+ * 自动为不包含斜杠的模式预加 `**\/`，以便 `*.ts`
+ * 匹配树中任何位置的（匹配 Cursor 的 glob_file_search
+ * 行为 — 模型通常表达的"按扩展名搜索"）。
  */
 function normalizeGlobPattern(pattern: string): string {
   if (pattern.includes("/")) return pattern;
@@ -2628,8 +2624,8 @@ function normalizeGlobPattern(pattern: string): string {
 }
 
 /**
- * Match a normalized glob pattern (relative path) using Bun's built-in
- * matcher. Supports `**`, `*`, `?`, `[abc]`, `{a,b}`.
+ * 使用 Bun 内置匹配器匹配规范化 glob 模式（相对路径）。
+ * 支持 `**`、`*`、`?`、`[abc]`、`{a,b}`。
  */
 function makeGlobMatcher(pattern: string): (relPath: string) => boolean {
   const normalized = normalizeGlobPattern(pattern);
@@ -2672,7 +2668,7 @@ async function toolGlob(pattern: string, searchPath: string, limit: number): Pro
     for (const name of entries) {
       if (filesScanned >= GLOB_MAX_FILES_SCANNED) return;
       // Hidden names skip universally (files + dirs). Directory-only
-      // exclusions (node_modules, dist, target, 鈥? are checked AFTER stat
+      // exclusions (node_modules, dist, target, — are checked AFTER stat
       // so a regular file with the same name is not silently hidden.
       if (isHiddenName(name)) continue;
 
@@ -2720,7 +2716,7 @@ async function toolGlob(pattern: string, searchPath: string, limit: number): Pro
 }
 
 // ------------------------------------------------------------------
-// grep executor (enhanced search)
+// grep 执行器（增强搜索）
 // ------------------------------------------------------------------
 
 interface GrepOptions {
@@ -2974,7 +2970,7 @@ async function toolGrep(
       output = fileMatches.map((f) => `${f.file}:${f.count}`).join("\n");
     }
   } else {
-    // content mode 鈥?show matching lines with optional context
+    // content mode —show matching lines with optional context
     const parts: string[] = [];
     const beforeCtx = options.beforeContext;
     const afterCtx = options.afterContext;
@@ -3017,7 +3013,7 @@ async function toolGrep(
           if (!pushLine("--")) break outer;
         }
       } else {
-        // No context 鈥?just matching lines
+        // No context —just matching lines
         for (const m of fm.matches) {
           const formatted = showNumbers
             ? `${fm.file}:${m.line}: ${m.text}`
@@ -3026,7 +3022,7 @@ async function toolGrep(
         }
       }
       if (fm.truncatedAt !== undefined) {
-        if (!pushLine(`${fm.file}: 鈥?(${fm.count - fm.matches.length} more matches in this file; raise limit_per_file to see them)`)) break;
+        if (!pushLine(`${fm.file}: —(${fm.count - fm.matches.length} more matches in this file; raise limit_per_file to see them)`)) break;
       }
     }
     output = parts.join("\n");
@@ -3403,14 +3399,13 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
 }
 
 /**
- * Execute a tool by name and return a `ToolResult`.
+ * 按名称执行工具并返回 `ToolResult`。
  *
- * Tool functions may return either a plain `string` (wrapped automatically)
- * or a `ToolResult` with optional action hints, tags, and metadata.
+ * 工具函数可以返回纯 `string`（自动包装）或带有可选操作提示、
+ * 标签和元数据的 `ToolResult`。
  *
- * `ctx.signal` (optional) is pulled out and passed to the executor as a
- * per-call runtime context; the remaining fields are captured by the
- * dispatch closures as static configuration.
+ * `ctx.signal`（可选）被提取出来作为按调用运行的运行时上下文传递给执行器；
+ * 其余字段由调度闭包捕获为静态配置。
  */
 export async function executeTool(
   name: string,

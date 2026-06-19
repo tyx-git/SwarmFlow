@@ -9,9 +9,8 @@ import {
 } from 'lucide-react'
 
 /**
- * Map a filename to a lucide icon based on extension. Used in both the
- * transcript's file-edit cards and the right-pane Files panel for visual
- * consistency.
+ * 根据扩展名将文件名映射到 lucide 图标。在 transcript 的文件编辑卡片
+ * 和右侧面板 Files 面板中使用，以保持视觉一致性。
  */
 export function iconForExtension(filename: string): LucideIcon {
   const i = filename.lastIndexOf('.')

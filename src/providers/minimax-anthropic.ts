@@ -1,21 +1,19 @@
 ﻿/**
- * MiniMax Anthropic-compatible provider.
+ * MiniMax Anthropic 兼容提供者。
  *
- * Endpoints:
+ * 端点：
  *   - Global: https://api.minimax.io/anthropic
  *   - China:  https://api.minimaxi.com/anthropic
  *
- * Verified live (2026-05): standard Anthropic Messages shape; backend runs
- * automatic prefix cache (no `cache_control` needed 鈥?verified by hitting the
- * same prefix across two requests without any marker and seeing
- * `cache_read_input_tokens` jump on the second turn).
+ * 实机验证（2026-05）：标准 Anthropic Messages 形状；后端运行
+ * 自动前缀缓存（不需要 `cache_control` — 已通过两次请求命中相同前缀且
+ * 不携带任何标记，并观察到第二回合 `cache_read_input_tokens` 跳升来验证）。
  *
- * MiniMax does emit a real-looking `signature` (64-char hex) on thinking
- * blocks, but it is NOT cryptographically validated 鈥?a fake signature
- * round-trips successfully. Open-source model, so we do not round-trip it.
+ * MiniMax 确实会在 thinking 块上发出看起来真实的 `signature`（64 字符 hex），
+ * 但它不经过密码学验证 — 假签名也能成功往返。开源模型，因此我们不往返它。
  *
- * Vendor quirks: temperature is constrained to (0.0, 1.0) 鈥?exclusive of
- * both endpoints. We clamp on the boundaries.
+ * 供应商特性：temperature 被约束在 (0.0, 1.0) — 两端均不包含。
+ * 我们会在边界处进行 clamp。
  */
 
 import { BaseAnthropicProvider } from "./anthropic-base.js";
@@ -38,7 +36,7 @@ export class MiniMaxAnthropicProvider extends BaseAnthropicProvider {
   ): void {
     const raw = options?.temperature !== undefined ? options.temperature : this._config.temperature;
     if (raw === undefined) return;
-    // MiniMax: temperature 鈭?(0.0, 1.0), exclusive on both ends.
+    // MiniMax: temperature ∈(0.0, 1.0), exclusive on both ends.
     let t = raw;
     if (t <= 0) t = 0.01;
     if (t >= 1) t = 0.99;

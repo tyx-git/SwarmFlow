@@ -1,9 +1,9 @@
 ﻿/**
- * Initialization wizard for swarmflow.
+ * swarmflow 的初始化向导。
  *
- * Provides an interactive first-run setup experience using @inquirer/prompts.
- * Saves provider configuration to ~/.swarmflow/settings.json + state/model-selection.json.
- * Supports Ctrl+C / ESC to go back to the previous step.
+ * 使用 @inquirer/prompts 提供交互式首次运行设置体验。
+ * 将提供者配置保存到 ~/.swarmflow/settings.json + state/model-selection.json。
+ * 支持 Ctrl+C / ESC 返回上一步。
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -56,7 +56,7 @@ import { createModelTierEntry, parseProviderModelTarget } from "./models/selecti
 import { describeModel } from "./models/presentation.js";
 
 // ------------------------------------------------------------------
-// Wizard result
+// 向导结果
 // ------------------------------------------------------------------
 
 export interface WizardResult {
@@ -64,26 +64,26 @@ export interface WizardResult {
 }
 
 // ------------------------------------------------------------------
-// Internal types
+// 内部类型
 // ------------------------------------------------------------------
 
-/** Result of configuring a single provider. */
+/** 配置单个提供者的结果。*/
 interface ProviderConfigResult {
   providerId: string;
   providerEntry: ProviderEntry;
   skipped?: boolean;
 }
 
-/** A fully selected model: provider + model key + model id + config name. */
+/* 一个完全选定的模型：提供者+模型键+模型id +配置名。 */
 interface ModelSelection {
   configName: string;   // "providerId:modelKey"
   providerId: string;
-  selectionKey: string; // model key
-  modelId: string;      // actual API model id
+  selectionKey: string; // 模型键
+  modelId: string;      // 实际 API 模型 ID
 }
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
 function isUserCancel(err: unknown): boolean {
@@ -93,14 +93,14 @@ function isUserCancel(err: unknown): boolean {
 }
 
 // ------------------------------------------------------------------
-// Esc-aware prompt layer + linear navigation.
+// Esc 支持的提示层 + 线性导航。
 //
-// Every interactive screen returns its value or BACK. Esc (and Ctrl+C) abort
-// the active prompt and the navigator steps back exactly one screen; backing
-// out of the first screen cancels the wizard. "Go back" is never a thrown
-// exception that crosses more than one screen boundary, so it cannot
-// over-rewind. inquirer's own cleanup runs on abort (screen.done in its
-// finally), so the terminal is restored before the next prompt renders.
+// 每个交互式屏幕返回其值或 BACK。Esc（和 Ctrl+C）中止
+// 活动提示，导航器正好后退一个屏幕；退出
+// 第一个屏幕取消向导。"返回" 永远不会抛出
+// 跨越多个屏幕边界的异常，因此不会
+// 过度回退。inquirer 自己的清理在中止时运行（在其
+// finally 中的 screen.done），因此终端在下一个提示渲染前恢复。
 // ------------------------------------------------------------------
 
 const BACK = Symbol("wizard-back");
@@ -133,7 +133,7 @@ interface SelectStepChoice {
   value: string;
 }
 
-/** Append "Esc/Ctrl+C back" to the select help line (next to navigate/select). */
+/* 将“Esc/Ctrl+C 返回”附加到选择帮助行（显示在导航/选择旁边）。 */
 const ansiBold = (s: string) => `\x1b[1m${s}\x1b[22m`;
 const ansiDim = (s: string) => `\x1b[2m${s}\x1b[22m`;
 const ESC_BACK_SELECT_THEME = {
@@ -141,7 +141,7 @@ const ESC_BACK_SELECT_THEME = {
     keysHelpTip: (keys: [string, string][]) =>
       [...keys, ["Esc/Ctrl+C", "back"] as [string, string]]
         .map(([key, action]) => `${ansiBold(key)} ${ansiDim(action)}`)
-        .join(ansiDim(" 鈥?")),
+        .join(ansiDim(" • ")),
   },
 };
 
@@ -159,7 +159,7 @@ async function confirmStep(opts: { message: string; default?: boolean }): Promis
   return withEscBack((signal) => confirm({ message: opts.message, default: opts.default }, { signal }));
 }
 
-/** Drill-down tree picker. Esc pops one level; Esc at the root returns BACK. */
+/* 向下钻取树器。Esc弹出一层；根节点上的Esc返回BACK。 */
 async function selectTreeStep(nodes: ModelPickerTreeNode[], message: string): Promise<string | Back> {
   const stack: Array<{ message: string; nodes: ModelPickerTreeNode[] }> = [{ message, nodes }];
   while (stack.length > 0) {
@@ -188,7 +188,7 @@ function createInitPromptAdapter(): CredentialPromptAdapter {
       return select({
         message: request.message,
         choices: request.options.map((option) => ({
-          name: option.description ? `${option.label} 鈥?${option.description}` : option.label,
+          name: option.description ? `${option.label} — ${option.description}` : option.label,
           value: option.value,
         })),
       });
@@ -204,7 +204,7 @@ function createInitPromptAdapter(): CredentialPromptAdapter {
 }
 
 /**
- * Check whether a provider preset is already configured (has key / credentials).
+ * 检查提供者预设是否已配置（拥有密钥/凭据）。
  */
 function isProviderConfigured(preset: ProviderPreset, configuredProviders: Map<string, ProviderEntry>): boolean {
   if (configuredProviders.has(preset.id)) return true;
@@ -387,11 +387,11 @@ function describeTierEntry(entry: ModelTierEntry): string {
 }
 
 // ------------------------------------------------------------------
-// Step: Configure a single provider (reused from old wizard)
+// 步骤：配置单个提供者（从旧向导复用）
 // ------------------------------------------------------------------
 
 async function stepConfigureProvider(provider: ProviderPreset): Promise<ProviderConfigResult> {
-  // 鈹€鈹€ OpenAI Codex (OAuth) 鈹€鈹€
+  // ── OpenAI Codex（OAuth）──
   if (provider.id === "openai-codex") {
     console.log(`  ${provider.name}: Logging in with your ChatGPT account...\n`);
     const { browserLogin, deviceCodeLogin, saveOAuthTokens, hasOAuthTokens } = await import("./auth/openai-oauth.js");
@@ -430,7 +430,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
     };
   }
 
-  // 鈹€鈹€ GitHub Copilot (device flow) 鈹€鈹€
+  // ── GitHub Copilot (设备流) ──
   if (provider.id === "copilot") {
     console.log(`  ${provider.name}: Logging in with your GitHub account...\n`);
     const { deviceCodeLoginCLI, saveGitHubTokens, hasGitHubTokens } = await import("./auth/github-copilot-oauth.js");
@@ -455,7 +455,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
     };
   }
 
-  // 鈹€鈹€ Local inference servers (Ollama, oMLX, LM Studio) 鈹€鈹€
+  // ── 本地推理服务器（Ollama、oMLX、LM Studio） ──
   if (provider.localServer && provider.defaultBaseUrl) {
     console.log(`  Default: ${provider.defaultBaseUrl} (press Enter to use)\n`);
     const baseUrl = await input({
@@ -463,7 +463,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
       default: provider.defaultBaseUrl,
     });
 
-    // Try without key first; if no models found, ask for API key and retry
+    // 首先尝试无密钥；如果未找到模型，则询问 API 密钥并重试
     console.log(`  Connecting to ${baseUrl} ...`);
     let apiKey = "local";
     let discovered = await fetchModelsFromServer(baseUrl, 5000, apiKey);
@@ -516,7 +516,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
     return { providerId: provider.id, providerEntry: entry };
   }
 
-  // 鈹€鈹€ Managed credential providers (Kimi, GLM, MiniMax) 鈹€鈹€
+  // ── 托管凭据提供者（Kimi、GLM、MiniMax） ──
   if (isManagedProvider(provider.id)) {
     const result = await ensureManagedProviderCredential(
       provider.id,
@@ -527,14 +527,14 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
       return { providerId: provider.id, providerEntry: { api_key_env: result.envVar }, skipped: true };
     }
 
-    console.log(`  鉁?Saved to ~/.swarmflow/.env as ${result.envVar}\n`);
+    console.log(`  ✓ Saved to ~/.swarmflow/.env as ${result.envVar}\n`);
     return {
       providerId: provider.id,
       providerEntry: { api_key_env: result.envVar },
     };
   }
 
-  // 鈹€鈹€ Standard API key providers 鈹€鈹€
+  // ── 标准 API 密钥提供者 ──
   const envVarName = provider.envVar;
   const envValue = process.env[envVarName];
 
@@ -550,7 +550,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
       const key = await input({ message: `${provider.name}: Paste API key` });
       if (key.trim()) {
         setDotenvKey(envVarName, key.trim());
-        console.log(`  鉁?Saved to ~/.swarmflow/.env\n`);
+        console.log(`  ✓ Saved to ~/.swarmflow/.env\n`);
       }
     }
   } else {
@@ -559,7 +559,7 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
     });
     if (key.trim()) {
       setDotenvKey(envVarName, key.trim());
-      console.log(`  鉁?Saved to ~/.swarmflow/.env\n`);
+      console.log(`  ✓ Saved to ~/.swarmflow/.env\n`);
     }
   }
 
@@ -570,15 +570,15 @@ async function stepConfigureProvider(provider: ProviderPreset): Promise<Provider
 }
 
 // ------------------------------------------------------------------
-// Staged model-config flow: endpoint 鈫?API key 鈫?model. Each stage returns
-// "next" or BACK; the linear driver steps back exactly one stage on BACK.
+// 分阶段 model-config 流程：endpoint → API key → model。每个阶段返回
+// "next" 或 BACK；线性驱动在 BACK 时正好后退一个阶段。
 // ------------------------------------------------------------------
 
 interface WizardCtx {
   providers: Map<string, ProviderEntry>;
   selectedProviderId?: string;
   modelSelection?: ModelSelection;
-  /** True when the endpoint's configure stage already picked the model (local). */
+  /* 当端点的配置阶段已经选择模型（本地）时，为 True。 */
   modelPickedDuringConfigure: boolean;
   thinkingLevel?: string;
   tierConfig?: Record<string, ModelTierEntry>;
@@ -591,9 +591,9 @@ interface WizardStage {
 }
 
 /**
- * Run stages in order. BACK steps to the previous *applicable* stage (skipping
- * inapplicable ones in both directions). Backing out of the first stage returns
- * false (caller decides whether that means "cancel" or "re-show check-existing").
+ * 按顺序运行各个阶段。BACK 跳转到前一个*可应用*的阶段（双向跳过
+ * 不可应用的阶段）。退出第一个阶段返回
+ * false（调用方决定这意味着"取消"还是"重新显示检查现有"）。
  */
 async function runStages(stages: WizardStage[], ctx: WizardCtx): Promise<boolean> {
   let i = 0;
@@ -623,10 +623,9 @@ function endpointDisplayLabel(providerId: string): string {
 }
 
 /**
- * Find the *provider* node (the one whose children are models/vendors) for an
- * endpoint. Matches kind "provider" so a group node sharing its id with its
- * first sub-provider (e.g. the "kimi" group vs the "kimi" endpoint) doesn't
- * shadow the real endpoint.
+ * 找到某个端点的*提供者*节点（其子节点是模型/供应商）。
+ * 匹配 kind "provider"，因此与第一个子提供者共享其 id 的组节点
+ *（例如 "kimi" 组与 "kimi" 端点）不会遮蔽真正的端点。
  */
 function findProviderNode(nodes: ModelPickerTreeNode[], id: string): ModelPickerTreeNode | undefined {
   for (const node of nodes) {
@@ -639,7 +638,7 @@ function findProviderNode(nodes: ModelPickerTreeNode[], id: string): ModelPicker
   return undefined;
 }
 
-/** Model (or vendor鈫抦odel) children for one endpoint, minus action nodes. */
+/** 一个端点的模型（或 vendor→model）子节点，不包括 action 节点。 */
 function modelChoicesForProvider(
   providers: Map<string, ProviderEntry>,
   providerId: string,
@@ -650,7 +649,7 @@ function modelChoicesForProvider(
   return node.children.filter((child) => child.kind !== "action");
 }
 
-/** Endpoint 鈫?API key sub-flow. Screen A (keep/replace/import); Screen B (paste). */
+/** Endpoint → API key 子流程。屏幕 A（保持/替换/导入）；屏幕 B（粘贴）。 */
 async function runKeySubflow(slot: CredentialSlot): Promise<"done" | Back> {
   while (true) {
     const configured = isCredentialConfigured(slot);
@@ -679,7 +678,7 @@ async function runKeySubflow(slot: CredentialSlot): Promise<"done" | Back> {
       continue;
     }
 
-    // action === "replace" 鈫?paste screen; Esc here returns to the menu above.
+    // action === "replace" → 粘贴屏幕；这里的 Esc 返回上方菜单。
     let backedOut = false;
     while (true) {
       const pasted = await inputStep({ message: `${slot.label}: Paste API key` });
@@ -711,7 +710,7 @@ async function stageConfigureEndpoint(ctx: WizardCtx): Promise<"next" | Back> {
   const preset = PROVIDER_PRESETS.find((p) => p.id === providerId);
   const kind = providerCredentialKind(providerId);
 
-  // OAuth / local providers keep the existing multi-prompt sub-flow.
+  // OAuth/本地提供者保持现有的多提示子流程。
   if (preset && (preset.localServer || kind === "oauth")) {
     let result: ProviderConfigResult;
     try {
@@ -735,7 +734,7 @@ async function stageConfigureEndpoint(ctx: WizardCtx): Promise<"next" | Back> {
     return "next";
   }
 
-  // Keyed provider (env / managed / custom) 鈫?key sub-flow.
+  // 有密钥提供者（env/managed/custom）→ 密钥子流程。
   const slot = resolveCredentialSlot(providerId, { label: endpointDisplayLabel(providerId) });
   if (!slot) {
     ctx.providers.set(providerId, {});
@@ -786,7 +785,7 @@ async function stageConfigureTiers(ctx: WizardCtx): Promise<"next" | Back> {
 }
 
 // ------------------------------------------------------------------
-// Sub-agent tier collection (after the top-level "configure tiers?" confirm)
+// 子代理层级收集（在顶层"配置层级？"确认之后）
 // ------------------------------------------------------------------
 
 async function collectTiers(
@@ -808,8 +807,7 @@ async function collectTiers(
         continue;
       }
 
-      // Tier-eligible levels exclude native "off" / "none" 鈥?sub-agent tiers
-      // always have thinking enabled.
+      // 符合层级条件的级别不包括原生的 "off"/"none" — 子代理层级始终启用思考。
       let thinkingLevel: string;
       if (getThinkingLevels(picked.modelId).length === 0) {
         thinkingLevel = "none";
@@ -841,20 +839,20 @@ async function collectTiers(
 }
 
 // ------------------------------------------------------------------
-// Step: Web search API key
+// 步骤：Web 搜索 API 密钥
 // ------------------------------------------------------------------
 
 const SEARCH_API_OPTIONS = [
-  { env: "SERPER_API_KEY",        name: "Serper",       url: "https://serper.dev",             free: "2,500 queries/month" },
-  { env: "TAVILY_API_KEY",        name: "Tavily",       url: "https://tavily.com",             free: "1,000 queries/month" },
-  { env: "EXA_API_KEY",           name: "Exa",          url: "https://exa.ai",                 free: "one-time credit" },
-  { env: "BRAVE_SEARCH_API_KEY",  name: "Brave Search", url: "https://brave.com/search/api/",  free: "$5 credit" },
+  { env: "SERPER_API_KEY", name: "Serper", url: "https://serper.dev", free: "2,500 queries/month" },
+  { env: "TAVILY_API_KEY", name: "Tavily", url: "https://tavily.com", free: "1,000 queries/month" },
+  { env: "EXA_API_KEY", name: "Exa", url: "https://exa.ai", free: "one-time credit" },
+  { env: "BRAVE_SEARCH_API_KEY", name: "Brave Search", url: "https://brave.com/search/api/", free: "$5 credit" },
 ] as const;
 
 async function stageWebSearch(_ctx: WizardCtx): Promise<"next" | Back> {
   const configured = SEARCH_API_OPTIONS.find(({ env }) => process.env[env]?.trim());
   if (configured) {
-    console.log(`  鉁?Web search: ${configured.name} (${configured.env} detected)\n`);
+    console.log(`  ✓ Web search: ${configured.name} (${configured.env} detected)\n`);
     return "next";
   }
 
@@ -862,16 +860,16 @@ async function stageWebSearch(_ctx: WizardCtx): Promise<"next" | Back> {
     message: "Web search: Paste an API key for better results (strongly recommended)",
     choices: [
       ...SEARCH_API_OPTIONS.map((opt) => ({
-        name: `${opt.name} 鈥?${opt.free} free 鈫?${opt.url}`,
+        name: `${opt.name} — ${opt.free} free → ${opt.url}`,
         value: opt.env,
       })),
-      { name: "Skip (use built-in free search 鈥?limited quality)", value: "skip" },
+      { name: "Skip (use built-in free search — limited quality)", value: "skip" },
     ],
   });
 
   if (choice === BACK) return BACK;
   if (choice === "skip") {
-    console.log("  Using built-in search (Exa 鈫?Parallel 鈫?DuckDuckGo).\n");
+    console.log("  Using built-in search (Exa → Parallel → DuckDuckGo).\n");
     return "next";
   }
 
@@ -883,7 +881,7 @@ async function stageWebSearch(_ctx: WizardCtx): Promise<"next" | Back> {
 
   if (key.trim()) {
     setDotenvKey(selected.env, key.trim());
-    console.log(`  鉁?Saved to ~/.swarmflow/.env\n`);
+    console.log(`  ✓ Saved to ~/.swarmflow/.env\n`);
   } else {
     console.log("  Skipped. You can set it later in ~/.swarmflow/.env\n");
   }
@@ -891,22 +889,22 @@ async function stageWebSearch(_ctx: WizardCtx): Promise<"next" | Back> {
 }
 
 // ------------------------------------------------------------------
-// Main wizard 鈥?linear stage driver with single-step Esc back
+// 主向导 — 带单步 Esc 返回的线性阶段驱动
 // ------------------------------------------------------------------
 
 export async function runInitWizard(): Promise<WizardResult> {
   const homeDir = getSwarmflowHomeDir();
 
-  // Check if settings.json already exists with providers
+  // 检查 settings.json 是否已存在且包含提供者
   const existingSettings = loadGlobalSettings(homeDir);
   const hasExisting = Boolean(
     existingSettings.providers && Object.keys(existingSettings.providers).length > 0,
   ) || hasAnyManagedCredential();
 
   console.log();
-  console.log("  鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽");
-  console.log("  鈺?      Welcome to swarmflow Setup!        鈺?);
-  console.log("  鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆");
+  console.log("  ╔══════════════════════════════════════╗");
+  console.log("  ║       Welcome to swarmflow Setup!        ║");
+  console.log("  ╚══════════════════════════════════════╝");
   console.log("  (Esc or Ctrl+C: go back one step; back out of the first step to cancel)\n");
 
   const ctx: WizardCtx = {
@@ -931,7 +929,7 @@ export async function runInitWizard(): Promise<WizardResult> {
         process.exit(0);
       }
       if (use) {
-        console.log("\n  鉁?Using existing configuration.\n");
+        console.log("\n  ✓ Using existing configuration.\n");
         return { homeDir };
       }
     }
@@ -939,10 +937,10 @@ export async function runInitWizard(): Promise<WizardResult> {
     const completed = await runStages(stages, ctx);
     if (completed) break;
 
-    // Backed out of the first stage.
+    // 从第一个阶段后退退出。
     if (hasExisting) {
       console.log();
-      continue; // re-show "use existing?"
+      continue; // 重新显示“使用现有配置？”
     }
     console.log("\n  Setup cancelled.\n");
     process.exit(0);
@@ -954,7 +952,7 @@ export async function runInitWizard(): Promise<WizardResult> {
   const tierConfig = ctx.tierConfig;
 
   // ------------------------------------------------------------------
-  // Build and save settings
+  // 构建并保存设置
   // ------------------------------------------------------------------
 
   const providers: Record<string, ProviderEntry> = {};
@@ -963,12 +961,11 @@ export async function runInitWizard(): Promise<WizardResult> {
   });
 
   const settings: SwarmflowSettings = {
-    // Note: do NOT write `default_model` here. `default_model` is a declarative
-    // pin that overrides state/model-selection.json on every startup (see
-    // bootstrap.ts), so auto-populating it from the wizard's initial pick would
-    // make `/model` switches never stick across restarts. The initial selection
-    // is persisted to model-selection.json below 鈥?that is the auto-memory.
-    // `default_model` stays opt-in: only present if the user adds it by hand.
+    // 注意：不要在这里写入 `default_model`。`default_model` 是声明式固定项，
+    // 每次启动都会覆盖 state/model-selection.json（见 bootstrap.ts）。
+    // 如果从向导初始选择自动填充它，`/model` 切换就永远无法跨重启保留。
+    // 初始选择会在下面持久化到 model-selection.json — 这才是自动记忆。
+    // `default_model` 保持 opt-in：只有用户手动添加时才存在。
     thinking_level: thinkingLevel && thinkingLevel !== "off" && thinkingLevel !== "none"
       ? thinkingLevel
       : undefined,
@@ -978,7 +975,7 @@ export async function runInitWizard(): Promise<WizardResult> {
 
   saveSettings(settings, globalSettingsPath(homeDir));
 
-  // Save model selection state
+  // 保存模型选择状态
   if (modelSelection) {
     saveModelSelectionState({
       config_name: modelSelection.configName,
@@ -989,7 +986,7 @@ export async function runInitWizard(): Promise<WizardResult> {
     });
   }
 
-  // Ensure user override directories and global memory file
+  // 确保用户覆盖目录和全局记忆文件存在
   mkdirSync(join(homeDir, "prompts", "templates"), { recursive: true });
   mkdirSync(join(homeDir, "skills"), { recursive: true });
   const globalAgentsMd = join(homeDir, "AGENTS.md");
@@ -998,11 +995,11 @@ export async function runInitWizard(): Promise<WizardResult> {
   }
 
   // ------------------------------------------------------------------
-  // Summary
+  // 摘要
   // ------------------------------------------------------------------
 
   console.log();
-  console.log("  鉁?Configuration saved");
+  console.log("  ✓ Configuration saved");
   console.log(`    Settings: ${globalSettingsPath(homeDir)}`);
   console.log();
 
@@ -1022,12 +1019,12 @@ export async function runInitWizard(): Promise<WizardResult> {
   configuredProviders.forEach((entry, id) => {
     const preset = PROVIDER_PRESETS.find((p) => p.id === id);
     if (entry.base_url) {
-      console.log(`  鉁?${preset?.name ?? id} (local: ${entry.base_url})`);
+      console.log(`  ✓ ${preset?.name ?? id} (local: ${entry.base_url})`);
     } else if (entry.api_key_env) {
       const hasKey = isManagedProvider(id)
         ? hasManagedCredential(id)
         : Boolean(process.env[entry.api_key_env]);
-      console.log(`  ${hasKey ? "鉁? : "鉁?} ${preset?.name ?? id} (${entry.api_key_env}${hasKey ? "" : " 鈥?not set"})`);
+      console.log(`  ${hasKey ? "✓" : "✗"} ${ preset?.name ?? id } (${ entry.api_key_env }${ hasKey ? "" : " — not set" })`);
     }
   });
 

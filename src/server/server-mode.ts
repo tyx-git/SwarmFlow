@@ -1,17 +1,17 @@
 ﻿/**
- * `swarmflow --server` runtime: bootstraps a Session and serves NDJSON JSON-RPC
- * over stdio.
+ * `swarmflow --server` 运行时：引导一个 Session 并通过 stdio 提供 NDJSON JSON-RPC
+ * 服务。
  *
- * One process = one Session. The GUI (Electron main process) spawns one of
- * these per tab and supervises them. See gui/electron/sessionProcess.ts.
+ * 一个进程 = 一个 Session。GUI（Electron 主进程）为每个标签页生成一个
+ * 此类进程并监督它们。见 gui/electron/sessionProcess.ts。
  *
- * Lifecycle:
- *   1. Read settings + build Config (must have at least one provider configured)
- *   2. Load templates / agents / skills / hooks
- *   3. Construct Session
- *   4. Restore model selection + apply settings
- *   5. Register RPC handlers and emit `ready` event with session metadata
- *   6. Listen on stdin until EOF or `server.shutdown` request
+ * 生命周期：
+ *   1. 读取设置 + 构建 Config（必须至少配置一个提供者）
+ *   2. 加载模板 / agents / skills / hooks
+ *   3. 构造 Session
+ *   4. 恢复模型选择 + 应用设置
+ *   5. 注册 RPC 处理器并发出带有 session 元数据的 `ready` 事件
+ *   6. 在 stdin 上监听直到 EOF 或 `server.shutdown` 请求
  */
 
 import { existsSync, statSync } from "node:fs";
@@ -58,8 +58,8 @@ function identifyPrimaryAgent(agents: Record<string, Agent>, name = "main"): Age
 }
 
 /**
- * Run server mode. Returns when the peer disconnects or `server.shutdown` is
- * called. Throws on bootstrap failure.
+ * 运行服务器模式。当对等方断开连接或调用 `server.shutdown` 时返回。
+ * 引导失败时抛出异常。
  */
 export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   const homeDir = getSwarmflowHomeDir();
@@ -70,8 +70,8 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     throw new Error(`work-dir does not exist or is not a directory: ${projectPath}`);
   }
 
-  // The GUI subprocess wants its working directory to match the project.
-  // This affects relative path resolution in tools and bash.
+  // GUI 子进程希望其工作目录与项目匹配。
+  // 这影响工具和 bash 中的相对路径解析。
   process.chdir(projectPath);
 
   const store = new SessionStore({ projectPath });
@@ -88,16 +88,16 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     || hasAnyManagedCredential();
 
   if (!hasProviders) {
-    // No providers configured 鈥?enter init mode instead of throwing.
-    // The GUI webview drives the wizard through init RPC methods.
+    // 未配置提供者 — 进入 init 模式而不是抛出异常。
+    // GUI webview 通过 init RPC 方法驱动向导。
     const rpc = createRpcServer(process.stdin, process.stdout);
     rpc.emit("needs_init", { reason: "no_providers" });
 
     registerInitRpc({
       server: rpc,
       onInitComplete: async () => {
-        // Re-run server mode now that config exists.
-        // Re-load dotenv so newly saved keys are visible.
+        // 现在配置存在了，重新运行服务器模式。
+        // 重新加载 dotenv 以使新保存的密钥可见。
         loadDotenv(homeDir);
         rpc.close();
         await runServerMode(opts);
@@ -124,7 +124,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     subAgentInheritHooks: settings.sub_agent_inherit_hooks,
   });
 
-  // OAuth token refresh 鈥?best-effort, don't fail bootstrap if it fails
+  // OAuth token 刷新 — 尽力而为，失败时不让引导失败
   const oauthEntries = config.listModelEntries().filter((e) => e.apiKeyRaw === "oauth:openai-codex");
   if (oauthEntries.length > 0) {
     try {
@@ -135,7 +135,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     }
   }
 
-  // MCP manager (connect eagerly, await lazily on first turn)
+  // MCP 管理器（急切连接，在第一个回合惰性等待）
   let mcpManager: unknown = null;
   let mcpReadyPromise: Promise<void> | undefined;
   if (config.mcpServerConfigs.length > 0) {
@@ -144,11 +144,11 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
       mcpManager = new MCPClientManager(config.mcpServerConfigs);
       mcpReadyPromise = (mcpManager as any).connectAll().catch(() => {});
     } catch {
-      // optional
+      // 可选
     }
   }
 
-  // Templates
+  // 模板
   const bundledDir = getBundledAssetsDir();
   const bundledTemplates = join(bundledDir, "prompts", "templates");
   const bundledPrompts = join(bundledDir, "prompts");
@@ -202,7 +202,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     session.hookRuntime.setHooks(hooksLoaded);
   }
 
-  // Restore model selection
+  // 恢复模型选择
   const modelState = loadModelSelectionState(homeDir);
   const effectiveModelConfigName = opts.selectedModel ?? settings.default_model ?? modelState.config_name;
   if (effectiveModelConfigName) {
@@ -225,7 +225,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
 
   session.applySettings(settings, modelState);
 
-  // 鈹€鈹€ Start RPC server 鈹€鈹€
+  // ── Start RPC server ──
   const rpc = createRpcServer(process.stdin, process.stdout);
 
   let shutdownRequested = false;
@@ -251,46 +251,45 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     onShutdown: shutdown,
   });
 
-  // Emit ready event with session metadata so the GUI can populate its UI.
-  // Shares buildMeta() with session-rpc so the payload (including
-  // protocolVersion/capabilities) can never drift between the two emitters.
+  // 发出带 session 元数据的 ready 事件，以便 GUI 填充其 UI。
+  // 与 session-rpc 共享 buildMeta()，确保 payload（包括 protocolVersion/capabilities）
+  // 在两个发射点之间永不漂移。
   rpc.emit("ready", buildMeta(session, projectPath, store.sessionDir ?? null));
 
-  // Last-resort crash guard. Without it, any escaped exception kills the
-  // process silently: the client sees a frozen UI with no explanation (the
-  // TUI entry point installs the equivalent handlers in external/opentui/main.tsx).
-  // Best-effort order: persist the session, tell the client why, then exit
-  // non-zero so the supervisor (GUI) can react.
+  // 最后一层崩溃保护。没有它，任何逃逸异常都会静默杀死进程：
+  // 客户端只会看到冻结且无解释的 UI（TUI 入口在 external/opentui/main.tsx
+  // 安装了等价处理器）。尽力顺序：持久化 session，告诉客户端原因，
+  // 然后以非零码退出，让监督者（GUI）可以响应。
   let crashing = false;
   const crashGuard = (origin: "uncaughtException" | "unhandledRejection") => (err: unknown): void => {
-    if (crashing) return; // a second fault during cleanup must not recurse
+    if (crashing) return; // 清理期间的第二个故障不得递归
     crashing = true;
     try {
       const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
       process.stderr.write(`[server] ${origin}: ${message}\n`);
-    } catch { /* stderr may already be closed */ }
+    } catch { /* stderr 可能已经关闭 */ }
     try {
       session.onSaveRequest?.();
-    } catch { /* saving is best-effort during a crash */ }
+    } catch { /* 崩溃期间保存是尽力而为 */ }
     try {
       rpc.emit("server.crashed", {
         origin,
         error: err instanceof Error ? err.message : String(err),
       });
-    } catch { /* peer may already be gone */ }
-    // Give stdout a tick to flush the crash event before exiting.
+    } catch { /* 对端可能已经消失 */ }
+    // 退出前给 stdout 一个 tick 来刷新崩溃事件。
     setTimeout(() => process.exit(1), 100);
   };
   process.on("uncaughtException", crashGuard("uncaughtException"));
   process.on("unhandledRejection", crashGuard("unhandledRejection"));
 
-  // Keep process alive until stdin closes (peer disconnect) or shutdown.
+  // 保持进程存活，直到 stdin 关闭（对端断开）或执行 shutdown。
   process.stdin.on("end", () => {
     void shutdown();
   });
 
-  // Don't return 鈥?let stdin keep us alive
+  // 不返回 — 让 stdin 保持进程存活
   await new Promise<void>(() => {
-    /* never resolves; shutdown calls process.exit */
+    /* 永不解析；shutdown 会调用 process.exit */
   });
 }

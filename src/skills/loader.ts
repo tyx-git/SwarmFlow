@@ -1,17 +1,17 @@
 ﻿/**
- * Skill discovery and loading.
+ * Skill 发现和加载。
  *
- * Skills are reusable prompt expansions defined as SKILL.md files
- * with YAML frontmatter + markdown instructions. Aligned with the
- * Agent Skills open standard (https://agentskills.io).
+ * Skills 是可重用的提示扩展，定义为带有 YAML frontmatter + markdown
+ * 说明的 SKILL.md 文件。与 Agent Skills 开放标准
+ *（https://agentskills.io）对齐。
  *
- * Directory layout:
+ * 目录布局：
  *
  *   skills/
  *   +-- explain-code/
- *   |   +-- SKILL.md          # required
- *   |   +-- scripts/          # optional helper scripts
- *   |   +-- references/       # optional docs
+ *   |   +-- SKILL.md          # 必需
+ *   |   +-- scripts/          # 可选辅助脚本
+ *   |   +-- references/       # 可选文档
  *   +-- deploy/
  *       +-- SKILL.md
  */
@@ -25,17 +25,17 @@ import * as yaml from "js-yaml";
 // ------------------------------------------------------------------
 
 export interface SkillMeta {
-  /** Skill identifier 鈥?also becomes the /slash-command name. */
+  /** Skill 标识符 — 也是 /斜杠命令名称。*/
   name: string;
-  /** Description of when to use this skill. */
+  /** 描述何时使用此 skill。*/
   description: string;
-  /** If true, only the user can invoke via /name (agent cannot call skill tool). */
+  /** 如果为 true，仅用户可通过 /name 调用（agent 不能调用 skill 工具）。*/
   disableModelInvocation: boolean;
-  /** If false, skill is hidden from the / menu (only agent can invoke). */
+  /** 如果为 false，skill 从 / 菜单隐藏（仅 agent 可调用）。*/
   userInvocable: boolean;
-  /** Absolute path to the skill directory. */
+  /** Skill 目录的绝对路径。*/
   dir: string;
-  /** SKILL.md body after frontmatter (raw markdown). */
+  /** frontmatter 之后的 SKILL.md 正文（原始 markdown）。*/
   contentRaw: string;
 }
 
@@ -49,8 +49,8 @@ interface ParsedSkillMd {
 }
 
 /**
- * Split a SKILL.md file into YAML frontmatter and markdown body.
- * Returns null if no valid frontmatter is found.
+ * 将 SKILL.md 文件拆分为 YAML frontmatter 和 markdown 正文。
+ * 如果未找到有效的 frontmatter，则返回 null。
  */
 function parseSkillMd(raw: string): ParsedSkillMd | null {
   const trimmed = raw.trimStart();
@@ -76,14 +76,14 @@ function parseSkillMd(raw: string): ParsedSkillMd | null {
 }
 
 // ------------------------------------------------------------------
-// Skill loading
+// Skill 加载
 // ------------------------------------------------------------------
 
 /**
- * Discover and load all skills from a skills root directory.
+ * 从 skills 根目录发现并加载所有 skills。
  *
- * Each subdirectory containing a SKILL.md file is treated as a skill.
- * Parse errors are warned and skipped.
+ * 每个包含 SKILL.md 文件的子目录被视为一个 skill。
+ * 解析错误会发出警告并跳过。
  */
 export function loadSkills(skillsRoot: string): Map<string, SkillMeta> {
   const skills = new Map<string, SkillMeta>();
@@ -120,7 +120,7 @@ export function loadSkills(skillsRoot: string): Map<string, SkillMeta> {
         userInvocable = fm["user-invocable"] !== false;
         body = parsed.body;
       } else {
-        // No frontmatter 鈥?use directory name and full content
+        // No frontmatter —use directory name and full content
         name = entry;
         description = extractFirstParagraph(raw);
         body = raw;

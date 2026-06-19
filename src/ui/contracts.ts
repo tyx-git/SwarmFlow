@@ -1,8 +1,8 @@
 ﻿/**
- * Shared terminal UI contract definitions.
+ * 共享终端 UI 合约定义。
  *
- * These types describe the boundary between the runtime and any terminal UI
- * implementation. They are intentionally renderer-agnostic.
+ * 这些类型描述了运行时与任何终端 UI 实现之间的边界。
+ * 它们是有意与渲染器无关的。
  */
 
 import type { ProgressReporter } from "../lib/progress.js";
@@ -22,7 +22,7 @@ import type {
 } from "../commands/commands.js";
 
 // ------------------------------------------------------------------
-// Rewind plan types
+// 回滚计划类型
 // ------------------------------------------------------------------
 
 export interface RewindPathMutation {

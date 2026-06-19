@@ -1,12 +1,12 @@
 /**
- * Transcript: document-style rendering matching the design template.
+ * Transcript：符合设计模板的文档风格渲染。
  *
- * - User messages → right-aligned neutral bubble
- * - Reasoning → "✦ Thought for Xs" header + dim body
- * - Assistant text → document prose with markdown
- * - Tool calls → prefix-labeled rows (Q_ grep, $_ bash, ✎_ edit, etc.)
- *   with expandable result body
- * - File edits → inline pill chips with +/- counts
+ * - 用户消息 → 右对齐的中性气泡
+ * - 推理 → "✦ Thought for Xs" 标题 + 暗淡正文
+ * - 助手文本 → 带 markdown 的文档散文
+ * - 工具调用 → 带前缀标签的行（Q_ grep, $_ bash, ✎_ edit 等）
+ *   带有可展开的结果正文
+ * - 文件编辑 → 带 +/- 计数的内联药丸标签
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'

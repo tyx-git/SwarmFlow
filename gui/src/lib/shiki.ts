@@ -1,6 +1,6 @@
 /**
- * Lazy Shiki highlighter. Loads themes/languages on demand and caches
- * a singleton so subsequent calls are cheap.
+ * 惰性 Shiki 高亮器。按需加载主题/语言，并缓存单例，
+ * 以便后续调用代价低廉。
  */
 
 import type { Highlighter, BundledLanguage, BundledTheme } from 'shiki'
@@ -58,8 +58,8 @@ export async function highlightCode(code: string, lang: string): Promise<string 
         return null
       }
     }
-    // codeToHtml wraps in <pre><code>; we want just the inner highlighted spans
-    // so we strip those wrappers and return only the children of <code>.
+    // codeToHtml 用 <pre><code> 包装；我们只想要内部高亮的 span，
+    // 所以去掉包装并只返回 <code> 的子元素。
     const html = h.codeToHtml(code, { lang: resolved, theme })
     const match = html.match(/<code[^>]*>([\s\S]*?)<\/code>/)
     return match ? (match[1] ?? null) : null

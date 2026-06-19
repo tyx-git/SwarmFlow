@@ -1,11 +1,11 @@
 ﻿/**
- * models.dev spec lookup 鈥?best-effort capability suggestions for the custom
- * provider wizard. Given a model id, fetch its context/output/multimodal/
- * thinking from the community models.dev catalog so the UI can pre-fill defaults.
+ * models.dev 规范查找 — 自定义提供者向导的最佳努力能力建议。
+ * 给定一个模型 id，从社区 models.dev 目录获取其 context/output/multimodal/
+ * thinking，以便 UI 可以预填默认值。
  *
- * Everything here is best-effort: any failure (offline, timeout, unknown model)
- * returns null and the wizard falls back to manual entry. The catalog is fetched
- * once per process and cached on disk (24h TTL) so repeat lookups are instant.
+ * 这里的一切都是最佳努力：任何失败（离线、超时、未知模型）
+ * 都返回 null，向导回退到手动输入。目录每进程获取一次并缓存到磁盘
+ *（24h TTL），因此重复查找是即时的。
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -21,7 +21,7 @@ export interface ModelSpecSuggestion {
   contextLength?: number;
   maxOutputTokens?: number;
   multimodal?: boolean;
-  /** Thinking levels inferred from reasoning_options (effort/toggle), or undefined. */
+  /** 从 reasoning_options 推断的思考级别（effort/toggle），或 undefined。*/
   thinkingLevels?: string[];
 }
 
@@ -54,7 +54,7 @@ function suggestionFrom(m: RawModelEntry): ModelSpecSuggestion {
   };
 }
 
-/** Build the normalized-id 鈫?suggestion index from a raw models.dev api.json object. */
+/** 从原始 models.dev api.json 对象构建规范化 id → 建议索引。*/
 export function buildModelsDevIndex(api: unknown): Map<string, ModelSpecSuggestion> {
   const index = new Map<string, ModelSpecSuggestion>();
   if (!api || typeof api !== "object") return index;
@@ -83,7 +83,7 @@ function readDiskCache(homeDir: string): unknown | null {
     if (typeof parsed.fetchedAt === "number" && Date.now() - parsed.fetchedAt < CACHE_TTL_MS) {
       return parsed.api ?? null;
     }
-  } catch { /* no/stale/corrupt cache */ }
+  } catch { /* 无/过期/损坏的缓存 */ }
   return null;
 }
 
@@ -92,7 +92,7 @@ function writeDiskCache(homeDir: string, api: unknown): void {
     const dir = join(homeDir, "cache");
     mkdirSync(dir, { recursive: true });
     writeFileSync(cachePath(homeDir), JSON.stringify({ fetchedAt: Date.now(), api }));
-  } catch { /* best-effort */ }
+  } catch { /* 最佳努力 */ }
 }
 
 async function ensureIndex(opts?: { homeDir?: string; timeoutMs?: number }): Promise<Map<string, ModelSpecSuggestion>> {
@@ -115,7 +115,7 @@ async function ensureIndex(opts?: { homeDir?: string; timeoutMs?: number }): Pro
     _index = buildModelsDevIndex(api);
     return _index;
   } catch {
-    _index = new Map(); // remember the failure for this process; don't refetch per lookup
+    _index = new Map(); // 记住此进程的失败；不要在每次查找时重新获取
     return _index;
   } finally {
     clearTimeout(timer);
@@ -123,8 +123,8 @@ async function ensureIndex(opts?: { homeDir?: string; timeoutMs?: number }): Pro
 }
 
 /**
- * Best-effort spec suggestion for a model id. Returns null if models.dev is
- * unreachable or doesn't know the model. Never throws.
+ * 最佳努力获取模型 id 的规范建议。如果 models.dev 无法访问
+ * 或不知道该模型，则返回 null。永不抛出。
  */
 export async function fetchModelSpecSuggestion(
   modelId: string,
@@ -139,7 +139,7 @@ export async function fetchModelSpecSuggestion(
   }
 }
 
-/** Test/maintenance hook: drop the in-process cache. */
+/** 测试/维护钩子：删除进程内缓存。*/
 export function _resetModelsDevCache(): void {
   _index = null;
 }

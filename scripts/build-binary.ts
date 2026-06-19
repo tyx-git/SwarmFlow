@@ -3,12 +3,11 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
-// Builds the single-file binary for the host platform. CI runs this
-// once per matrix slot (darwin-arm64 / linux-{x64,arm64} /
-// win32-{x64,arm64}) so each runner produces its own tarball.
-// Cross-compilation is intentionally not supported here — the bundled
-// native libopentui binary has to match the host, and that's simplest
-// when host == target.
+// 为当前平台构建单文件二进制。CI 在每个矩阵槽位运行一次
+// (darwin-arm64 / linux-{x64,arm64} / win32-{x64,arm64})，
+// 每个 runner 产生自己的 tarball。
+// 此处有意不支持交叉编译——打包的原生 libopentui 二进制必须与主机匹配，
+// 当 host == target 时最简单。
 
 type SupportedHost =
   | { platform: "darwin"; arch: "arm64" }
@@ -29,9 +28,9 @@ function detectHost(): SupportedHost {
 
 const host = detectHost();
 
-// Build-time gate: importing the registry runs loadModelSpecs / loadProviderSpecs,
-// which throw on any invalid models.json / providers.json. Fail fast before the
-// expensive compile so bad registry data can never ship.
+// 构建时门控：导入 registry 会运行 loadModelSpecs / loadProviderSpecs，
+// 它们在 models.json / providers.json 无效时会抛出异常。
+// 在昂贵编译之前快速失败，使错误的 registry 数据永远不会发布。
 try {
   await import("../src/model-registry.js");
   console.log("model/provider registry: valid");
@@ -125,7 +124,7 @@ const nativeTargetDir = join(buildDir, "native", `${host.platform}-${host.arch}`
 mkdirSync(nativeTargetDir, { recursive: true });
 cpSync(nativeSource, join(nativeTargetDir, basename(nativeSource)), { dereference: true });
 
-// Copy shell parser WASM files (used by the permission system's tree-sitter classifier)
+// 复制 shell 解析器的 WASM 文件（用于权限系统的 tree-sitter 分类器）
 const bashParserDir = join(buildDir, "bash-parser");
 mkdirSync(bashParserDir, { recursive: true });
 const { createRequire } = await import("node:module");

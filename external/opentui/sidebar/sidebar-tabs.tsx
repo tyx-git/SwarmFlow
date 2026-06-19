@@ -1,5 +1,14 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — 侧边栏 Tab 状态管理
+// =============================================================================
+// Tab 类型：
+//   - main: 主会话 Tab
+//   - child: 子 Agent Tab（临时创建/销毁）
+//   - detail-tool: 工具详情 Tab（查看工具调用的完整结果）
+//   - detail-shell: Shell 详情 Tab（查看后台 Shell 的实时输出）
+
 import React from "react";
 
 import type { ConversationPalette } from "../components/conversation-types.js";

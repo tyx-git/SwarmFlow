@@ -1,5 +1,5 @@
 /**
- * Empty state: minimal hint + CTA, no decoration.
+ * 空状态：最小提示 + CTA，无装饰。
  */
 import { useState } from 'react'
 import { useSessionStore } from '@/state/sessionStore.js'

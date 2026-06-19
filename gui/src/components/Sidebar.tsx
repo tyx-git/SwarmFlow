@@ -1,7 +1,7 @@
 /**
- * Left rail: search bar + persistent workspace/session tree + settings footer.
- * Follows template: flat surface, project groups with collapse arrows,
- * session dots (spinner for working, accent for notify, gray for idle).
+ * 左侧边栏：搜索栏 + 持久化的工作区/会话树 + 设置页脚。
+ * 遵循模板：平面表面，带折叠箭头的项目分组，
+ * 会话点（工作中为旋转器，通知时为强调色，空闲时为灰色）。
  */
 
 import { useEffect, useState } from 'react'
@@ -71,7 +71,7 @@ export function Sidebar(): JSX.Element {
     ])
   }, [history, tabs])
 
-  // ⌘, opens Settings — Cursor / macOS convention.
+  // ⌘, 打开设置 — Cursor / macOS 约定。
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
       if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey) return
@@ -98,9 +98,9 @@ export function Sidebar(): JSX.Element {
     }
   }
 
-  // Top-of-sidebar "New session" button: reuses the active workspace if there
-  // is one, otherwise the most-recent workspace, otherwise opens the picker.
-  // Mirrors the ⌘N keybinding so users get a draft in one click.
+  // 侧边栏顶部的"新建会话"按钮：如果有活动工作区则复用，
+  // 否则使用最近的工作区，否则打开选择器。
+  // 与 ⌘N 快捷键一致，使用户可以一键获取草稿。
   const onQuickNewSession = async (): Promise<void> => {
     if (creating) return
     const activeWorkDir = activeTab?.workDir
@@ -479,7 +479,7 @@ function ProjectGroup({
                       : 'text-ink-2 hover:bg-line-soft hover:text-ink',
                   )}
                 >
-                  {/* Status dot — yields to the pin button on hover when canPin */}
+                  {/* 状态点——当可以固定时，在悬停时让位给固定按钮 */}
                   <span
                     className={cn(
                       'absolute left-3 top-1/2 -translate-y-1/2',
@@ -527,9 +527,9 @@ function ProjectGroup({
                       void onPinHistory(item.workDir, sessionId, !pinned)
                     }}
                     className={cn(
-                      // Sits in the same column as the status dot (left-3 / w-5)
-                      // so the title text never has to make room. No chunky
-                      // background — that was the source of the overlap.
+                      // 与状态点位于同一列（left-3 / w-5），
+                      // 这样标题文本永远不需要让出空间。没有厚重的背景——
+                      // 那正是重叠的根源。
                       'invisible absolute left-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-ink-4 transition',
                       'hover:text-ink group-hover:visible',
                       pinned && 'text-accent',
@@ -778,7 +778,7 @@ function rememberWorkspaceOrder(workDirs: readonly string[]): void {
       window.localStorage.setItem(WORKSPACE_ORDER_VERSION_KEY, WORKSPACE_ORDER_VERSION)
     }
   } catch {
-    /* localStorage can be unavailable in hardened contexts. */
+    /* localStorage 在加固环境中可能不可用。 */
   }
 }
 
@@ -814,6 +814,6 @@ function storeSidebarGroupExpanded(workDir: string, expanded: boolean): void {
     next[workDir] = expanded
     window.localStorage.setItem(SIDEBAR_GROUP_STATE_KEY, JSON.stringify(next))
   } catch {
-    /* localStorage can be unavailable in hardened contexts. */
+    /* localStorage 在加固环境中可能不可用。 */
   }
 }

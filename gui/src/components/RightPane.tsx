@@ -1,5 +1,5 @@
 /**
- * Right rail: vertical Plan / Agents / Git navigation with rich panels.
+ * 右侧边栏：垂直的 Plan / Agents / Git 导航及丰富的面板。
  */
 
 import { useCallback, useEffect, useState } from 'react'

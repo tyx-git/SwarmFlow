@@ -1,47 +1,44 @@
 ﻿/**
- * Shared request header construction for all Copilot provider variants.
+ * 所有 Copilot 提供者变体共享的请求头构造。
  *
- * Copilot's API gateway (api.individual.githubcopilot.com) expects a specific
- * set of editor-identification + intent headers on every request. Missing or
- * wrong headers cause 401/403 even with a valid token. This module centralizes
- * header construction so both the Anthropic and OpenAI Responses variants
- * produce identical headers.
+ * Copilot 的 API 网关（api.individual.githubcopilot.com）要求每个请求携带特定的
+ * 编辑器标识 + 意图头。即使 token 有效，缺失或错误的头也会导致 401/403。
+ * 此模块集中构造请求头，使 Anthropic 和 OpenAI Responses 两种变体
+ * 产生相同的头。
  */
 
 import { COPILOT_EDITOR_HEADERS } from "../auth/github-copilot-oauth.js";
 import type { Message } from "./base.js";
 
 export interface CopilotHeaderOptions {
-  /** If true, adds `copilot-vision-request: true` 鈥?required when sending image content. */
+  /** 如果为 true，添加 `copilot-vision-request: true` — 发送图像内容时必需。 */
   vision?: boolean;
   /**
-   * Whether this request is an agent-driven follow-up (after a tool call, or a
-   * subagent continuation) as opposed to a direct user-initiated request. This
-   * flips the `x-initiator` header between `agent` and `user` 鈥?a Copilot
-   * billing / rate-limit signal. Without it, every request inside an agent loop
-   * gets counted as user-initiated and billed as full premium.
+   * 此请求是否是 agent 驱动的后续请求（工具调用后，或子 agent 延续），
+   * 而不是用户直接发起的请求。这会在 `agent` 和 `user` 之间切换
+   * `x-initiator` 头 — 这是 Copilot 计费/限速信号。没有它，agent 循环内
+   * 每个请求都会被计为用户发起，并按完整 premium 计费。
    */
   isAgent?: boolean;
-  /** Optional request ID to trace a specific request. */
+  /** 用于追踪特定请求的可选请求 ID。 */
   requestId?: string;
 }
 
 /**
- * Build the full set of Copilot request headers (excluding Authorization,
- * which the SDKs inject via apiKey/authToken options).
+ * 构建完整的 Copilot 请求头集合（不包括 Authorization，
+ * 它由 SDK 通过 apiKey/authToken 选项注入）。
  *
- * These headers tell Copilot's gateway that we're a chat-capable editor
- * client, matching what VS Code's Copilot Chat extension sends.
+ * 这些头告诉 Copilot 网关我们是支持聊天的编辑器客户端，
+ * 与 VS Code Copilot Chat 扩展发送的内容匹配。
  */
 export function buildCopilotRequestHeaders(
   opts: CopilotHeaderOptions = {},
 ): Record<string, string> {
   const headers: Record<string, string> = {
     ...COPILOT_EDITOR_HEADERS,
-    // Chat + /models live on the Copilot gateway, which tracks the usage-based
-    // billing era by API version. The copilot_internal/* token-exchange
-    // endpoints keep COPILOT_EDITOR_HEADERS' older version; this overrides it
-    // for gateway requests only.
+    // Chat + /models 位于 Copilot 网关上，该网关通过 API 版本跟踪按用量计费时代。
+    // copilot_internal/* token-exchange 端点保留 COPILOT_EDITOR_HEADERS 的旧版本；
+    // 这里仅对网关请求覆盖它。
     "x-github-api-version": "2026-06-01",
     "copilot-integration-id": "vscode-chat",
     "openai-intent": "conversation-panel",
@@ -57,14 +54,12 @@ export function buildCopilotRequestHeaders(
 }
 
 /**
- * Determine whether the current request is an agent-driven follow-up by
- * looking at the last message in the projected conversation.
+ * 通过查看投影对话中的最后一条消息，判断当前请求是否为 agent 驱动的后续请求。
  *
- * Our `Message` format uses a dedicated `tool_result` role (unlike Anthropic's
- * pattern of embedding tool_result blocks inside a `user` message), so the
- * logic is simple: if the last message is a plain user message, the request is
- * user-initiated; anything else (tool_result, assistant continuation after a
- * retry, etc.) is agent-initiated.
+ * 我们的 `Message` 格式使用专门的 `tool_result` 角色（不同于 Anthropic
+ * 将 tool_result 块嵌入 `user` 消息的模式），因此逻辑很简单：
+ * 如果最后一条消息是普通用户消息，则请求由用户发起；其他情况
+ *（tool_result、重试后的 assistant 延续等）均由 agent 发起。
  */
 export function detectAgentInMessages(messages: Message[]): boolean {
   if (!Array.isArray(messages) || messages.length === 0) return false;
@@ -73,12 +68,11 @@ export function detectAgentInMessages(messages: Message[]): boolean {
 }
 
 /**
- * Detect whether any message in the request contains image content. Used to
- * decide whether to set `copilot-vision-request: true`.
+ * 检测请求中是否有任何消息包含图像内容。用于决定是否设置
+ * `copilot-vision-request: true`。
  *
- * Both Anthropic-shaped and OpenAI-shaped messages can carry images as
- * structured content blocks; we check for the presence of any block whose
- * `type` is `image` or `image_url` or that has `source.media_type`.
+ * Anthropic 形状和 OpenAI 形状的消息都可以通过结构化内容块携带图像；
+ * 我们检查是否存在 `type` 为 `image`、`image_url` 或 `input_image` 的块。
  */
 export function detectVisionInMessages(messages: unknown): boolean {
   if (!Array.isArray(messages)) return false;

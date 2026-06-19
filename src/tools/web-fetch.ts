@@ -1,9 +1,9 @@
 ﻿/**
- * Web fetch tool 鈥?fetch URL content and convert HTML to readable text.
+ * Web fetch 工具 — 获取 URL 内容并转换 HTML 为可读文本。
  *
- * Default path:
- *  1. Try Jina Reader for higher-quality extraction
- *  2. Fall back to the local fetch/extract path on rate-limit or network failure
+ * 默认路径：
+ *  1. 尝试 Jina Reader 以获得更高质量的提取
+ *  2. 在速率限制或网络故障时回退到本地 fetch/提取路径
  */
 
 import { isIP } from "node:net";
@@ -14,7 +14,7 @@ import type { ToolDef } from "../providers/base.js";
 import { truncateMiddle } from "./shared.js";
 
 // ------------------------------------------------------------------
-// Constants
+// 常量
 // ------------------------------------------------------------------
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -24,7 +24,7 @@ const JINA_READER_PREFIX = "https://r.jina.ai/";
 const LOCAL_MAX_REDIRECTS = 10;
 
 // ------------------------------------------------------------------
-// Tool definition
+// 工具定义
 // ------------------------------------------------------------------
 
 export const WEB_FETCH: ToolDef = {
@@ -54,7 +54,7 @@ export const WEB_FETCH: ToolDef = {
 };
 
 // ------------------------------------------------------------------
-// HTML to readable text converter
+// HTML 到可读文本转换器
 // ------------------------------------------------------------------
 
 const turndown = new TurndownService({
@@ -81,9 +81,9 @@ function removeNoisyElements(document: Document): void {
 }
 
 /**
- * Convert HTML to readable markdown using a low-maintenance library chain:
- * Readability extracts the main article when possible, and Turndown converts
- * the remaining HTML to markdown. If extraction fails, fall back to body HTML.
+ * 使用低维护 library 链将 HTML 转换为可读的 markdown：
+ * Readability 尽可能提取主要文章，Turndown 将
+ * 剩余的 HTML 转换为 markdown。如果提取失败，回退到 body HTML。
  */
 function htmlToMarkdown(html: string): string {
   const { document } = parseHTML(html);
@@ -160,7 +160,7 @@ function validateFetchUrl(parsed: URL): string | null {
 }
 
 // ------------------------------------------------------------------
-// Executor
+// 执行器
 // ------------------------------------------------------------------
 
 export async function toolWebFetch(
@@ -201,7 +201,7 @@ export async function toolWebFetch(
 }
 
 /**
- * Tristate result for timeout/interrupt disambiguation in callers.
+ * 三态结果，用于调用者区分超时/中断。
  */
 interface FetchFailure {
   kind: "timeout" | "interrupted" | "error";
@@ -270,7 +270,7 @@ function buildOutput(
 
 function normalizeOutput(output: string): string {
   // Symmetrical head+tail truncation: long pages often have nav at the top
-  // and conclusions / FAQ / next-steps at the bottom 鈥?keeping both is
+  // and conclusions / FAQ / next-steps at the bottom —keeping both is
   // strictly more useful than tail-dropped output.
   return truncateMiddle(output.trim(), OUTPUT_MAX_CHARS);
 }

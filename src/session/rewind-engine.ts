@@ -1,10 +1,17 @@
-﻿/**
- * RewindEngine 鈥?file/bash rewind planning and application.
+/**
+ * RewindEngine —— 文件/bash 回退规划和应用。
  *
- * Extracted from Session (P2.1): owns reverse-patch planning, bash-operation
- * revert classification/execution, and the crash-recovery journal. It reads
- * the session log and mutates entry meta (revert markers), but never touches
- * turn/session state 鈥?guards and change notifications stay with Session.
+ * 从 Session 提取出来（P2.1）：拥有反向 patch 规划、
+ * bash 操作 revert 分类/执行，以及崩溃恢复日志。
+ * 它读取会话日志并修改条目 meta（revert 标记），
+ * 但不触碰 turn/session 状态——守卫和变更通知留在 Session。
+ *
+ * 核心概念：
+ * - planRewind：从指定 turn 之后收集所有文件 mutations，
+ *   按路径分组，分类为 applicable/warning/conflict
+ * - applyFiles：执行反向 patch，将 mutation 标记为已回退
+ * - crash recovery journal：应用开始前写入预镜像，
+ *   若中途崩溃则从 journal 恢复
  */
 
 import {
@@ -36,10 +43,10 @@ import type {
 } from "../ui/contracts.js";
 
 export interface RewindEngineDeps {
-  /** Live log array 鈥?the engine reads entries and mutates their meta (revert markers). */
+  /** 实时日志数组——引擎读取条目并修改其 meta（revert 标记）。 */
   getLog(): readonly LogEntry[];
   projectRoot: string;
-  /** Session artifacts dir when storage is bound (journal location). */
+  /** 会话产物目录（存储绑定时，用于定位 journal）。 */
   getArtifactsDir(): string | undefined;
 }
 
@@ -47,8 +54,8 @@ export class RewindEngine {
   constructor(private readonly deps: RewindEngineDeps) {}
 
   /**
-   * Build a rewind plan: collect live file mutations from `fromTurnIndex`
-   * onward, group by path, and classify each as applicable/warning/conflict.
+   * 构建回退计划：从 fromTurnIndex 之后收集所有 live 文件 mutations，
+   * 按路径分组，分类为 applicable/warning/conflict。
    */
   async planRewind(fromTurnIndex: number): Promise<RewindPlan> {
     const mutations = this._collectLiveFileMutations(fromTurnIndex);
@@ -67,16 +74,16 @@ export class RewindEngine {
     const fileLineCounts = new Map<string, number>();
 
     for (const [filePath, muts] of byPath) {
-      // Sort newest first 鈥?reverse patches apply in this order
+      // 从新到旧排序——反向 patch 按此顺序应用
       muts.sort((a, b) => b.turnIndex - a.turnIndex || mutations.indexOf(b) - mutations.indexOf(a));
 
-      // Check for untracked mutations
+      // 检查是否有未跟踪的 mutations
       if (muts.some(m => m.mutation.untracked || !m.mutation.reversePatch)) {
         conflicts.push({ path: filePath, reason: "untracked" });
         continue;
       }
 
-      // Read current disk state
+      // 读取磁盘当前状态
       let diskContent: string;
       try {
         diskContent = readFileSync(filePath, { encoding: "utf-8" });
@@ -94,7 +101,7 @@ export class RewindEngine {
       const latestPostSha = muts[0].mutation.postImageSha;
       const isDiskModified = diskSha !== latestPostSha;
 
-      // Try applying the reverse patch chain
+      // 尝试应用反向 patch 链
       const pathMutations: RewindPathMutation[] = muts.map(m => ({
         entryId: m.entryId,
         turnIndex: m.turnIndex,
@@ -112,7 +119,7 @@ export class RewindEngine {
         continue;
       }
 
-      // Count line additions/deletions from the patches
+      // 从 patch 中统计变更行数
       let pathAdd = 0;
       let pathDel = 0;
       for (const pm of pathMutations) {
@@ -126,7 +133,6 @@ export class RewindEngine {
           }
         }
       }
-      // Reverse: what the forward edit added becomes what revert deletes
       totalAdditions += pathAdd;
       totalDeletions += pathDel;
       fileLineCounts.set(filePath, pathAdd + pathDel);
@@ -138,7 +144,7 @@ export class RewindEngine {
       }
     }
 
-    // Summary file: the one with the most changed lines
+    // 摘要文件：变更行数最多的那个
     let summaryFile = "";
     let maxLines = 0;
     for (const [p, count] of fileLineCounts) {
@@ -163,9 +169,9 @@ export class RewindEngine {
   }
 
   /**
-   * Apply reverse patches and mark mutations as reverted. Does not touch the
-   * conversation log structure; the caller owns guards (no in-flight turn)
-   * and post-apply notifications.
+   * 应用反向 patches 并将 mutations 标记为已回退。
+   * 不触碰会话日志结构；调用方拥有守卫（无进行中的 turn）
+   * 和应用后通知。
    */
   async applyFiles(plan: RewindPlan): Promise<RewindApplyResult> {
     const journalPath = this._writeRewindJournal(plan);
@@ -175,8 +181,7 @@ export class RewindEngine {
     const bashReverted: string[] = [];
     const bashSkipped: string[] = [];
 
-    // Build unified timeline: interleave file and bash operations by log position.
-    // File mutation groups use the logIndex of their newest (first) mutation.
+    // 构建统一时间线：按日志位置交错文件和 bash 操作。
     type RewindOp =
       | { type: "file"; logIndex: number; entry: (typeof plan.applicable)[0] }
       | { type: "bash"; logIndex: number; be: BashRewindEntry };
@@ -189,15 +194,15 @@ export class RewindEngine {
     for (const be of plan.bashEntries) {
       ops.push({ type: "bash", logIndex: be.logIndex, be });
     }
-    // Sort by logIndex descending (newest first)
+    // 按 logIndex 降序排序（从新到旧）
     ops.sort((a, b) => b.logIndex - a.logIndex);
 
     try {
       for (const op of ops) {
         if (op.type === "bash") {
           const be = op.be;
-          // Re-classify at execution time 鈥?earlier file reverts may have
-          // changed disk state, turning a plan-time conflict into applicable.
+          // 执行时重新分类——之前的文件回退可能改变了磁盘状态，
+          // 将计划时的 conflict 变为 applicable。
           const liveStatus = this._classifyBashRewindEntry(
             be.entryId, be.turnIndex, be.logIndex, be.bashEntryIndex, be.mutation,
           );
@@ -259,7 +264,7 @@ export class RewindEngine {
   }
 
   /**
-   * Check for and recover from a crashed rewind (journal left behind).
+   * 检测并从崩溃的回退中恢复（journal 残留时触发）。
    */
   recoverJournalIfNeeded(): void {
     const journalPath = this._getRewindJournalPath();
@@ -268,6 +273,7 @@ export class RewindEngine {
     this._deleteRewindJournal(journalPath);
   }
 
+  /** 执行 bash revert（mkdir/cp/mv 的逆向操作）。 */
   private _executeBashRevert(be: BashRewindEntry): boolean {
     const me = be.mutation;
     try {
@@ -310,6 +316,7 @@ export class RewindEngine {
     return false;
   }
 
+  /** 将指定的 bash mutation 条目标记为已回退。 */
   private _markBashMutationEntryReverted(entryId: string, bashEntryIndex: number): void {
     const entry = this.deps.getLog().find(e => e.id === entryId);
     if (!entry) return;
@@ -318,7 +325,7 @@ export class RewindEngine {
     if (!indices.includes(bashEntryIndex)) indices.push(bashEntryIndex);
     meta.bashMutationRevertedIndices = indices;
 
-    // If all entries reverted, set the legacy flag too
+    // 若所有条目都已回退，同时设置遗留标志
     const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
     const bm = toolMeta?.bashMutation as BashMutation | undefined;
     if (bm && indices.length >= bm.entries.length) {
@@ -326,6 +333,7 @@ export class RewindEngine {
     }
   }
 
+  /** 收集 fromTurnIndex 之后所有未回退的文件 mutations。 */
   private _collectLiveFileMutations(
     fromTurnIndex: number,
   ): Array<{ entryId: string; turnIndex: number; logIndex: number; mutation: FileMutation }> {
@@ -345,6 +353,7 @@ export class RewindEngine {
     return results;
   }
 
+  /** 收集 fromTurnIndex 之后所有未回退的 bash mutations。 */
   private _collectLiveBashMutations(
     fromTurnIndex: number,
   ): Array<{ entryId: string; turnIndex: number; logIndex: number; mutation: BashMutation; revertedIndices: number[] }> {
@@ -365,6 +374,7 @@ export class RewindEngine {
     return results;
   }
 
+  /** 构建 bash 回退条目计划（仅包含未回退的条目）。 */
   private _planBashRewindEntries(
     fromTurnIndex: number,
   ): BashRewindEntry[] {
@@ -384,6 +394,7 @@ export class RewindEngine {
     return entries;
   }
 
+  /** 对 bash 回退条目分类（applicable / conflict）。 */
   private _classifyBashRewindEntry(
     entryId: string,
     turnIndex: number,
@@ -393,6 +404,7 @@ export class RewindEngine {
   ): BashRewindEntry {
     const base = { entryId, turnIndex, logIndex, bashEntryIndex, mutation: me };
 
+    // mkdir：检查目录是否仍存在，是否非空
     if (me.kind === "mkdir" && me.createdDirs) {
       const dirs = [...me.createdDirs].reverse();
       const createdSet = new Set(me.createdDirs);
@@ -402,7 +414,7 @@ export class RewindEngine {
         return { ...base, kind: "mkdir", description: desc, status: "conflict", conflictReason: "dir_deleted", conflictDetails: ["Directories already removed."] };
       }
 
-      // Check emptiness, ignoring sibling dirs from the same mkdir command
+      // 检查是否非空（排除同一 mkdir 命令创建的兄弟目录）
       const nonEmptyDirs: string[] = [];
       for (const dir of dirs) {
         if (!existsSync(dir)) continue;
@@ -427,6 +439,7 @@ export class RewindEngine {
       return { ...base, kind: "mkdir", description: desc, status: "applicable" };
     }
 
+    // cp：检查目标文件状态和 SHA
     if (me.kind === "cp") {
       if (!me.target) {
         return { ...base, kind: "cp", description: "cp (unknown target)", status: "conflict", conflictReason: "backup_missing" };
@@ -457,35 +470,36 @@ export class RewindEngine {
       return { ...base, kind: "cp", description: desc, status: "applicable" };
     }
 
+    // mv：检查源文件和目标文件状态
     if (me.kind === "mv") {
       if (!me.source || !me.target) {
         return { ...base, kind: "mv", description: "mv (unknown paths)", status: "conflict", conflictReason: "backup_missing" };
       }
 
       if (!existsSync(me.target)) {
-        return { ...base, kind: "mv", description: `mv 鈫?${me.source}`, status: "conflict", conflictReason: "target_deleted", conflictDetails: ["Moved file was deleted."] };
+        return { ...base, kind: "mv", description: `mv ← ${me.source}`, status: "conflict", conflictReason: "target_deleted", conflictDetails: ["Moved file was deleted."] };
       }
 
       if (existsSync(me.source)) {
-        return { ...base, kind: "mv", description: `mv ${me.target} 鈫?${me.source}`, status: "conflict", conflictReason: "source_occupied", conflictDetails: [`${me.source} already exists.`] };
+        return { ...base, kind: "mv", description: `mv ${me.target} ← ${me.source}`, status: "conflict", conflictReason: "source_occupied", conflictDetails: [`${me.source} already exists.`] };
       }
 
       if (me.postImageSha) {
         try {
           const currentSha = createHash("sha256").update(readFileSync(me.target)).digest("hex");
           if (currentSha !== me.postImageSha) {
-            return { ...base, kind: "mv", description: `mv ${me.target} 鈫?${me.source}`, status: "conflict", conflictReason: "disk_modified", conflictDetails: ["File was modified after the move."] };
+            return { ...base, kind: "mv", description: `mv ${me.target} ← ${me.source}`, status: "conflict", conflictReason: "disk_modified", conflictDetails: ["File was modified after the move."] };
           }
         } catch {
-          return { ...base, kind: "mv", description: `mv ${me.target} 鈫?${me.source}`, status: "conflict", conflictReason: "disk_modified", conflictDetails: ["File type changed (cannot read as file)."] };
+          return { ...base, kind: "mv", description: `mv ${me.target} ← ${me.source}`, status: "conflict", conflictReason: "disk_modified", conflictDetails: ["File type changed (cannot read as file)."] };
         }
       }
 
       if (me.targetExisted && me.backupPath && !existsSync(me.backupPath)) {
-        return { ...base, kind: "mv", description: `mv ${me.target} 鈫?${me.source}`, status: "conflict", conflictReason: "backup_missing", conflictDetails: ["Backup of overwritten file is missing."] };
+        return { ...base, kind: "mv", description: `mv ${me.target} ← ${me.source}`, status: "conflict", conflictReason: "backup_missing", conflictDetails: ["Backup of overwritten file is missing."] };
       }
 
-      return { ...base, kind: "mv", description: `mv ${me.target} 鈫?${me.source}`, status: "applicable" };
+      return { ...base, kind: "mv", description: `mv ${me.target} ← ${me.source}`, status: "applicable" };
     }
 
     return { ...base, kind: me.kind, description: `${me.kind} (unknown)`, status: "conflict", conflictReason: "backup_missing" };
@@ -517,6 +531,7 @@ export class RewindEngine {
     return join(dir, "rewind-journal.json");
   }
 
+  /** 写入回退预镜像 journal（应用前）。 */
   private _writeRewindJournal(plan: RewindPlan): string {
     const journalPath = this._getRewindJournalPath();
     const preimages: Array<{ path: string; existed: boolean; content: string | null }> = [];
@@ -533,6 +548,7 @@ export class RewindEngine {
     return journalPath;
   }
 
+  /** 从 journal 恢复（崩溃时调用）。 */
   private _restoreFromRewindJournal(journalPath: string): void {
     try {
       const raw = readFileSync(journalPath, { encoding: "utf-8" });
@@ -546,7 +562,7 @@ export class RewindEngine {
           }
         } catch { /* best effort */ }
       }
-    } catch { /* journal corrupt or missing */ }
+    } catch { /* journal 损坏或缺失 */ }
   }
 
   private _deleteRewindJournal(journalPath: string): void {

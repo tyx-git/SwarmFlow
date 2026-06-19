@@ -1,9 +1,9 @@
 /**
- * ContextBridge — shared context management for swarm agents.
+ * ContextBridge — swarm agent 的共享上下文管理。
  *
- * Provides a read-only shared knowledge base that all agents can access,
- * plus isolated per-agent scratchpads for private work.
- * Handles conflict detection when multiple agents modify the same files.
+ * 提供所有 agent 都可以访问的只读共享知识库，
+ * 加上隔离的每 agent 草稿本用于私人工作。
+ * 处理多个 agent 修改同一文件时的冲突检测。
  *
  * @packageDocumentation
  */
@@ -11,10 +11,10 @@
 import type { TaskResult } from "./types.js";
 
 // ------------------------------------------------------------------
-// Shared context
+// 共享上下文
 // ------------------------------------------------------------------
 
-/** A single design decision recorded in shared context. */
+/** 记录在共享上下文中的单个设计决策。 */
 export interface Decision {
   subject: string;
   decision: string;
@@ -23,7 +23,7 @@ export interface Decision {
   rationale?: string;
 }
 
-/** A file that was read or modified. */
+/** 读取或修改过的文件。 */
 export interface FileRecord {
   path: string;
   readBy: string[];
@@ -31,7 +31,7 @@ export interface FileRecord {
   content?: string;
 }
 
-/** Entry in the shared context. */
+/** 共享上下文中的条目。 */
 export interface SharedContextEntry {
   /** When this entry was added. */
   timestamp: number;
@@ -44,13 +44,13 @@ export interface SharedContextEntry {
 }
 
 /**
- * SharedContext — read-only knowledge accessible by all swarm agents.
+ * SharedContext — 所有 swarm agent 可访问的只读知识库。
  *
- * Stores:
- * - Design decisions
- * - File metadata (who read/modified what)
- * - Key findings
- * - Project structure
+ * 存储：
+ * - 设计决策
+ * - 文件元数据（谁读取/修改了什么）
+ * - 关键发现
+ * - 项目结构
  */
 export class SharedContext {
   private _decisions: Decision[] = [];
@@ -58,22 +58,22 @@ export class SharedContext {
   private _entries: SharedContextEntry[] = [];
   private _projectDescription = "";
 
-  /** Record a design decision. */
+  /** 记录一个设计决策。 */
   addDecision(subject: string, decision: string, madeBy: string, rationale?: string): void {
     this._decisions.push({ subject, decision, madeBy, timestamp: Date.now(), rationale });
   }
 
-  /** Get all decisions. */
+  /** 获取所有决策。 */
   getDecisions(): Decision[] {
     return [...this._decisions];
   }
 
-  /** Get decisions by subject. */
+  /** 按主题获取决策。 */
   getDecisionsBySubject(subject: string): Decision[] {
     return this._decisions.filter((d) => d.subject === subject);
   }
 
-  /** Record that an agent read a file. */
+  /** 记录某 agent 读取了一个文件。 */
   recordFileRead(filePath: string, agentId: string): void {
     const existing = this._files.get(filePath);
     if (existing) {
@@ -85,7 +85,7 @@ export class SharedContext {
     }
   }
 
-  /** Record that an agent modified a file. */
+  /** 记录某 agent 修改了一个文件。 */
   recordFileModification(filePath: string, agentId: string): void {
     const existing = this._files.get(filePath);
     if (existing) {
@@ -97,42 +97,42 @@ export class SharedContext {
     }
   }
 
-  /** Get file records. */
+  /** 获取文件记录。 */
   getFileRecords(): FileRecord[] {
     return [...this._files.values()];
   }
 
-  /** Get files modified by a specific agent. */
+  /** 获取特定 agent 修改的文件。 */
   getFilesModifiedBy(agentId: string): FileRecord[] {
     return [...this._files.values()].filter((f) => f.modifiedBy.includes(agentId));
   }
 
-  /** Set project description. */
+  /** 设置项目描述。 */
   setProjectDescription(desc: string): void {
     this._projectDescription = desc;
   }
 
-  /** Get project description. */
+  /** 获取项目描述。 */
   getProjectDescription(): string {
     return this._projectDescription;
   }
 
-  /** Add a generic key-value entry. */
+  /** 添加一个通用键值条目。 */
   set(key: string, value: string, agentId: string): void {
     this._entries.push({ timestamp: Date.now(), agentId, key, value });
   }
 
-  /** Get entries by key. */
+  /** 按键获取条目。 */
   get(key: string): SharedContextEntry[] {
     return this._entries.filter((e) => e.key === key);
   }
 
-  /** Get all entries. */
+  /** 获取所有条目。 */
   getAllEntries(): SharedContextEntry[] {
     return [...this._entries];
   }
 
-  /** Check for conflicts: files modified by multiple agents. */
+  /** 检查冲突：多个 agent 修改的文件。 */
   detectConflicts(): Array<{ file: string; agents: string[] }> {
     const conflicts: Array<{ file: string; agents: string[] }> = [];
     for (const [path, record] of this._files) {
@@ -144,7 +144,7 @@ export class SharedContext {
     return conflicts;
   }
 
-  /** Format shared context as a prompt fragment for an agent. */
+  /** 将共享上下文格式化为 agent 的提示片段。 */
   toPromptFragment(): string {
     const parts: string[] = [];
 
@@ -170,7 +170,7 @@ export class SharedContext {
     return parts.join("\n");
   }
 
-  /** Reset all context. */
+  /** 重置所有上下文。 */
   clear(): void {
     this._decisions = [];
     this._files.clear();
@@ -184,13 +184,13 @@ export class SharedContext {
 // ------------------------------------------------------------------
 
 /**
- * AgentScratchpad — private workspace for a single agent.
+ * AgentScratchpad — 单个 agent 的私有工作空间。
  *
- * Each agent gets its own scratchpad for:
- * - Current thinking / plan
- * - Draft code changes
- * - Temporary notes
- * - File edits in progress
+ * 每个 agent 都有自己的草稿本，用于：
+ * - 当前思考/计划
+ * - 草稿代码更改
+ * - 临时笔记
+ * - 正在进行的文件编辑
  */
 export class AgentScratchpad {
   private _agentId: string;
@@ -203,57 +203,57 @@ export class AgentScratchpad {
     this._agentId = agentId;
   }
 
-  /** Agent ID. */
+  /** Agent ID。 */
   get agentId(): string {
     return this._agentId;
   }
 
-  /** Add a note. */
+  /** 添加一条笔记。 */
   addNote(note: string): void {
     this._notes.push(`[${new Date().toISOString()}] ${note}`);
   }
 
-  /** Get all notes. */
+  /** 获取所有笔记。 */
   getNotes(): string[] {
     return [...this._notes];
   }
 
-  /** Set the current plan. */
+  /** 设置当前计划。 */
   setPlan(plan: string): void {
     this._currentPlan = plan;
   }
 
-  /** Get the current plan. */
+  /** 获取当前计划。 */
   getPlan(): string {
     return this._currentPlan;
   }
 
-  /** Set draft code. */
+  /** 设置草稿代码。 */
   setDraft(code: string): void {
     this._draftCode = code;
   }
 
-  /** Get draft code. */
+  /** 获取草稿代码。 */
   getDraft(): string {
     return this._draftCode;
   }
 
-  /** Mark a file as being edited. */
+  /** 将文件标记为正在编辑。 */
   startEditing(filePath: string): void {
     this._editingFiles.add(filePath);
   }
 
-  /** Finish editing a file. */
+  /** 完成文件编辑。 */
   finishEditing(filePath: string): void {
     this._editingFiles.delete(filePath);
   }
 
-  /** Get files currently being edited. */
+  /** 获取当前正在编辑的文件。 */
   getEditingFiles(): string[] {
     return [...this._editingFiles];
   }
 
-  /** Clear the scratchpad. */
+  /** 清除草稿本。 */
   clear(): void {
     this._notes = [];
     this._currentPlan = "";
@@ -267,13 +267,13 @@ export class AgentScratchpad {
 // ------------------------------------------------------------------
 
 /**
- * ContextBridge — manages shared + per-agent contexts.
+ * ContextBridge — 管理共享+每 agent 上下文。
  *
- * The bridge provides:
- * - One SharedContext (read-only for all agents)
- * - Per-agent AgentScratchpad (private workspace)
- * - Conflict detection across agents
- * - Snapshot/summary for handoff
+ * 桥接器提供：
+ * - 一个 SharedContext（所有 agent 只读）
+ * - 每 agent AgentScratchpad（私有工作空间）
+ * - 跨 agent 冲突检测
+ * - 用于交接的快照/摘要
  */
 export class ContextBridge {
   readonly shared: SharedContext;
@@ -283,7 +283,7 @@ export class ContextBridge {
     this.shared = new SharedContext();
   }
 
-  /** Get or create a scratchpad for an agent. */
+  /** 获取或创建某 agent 的草稿本。 */
   getScratchpad(agentId: string): AgentScratchpad {
     if (!this._scratchpads.has(agentId)) {
       this._scratchpads.set(agentId, new AgentScratchpad(agentId));
@@ -291,27 +291,27 @@ export class ContextBridge {
     return this._scratchpads.get(agentId)!;
   }
 
-  /** Release an agent's scratchpad. */
+  /** 释放某 agent 的草稿本。 */
   releaseScratchpad(agentId: string): void {
     this._scratchpads.delete(agentId);
   }
 
-  /** Release all scratchpads. */
+  /** 释放所有草稿本。 */
   releaseAll(): void {
     this._scratchpads.clear();
   }
 
-  /** Detect file conflicts across all agents. */
+  /** 检测所有 agent 间的文件冲突。 */
   detectConflicts(): Array<{ file: string; agents: string[] }> {
     return this.shared.detectConflicts();
   }
 
-  /** Build a context snapshot suitable for handoff. */
+  /** 构建适合交接的上下文快照。 */
   buildHandoffContext(): string {
     return this.shared.toPromptFragment();
   }
 
-  /** Clear all contexts. */
+  /** 清除所有上下文。 */
   clear(): void {
     this.shared.clear();
     this._scratchpads.clear();

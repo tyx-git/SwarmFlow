@@ -1,13 +1,12 @@
 ﻿/**
- * macOS clipboard provider.
+ * macOS 剪贴板 provider。
  *
- * Text:  pbcopy
- * Image: osascript + AppKit NSPasteboard
+ * 文本：pbcopy
+ * 图片：osascript + AppKit NSPasteboard
  *
- * Reading image data from the macOS clipboard requires AppleScript
- * because there's no command-line tool that exposes the raw bytes for
- * arbitrary UTIs. We export to a temp file via NSData
- * writeToFile:atomically: and read that.
+ * 从 macOS 剪贴板读取图片数据需要 AppleScript，
+ * 因为没有命令行工具暴露任意 UTI 的原始字节。我们通过 NSData
+ * writeToFile:atomically: 导出到临时文件并读取。
  */
 
 import { execFile } from "node:child_process";

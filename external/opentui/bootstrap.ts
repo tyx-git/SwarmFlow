@@ -1,4 +1,10 @@
-﻿import { existsSync, statSync } from "node:fs";
+﻿// =============================================================================
+// SwarmFlow GUI — OpenTUI 运行时引导
+// =============================================================================
+// 职责：初始化 Config、Session、CommandRegistry、MCP、Skills、Hooks
+// 流程：加载设置 → 构建 Config → 加载 MCP/Templates/Skills → 创建 Session → 恢复模型选择 → 注册命令
+
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { Config, resolveAssetPaths, getBundledAssetsDir } from "../src/config.js";

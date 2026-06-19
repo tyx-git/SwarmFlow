@@ -1,4 +1,9 @@
-﻿import type { RefObject } from "react";
+﻿// =============================================================================
+// SwarmFlow GUI — Display 层共享类型
+// =============================================================================
+// 包含：ActivityPhase、CommandOverlay、PromptSelect、OAuth、Ask 等 UI 状态类型
+
+import type { RefObject } from "react";
 import type { InputRenderable } from "@opentui/core";
 import type {
   PendingAskUi,
@@ -13,12 +18,14 @@ export type OAuthProviderId = "codex" | "copilot";
 /** Union of token types the overlay can deliver on success. */
 export type AnyOAuthTokens = OAuthTokens | GitHubOAuthTokens;
 
+/** 应用活动阶段（决定 UI 渲染状态）*/
 export type ActivityPhase =
-  | "idle"
-  | "Working"
-  | "Asking"
-  | "closing";
+  | "idle"      // 空闲，等待输入
+  | "Working"   // 处理中
+  | "Asking"   // 等待用户审批/回答问题
+  | "closing";  // 正在关闭
 
+/** 命令/文件自动补全浮层状态 */
 export interface CommandOverlayState {
   mode: "command" | "file";
   visible: boolean;
@@ -27,6 +34,7 @@ export interface CommandOverlayState {
   selected: number;
 }
 
+/** 下拉选择器状态（后台 Shell 选择等）*/
 export interface PromptSelectState {
   message: string;
   options: PromptChoice[];

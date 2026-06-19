@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Extensible slash-command system.
  *
  * Usage:
@@ -14,32 +14,32 @@ import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs
 import { basename, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandPickerResult } from "./ui/command-picker.js";
-import type { SessionStore, LocalProviderConfig, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "./config/persistence.js";
-import { fetchModelSpecSuggestion } from "./models/dev-lookup.js";
-import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "./config/persistence.js";
-import { validateSummarizeHintLevels } from "./config/settings.js";
+import type { SessionStore, LocalProviderConfig, ModelSelectionState, FermiSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "./persistence.js";
+import { fetchModelSpecSuggestion } from "./models-dev-lookup.js";
+import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "./persistence.js";
+import { validateSummarizeHintLevels } from "./settings.js";
 import { VERSION } from "./version.js";
 import { applySessionRestore, findSessionById } from "./session-resume.js";
-import { setDotenvKey } from "./lifecycle/dotenv.js";
-import { fetchModelsFromServer } from "./models/discovery.js";
+import { setDotenvKey } from "./dotenv.js";
+import { fetchModelsFromServer } from "./model-discovery.js";
 import {
   getThinkingLevels,
   getTierEligibleThinkingLevels,
-} from "./config/config.js";
+} from "./config.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
-} from "./providers/presets.js";
+} from "./provider-presets.js";
 import {
   resolveModelSelection as resolveModelSelectionCore,
   type ResolvedModelSelection,
   createModelTierEntry,
   parseProviderModelTarget,
   runtimeModelName,
-} from "./models/selection.js";
+} from "./model-selection.js";
 import {
   isManagedProvider,
-} from "./config/managed-provider-credentials.js";
+} from "./managed-provider-credentials.js";
 import {
   ensureManagedProviderCredential,
   runCredentialManageFlow,
@@ -47,15 +47,15 @@ import {
   type CredentialPromptAdapter,
   type PromptSecretRequest,
   type PromptSelectRequest,
-} from "./providers/credential-flow.js";
+} from "./provider-credential-flow.js";
 import { resolveSkillContent, type SkillMeta } from "./skills/loader.js";
-import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptions, type ModelPickerTreeContext } from "./models/picker-tree.js";
-import { describeModel, formatCurrentModelScopedLabel, getCurrentModelDescriptor } from "./models/presentation.js";
+import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptions, type ModelPickerTreeContext } from "./model-picker-tree.js";
+import { describeModel, formatCurrentModelScopedLabel, getCurrentModelDescriptor } from "./model-presentation.js";
 import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "./auth/openai-oauth.js";
 import { hasGitHubTokens, clearGitHubTokens } from "./auth/github-copilot-oauth.js";
 
 // ------------------------------------------------------------------
-// Types
+// 类型
 // ------------------------------------------------------------------
 
 /**
@@ -70,30 +70,30 @@ export type ShowMessageFn = (text: string) => void;
  * Uses a generic interface so command handlers don't need direct TUI imports.
  */
 export interface CommandContext {
-  /** The active Session instance (typed as `any` to avoid circular deps). */
+  /* 活动会话实例（类型为‘ any ’以避免循环深度）。 */
   session: any;
 
-  /** Display a message in the conversation area. */
+  /* 在对话区域显示消息。 */
   showMessage: ShowMessageFn;
 
   /**
    * Brief, non-persistent UI hint shown in the input area's bottom-left
-   * corner (TUI) 鈥?for short, no-copy-value confirmations like "Copied" or
+   * corner (TUI) — for short, no-copy-value confirmations like "Copied" or
    * "Wait until the agent finishes." Falls back to `showMessage` when not
    * wired (e.g. tests, server mode).
    */
   showHint?: (message: string) => void;
 
-  /** The SessionStore for persistence (may be undefined). */
+  /* 用于持久化的SessionStore（可能未定义）。 */
   store?: SessionStore;
 
-  /** swarmflow home directory override, used by tests to avoid real user config. */
-  swarmflowHomeDir?: string;
+  /* Fermi主目录覆盖，用于测试以避免实际用户配置。 */
+  fermiHomeDir?: string;
 
-  /** Auto-save the current session (TUI provides the implementation). */
+  /* 自动保存当前会话（TUI提供实现）。 */
   autoSave: () => void;
 
-  /** Reset TUI state (cancel workers, clear spinners, etc.). */
+  /* 重置TUI状态（取消工作，清除旋转器等）。 */
   resetUiState: () => void;
 
   /**
@@ -103,16 +103,16 @@ export interface CommandContext {
    */
   requestFullRepaint?: () => void;
 
-  /** Replace the active UI runtime with a freshly bootstrapped session. */
+  /* 用新启动的会话替换活动UI运行时。 */
   restartRuntimeForNewSession?: () => Promise<void>;
 
-  /** The command registry itself, so /help can enumerate commands. */
+  /* 命令注册表本身，因此/help可以枚举命令。 */
   commandRegistry: CommandRegistry;
 
-  /** Request TUI-layer graceful exit. */
+  /* 请求gui层安全退出。 */
   exit?: () => Promise<void> | void;
 
-  /** Inject content as a user message and trigger a new turn. */
+  /* 注入内容作为用户消息并触发新回合。 */
   onTurnRequested?: (content: string) => void;
 
   /**
@@ -122,13 +122,13 @@ export interface CommandContext {
    */
   onInjectedTurnRequested?: (displayText: string, content: string) => void;
 
-  /** Trigger a targeted summarize request through the TUI turn pipeline. */
+  /* 通过TUI转弯管道触发目标汇总请求。 */
   onManualSummarizeRequested?: (opts: { targetContextIds?: string[]; focusPrompt?: string }) => void;
 
-  /** Trigger a manual compact request through the TUI execution pipeline. */
+  /* 通过TUI执行管道触发手动压缩请求。 */
   onManualCompactRequested?: (instruction: string) => void;
 
-  /** Open the background shells picker (badge / /shells command). */
+  /* 打开后台shell选择器（badge / /shell命令）。 */
   onShellsRequested?: () => void;
 
   /**
@@ -138,13 +138,13 @@ export interface CommandContext {
    */
   copyToClipboard?: (text: string) => boolean | Promise<boolean>;
 
-  /** True while the agent is producing output for the current turn. */
+  /* 当代理正在为当前回合产生输出时为True。 */
   isProcessing?: () => boolean;
 
-  /** Prompt the user to choose one option during command execution. */
+  /* 在命令执行期间提示用户选择一个选项。 */
   promptSelect?: (request: PromptSelectRequest) => Promise<string | undefined>;
 
-  /** Prompt the user for a secret value during command execution. */
+  /* 在命令执行期间提示用户输入一个秘密值。 */
   promptSecret?: (request: PromptSecretRequest) => Promise<string | undefined>;
 
   /**
@@ -173,7 +173,7 @@ export interface CommandContext {
 export type SemanticColor = "success" | "error" | "muted";
 
 export interface CommandOption {
-  /** Display label shown in the overlay. */
+  /* 显示标签显示在覆盖。 */
   label: string;
   /**
    * Rich label segments with optional per-segment color.
@@ -181,27 +181,27 @@ export interface CommandOption {
    * instead of a plain string. `label` is still used for search/fallback.
    */
   labelParts?: Array<{ text: string; color?: SemanticColor }>;
-  /** Value submitted as the command argument when selected. */
+  /* 选择时作为命令参数提交的值。 */
   value: string;
-  /** Right-aligned detail text shown alongside the label (e.g., "+42 -18"). */
+  /* 在标签旁边显示右对齐的细节文本（例如，“+42 -18”）。 */
   detail?: string;
-  /** Semantic color for the leading icon in detail text. */
+  /* 详细文本中主要图标的语义颜色。 */
   detailColor?: SemanticColor;
-  /** Non-submittable row used for headings or notices. */
+  /* 用于标题或通知的不可提交行。 */
   disabled?: boolean;
-  /** Child options for hierarchical selection (e.g., provider 鈫?model). */
+  /* 分层选择的子选项（例如，提供者→模型）。 */
   children?: CommandOption[];
-  /** Checked state for checkbox picker mode. */
+  /* 复选框选择器模式的选中状态。 */
   checked?: boolean;
-  /** When true, Enter opens an inline text input instead of submitting immediately. */
+  /* 当为true时，Enter打开一个内联文本输入，而不是立即提交。 */
   customInput?: boolean;
-  /** Label shown above the inline text input (default: "Your instructions:"). */
+  /* 标签显示在上面的内联文本输入（默认：“您的指示：”）。 */
   inputLabel?: string;
-  /** Placeholder inside the inline text input (default: "Type your instructions"). */
+  /* 内嵌文本输入中的占位符（默认：“键入您的指令”）。 */
   inputPlaceholder?: string;
 }
 
-/** Context available when building dynamic picker options for a slash command. */
+/* 为斜杠命令构建动态选择器选项时可用的上下文。 */
 export interface CommandOptionsContext {
   session: any;
   store?: SessionStore;
@@ -211,11 +211,11 @@ export interface CommandOptionsContext {
  * A single slash command.
  */
 export interface SlashCommand {
-  /** The command name, e.g. "/session". */
+  /* 命令名，例如：“会话”。 */
   name: string;
-  /** Short description shown in /help output. */
+  /* /help输出中显示的简短描述。 */
   description: string;
-  /** Async handler invoked when the command is executed. */
+  /* 执行命令时调用的异步处理程序。 */
   handler: (ctx: CommandContext, args: string) => Promise<void>;
   /**
    * Optional callback that returns dynamic overlay options for this command.
@@ -223,11 +223,11 @@ export interface SlashCommand {
    * Receives session/store context so it can compute dynamic picker options.
    */
   options?: (ctx: CommandOptionsContext) => CommandOption[];
-  /** When true, TUI uses a checkbox multi-select picker instead of single-select. */
+  /* 当为true时，TUI使用复选框多选择选择器而不是单选择。 */
   checkboxMode?: boolean;
-  /** Alternative names that also match during search. */
+  /* 在搜索过程中也匹配的备选名称。 */
   aliases?: string[];
-  /** Optional display title for the picker; the command name is still submitted. */
+  /* 选择器的可选显示标题；仍然提交命令名。 */
   pickerTitle?: string;
 }
 
@@ -254,35 +254,35 @@ export function isCommandExitSignal(err: unknown): err is CommandExitSignal {
 export class CommandRegistry {
   private _commands = new Map<string, SlashCommand>();
 
-  /** Register a command. Overwrites any existing command with the same name. */
+  /* 注册命令。覆盖任何具有相同名称的现有命令。 */
   register(cmd: SlashCommand): void {
     this._commands.set(cmd.name, cmd);
   }
 
-  /** Remove a command by its exact name. Returns true if it existed. */
+  /* 按命令的确切名称删除命令。如果存在则返回true。 */
   unregister(name: string): boolean {
     return this._commands.delete(name);
   }
 
-  /** Look up a command by its exact name or alias. */
+  /* 按命令的确切名称或别名查找命令。 */
   lookup(name: string): SlashCommand | undefined {
     const direct = this._commands.get(name);
     if (direct) return direct;
-    // Fallback: check aliases
+    // 退一步：检查别名
     for (const cmd of this._commands.values()) {
       if (cmd.aliases?.includes(name)) return cmd;
     }
     return undefined;
   }
 
-  /** Return all registered commands sorted alphabetically by name. */
+  /* 返回按名称字母顺序排序的所有注册命令。 */
   getAll(): SlashCommand[] {
     return Array.from(this._commands.values()).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
   }
 
-  /** Return command names that start with the given prefix (for completion). */
+  /* 返回以给定前缀开头的命令名（用于完成）。 */
   getCompletions(prefix: string): string[] {
     const results: string[] = [];
     for (const name of Array.from(this._commands.keys())) {
@@ -295,7 +295,7 @@ export class CommandRegistry {
 }
 
 // ------------------------------------------------------------------
-// Built-in command handlers
+// 内置命令处理程序
 // ------------------------------------------------------------------
 
 async function cmdHelp(ctx: CommandContext, _args: string): Promise<void> {
@@ -318,14 +318,14 @@ async function cmdNew(ctx: CommandContext, _args: string): Promise<void> {
 
   ctx.autoSave();
 
-  // Clear session dir 鈥?a new directory will be created lazily on first save.
-  // This avoids creating an empty session file when the user doesn't send any messages.
+  // 清除会话目录-第一次保存时将惰性地创建一个新目录。
+  // 这样可以避免在用户不发送任何消息时创建空会话文件。
   if (ctx.store) {
     ctx.store.clearSession();
   }
 
-  // Full session reset 鈥?store is updated, then conversation re-initialized
-  // with correct paths. Equivalent to constructing a fresh Session.
+  // 完整会话重置-更新存储，然后重新初始化会话
+  // 有正确的路径。相当于构造一个新的Session。
   await ctx.session.resetForNewSession(ctx.store);
   ctx.resetUiState();
 }
@@ -354,7 +354,7 @@ async function cmdSummarize(ctx: CommandContext, _args: string): Promise<void> {
     return;
   }
 
-  // Step 1: Pick range start
+  // 步骤1：选择范围开始
   const startOptions = targets.map((t, i) => ({
     label: formatSummarizeLabel(t),
     value: String(i),
@@ -366,7 +366,7 @@ async function cmdSummarize(ctx: CommandContext, _args: string): Promise<void> {
   if (!startPick) return;
   const startIdx = parseInt(startPick, 10);
 
-  // Step 2: Pick range end (only items at or after start)
+  // 步骤2：选择范围结束（仅在开始或之后的项目）
   const endOptions = targets.slice(startIdx).map((t, i) => ({
     label: formatSummarizeLabel(t),
     value: String(startIdx + i),
@@ -378,7 +378,7 @@ async function cmdSummarize(ctx: CommandContext, _args: string): Promise<void> {
   if (!endPick) return;
   const endIdx = parseInt(endPick, 10);
 
-  // Step 3: Optional focus prompt
+  // 步骤3：可选焦点提示
   let focusPrompt: string | undefined;
   if (ctx.promptSecret) {
     const input = await ctx.promptSecret({
@@ -391,7 +391,7 @@ async function cmdSummarize(ctx: CommandContext, _args: string): Promise<void> {
     }
   }
 
-  // Step 4: Compute context IDs from selected range, preserving spatial order
+  // 步骤4：从所选范围计算上下文id，保持空间顺序
   const selected = targets.slice(startIdx, endIdx + 1);
   const contextIds: string[] = [];
   const seen = new Set<string>();
@@ -468,7 +468,7 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
     session.setSummarizeHintConfig({ enabled });
     persistSettingsPatch({
       summarize_hint: { enabled, level1: current.level1, level2: current.level2 },
-    }, ctx.swarmflowHomeDir);
+    }, ctx.fermiHomeDir);
     hint(`Summarize hints: ${enabled ? "ON" : "OFF"}`);
   };
 
@@ -482,16 +482,16 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
     session.setSummarizeHintConfig({ level1, level2 });
     persistSettingsPatch({
       summarize_hint: { enabled: current.enabled, level1, level2 },
-    }, ctx.swarmflowHomeDir);
+    }, ctx.fermiHomeDir);
     hint(`Summarize hint levels: ${level1}% / ${level2}%`);
     return true;
   };
 
   const input = args.trim();
 
-  // Interactive path: no args 鈫?picker. Setting a level returns to the
-  // picker (with refreshed labels) so both levels can be adjusted in one
-  // visit; On/Off applies and closes.
+  // 交互路径：无参数→选择器。设置级别返回到
+  // 选择器（与刷新标签），所以两个级别可以调整在一个
+  // 访问;开/关适用并关闭。
   if (!input && ctx.promptCommandPicker) {
     for (;;) {
       const picked = await ctx.promptCommandPicker(
@@ -513,7 +513,7 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
     }
   }
 
-  // Inline shortcut path: on | off | "<level1> <level2>".
+  // 内嵌快捷路径：on | off | “<level1> <level2>”。
   if (input === "on" || input === "off") {
     applyEnabled(input === "on");
     return;
@@ -527,7 +527,7 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
 
   const current = session.getSummarizeHintConfig();
   ctx.showMessage(
-    `Summarize hints: ${current.enabled ? "on" : "off"} 路 level1 ${current.level1}% 路 level2 ${current.level2}%\n${SUMMARIZE_HINT_USAGE}`,
+    `Summarize hints: ${current.enabled ? "on" : "off"} · level1 ${current.level1}% · level2 ${current.level2}%\n${SUMMARIZE_HINT_USAGE}`,
   );
 }
 
@@ -552,23 +552,23 @@ async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // Resolve the requested session within the current project. Numeric index
-  // (1-based) acts as a shortcut from the picker; otherwise match by UUID
-  // (which equals the directory basename).
+  // 解析当前项目中请求的会话。数字索引
+  // （1-based）作为选择器的快捷方式；否则按UUID匹配
+  // （它等于目录basename）。
   const numericIdx = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) - 1 : Number.NaN;
   const target = Number.isInteger(numericIdx)
     ? sessions[numericIdx]
     : sessions.find((s) => s.sessionId === trimmed || basename(s.path) === trimmed);
 
   if (!target) {
-    // Not in this project 鈥?check if it lives elsewhere so we can give an
-    // actionable hint instead of a bare "not found".
+    // 在这个项目中没有-检查它是否生活在其他地方，以便我们可以给出一个
+    // 可操作的提示，而不是简单的“未找到”。
     const elsewhere = findSessionById(trimmed);
     if (elsewhere && elsewhere.projectPath) {
       ctx.showMessage(
         `This session belongs to ${elsewhere.projectPath}. Exit and run:\n` +
           `cd ${elsewhere.projectPath}\n` +
-          `swarmflow --resume ${trimmed}`,
+          `fermi --resume ${trimmed}`,
       );
       return;
     }
@@ -576,7 +576,7 @@ async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // Auto-save current first
+  // 自动保存电流优先
   ctx.autoSave();
   ctx.resetUiState();
 
@@ -586,11 +586,11 @@ async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
     ctx.showMessage(result.error);
   }
   if (result.ok) {
-    // Session restore replaces the entire transcript. The renderer's buffer is
-    // rebuilt, but the physical terminal is left as-is; an incremental diff
-    // won't repair that drift (it compares new-buffer vs new-buffer). Force a
-    // full repaint to re-assert ground truth 鈥?the same recovery a terminal
-    // resize performs.
+    // 会话恢复将替换整个记录。渲染器的缓冲区是
+    // 重建，但物理终端保持原样；渐进式差异
+    // 不会修复这个漂移（它比较new-buffer和new-buffer）。迫使
+    // 全面重新粉刷，重新断言地面真相-相同的恢复终端
+    // 调整执行。
     ctx.requestFullRepaint?.();
   }
 }
@@ -672,9 +672,9 @@ async function cmdQuit(ctx: CommandContext, _args: string): Promise<void> {
       await ctx.session.close();
     }
   } catch {
-    // ignore
+    // 忽略
   }
-  // Non-TUI callers decide how to handle shutdown.
+  // 非tui调用方决定如何处理关机。
   throw new CommandExitSignal(0);
 }
 
@@ -690,7 +690,7 @@ function currentSessionModelDisplayName(session: any): string {
 function persistModelSelection(ctx: CommandContext): void {
   try {
     const session = ctx.session;
-    // Use getGlobalPreferences() which exposes the persisted model selection
+    // 使用getGlobalPreferences（）公开持久的模型选择
     const prefs = typeof session.getGlobalPreferences === "function"
       ? session.getGlobalPreferences()
       : undefined;
@@ -704,9 +704,9 @@ function persistModelSelection(ctx: CommandContext): void {
         ? prefs.thinkingLevel
         : undefined,
     };
-    saveModelSelectionState(state, ctx.swarmflowHomeDir);
+    saveModelSelectionState(state, ctx.fermiHomeDir);
   } catch {
-    // Ignore persistence failures during command execution.
+    // 忽略命令执行期间的持久性失败。
   }
 }
 
@@ -714,11 +714,11 @@ function persistModelSelection(ctx: CommandContext): void {
  * Persist a partial settings update to global settings.json.
  * Reads existing settings, merges the patch, and writes back.
  */
-function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: string): void {
+function persistSettingsPatch(patch: Partial<FermiSettings>, homeDir?: string): void {
   try {
     saveGlobalSettingsPatch(patch, homeDir);
   } catch {
-    // Ignore persistence failures during command execution.
+    // 忽略命令执行期间的持久性失败。
   }
 }
 
@@ -736,15 +736,15 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
   const levels = getThinkingLevels(model);
   if (levels.length === 0) return undefined;
 
-  // If only one level (e.g. "on" for models with non-configurable thinking),
-  // auto-apply without prompting.
+  // 如果只有一个关卡(例如：“on”表示具有不可配置思维的模型)，
+  // 自动应用，无需提示。
   if (levels.length === 1) {
     session.thinkingLevel = levels[0];
     return levels[0];
   }
 
   if (!ctx.promptSelect) {
-    // Non-interactive environment 鈥?keep current/default thinking level.
+    // 非交互式环境-保持当前/默认的思维水平。
     return undefined;
   }
 
@@ -767,7 +767,7 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
 
 
 // ------------------------------------------------------------------
-// /model command
+// /模式命令
 // ------------------------------------------------------------------
 
 function parseModelArgs(args: string): { target: string } {
@@ -779,7 +779,7 @@ function parseModelArgs(args: string): { target: string } {
     throw new Error(
       "Inline API keys in `/model` are no longer supported.\n" +
       "Use `/model` to select the model and follow the prompt to import or paste a key,\n" +
-      "or run 'swarmflow init' to configure providers.",
+      "or run 'fermi init' to configure providers.",
     );
   }
   if (rest.length > 0) {
@@ -810,9 +810,9 @@ export function resolveModelSelection(
  * Build options for /model picker.
  *
  * Supports three structures:
- * - Two-level: provider 鈫?model (for ungrouped providers like anthropic, openai)
- * - Three-level via group field: group 鈫?sub-provider 鈫?model (kimi, glm, minimax)
- * - Three-level via vendor prefix: openrouter 鈫?vendor 鈫?model
+ * - Two-level: provider → model (for ungrouped providers like anthropic, openai)
+ * - Three-level via group field: group → sub-provider → model (kimi, glm, minimax)
+ * - Three-level via vendor prefix: openrouter → vendor → model
  */
 function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
   return modelOptionsWithTree(ctx);
@@ -897,7 +897,7 @@ async function ensureModelSelectionReady(
     } else if (needsLogin) {
       throw new Error(
         "OpenAI OAuth token is missing or expired.\n" +
-        "Run 'swarmflow oauth' to log in.",
+        "Run 'fermi oauth' to log in.",
       );
     }
   }
@@ -909,7 +909,7 @@ async function ensureModelSelectionReady(
     } else {
       throw new Error(
         "Not logged in to GitHub Copilot.\n" +
-        "Run 'swarmflow oauth' to log in.",
+        "Run 'fermi oauth' to log in.",
       );
     }
   }
@@ -922,7 +922,7 @@ async function ensureModelSelectionReady(
       const result = await ensureManagedProviderCredential(
         parsedTarget.provider,
         adapter,
-        { mode: "model", allowReplaceExisting: false, homeDir: ctx.swarmflowHomeDir },
+        { mode: "model", allowReplaceExisting: false, homeDir: ctx.fermiHomeDir },
       );
       if (result.status === "skipped") return undefined;
       return resolveModelSelection(ctx.session, target);
@@ -995,7 +995,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
     ctx.showMessage(
       `Current model: ${current}\n` +
       "Use /model to select a new model.\n" +
-      "For models marked 'key missing', run 'swarmflow init' or select the model to import/paste a key.",
+      "For models marked 'key missing', run 'fermi init' or select the model to import/paste a key.",
     );
     return;
   }
@@ -1017,7 +1017,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
     }
     const { selectedConfigName, selectedHint } = resolvedSelection;
 
-    // Switch the active runtime in place; the session history remains intact.
+    // 适当地切换活动运行时；会话历史记录保持完整。
     session.switchModel(selectedConfigName);
     session.setPersistedModelSelection?.({
       modelConfigName: selectedConfigName,
@@ -1026,7 +1026,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
       modelId: resolvedSelection.modelId,
     });
 
-    // Prompt for thinking level if the new model supports it
+    // 如果新模型支持它，提示思考水平
     await promptThinkingLevel(ctx);
     persistModelSelection(ctx);
     ctx.autoSave();
@@ -1038,7 +1038,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /key command 鈥?manage provider API keys (replace / remove / import)
+// /key命令—管理提供程序API密钥（替换/删除/导入）
 // ------------------------------------------------------------------
 
 function keyOptions(ctx: CommandOptionsContext): CommandOption[] {
@@ -1047,7 +1047,7 @@ function keyOptions(ctx: CommandOptionsContext): CommandOption[] {
   ) as CommandOption[];
 }
 
-/** Re-resolve runtime model configs after a provider's key changed. */
+/* 在提供程序的键更改后重新解析运行时模型配置。 */
 function applyCredentialChange(ctx: CommandContext, providerId: string): void {
   ctx.session.config?.invalidateModelsByProvider?.(providerId);
   if (ctx.session.primaryAgent?.modelConfig?.provider === providerId) {
@@ -1081,12 +1081,12 @@ async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
     }
   }
 
-  const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
+  const settings = loadGlobalSettings(ctx.fermiHomeDir);
   const label = settings.providers?.[providerId]?.label;
 
   try {
     const result = await runCredentialManageFlow(providerId, adapter, {
-      homeDir: ctx.swarmflowHomeDir,
+      homeDir: ctx.fermiHomeDir,
       label,
     });
 
@@ -1100,7 +1100,7 @@ async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
     if (result.status === "removed") {
       let msg = `Removed the saved key for ${result.label}.`;
       if (result.shellMayResurface) {
-        msg += `\nNote: ${result.envVar} may still be exported in your shell 鈥?`
+        msg += `\nNote: ${result.envVar} may still be exported in your shell — `
           + "it will be used again on next launch. To fully disable, unset it in your shell.";
       }
       ctx.showMessage(msg);
@@ -1131,7 +1131,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
 
   const defaultUrl = preset.defaultBaseUrl ?? "http://localhost:11434/v1";
 
-  // Let user confirm or change the URL
+  // 让用户确认或更改URL
   const urlChoice = await ctx.promptSelect({
     message: `${preset.name}: Server URL`,
     options: [
@@ -1150,12 +1150,12 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
     baseUrl = custom.trim();
   }
 
-  // Discover models 鈥?try without key first, then ask if needed
+  // 发现模型——先不带钥匙试一试，然后再问是否需要
   ctx.showMessage(`Scanning ${baseUrl} ...`);
   let apiKey = "local";
   let discovered = await fetchModelsFromServer(baseUrl, 5000, apiKey);
   if (discovered.length === 0) {
-    // May be an auth issue 鈥?ask for API key
+    // 可能是一个验证问题-要求API密钥
     const keyInput = await ctx.promptSecret?.({
       message: `${preset.name}: API key (Enter to skip if none required)`,
       allowEmpty: true,
@@ -1173,7 +1173,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
     return;
   }
 
-  // Let user pick a model
+  // 让用户选择一个模型
   const modelChoice = await ctx.promptSelect({
     message: `${preset.name}: ${discovered.length} model(s) found`,
     options: discovered.map((m) => ({
@@ -1187,8 +1187,8 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
 
   let contextLength = discovered.find((m) => m.id === modelChoice)?.contextLength;
   if (!contextLength) {
-    // Most local servers don't report context length via /v1/models.
-    // Prompt the user to specify it (same as init wizard).
+    // 大多数本地服务器不会通过/v1/models报告上下文长度。
+    // 提示用户指定它（与init向导相同）。
     const ctxChoice = await ctx.promptSelect({
       message: `${preset.name}: Context length not reported by server`,
       options: [
@@ -1210,7 +1210,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
     }
   }
 
-  // Register the model in config
+  // 在配置中注册模型
   const config = session.config;
   const rtName = runtimeModelName(providerId, modelChoice);
   config.upsertModelRaw(rtName, {
@@ -1222,9 +1222,9 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
     supports_web_search: false,
   });
 
-  // Persist local provider config to settings.json so it survives restarts
+  // 将本地提供程序配置保存到设置中。Json，以便它在重启中幸存下来
   {
-    const existing = loadGlobalSettings(ctx.swarmflowHomeDir);
+    const existing = loadGlobalSettings(ctx.fermiHomeDir);
     const providerEntry: ProviderEntry = {
       base_url: baseUrl,
       model: modelChoice,
@@ -1236,10 +1236,10 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
         ...(existing.providers ?? {}),
         [providerId]: providerEntry,
       },
-    }, ctx.swarmflowHomeDir);
+    }, ctx.fermiHomeDir);
   }
 
-  // Switch to the new model in place.
+  // 切换到新的模型。
   session.switchModel(rtName);
   session.setPersistedModelSelection?.({
     modelConfigName: rtName,
@@ -1248,7 +1248,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
     modelId: modelChoice,
   });
 
-  // Prompt for thinking level if the new model supports it
+  // 如果新模型支持它，提示思考水平
   await promptThinkingLevel(ctx);
   persistModelSelection(ctx);
   ctx.autoSave();
@@ -1256,8 +1256,8 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
 }
 
 // ------------------------------------------------------------------
-// "Add custom provider..." 鈥?multi-page wizard for arbitrary
-// OpenAI-/Anthropic-compatible endpoints with one or more models.
+// “添加自定义提供商…”-任意多页向导
+// OpenAI / anthropic兼容端点与一个或多个模型。
 // ------------------------------------------------------------------
 
 function fmtTokens(n: number): string {
@@ -1275,13 +1275,13 @@ function slugifyProviderId(label: string): string {
  *
  * Provider docs almost always show the *full* endpoint (e.g.
  * `https://openrouter.ai/api/v1/chat/completions`), but both SDKs append their
- * own path to `baseURL` 鈥?OpenAI adds `/chat/completions`, Anthropic adds
+ * own path to `baseURL` — OpenAI adds `/chat/completions`, Anthropic adds
  * `/v1/messages`. Pasting the full endpoint therefore double-appends and 404s.
  * We strip the recognized tail so the base is what the SDK wants:
- *   - `.../v1/chat/completions` 鈫?base `.../v1`         protocol `openai-chat`
- *   - `.../v1/messages`         鈫?base `...` (no /v1)    protocol `anthropic`
+ *   - `.../v1/chat/completions` → base `.../v1`         protocol `openai-chat`
+ *   - `.../v1/messages`         → base `...` (no /v1)    protocol `anthropic`
  * `changed` reports whether we rewrote the input (so the caller can tell the
- * user). `protocol` is null when no suffix matched 鈥?caller still asks.
+ * user). `protocol` is null when no suffix matched — caller still asks.
  */
 export function normalizeEndpointUrl(raw: string): {
   baseUrl: string;
@@ -1289,13 +1289,13 @@ export function normalizeEndpointUrl(raw: string): {
   changed: boolean;
 } {
   const trimmed = raw.trim().replace(/\/+$/, "");
-  // Anthropic Messages API: the SDK appends `/v1/messages`, so the base must
-  // drop it entirely (including the `/v1`).
+  // Anthropic Messages API: SDK附加了‘ /v1/ Messages ’，所以base必须
+  // 完全删除它（包括‘ /v1 ’）。
   if (/\/messages$/i.test(trimmed)) {
     const baseUrl = trimmed.replace(/\/(?:v\d+\/)?messages$/i, "");
     return { baseUrl, protocol: "anthropic", changed: baseUrl !== trimmed };
   }
-  // OpenAI Chat Completions: the SDK appends `/chat/completions`; keep the `/v1`.
+  // OpenAI聊天完成：SDK附加‘ / Chat / Completions ’；保留‘ /v1 ’。
   if (/\/chat\/completions$/i.test(trimmed)) {
     const baseUrl = trimmed.replace(/\/chat\/completions$/i, "");
     return { baseUrl, protocol: "openai-chat", changed: baseUrl !== trimmed };
@@ -1303,7 +1303,7 @@ export function normalizeEndpointUrl(raw: string): {
   return { baseUrl: trimmed, protocol: null, changed: trimmed !== raw.trim() };
 }
 
-/** Best-effort reachability probe for a custom endpoint. */
+/* 自定义端点的最佳可达性探测。 */
 async function testEndpoint(baseUrl: string, apiKey: string | undefined, protocol: string): Promise<{ ok: boolean; detail: string }> {
   if (protocol === "anthropic") return { ok: true, detail: "skipped (Anthropic endpoints have no /v1/models)" };
   try {
@@ -1315,13 +1315,13 @@ async function testEndpoint(baseUrl: string, apiKey: string | undefined, protoco
     const res = await fetch(url, { headers, signal: controller.signal });
     clearTimeout(timer);
     if (res.ok) return { ok: true, detail: `reachable (HTTP ${res.status})` };
-    return { ok: false, detail: `HTTP ${res.status}${res.status === 401 || res.status === 403 ? " 鈥?check API key" : ""}` };
+    return { ok: false, detail: `HTTP ${res.status}${res.status === 401 || res.status === 403 ? " — check API key" : ""}` };
   } catch (e) {
     return { ok: false, detail: `unreachable: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
-/** Prompt for a token count: suggested value (if any) + common presets + custom; optional skip. */
+/* 提示标记计数：建议值（如果有）+常用预设+自定义；可选的跳过。 */
 async function promptTokenCount(
   ctx: CommandContext,
   message: string,
@@ -1369,31 +1369,31 @@ async function addModelsInteractive(
       choices.push({ label: d.contextLength ? `${d.id}  (${fmtTokens(d.contextLength)} ctx)` : d.id, value: `pick:${d.id}` });
     }
     choices.push({ label: "+ Enter a model id manually", value: "__manual__" });
-    if (added.length > 0) choices.push({ label: `鉁?Done 鈥?save ${added.length} model${added.length > 1 ? "s" : ""}`, value: "__done__" });
+    if (added.length > 0) choices.push({ label: `✓ Done — save ${added.length} model${added.length > 1 ? "s" : ""}`, value: "__done__" });
     choices.push({ label: added.length > 0 ? "Cancel (discard)" : "Cancel", value: "__cancel__" });
     const choice = await ctx.promptSelect!({
-      message: discovered.length ? `${label} 鈥?pick a model to add (${remaining.length} available)` : `${label} 鈥?add a model`,
+      message: discovered.length ? `${label} — pick a model to add (${remaining.length} available)` : `${label} — add a model`,
       options: choices,
     });
     if (!choice || choice === "__cancel__") return null;
     if (choice === "__done__") return added;
     const modelId = choice === "__manual__"
-      ? ((await ctx.promptSecret!({ message: `${label} 鈥?model id` }))?.trim() ?? "")
+      ? ((await ctx.promptSecret!({ message: `${label} — model id` }))?.trim() ?? "")
       : choice.slice("pick:".length);
     if (!modelId || addedIds.has(modelId)) continue;
-    const sug = await fetchModelSpecSuggestion(modelId, { homeDir: ctx.swarmflowHomeDir });
+    const sug = await fetchModelSpecSuggestion(modelId, { homeDir: ctx.fermiHomeDir });
     const reportedCtx = discovered.find((d) => d.id === modelId)?.contextLength;
-    const ctxLen = await promptTokenCount(ctx, `${label} / ${modelId} 鈥?context length (required)`, sug?.contextLength ?? reportedCtx, { allowSkip: false });
-    if (!ctxLen) { ctx.showMessage("Context length is required 鈥?model not added."); continue; }
+    const ctxLen = await promptTokenCount(ctx, `${label} / ${modelId} — context length (required)`, sug?.contextLength ?? reportedCtx, { allowSkip: false });
+    if (!ctxLen) { ctx.showMessage("Context length is required — model not added."); continue; }
     const mmChoice = await ctx.promptSelect!({
-      message: `${label} / ${modelId} 鈥?multimodal (image input)?`,
+      message: `${label} / ${modelId} — multimodal (image input)?`,
       options: [
         { label: `No${sug?.multimodal ? "" : "  (default)"}`, value: "no" },
         { label: `Yes${sug?.multimodal ? "  (models.dev says yes)" : ""}`, value: "yes" },
       ],
     });
     if (mmChoice === undefined) continue;
-    const maxOut = await promptTokenCount(ctx, `${label} / ${modelId} 鈥?max output tokens (optional)`, sug?.maxOutputTokens, { allowSkip: true });
+    const maxOut = await promptTokenCount(ctx, `${label} / ${modelId} — max output tokens (optional)`, sug?.maxOutputTokens, { allowSkip: true });
     const entry: CustomModelEntry = { id: modelId, context_length: ctxLen };
     if (mmChoice === "yes") entry.multimodal = true;
     if (maxOut) entry.max_output_tokens = maxOut;
@@ -1404,7 +1404,7 @@ async function addModelsInteractive(
   }
 }
 
-/** Register one custom model into the live runtime config. */
+/* 将一个自定义模型注册到活动运行时配置中。 */
 function registerCustomModel(config: any, providerId: string, baseUrl: string, protocol: string, apiKeyRef: string, m: CustomModelEntry): void {
   config.upsertModelRaw(`${providerId}:${m.id}`, {
     provider: providerId,
@@ -1426,31 +1426,31 @@ async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
   }
   const config = ctx.session.config;
 
-  // 1. Display name 鈫?unique provider id
-  const label = (await ctx.promptSecret({ message: "Custom provider 鈥?display name (e.g. My LLM)" }))?.trim();
+  // 1. 显示名称→唯一提供者id
+  const label = (await ctx.promptSecret({ message: "Custom provider — display name (e.g. My LLM)" }))?.trim();
   if (!label) return false;
-  const existingProviders = loadGlobalSettings(ctx.swarmflowHomeDir).providers ?? {};
+  const existingProviders = loadGlobalSettings(ctx.fermiHomeDir).providers ?? {};
   const baseId = slugifyProviderId(label);
   let providerId = baseId;
   for (let i = 2; existingProviders[providerId] || config.modelNames.some((m: string) => m.startsWith(providerId + ":")); i++) {
     providerId = `${baseId}-${i}`;
   }
 
-  // 2. Endpoint URL 鈥?accept the full endpoint from provider docs and normalize.
-  const rawUrl = (await ctx.promptSecret({ message: `${label} 鈥?endpoint URL (paste the full URL from the docs, e.g. https://api.example.com/v1/chat/completions)` }))?.trim();
+  // 2. 端点URL -从提供者文档中接受完整的端点并进行规范化。
+  const rawUrl = (await ctx.promptSecret({ message: `${label} — endpoint URL (paste the full URL from the docs, e.g. https://api.example.com/v1/chat/completions)` }))?.trim();
   if (!rawUrl) return false;
   const norm = normalizeEndpointUrl(rawUrl);
   const baseUrl = norm.baseUrl;
-  if (norm.changed) ctx.showMessage(`鈩?Using base URL ${baseUrl}`);
+  if (norm.changed) ctx.showMessage(`ℹ Using base URL ${baseUrl}`);
 
-  // 3. Protocol 鈥?inferred from the URL suffix when recognized, else asked.
+  // 3. 协议-当识别时从URL后缀推断，否则询问。
   let protocol: string | undefined;
   if (norm.protocol) {
     protocol = norm.protocol;
-    ctx.showMessage(`鈩?Detected ${norm.protocol === "anthropic" ? "Anthropic" : "OpenAI"}-compatible endpoint 鈥?protocol set to "${norm.protocol}".`);
+    ctx.showMessage(`ℹ Detected ${norm.protocol === "anthropic" ? "Anthropic" : "OpenAI"}-compatible endpoint — protocol set to "${norm.protocol}".`);
   } else {
     protocol = await ctx.promptSelect({
-      message: `${label} 鈥?API protocol`,
+      message: `${label} — API protocol`,
       options: [
         { label: "OpenAI-compatible  (most endpoints)", value: "openai-chat" },
         { label: "Anthropic-compatible", value: "anthropic" },
@@ -1459,39 +1459,39 @@ async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
   }
   if (!protocol) return false;
 
-  // 4. API key (optional)
-  const apiKey = (await ctx.promptSecret({ message: `${label} 鈥?API key (Enter to skip if none required)`, allowEmpty: true }))?.trim();
+  // 4. API密钥（可选）
+  const apiKey = (await ctx.promptSecret({ message: `${label} — API key (Enter to skip if none required)`, allowEmpty: true }))?.trim();
 
-  // Reachability probe (informational; the user can still continue either way).
+  // 可达性探测（信息；用户仍然可以以任何一种方式继续）。
   const probe = await testEndpoint(baseUrl, apiKey, protocol);
-  ctx.showMessage(probe.ok ? `鉁?Endpoint ${probe.detail}` : `鈿?Endpoint ${probe.detail} 鈥?you can still continue and add models manually.`);
+  ctx.showMessage(probe.ok ? `✓ Endpoint ${probe.detail}` : `⚠ Endpoint ${probe.detail} — you can still continue and add models manually.`);
 
-  // 5-6. Discover + add models (multi-model loop, doesn't close after each).
+  // 5 - 6。发现+添加模型（多模型循环，不关闭后每个）。
   const added = await addModelsInteractive(ctx, { label, baseUrl, protocol, apiKey });
   if (!added || added.length === 0) return false;
 
-  // 7. Persist to settings.json + register in runtime config
+  // 7. 保留到设置。Json +注册在运行时配置
   const entry: ProviderEntry = { custom: true, label, base_url: baseUrl, protocol: protocol as ProviderEntry["protocol"], models: added };
   let apiKeyRef = "local";
   if (apiKey) {
     const envVar = customProviderEnvVar(providerId);
-    setDotenvKey(envVar, apiKey, ctx.swarmflowHomeDir);
+    setDotenvKey(envVar, apiKey, ctx.fermiHomeDir);
     entry.api_key = `\${${envVar}}`;
     apiKeyRef = `\${${envVar}}`;
   }
-  const cur = loadGlobalSettings(ctx.swarmflowHomeDir);
-  persistSettingsPatch({ providers: { ...(cur.providers ?? {}), [providerId]: entry } }, ctx.swarmflowHomeDir);
+  const cur = loadGlobalSettings(ctx.fermiHomeDir);
+  persistSettingsPatch({ providers: { ...(cur.providers ?? {}), [providerId]: entry } }, ctx.fermiHomeDir);
 
   for (const m of added) registerCustomModel(config, providerId, baseUrl, protocol, apiKeyRef, m);
-  ctx.showMessage(`鉁?Added custom provider "${label}" with ${added.length} model${added.length > 1 ? "s" : ""}.`);
+  ctx.showMessage(`✓ Added custom provider "${label}" with ${added.length} model${added.length > 1 ? "s" : ""}.`);
   return true;
 }
 
-/** Manage an existing custom provider: add/remove models, delete the provider. */
+/* 管理一个现有的自定义提供者：添加/删除模型，删除提供者。 */
 async function cmdManageCustomProvider(ctx: CommandContext, providerId: string): Promise<void> {
   if (!ctx.promptSelect) { ctx.showMessage("Not available in this UI."); return; }
   const config = ctx.session.config;
-  const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
+  const settings = loadGlobalSettings(ctx.fermiHomeDir);
   const entry = settings.providers?.[providerId];
   if (!entry?.custom) { ctx.showMessage(`"${providerId}" is not a custom provider.`); return; }
   const label = entry.label ?? providerId;
@@ -1513,21 +1513,21 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
   const apiKeyRef = entry.api_key ?? "local";
   const apiKeyForDiscover = apiKeyRef.startsWith("${") ? process.env[apiKeyRef.slice(2, -1)] : apiKeyRef;
   const saveProviders = (next: Record<string, ProviderEntry>) =>
-    persistSettingsPatch({ providers: next }, ctx.swarmflowHomeDir);
+    persistSettingsPatch({ providers: next }, ctx.fermiHomeDir);
 
   if (action === "edit") {
-    const newUrl = (await ctx.promptSecret!({ message: `${label} 鈥?new endpoint URL (Enter to keep "${entry.base_url}")`, allowEmpty: true }))?.trim();
-    const newKey = (await ctx.promptSecret!({ message: `${label} 鈥?new API key (Enter to keep current)`, allowEmpty: true }))?.trim();
+    const newUrl = (await ctx.promptSecret!({ message: `${label} — new endpoint URL (Enter to keep "${entry.base_url}")`, allowEmpty: true }))?.trim();
+    const newKey = (await ctx.promptSecret!({ message: `${label} — new API key (Enter to keep current)`, allowEmpty: true }))?.trim();
     let newBaseUrl = entry.base_url || "";
     if (newUrl) {
       const norm = normalizeEndpointUrl(newUrl);
       newBaseUrl = norm.baseUrl;
-      if (norm.changed) ctx.showMessage(`鈩?Using base URL ${newBaseUrl}`);
+      if (norm.changed) ctx.showMessage(`ℹ Using base URL ${newBaseUrl}`);
     }
     let apiKeyField = entry.api_key;
     if (newKey) {
       const envVar = customProviderEnvVar(providerId);
-      setDotenvKey(envVar, newKey, ctx.swarmflowHomeDir);
+      setDotenvKey(envVar, newKey, ctx.fermiHomeDir);
       apiKeyField = `\${${envVar}}`;
     }
     const updated: ProviderEntry = { ...entry, base_url: newBaseUrl, ...(apiKeyField ? { api_key: apiKeyField } : {}) };
@@ -1536,7 +1536,7 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     for (const m of models) registerCustomModel(config, providerId, newBaseUrl, protocol, ref, m);
     const probeKey = newKey || (apiKeyField?.startsWith("${") ? process.env[apiKeyField.slice(2, -1)] : apiKeyField);
     const probe = await testEndpoint(newBaseUrl, probeKey, protocol);
-    ctx.showMessage(`Updated "${label}". ${probe.ok ? "鉁?" + probe.detail : "鈿?" + probe.detail}`);
+    ctx.showMessage(`Updated "${label}". ${probe.ok ? "✓ " + probe.detail : "⚠ " + probe.detail}`);
     return;
   }
 
@@ -1562,7 +1562,7 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     if (!pick) return;
     const kept = models.filter((m) => m.id !== pick);
     if (kept.length === 0) {
-      // removing the last model deletes the provider
+      // 删除最后一个模型将删除提供程序
       const next = { ...settings.providers }; delete next[providerId];
       saveProviders(next);
     } else {
@@ -1587,10 +1587,10 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
 }
 
 // ------------------------------------------------------------------
-// /diff 鈥?configure inline write/edit diff display
+// /diff -配置内联写入/编辑diff显示
 // ------------------------------------------------------------------
 
-type DiffDisplayMode = NonNullable<SwarmflowSettings["diff_display"]>;
+type DiffDisplayMode = NonNullable<FermiSettings["diff_display"]>;
 
 function normalizeDiffDisplayMode(value: unknown): DiffDisplayMode {
   return value === "full" ? "full" : "compact";
@@ -1627,22 +1627,22 @@ async function cmdDiff(ctx: CommandContext, args: string): Promise<void> {
   }
 
   if (choice === "compact" || choice === "full") {
-    persistSettingsPatch({ diff_display: choice }, ctx.swarmflowHomeDir);
+    persistSettingsPatch({ diff_display: choice }, ctx.fermiHomeDir);
     ctx.showMessage(`__diff_display__:${choice}`);
     hint(`Diff display: ${choice}`);
     return;
   }
 
-  const current = normalizeDiffDisplayMode(loadGlobalSettings(ctx.swarmflowHomeDir).diff_display);
+  const current = normalizeDiffDisplayMode(loadGlobalSettings(ctx.fermiHomeDir).diff_display);
   ctx.showMessage(`Diff display is "${current}".\nUsage: /diff compact | full`);
 }
 
 // ------------------------------------------------------------------
-// /autoupdate 鈥?toggle automatic update checks
+// /autoupdate -切换自动更新检查
 // ------------------------------------------------------------------
 
 // ------------------------------------------------------------------
-// /theme 鈥?pick light / dark / auto
+// /主题-选择浅色/深色/自动
 // ------------------------------------------------------------------
 
 function themeModeOptions(_ctx: CommandOptionsContext): CommandOption[] {
@@ -1668,8 +1668,8 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
   }
 
   if (choice === "auto" || choice === "light" || choice === "dark") {
-    persistSettingsPatch({ theme_mode: choice }, ctx.swarmflowHomeDir);
-    // Magic message 鈥?TUI intercepts and updates React state without restart.
+    persistSettingsPatch({ theme_mode: choice }, ctx.fermiHomeDir);
+    // 魔术消息- TUI拦截和更新React状态而不重启。
     ctx.showMessage(`__theme_mode__:${choice}`);
     hint(`Theme: ${choice}`);
     return;
@@ -1680,7 +1680,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /autoupdate 鈥?toggle automatic update checks
+// /autoupdate -切换自动更新检查
 // ------------------------------------------------------------------
 
 function autoUpdateOptions(_ctx: CommandOptionsContext): CommandOption[] {
@@ -1705,17 +1705,17 @@ async function cmdAutoUpdate(ctx: CommandContext, args: string): Promise<void> {
 
   if (choice === "on" || choice === "off") {
     const enabled = choice === "on";
-    const wasEnabled = loadGlobalSettings(ctx.swarmflowHomeDir).auto_update !== false;
-    persistSettingsPatch({ auto_update: enabled }, ctx.swarmflowHomeDir);
+    const wasEnabled = loadGlobalSettings(ctx.fermiHomeDir).auto_update !== false;
+    persistSettingsPatch({ auto_update: enabled }, ctx.fermiHomeDir);
     hint(`Auto-update: ${enabled ? "ON" : "OFF"}`);
-    // Turning auto-update ON kicks off an immediate background check 鈥?the same
-    // one that runs at startup when auto-update is enabled. The TUI's update
-    // poll picks up the resulting state and shows the toast if an update exists.
+    // 打开自动更新开关会立即启动背景调查——同样的
+    // 启用自动更新时在启动时运行的程序。TUI的更新
+    // Poll获取结果状态，如果存在更新，则显示toast。
     if (enabled && !wasEnabled) {
       try {
-        const { checkForUpdates, setUpdateStateGetter } = await import("./lifecycle/update-check.js");
-        setUpdateStateGetter(checkForUpdates(VERSION, ctx.swarmflowHomeDir, true));
-      } catch { /* best effort 鈥?the setting is already persisted */ }
+        const { checkForUpdates, setUpdateStateGetter } = await import("./update-check.js");
+        setUpdateStateGetter(checkForUpdates(VERSION, ctx.fermiHomeDir, true));
+      } catch { /* 尽最大努力-设置已被保留 */ }
     }
     return;
   }
@@ -1725,7 +1725,7 @@ async function cmdAutoUpdate(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /autocopy 鈥?toggle copy-on-select (auto-copy a drag selection)
+// /autocopy -选择复制（自动复制拖动选择）
 // ------------------------------------------------------------------
 
 function autoCopyOptions(_ctx: CommandOptionsContext): CommandOption[] {
@@ -1750,8 +1750,8 @@ async function cmdAutoCopy(ctx: CommandContext, args: string): Promise<void> {
 
   if (choice === "on" || choice === "off") {
     const enabled = choice === "on";
-    persistSettingsPatch({ copy_on_select: enabled }, ctx.swarmflowHomeDir);
-    // Magic message 鈥?the TUI intercepts and flips React state without restart.
+    persistSettingsPatch({ copy_on_select: enabled }, ctx.fermiHomeDir);
+    // 神奇的消息——TUI拦截并翻转React状态而不重启。
     ctx.showMessage(`__copy_on_select__:${enabled ? "on" : "off"}`);
     hint(`Copy-on-select: ${enabled ? "ON" : "OFF"}`);
     return;
@@ -1762,7 +1762,7 @@ async function cmdAutoCopy(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /rename 鈥?set a custom session title
+// /rename -设置自定义会话标题
 // ------------------------------------------------------------------
 
 async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
@@ -1780,7 +1780,7 @@ async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // Interactive: prompt for new title
+  // 交互式：提示新标题
   if (!ctx.promptSecret) {
     ctx.showMessage("Usage: /rename <new title>");
     return;
@@ -1804,7 +1804,7 @@ async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /codex command
+// /法典命令
 // ------------------------------------------------------------------
 
 function codexOptions(): CommandOption[] {
@@ -1865,7 +1865,7 @@ async function cmdCodex(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /copilot command
+// /副驾驶员命令
 // ------------------------------------------------------------------
 
 function copilotOptions(): CommandOption[] {
@@ -1900,15 +1900,15 @@ async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
 
   if (sub === "logout") {
     clearGitHubTokens();
-    // Drop the per-account model-visibility cache so a future login for a
-    // different plan doesn't inherit the wrong hidden-model set.
+    // 删除每个帐户的模型可见性缓存，以便将来登录
+    // 不同的计划不会继承错误的隐藏模型集。
     try {
       const { clearCopilotModelsCache } = await import(
         "./providers/copilot-models-cache.js"
       );
       clearCopilotModelsCache();
     } catch {
-      // ignore
+      // 忽略
     }
     ctx.showMessage("GitHub Copilot tokens cleared.");
     return;
@@ -1927,7 +1927,7 @@ async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /tier command 鈥?configure sub-agent model tiers
+// /tier命令-配置子代理模型的分级
 // ------------------------------------------------------------------
 
 function describeTierModel(session: any, entry: ModelTierEntry): string {
@@ -1977,7 +1977,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
   const trimmed = args.trim().toLowerCase();
 
   if (!trimmed) {
-    // No arg 鈥?show current tiers
+    // 没有参数显示当前等级
     const levels: Array<"high" | "medium" | "low"> = ["high", "medium", "low"];
     const lines = ["Model tiers:"];
     for (const level of levels) {
@@ -1996,16 +1996,16 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // Handle "clear" 鈥?remove all tiers
+  // 处理“清除”-删除所有层
   if (trimmed === "clear") {
-    persistSettingsPatch({ model_tiers: {} }, ctx.swarmflowHomeDir);
-    // Update runtime config
+    persistSettingsPatch({ model_tiers: {} }, ctx.fermiHomeDir);
+    // 更新运行时配置
     session.config?.setModelTiers?.({});
     ctx.showMessage("All model tiers cleared. Sub-agents will inherit the main model.");
     return;
   }
 
-  // Handle tier level selection
+  // 处理层级别选择
   const validLevels: Array<"high" | "medium" | "low"> = ["high", "medium", "low"];
   if (!validLevels.includes(trimmed as any)) {
     ctx.showMessage(`Invalid tier: "${trimmed}". Use high, medium, low, or clear.`);
@@ -2013,7 +2013,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
   }
   const level = trimmed as "high" | "medium" | "low";
 
-  // Prompt for action: assign model or clear this tier
+  // 操作提示：分配模型或清除此层
   if (!ctx.promptSelect) {
     ctx.showMessage("Interactive tier configuration is not available in this UI.");
     return;
@@ -2036,7 +2036,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
   if (action === "clear_one") {
     const updatedTiers = { ...tiers };
     delete updatedTiers[level];
-    persistSettingsPatch({ model_tiers: updatedTiers }, ctx.swarmflowHomeDir);
+    persistSettingsPatch({ model_tiers: updatedTiers }, ctx.fermiHomeDir);
     session.config?.setModelTiers?.(updatedTiers);
     ctx.showMessage(`Tier '${level}' cleared. Sub-agents at this level will inherit the main model.`);
     return;
@@ -2051,7 +2051,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
   }
   const selectedConfigName = resolvedSelection.selectedConfigName;
 
-  // Get the resolved model's actual model ID for thinking level check
+  // 获取已解析模型的实际模型ID，以进行思维级别检查
   let resolvedModelId: string;
   try {
     const mc = session.config.getModel(selectedConfigName);
@@ -2060,9 +2060,9 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
     resolvedModelId = selectedConfigName;
   }
 
-  // Determine thinking level for the chosen model. Required when the model
-  // supports thinking; "none" otherwise. Picker offers tier-eligible levels
-  // only (native "off" / "none" filtered out). Cancelling aborts the save.
+  // 确定所选模型的思维水平。所需时的模型
+  // 支持思维;“没有”。Picker提供符合等级的关卡
+  // 只有（原生的“off”/“none”过滤掉了）。取消将中止保存。
   let thinkingLevel: string;
 
   if (getThinkingLevels(resolvedModelId).length === 0) {
@@ -2086,18 +2086,18 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
     thinkingLevel = thinkingChoice;
   }
 
-  // Build the tier entry
+  // 构建层入口
   const tierEntry = createModelTierEntry({
     provider: resolvedSelection.modelProvider,
     selectionKey: resolvedSelection.modelSelectionKey,
     modelId: resolvedSelection.modelId,
   }, thinkingLevel);
 
-  // Persist
+  // 坚持
   const updatedTiers = { ...tiers, [level]: tierEntry };
-  persistSettingsPatch({ model_tiers: updatedTiers }, ctx.swarmflowHomeDir);
+  persistSettingsPatch({ model_tiers: updatedTiers }, ctx.fermiHomeDir);
 
-  // Update runtime config
+  // 更新运行时配置
   session.config?.setModelTiers?.(updatedTiers);
 
   const displayLabel = describeTierModel(session, tierEntry);
@@ -2105,11 +2105,11 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /review 鈥?code review
+// /review——代码审查
 // ------------------------------------------------------------------
 
 function loadReviewPromptTemplate(): string {
-  const { getBundledAssetsDir } = require("./config/config.js") as { getBundledAssetsDir: () => string };
+  const { getBundledAssetsDir } = require("./config.js") as { getBundledAssetsDir: () => string };
   const promptPath = join(getBundledAssetsDir(), "prompts", "review.md");
   try {
     return readFileSync(promptPath, "utf-8");
@@ -2185,7 +2185,7 @@ function gitBranchOptions(): CommandOption[] {
     return [{ label: "No other branches found", value: "", disabled: true }];
   }
   return deduped.map(b => ({
-    label: `${current} 鈫?${b}`,
+    label: `${current} → ${b}`,
     value: b,
   }));
 }
@@ -2253,10 +2253,10 @@ async function cmdReview(ctx: CommandContext, args: string): Promise<void> {
   const trimmed = args.trim();
 
   if (trimmed) {
-    // When dispatched from the command-overlay picker (startCommandPicker),
-    // the value arrives as args (e.g. "uncommitted", a SHA, or a branch name).
-    // Detect known review-target values and route them; everything else is
-    // free-form user instructions for an uncommitted-changes review.
+    // 当从命令覆盖选择器（startCommandPicker）分派时，
+    // 该值以参数的形式到达。“未提交”、SHA或分支名称)。
+    // 检测已知的评审目标值并路由它们；其他的都是
+    // 对未提交的更改进行审查的自由形式的用户说明。
     if (trimmed === "uncommitted") {
       dispatchReview(ctx, "uncommitted", "", "");
       return;
@@ -2269,9 +2269,9 @@ async function cmdReview(ctx: CommandContext, args: string): Promise<void> {
       dispatchReview(ctx, "commit", trimmed, "");
       return;
     }
-    // From drill-down picker, args may be a branch name. Verify with git
-    // before assuming 鈥?single-word instructions like "login" or "config"
-    // should not be misidentified as branches.
+    // 从向下钻取器中，参数可以是分支名称。使用git进行验证
+    // 假设之前-像“login”或“config”这样的单字指令
+    // 不应被误认为是分支。
     if (/^[A-Za-z0-9_./-]+$/.test(trimmed) && !trimmed.includes(" ")) {
       const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
       const check = spawnSync("git", ["rev-parse", "--verify", "--quiet", trimmed], {
@@ -2310,9 +2310,9 @@ async function cmdReview(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // For drill-down children (base branch or commit), the picker already
-  // resolved to the leaf value (branch name or commit SHA).
-  // Determine which kind by checking if it looks like a commit SHA.
+  // 对于下钻子（基本分支或提交），选择器已经
+  // 解析为叶值（分支名称或提交SHA）。
+  // 通过检查它是否看起来像提交SHA来确定哪种类型。
   const isSha = /^[0-9a-f]{7,40}$/.test(value);
   if (isSha) {
     dispatchReview(ctx, "commit", value, note);
@@ -2322,7 +2322,7 @@ async function cmdReview(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// Registry builder
+// 注册表生成器
 // ------------------------------------------------------------------
 
 /**
@@ -2365,7 +2365,7 @@ export function buildDefaultRegistry(): CommandRegistry {
 }
 
 // ------------------------------------------------------------------
-// /copy
+// /复制
 // ------------------------------------------------------------------
 
 async function cmdCopy(ctx: CommandContext): Promise<void> {
@@ -2407,7 +2407,7 @@ async function cmdCopy(ctx: CommandContext): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /fork
+// /叉
 // ------------------------------------------------------------------
 
 async function cmdFork(ctx: CommandContext): Promise<void> {
@@ -2442,10 +2442,10 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
     return;
   }
 
-  // Save current state so we copy the latest log/meta to disk before cloning.
+  // 保存当前状态，以便在克隆之前将最新的日志/元数据复制到磁盘。
   ctx.autoSave();
 
-  // Empty sessions have no log.json yet (saveLog skips when turnCount === 0).
+  // 空会话不记录日志。（当turnCount === 0时，saveLog跳过）。
   if (!existsSync(join(sourceDir, "log.json"))) {
     hint("Cannot fork an empty session.");
     return;
@@ -2458,12 +2458,12 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
   try {
     cpSync(sourceDir, newDir, { recursive: true });
   } catch (e) {
-    try { rmSync(newDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    try { rmSync(newDir, { recursive: true, force: true }); } catch { /* 的最优 */ }
     ctx.showMessage(`Fork failed: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
 
-  // Patch new meta.json + log.json: fresh ID, fresh timestamps, branch title.
+  // 补丁新的meta。Json + log。json：新的ID，新的时间戳，分支标题。
   try {
     const nowIso = new Date().toISOString();
     const metaPath = join(newDir, "meta.json");
@@ -2488,7 +2488,7 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
     logData.title = branchTitle;
     writeFileSync(logPath, JSON.stringify(logData, null, 2));
   } catch (e) {
-    try { rmSync(newDir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    try { rmSync(newDir, { recursive: true, force: true }); } catch { /* 的最优 */ }
     ctx.showMessage(`Fork failed: ${e instanceof Error ? e.message : String(e)}`);
     return;
   }
@@ -2502,8 +2502,8 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
     return;
   }
 
-  // Ephemeral pointer back to the parent 鈥?visible in the conversation,
-  // not persisted to log.json (saveLog filters meta.ephemeral entries).
+  // 返回父节点的短暂指针——在对话中可见；
+  // 没有持久化到日志。saveLog过滤元数据。短暂的条目)。
   if (typeof session.appendStatusMessage === "function") {
     session.appendStatusMessage(
       `To continue the original session, enter /session ${origSessionId}`,
@@ -2514,12 +2514,12 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /mcp command
+// / mcp命令
 // ------------------------------------------------------------------
 
 /**
  * Read the full MCP server list from settings (including disabled).
- * This is the picker's data source 鈥?separate from MCPClientManager
+ * This is the picker's data source — separate from MCPClientManager
  * which only knows about active (non-disabled) servers.
  */
 function getAllMcpServerNames(homeDir?: string): Map<string, { disabled: boolean }> {
@@ -2540,7 +2540,7 @@ function mcpOptions(ctx: CommandOptionsContext): CommandOption[] {
   const allServers = getAllMcpServerNames();
   if (allServers.size === 0 && !mcpManager) return [];
 
-  // Runtime statuses from MCPClientManager (active servers only)
+  // 来自MCPClientManager的运行时状态（仅限活动服务器）
   const statusMap = new Map<string, { state: string; toolCount: number; error?: string }>();
   if (mcpManager && typeof mcpManager.getServerStatuses === "function") {
     for (const s of mcpManager.getServerStatuses()) {
@@ -2548,7 +2548,7 @@ function mcpOptions(ctx: CommandOptionsContext): CommandOption[] {
     }
   }
 
-  // Tools grouped by server
+  // 按服务器分组的工具
   const toolsByServer = new Map<string, string[]>();
   if (mcpManager) {
     for (const tool of mcpManager.getAllTools()) {
@@ -2573,8 +2573,8 @@ function mcpOptions(ctx: CommandOptionsContext): CommandOption[] {
         label: name,
         labelParts: [
           { text: name },
-          { text: " 路 " },
-          { text: "鉁?, color: "muted" },
+          { text: " · " },
+          { text: "✗", color: "muted" },
           { text: " Disabled" },
         ],
         value: name,
@@ -2588,15 +2588,15 @@ function mcpOptions(ctx: CommandOptionsContext): CommandOption[] {
 
       const parts: Array<{ text: string; color?: SemanticColor }> = [
         { text: name },
-        { text: " 路 " },
-        { text: connected ? "鉁? : "鉁?, color: connected ? "success" : "error" },
+        { text: " · " },
+        { text: connected ? "✓" : "✗", color: connected ? "success" : "error" },
         { text: ` ${stateLabel}` },
       ];
       if (connected && status!.toolCount > 0) {
-        parts.push({ text: ` 路 ${status!.toolCount} tools` });
+        parts.push({ text: ` · ${status!.toolCount} tools` });
       }
       if (!connected && status?.error) {
-        parts.push({ text: ` 路 ${status.error}` });
+        parts.push({ text: ` · ${status.error}` });
       }
 
       children.push({ label: "Reconnect", value: `${name}:reconnect` });
@@ -2640,24 +2640,24 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;
   const hint = ctx.showHint ?? ctx.showMessage;
 
-  // Prefer the turn-lock-wrapped command variant so an MCP reload cannot
-  // overlap a turn; fall back to the bare method for older session shapes.
+  // 更喜欢旋转锁包装的命令变体，这样MCP重新加载就不能
+  // 重叠一圈；对于较旧的会话形状，退回到bare方法。
   const reloadMcpLocked = (reason: string): Promise<string> =>
     typeof session.reloadMcpFromCommand === "function"
       ? session.reloadMcpFromCommand(reason)
       : session.reloadMcp({ reason });
 
-  // Ensure MCP is ready (no-op if already connected). Use the turn-lock-wrapped
-  // variant so a status warm-up that connects servers cannot overlap a turn.
+  // 确保MCP已准备就绪（如果已连接则无操作）。使用旋转锁包装
+  // 变体，因此连接服务器的状态预热不能重叠一个回合。
   try {
     if (typeof session.ensureMcpReadyFromCommand === "function") {
       await session.ensureMcpReadyFromCommand();
     } else if (typeof session.ensureMcpReady === "function") {
       await session.ensureMcpReady();
     }
-  } catch { /* proceed 鈥?statuses will show failures */ }
+  } catch { /* 继续-状态将显示失败 */ }
 
-  const allServers = getAllMcpServerNames(ctx.swarmflowHomeDir);
+  const allServers = getAllMcpServerNames(ctx.fermiHomeDir);
   if (allServers.size === 0) {
     ctx.showMessage(
       "No MCP servers configured.\n" +
@@ -2679,7 +2679,7 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
 
   if (action === "__reload__") {
     try {
-      hint("Reloading MCP servers鈥?);
+      hint("Reloading MCP servers…");
       const report = await reloadMcpLocked("the user reloaded MCP configuration");
       hint(report);
     } catch (err) {
@@ -2695,7 +2695,7 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
     const mcpManager = session.mcpManager;
 
     if (op === "reconnect") {
-      hint(`Connecting MCP server '${serverName}'鈥);
+      hint(`Connecting MCP server '${serverName}'…`);
       if (typeof session.reconnectMcpServerFromCommand === "function") {
         const ok = await session.reconnectMcpServerFromCommand(serverName);
         hint(ok ? `${serverName}: reconnected` : `${serverName}: reconnect failed`);
@@ -2714,9 +2714,9 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
 
     if (op === "disable" || op === "enable") {
       const disabled = op === "disable";
-      if (setMcpServerDisabled(serverName, disabled, ctx.swarmflowHomeDir)) {
+      if (setMcpServerDisabled(serverName, disabled, ctx.fermiHomeDir)) {
         try {
-          if (!disabled) hint(`Connecting MCP server '${serverName}'鈥);
+          if (!disabled) hint(`Connecting MCP server '${serverName}'…`);
           const report = await reloadMcpLocked(
             `the user ${disabled ? "disabled" : "enabled"} MCP server '${serverName}'`,
           );
@@ -2731,13 +2731,13 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
     }
   }
 
-  // Fallback for non-interactive environments
+  // 非交互式环境的回退
   const enabledCount = [...allServers.values()].filter((s) => !s.disabled).length;
   hint(`MCP: ${allServers.size} server(s), ${enabledCount} enabled. Use picker for details.`);
 }
 
 // ------------------------------------------------------------------
-// /skills command
+// /技能命令
 // ------------------------------------------------------------------
 
 function skillsOptions(ctx: CommandOptionsContext): CommandOption[] {
@@ -2762,7 +2762,7 @@ async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
 
   const trimmed = args.trim();
   if (!trimmed) {
-    // No args 鈥?show list
+    // 无参数-显示列表
     const allSkills = session.getAllSkillNames();
     if (allSkills.length === 0) {
       ctx.showMessage("No skills installed.");
@@ -2770,14 +2770,14 @@ async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
     }
     const lines = ["Installed skills:"];
     for (const s of allSkills) {
-      lines.push(`  ${s.enabled ? "[x]" : "[ ]"} ${s.name} 鈥?${s.description}`);
+      lines.push(`  ${s.enabled ? "[x]" : "[ ]"} ${s.name} — ${s.description}`);
     }
     ctx.showMessage(lines.join("\n"));
     return;
   }
 
-  // Checkbox picker submits comma-separated enabled skill names
-  // Parse: all items were submitted, enabled ones are in the args
+  // 复选框选择器提交以逗号分隔的启用技能名称
+  // 解析：所有项都已提交，启用的项在参数中
   const enabledNames = new Set(trimmed.split(",").map((s: string) => s.trim()).filter(Boolean));
   const allSkills = session.getAllSkillNames();
   const oldSkills = session.skills;
@@ -2801,24 +2801,24 @@ async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
     session.notifySkillAvailabilityChanged({ enabled, disabled });
   }
 
-  // Re-register slash commands
+  // 重新注册斜杠命令
   reRegisterSkillCommands(ctx.commandRegistry, oldSkills, session.skills);
 
   const enabledCount = enabledNames.size;
   const totalCount = allSkills.length;
   ctx.showMessage(`Skills updated: ${enabledCount}/${totalCount} enabled.`);
-  // Persist disabled skills list to settings.json
+  // 将禁用的技能列表保存到settings.json中
   const disabledSkills = allSkills
     .filter((s: { name: string }) => !enabledNames.has(s.name))
     .map((s: { name: string }) => s.name);
   persistSettingsPatch(
     { disabled_skills: disabledSkills.length > 0 ? disabledSkills : undefined },
-    ctx.swarmflowHomeDir,
+    ctx.fermiHomeDir,
   );
 }
 
 // ------------------------------------------------------------------
-// Skill command registration
+// 技能命令注册
 // ------------------------------------------------------------------
 
 /**
@@ -2835,7 +2835,7 @@ export function registerSkillCommands(
   for (const skill of sortedSkills) {
     if (!skill.userInvocable) continue;
 
-    // Skip skills whose name conflicts with built-in commands
+    // 跳过与内置命令名称冲突的技能
     const cmdName = "/" + skill.name;
     if (registry.lookup(cmdName)) {
       console.warn(`Skill "${skill.name}" skipped: conflicts with built-in command ${cmdName}`);
@@ -2878,16 +2878,16 @@ export function reRegisterSkillCommands(
 }
 
 // ------------------------------------------------------------------
-// /raw command 鈥?toggle markdown raw/rendered mode
+// /raw命令-切换原始/渲染模式
 // ------------------------------------------------------------------
 
 async function cmdRaw(ctx: CommandContext): Promise<void> {
-  // The TUI intercepts this status message to toggle markdown mode.
+  // TUI拦截此状态消息以切换降价模式。
   ctx.showMessage("__toggle_markdown_raw__");
 }
 
 // ------------------------------------------------------------------
-// /agents command 鈥?toggle agents panel
+// /agents命令-切换代理面板
 // ------------------------------------------------------------------
 
 async function cmdAgents(ctx: CommandContext): Promise<void> {
@@ -2895,7 +2895,7 @@ async function cmdAgents(ctx: CommandContext): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /todos command 鈥?toggle todo panel
+// /todos命令-切换任务面板
 // ------------------------------------------------------------------
 
 async function cmdTodos(ctx: CommandContext): Promise<void> {
@@ -2903,7 +2903,7 @@ async function cmdTodos(ctx: CommandContext): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /sidebar command 鈥?toggle sidebar mode (open/close/auto)
+// /sidebar命令-切换侧边栏模式（打开/关闭/自动）
 // ------------------------------------------------------------------
 
 async function cmdSidebar(ctx: CommandContext, args: string): Promise<void> {
@@ -2911,13 +2911,13 @@ async function cmdSidebar(ctx: CommandContext, args: string): Promise<void> {
   if (mode === "open" || mode === "close" || mode === "auto") {
     ctx.showMessage(`__sidebar_mode__:${mode}`);
   } else {
-    // Toggle: cycle auto 鈫?open 鈫?close 鈫?auto
+    // 切换：循环自动→开启→关闭→自动
     ctx.showMessage("__sidebar_toggle__");
   }
 }
 
 // ------------------------------------------------------------------
-// /permission 鈥?set permission mode
+// /permission -设置权限模式
 // ------------------------------------------------------------------
 
 const PERMISSION_MODES = ["read_only", "reversible", "yolo"] as const;
@@ -2931,7 +2931,7 @@ function permissionOptions(ctx: CommandOptionsContext): CommandOption[] {
   const session = ctx.session;
   const current = typeof session.permissionMode === "string" ? session.permissionMode : "reversible";
   return PERMISSION_MODES.map((mode) => ({
-    label: `${mode}${mode === current ? " (current)" : ""} 鈥?${PERMISSION_DESCRIPTIONS[mode]}`,
+    label: `${mode}${mode === current ? " (current)" : ""} — ${PERMISSION_DESCRIPTIONS[mode]}`,
     value: mode,
   }));
 }
@@ -2950,7 +2950,7 @@ async function cmdPermission(ctx: CommandContext, args: string): Promise<void> {
       ctx.showMessage(
         `Current permission mode: ${current}\n\n` +
         `Usage: /permission <mode>\n` +
-        PERMISSION_MODES.map((m) => `  ${m} 鈥?${PERMISSION_DESCRIPTIONS[m]}`).join("\n"),
+        PERMISSION_MODES.map((m) => `  ${m} — ${PERMISSION_DESCRIPTIONS[m]}`).join("\n"),
       );
       return;
     }
@@ -2970,14 +2970,14 @@ function persistPermissionMode(ctx: CommandContext): void {
   try {
     const session = ctx.session;
     if (typeof session.permissionMode !== "string") return;
-    persistSettingsPatch({ permission_mode: session.permissionMode }, ctx.swarmflowHomeDir);
+    persistSettingsPatch({ permission_mode: session.permissionMode }, ctx.fermiHomeDir);
   } catch {
-    // Ignore persistence failures.
+    // 忽略持久性失败。
   }
 }
 
 // ------------------------------------------------------------------
-// /rewind 鈥?rewind to a previous turn
+// /rewind -倒回到前一个回合
 // ------------------------------------------------------------------
 
 function formatRewindDetail(target: {
@@ -3053,13 +3053,13 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // Resolve turnIndex and mode from either direct args or picker
+  // 从直接参数或选择器中解析turnIndex和mode
   let turnIndex: number;
   let mode: "both" | "conversation" | "files" | "cancel";
 
   const raw = args.trim();
   if (raw) {
-    // Direct args: "/rewind 3" (conversation-only) or "/rewind 3:files" (from picker)
+    // 直接参数：“/rewind 3”（仅限对话）或“/rewind 3:files”（来自picker）
     const colonIdx = raw.indexOf(":");
     if (colonIdx >= 0) {
       turnIndex = parseInt(raw.slice(0, colonIdx), 10);
@@ -3098,7 +3098,7 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // For "files" and "both" modes, we need to plan first
+  // 对于“文件”和“两者”模式，我们需要先计划
   if (!session.planRewind || !session.rewindFiles || !session.rewindBoth) {
     ctx.showMessage("File rewind is not supported in this session.");
     return;
@@ -3125,23 +3125,23 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // Show file conflicts (plan-time, these won't change at execution time)
+  // 显示文件冲突（计划时，这些不会在执行时更改）
   if (hasConflicts) {
     const conflictList = plan.conflicts.map((c: { path: string; reason: string }) => `  ${c.path} (${c.reason})`).join("\n");
     ctx.showMessage(`Warning: ${plan.conflicts.length} file(s) cannot be auto-reverted:\n${conflictList}`);
   }
-  // Note: bash conflicts are NOT shown here 鈥?they are re-evaluated at execution
-  // time, so plan-time status may not reflect the final result.
+  // 注意：bash冲突不会在这里显示——它们会在执行时重新评估
+  // 时间，因此计划时间状态可能不能反映最终结果。
 
   const formatBashResult = (result: { bashReverted?: string[]; bashSkipped?: string[] }): string => {
     const parts: string[] = [];
     if (result.bashReverted && result.bashReverted.length > 0) {
       parts.push(`Reverted ${result.bashReverted.length} shell operation(s):`);
-      for (const desc of result.bashReverted) parts.push(`  鉁?${desc}`);
+      for (const desc of result.bashReverted) parts.push(`  ✓ ${desc}`);
     }
     if (result.bashSkipped && result.bashSkipped.length > 0) {
       parts.push(`Skipped ${result.bashSkipped.length} shell operation(s):`);
-      for (const desc of result.bashSkipped) parts.push(`  鉁?${desc}`);
+      for (const desc of result.bashSkipped) parts.push(`  ✗ ${desc}`);
     }
     return parts.join("\n");
   };
@@ -3158,7 +3158,7 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
     const bashPart = formatBashResult(result);
     ctx.showMessage([filePart, bashPart].filter(Boolean).join("\n"));
   } else {
-    // mode === "both"
+    // 模式=== “both”
     const result = await session.rewindBoth(turnIndex, plan);
     if (result.error) {
       ctx.showMessage(`Rewind failed: ${result.error}`);
@@ -3183,16 +3183,16 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /hooks command
+// /钩子命令
 // ------------------------------------------------------------------
 
 function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: string; args?: string[]; disabled?: boolean; _sourcePath?: string; _scope?: string; matcher?: { toolNames?: string[]; agentIds?: string[] }; failClosed?: boolean }> {
   try {
-    const { resolveAssetPaths } = require("./config/config.js") as typeof import("./config/config.js");
+    const { resolveAssetPaths } = require("./config.js") as typeof import("./config.js");
     const { loadHooksMulti } = require("./hooks/index.js") as typeof import("./hooks/index.js");
     const paths = resolveAssetPaths();
-    // loadHooksMulti de-dupes by name (project overrides global)
-    // We want ALL including disabled, so we load raw from disk
+    // loadhooksmti按名称进行重复数据删除（项目覆盖全局）
+    // 我们希望所有包括禁用，所以我们从磁盘加载raw
     const allHooks: any[] = [];
     for (const { dir, scope } of paths.hookRoots) {
       const { loadHooksFromDir } = require("./hooks/index.js") as typeof import("./hooks/index.js");
@@ -3200,7 +3200,7 @@ function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: s
         allHooks.push(h);
       }
     }
-    // De-dupe by name (later scopes override earlier)
+    // 按名称重复数据删除（后面的作用域覆盖前面的）
     const byName = new Map<string, any>();
     for (const h of allHooks) byName.set(h.name, h);
     return [...byName.values()];
@@ -3227,7 +3227,7 @@ function setHookDisabled(sourcePath: string, disabled: boolean): boolean {
 
 function reloadHooksIntoRuntime(session: any): number {
   try {
-    const { resolveAssetPaths } = require("./config/config.js") as typeof import("./config/config.js");
+    const { resolveAssetPaths } = require("./config.js") as typeof import("./config.js");
     const { loadHooksMulti } = require("./hooks/index.js") as typeof import("./hooks/index.js");
     const paths = resolveAssetPaths();
     const hooks = loadHooksMulti(paths.hookRoots);
@@ -3269,7 +3269,7 @@ function hooksOptions(_ctx: CommandOptionsContext): CommandOption[] {
 
     opts.push({
       label: `${hook.name}${disabledTag}`,
-      detail: `${scope} 路 ${hook.event}${matcherSuffix}`,
+      detail: `${scope} · ${hook.event}${matcherSuffix}`,
       value: hook.name,
       children,
     });
@@ -3323,7 +3323,7 @@ async function cmdHooks(ctx: CommandContext, args: string): Promise<void> {
         reloadHooksIntoRuntime(session);
         hint(`${hookName}: ${disabled ? "disabled" : "enabled"}`);
       } else {
-        hint(`Failed to ${op} "${hookName}" 鈥?check hook.json`);
+        hint(`Failed to ${op} "${hookName}" — check hook.json`);
       }
       return;
     }
@@ -3334,7 +3334,7 @@ async function cmdHooks(ctx: CommandContext, args: string): Promise<void> {
     }
   }
 
-  // Fallback for non-interactive environments
+  // 非交互式环境的回退
   const allHooks = loadAllHooksFromDisk();
   const activeCount = allHooks.filter((h) => !h.disabled).length;
   hint(allHooks.length === 0

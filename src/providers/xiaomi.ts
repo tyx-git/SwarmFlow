@@ -1,19 +1,18 @@
 ﻿/**
- * @deprecated 2026-05 鈥?superseded by XiaomiAnthropicProvider in `./xiaomi-anthropic.ts`.
+ * @deprecated 2026-05 — 已由 `./xiaomi-anthropic.ts` 中的 XiaomiAnthropicProvider 取代。
  *
- * Kept in the tree for emergency rollback only. The registry no longer
- * dispatches the `xiaomi` provider id to this class. Once the new path has
- * soaked, delete this file.
+ * 仅保留在代码树中用于紧急回滚。注册表不再将 `xiaomi` provider id
+ * 分派到此类。新路径稳定后删除此文件。
  *
- * ---- Original docstring follows ----
+ * ---- 原始文档字符串如下 ----
  *
- * Xiaomi (MiMo) provider adapter.
+ * Xiaomi（MiMo）提供者适配器。
  *
- * Extends OpenAIChatProvider with MiMo's thinking toggle:
+ * 在 OpenAIChatProvider 之上扩展 MiMo 的 thinking 开关：
  * - thinking.type: "enabled" / "disabled"
  *
- * Vendor docs do not expose effort sub-levels at the native API, so the
- * surfaced levels are the two documented behaviors: "off" / "on".
+ * 供应商文档未在原生 API 暴露 effort 子级，因此暴露的级别是两个
+ * 已记录行为："off" / "on"。
  */
 
 import type { ModelConfig } from "../config/config.js";

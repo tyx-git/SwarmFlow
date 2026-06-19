@@ -1,22 +1,22 @@
 ﻿/**
- * Normalise the OS-level system proxy into the HTTP_PROXY / HTTPS_PROXY
- * environment variables at startup.
+ * 在启动时将操作系统级别的系统代理规范化为 HTTP_PROXY / HTTPS_PROXY
+ * 环境变量。
  *
- * Why: Bun's `fetch` reads HTTP(S)_PROXY at request time, but on Windows
- * it does NOT read the WinINET system proxy (the setting most VPN/proxy
- * clients toggle). A user with the system proxy on but no env var set
- * would have every outbound fetch silently bypass the proxy and hang on
- * blocked hosts 鈥?the symptom that first surfaced as a self-update stuck
- * at "Downloading update..." against the GitHub release CDN. Populating
- * the env vars here makes every fetch (provider APIs, web search/fetch,
- * self-update) route through the proxy uniformly.
+ * 原因：Bun 的 `fetch` 在请求时读取 HTTP(S)_PROXY，但在 Windows 上
+ * 它不会读取 WinINET 系统代理（大多数 VPN/代理客户端切换的设置）。
+ * 如果用户开启了系统代理但未设置环境变量，每个出站 fetch 都会
+ * 静默绕过代理并在被阻塞的主机上挂起——这个问题最初表现为
+ * 卡在 "Downloading update..." 的自更新（GitHub release CDN）。
+ * 在这里填充环境变量可使所有 fetch（提供商 API、网络搜索/获取、
+ * 自更新）统一通过代理路由。
  *
- * An explicit env var always wins 鈥?this only fills in what's missing,
- * and is a no-op on POSIX (the provider returns null there). Idempotent.
+ * 显式环境变量始终优先——此处仅填充缺失的，且在 POSIX 上为
+ * 空操作（提供商返回 null）。幂等操作。
  */
 
 import { systemProxy } from "./platform/index.js";
 
+/** 将系统代理应用到环境变量中（如缺失） */
 export function applySystemProxyToEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): void {

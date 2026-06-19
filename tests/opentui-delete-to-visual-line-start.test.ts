@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { getDeleteToVisualLineStartAction } from "../opentui-src/input/delete-to-visual-line-start.js";
+import { getDeleteToVisualLineStartAction } from "../external/opentui/input/delete-to-visual-line-start.js";
 
 describe("opentui composer delete-to-visual-line-start", () => {
   it("deletes the previous newline when already at logical line start after the first line", () => {

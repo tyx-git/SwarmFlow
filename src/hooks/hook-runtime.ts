@@ -1,8 +1,8 @@
 ﻿/**
- * HookRuntime 鈥?event dispatching and hook evaluation.
+ * HookRuntime — 事件分发与钩子评估器。
  *
- * Matches events to registered hooks, executes them, collects results.
- * Manages additionalContext accumulation for system prompt injection.
+ * 将事件与已注册的钩子进行匹配，执行钩子并收集结果。
+ * 管理 additionalContext 累积以用于系统提示符注入。
  */
 
 import type {
@@ -19,31 +19,31 @@ import {
 import { runHookCommand, type HookRunResult } from "./runner.js";
 
 // ------------------------------------------------------------------
-// HookRuntime
+// 钩子运行时
 // ------------------------------------------------------------------
 
 export interface HookEvalResult {
-  /** Combined decision: "deny" if any hook denied, "allow" otherwise. */
+  /* 综合决策：如果任何钩子被拒绝，“拒绝”，否则“允许”。 */
   decision: "allow" | "deny";
-  /** Reason from the first denying hook. */
+  /* 理性从第一否定钩起。 */
   denyReason?: string;
-  /** Updated tool input from the last hook that provided one. */
+  /* 更新了上一个提供工具输入的钩子的工具输入。 */
   updatedInput?: Record<string, unknown>;
-  /** Combined additional context from all hooks. */
+  /* 结合来自所有钩子的附加上下文。 */
   additionalContext?: string;
-  /** Individual hook results for debugging. */
+  /* 用于调试的单个钩子结果。 */
   details: Array<{ hookName: string; result: HookRunResult }>;
 }
 
 export class HookRuntime {
   private _hooks: HookManifest[] = [];
 
-  /** Context accumulated from hook outputs, keyed by injection scope. */
+  /* 上下文从钩子输出中累积，由注入作用域键化。 */
   private _sessionContext: string[] = [];
   private _turnContext: string[] = [];
   private _nextRoundContext: string[] = [];
 
-  /** Replace all registered hooks (called on reload). */
+  /* 替换所有注册的钩子（重载时调用）。 */
   setHooks(hooks: HookManifest[]): void {
     this._hooks = hooks.filter((h) => !h.disabled);
   }
@@ -52,11 +52,11 @@ export class HookRuntime {
     return this._hooks;
   }
 
-  // -- Context management -------------------------------------------
+  // -- 上下文管理 -------------------------------------------
 
   /**
-   * Get accumulated additional context for system prompt injection.
-   * Returns combined session + turn + next-round context, or null if empty.
+   * 获取用于系统提示符注入的累积附加上下文。
+   * 返回组合的会话 + 回合 + 下一轮上下文，如果为空则返回 null。
    */
   getAdditionalContext(): string | null {
     const parts = [...this._sessionContext, ...this._turnContext, ...this._nextRoundContext];
@@ -64,28 +64,28 @@ export class HookRuntime {
     return parts.join("\n\n");
   }
 
-  /** Clear turn-scoped context (called at turn start). */
+  /* 清除回合作用域上下文（在回合开始时调用）。 */
   clearTurnContext(): void {
     this._turnContext = [];
   }
 
-  /** Clear next-round context (called after it's been consumed). */
+  /* 清除下一轮上下文（在它被消耗后调用）。 */
   clearNextRoundContext(): void {
     this._nextRoundContext = [];
   }
 
-  /** Clear all context (called on session reset). */
+  /* 清除所有上下文（在会话重置时调用）。 */
   clearAllContext(): void {
     this._sessionContext = [];
     this._turnContext = [];
     this._nextRoundContext = [];
   }
 
-  // -- Event evaluation ---------------------------------------------
+  // -- 事件评估 ---------------------------------------------
 
   /**
-   * Fire a hook event: match hooks, execute them, collect results.
-   * Hooks for the same event run sequentially; first deny wins.
+   * 触发一个钩子事件：匹配钩子，执行钩子，收集结果。
+   * 同一事件的钩子顺序执行；首次拒绝生效。
    */
   async evaluate(
     event: HookEvent,
@@ -106,7 +106,7 @@ export class HookRuntime {
       const hookResult = await runHookCommand(hook, payload);
       result.details.push({ hookName: hook.name, result: hookResult });
 
-      // Handle failure
+      // 处理失败
       if (!hookResult.success) {
         if (hook.failClosed && DECISION_EVENTS.has(event)) {
           result.decision = "deny";
@@ -119,25 +119,25 @@ export class HookRuntime {
 
       const output = hookResult.output;
 
-      // Decision (deny short-circuits)
+      // 决策（拒绝时短路）
       if (output.decision === "deny" && DECISION_EVENTS.has(event)) {
         result.decision = "deny";
         result.denyReason = output.reason ?? `Denied by hook "${hook.name}"`;
         break;
       }
 
-      // Updated input (last one wins)
+      // 更新的输入（最后一个生效）
       if (output.updatedInput && INPUT_UPDATE_EVENTS.has(event)) {
         result.updatedInput = output.updatedInput;
       }
 
-      // Additional context
+      // 附加上下文
       if (output.additionalContext && CONTEXT_EVENTS.has(event)) {
         contextParts.push(output.additionalContext);
       }
     }
 
-    // Accumulate context by event scope
+    // 按事件作用域累积上下文
     if (contextParts.length > 0) {
       const combined = contextParts.join("\n\n");
       result.additionalContext = combined;
@@ -147,9 +147,9 @@ export class HookRuntime {
     return result;
   }
 
-  // -- Convenience fire-and-forget for observe-only events ----------
+  // -- 用于仅观察事件的便捷即发即忘 --------------------------------
 
-  /** Fire an event without waiting for results. For observe-only events. */
+  /* 触发事件而不等待结果。对于仅观察的事件。 */
   fireAndForget(event: HookEvent, payload: HookPayload): void {
     const matching = this._matchHooks(event, payload);
     for (const hook of matching) {
@@ -159,7 +159,7 @@ export class HookRuntime {
     }
   }
 
-  // -- Internal -----------------------------------------------------
+  // -- 内部 --------------------------------------------------------
 
   private _matchHooks(event: HookEvent, payload: HookPayload): HookManifest[] {
     return this._hooks.filter((hook) => {
@@ -167,13 +167,13 @@ export class HookRuntime {
       if (hook.disabled) return false;
       if (!hook.matcher) return true;
 
-      // Tool name matching 鈥?if hook requires toolNames but event has none, skip
+      // 工具名称匹配 — 如果钩子需要工具名称但事件没有，则跳过
       if (hook.matcher.toolNames) {
         if (!payload.toolName) return false;
         if (!hook.matcher.toolNames.includes(payload.toolName)) return false;
       }
 
-      // Agent ID matching 鈥?if hook requires agentIds but event has none, skip
+      // Agent ID 匹配 — 如果钩子需要 agentIds 但事件没有，则跳过
       if (hook.matcher.agentIds) {
         if (!payload.agentId) return false;
         if (!hook.matcher.agentIds.includes(payload.agentId)) return false;

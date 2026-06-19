@@ -1,11 +1,11 @@
 ﻿/**
- * OpenRouter provider adapter.
+ * OpenRouter 提供者适配器。
  *
- * Extends OpenAIChatProvider with:
- * - Automatic base_url defaulting and HTTP-Referer / X-Title headers
- * - OpenRouter-style reasoning params (reasoning: { effort } in extra_body)
- * - reasoning_details extraction from non-streaming responses
- * - reasoning_details round-trip on assistant messages
+ * 扩展 OpenAIChatProvider，增加：
+ * - 自动 base_url 默认值和 HTTP-Referer / X-Title 头
+ * - OpenRouter 风格 reasoning 参数（extra_body 中的 reasoning: { effort }）
+ * - 从非流式响应中提取 reasoning_details
+ * - 在 assistant 消息上往返 reasoning_details
  */
 
 import OpenAI from "openai";
@@ -28,15 +28,15 @@ import {
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-/** Map swarmflow thinking levels to OpenRouter reasoning effort values. */
+/** 将 swarmflow 思考级别映射到 OpenRouter reasoning effort 值。 */
 const EFFORT_MAP: Record<string, string> = {
   minimal: "minimal",
   low: "low",
   medium: "medium",
   high: "high",
   xhigh: "xhigh",
-  max: "xhigh",    // Anthropic "max" 鈫?OpenRouter's highest effort
-  on: "high",       // binary on/off models 鈫?default to high
+  max: "xhigh",    // Anthropic "max" → OpenRouter 的最高 effort
+  on: "high",       // 二元开/关模型 → 默认 high
 };
 
 export class OpenRouterProvider extends OpenAIChatProvider {
@@ -55,7 +55,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
       ...config,
       extra: sanitizedExtra,
     });
-    // Rebuild client with OpenRouter-specific settings
+    // 使用 OpenRouter 特定设置重建客户端
     const baseUrl = config.baseUrl || OPENROUTER_BASE_URL;
     const headers: Record<string, string> = {};
     if (config.extra?.["http_referer"]) {
@@ -72,7 +72,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
   }
 
   // ------------------------------------------------------------------
-  // Thinking / reasoning params 鈥?OpenRouter unified format
+  // Thinking / reasoning 参数 — OpenRouter 统一格式
   // ------------------------------------------------------------------
 
   protected override _applyThinkingParams(
@@ -83,7 +83,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
 
     const level = options?.thinkingLevel;
 
-    // Explicitly disable reasoning
+    // 显式禁用 reasoning
     if (level === "off" || level === "none") {
       const extraBody = (kwargs["extra_body"] as Record<string, unknown>) || {};
       extraBody["reasoning"] = { effort: "none" };
@@ -91,14 +91,14 @@ export class OpenRouterProvider extends OpenAIChatProvider {
       return;
     }
 
-    // Build reasoning config
+    // 构建 reasoning 配置
     const reasoningConfig: Record<string, unknown> = {};
 
     if (this._config.thinkingBudget > 0) {
-      // Use max_tokens for reasoning when thinkingBudget is explicitly set
+      // 显式设置 thinkingBudget 时对 reasoning 使用 max_tokens
       reasoningConfig["max_tokens"] = this._config.thinkingBudget;
     } else {
-      // Map thinking level to effort
+      // 将思考级别映射为 effort
       const effort = (level && level !== "default")
         ? (EFFORT_MAP[level] ?? "high")
         : "high";
@@ -109,8 +109,8 @@ export class OpenRouterProvider extends OpenAIChatProvider {
     extraBody["reasoning"] = reasoningConfig;
     kwargs["extra_body"] = extraBody;
 
-    // Do NOT delete temperature or swap max_tokens 鈫?max_completion_tokens.
-    // OpenRouter normalizes these per-model internally.
+    // 不要删除 temperature，也不要将 max_tokens 替换为 max_completion_tokens。
+    // OpenRouter 会按模型在内部规范化这些参数。
   }
 
   protected override _augmentRequestKwargs(
@@ -136,7 +136,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
   }
 
   // ------------------------------------------------------------------
-  // Response post-processing 鈥?extract reasoning_details
+  // 响应后处理 — 提取 reasoning_details
   // ------------------------------------------------------------------
 
   override async sendMessage(
@@ -146,10 +146,9 @@ export class OpenRouterProvider extends OpenAIChatProvider {
   ): Promise<ProviderResponse> {
     const result = await super.sendMessage(messages, tools, options);
 
-    // Non-streaming: the base class _parseResponse (private) only extracts
-    // reasoning_content (string). OpenRouter also returns reasoning_details
-    // (structured array) which we want for faithful round-tripping.
-    // Streaming already handles reasoning_details via _callStream.
+    // 非流式：基类 _parseResponse（private）只提取 reasoning_content（字符串）。
+    // OpenRouter 还会返回 reasoning_details（结构化数组），我们需要它来忠实往返。
+    // 流式已通过 _callStream 处理 reasoning_details。
     if (result.raw && (!result.reasoningContent || result.reasoningState === result.reasoningContent)) {
       try {
         const raw = result.raw as Record<string, unknown>;
@@ -171,7 +170,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
                     || (obj["text"] as string)
                     || "";
                   if (text) texts.push(text);
-                  // Extract from summary arrays
+                  // 从 summary 数组中提取
                   if (Array.isArray(obj["summary"])) {
                     for (const s of obj["summary"] as Record<string, unknown>[]) {
                       const st = (s["text"] as string) || "";
@@ -182,7 +181,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
               }
               if (texts.length > 0) {
                 result.reasoningContent = texts.join("\n");
-                result.reasoningState = details; // Preserve structured data for round-trip
+                result.reasoningState = details; // 保留结构化数据以便往返
                 result.thinkingArtifact = createThinkingArtifact(
                   effectiveThinkingEncryption(this._config),
                   result.reasoningContent,
@@ -194,7 +193,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
           }
         }
       } catch {
-        // Ignore extraction errors 鈥?reasoning_content from base class is still usable
+        // 忽略提取错误 — 基类的 reasoning_content 仍可使用
       }
     }
 
@@ -202,7 +201,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
   }
 
   // ------------------------------------------------------------------
-  // Message conversion 鈥?reasoning_details round-trip
+  // 消息转换 — reasoning_details 往返
   // ------------------------------------------------------------------
 
   protected override _convertMessages(
@@ -210,9 +209,9 @@ export class OpenRouterProvider extends OpenAIChatProvider {
   ): Record<string, unknown>[] {
     const converted = super._convertMessages(messages);
 
-    // Enrich assistant messages with reasoning_details from _reasoning_state
-    // for faithful round-tripping through OpenRouter.
-    // Use simple ordinal mapping: base class preserves assistant message order.
+    // 使用来自 _reasoning_state 的 reasoning_details 丰富 assistant 消息，
+    // 以便通过 OpenRouter 忠实往返。
+    // 使用简单的序号映射：基类会保留 assistant 消息顺序。
     const originals = messages as unknown as Record<string, unknown>[];
     const origAssistantIndices: number[] = [];
     const convAssistantIndices: number[] = [];

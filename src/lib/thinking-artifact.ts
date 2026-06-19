@@ -1,55 +1,52 @@
 ﻿/**
- * Thinking history is tracked on three independent axes:
- *   1. transport protocol (responses / anthropic / chat)
- *      鈥?what wire format the provider speaks
- *   2. reasoning encryption family (openai / anthropic / none)
- *      鈥?whether the model's thinking is signed/encrypted, and by whom.
- *      Drives plain-replay decisions: targets in openai/anthropic families
- *      will silently ignore plaintext "thinking" text, so we must omit it.
- *   3. sealed schema string (e.g. "anthropic-messages", "openai-responses",
- *      "openrouter-chat") 鈥?what wire format the *sealed payload itself*
- *      is in. Two providers can share an encryption family without sharing
- *      a sealed schema (e.g. OpenRouter's Fernet-wrapped reasoning_details
- *      vs OpenAI Responses' native encrypted_content). Sealed payloads only
- *      round-trip between providers that declare the same schema string.
+ * 思考历史沿三个独立维度追踪：
+ *   1. 传输协议 (responses / anthropic / chat)
+ *      ——提供商使用何种线格式
+ *   2. 推理加密族 (openai / anthropic / none)
+ *      ——模型的思考是否经过签名/加密，以及由谁完成。
+ *      决定明文重放策略：openai/anthropic 族的目标端会静默忽略
+ *      明文 "thinking" 文本，因此必须省略。
+ *   3. 密封模式字符串（如 "anthropic-messages"、"openai-responses"、
+ *      "openrouter-chat"）——*密封载荷本身*使用何种线格式。
+ *      两个提供商可共享加密族但不共享密封模式
+ *      （如 OpenRouter 的 Fernet 包装 reasoning_details
+ *      与 OpenAI Responses 原生 encrypted_content）。
+ *      密封载荷仅在声明相同模式字符串的提供商之间往返。
  *
- * Provider implementations are responsible for protocol encoding. Model
- * switching decides what to send by comparing the stored artifact's
- * (encryption, sealedSchema) with the target provider's (encryption,
- * sealedSchema). The two axes serve different gates:
- *   - sealed payload? schema must match exactly
- *   - plain replay? target encryption must be "none"
- *   - else: omit
+ * 提供商实现负责协议编码。模型切换通过比较存储产物的
+ * (encryption, sealedSchema) 与目标提供商的 (encryption, sealedSchema)
+ * 来决定发送内容。两个维度分别控制不同的门控：
+ *   - 密封载荷？模式必须完全匹配
+ *   - 明文重放？目标加密必须为 "none"
+ *   - 否则：省略
  */
 
 export type TransportProtocol = "responses" | "anthropic" | "chat";
 export type ThinkingEncryption = "openai" | "anthropic" | "none";
 
 /**
- * Wire-format tag for a sealed thinking payload. Two providers using the
- * same schema can round-trip sealed payloads between themselves. New schemas
- * default to "incompatible with everything else" 鈥?sharing requires the new
- * provider to opt into one of the existing strings.
+ * 密封思考载荷的线格式标签。使用相同模式的两个提供商可以
+ * 在彼此之间往返密封载荷。新模式默认为"与其他所有模式不兼容"
+ * ——共享需要新提供商选择加入现有字符串之一。
  *
- * Known schemas (2026-05):
- *   - "anthropic-messages":
- *       Native Anthropic /v1/messages thinking blocks `{type, thinking,
- *       signature}`. Verified interchangeable between Anthropic direct and
- *       Copilot Anthropic (signatures interchange both ways).
- *   - "openai-responses":
- *       Native OpenAI Responses reasoning items `{type:"reasoning", id,
- *       summary, encrypted_content}` + function_call items. Verified that
- *       Copilot Responses uses OpenAI native encrypted_content verbatim
- *       (no re-encryption wrapper), so OpenAI direct 鈫?Copilot Responses
- *       鈫?openai-codex share this schema.
- *   - "openrouter-chat":
- *       OpenRouter's reasoning_details array
+ * 已知模式（2026-05）：
+ *   - "anthropic-messages"：
+ *       原生 Anthropic /v1/messages 思考块 `{type, thinking, signature}`。
+ *       已验证在 Anthropic 直连与 Copilot Anthropic 之间可互换
+ *       （签名双向互换）。
+ *   - "openai-responses"：
+ *       原生 OpenAI Responses 推理项 `{type:"reasoning", id, summary,
+ *       encrypted_content}` + function_call 项。已验证 Copilot Responses
+ *       逐字使用 OpenAI 原生 encrypted_content（无重新加密包装），
+ *       因此 OpenAI 直连 → Copilot Responses → openai-codex 共享此模式。
+ *   - "openrouter-chat"：
+ *       OpenRouter 的 reasoning_details 数组
  *       `[{type:"reasoning.text"|"reasoning.summary"|"reasoning.encrypted",
- *          ...}]`. The "reasoning.encrypted" `data` field is a Fernet token
- *       (urlsafe base64 with 0x80 version byte + AES-CBC + HMAC) encrypted
- *       with an OpenRouter-held key 鈥?NOT raw OpenAI encrypted_content.
- *       This means OpenRouter sealed payloads are not interchangeable with
- *       direct OpenAI Responses even when both target the openai family.
+ *          ...}]`。"reasoning.encrypted" 的 `data` 字段是 Fernet 令牌
+ *       （带 0x80 版本字节的 urlsafe base64 + AES-CBC + HMAC），
+ *       由 OpenRouter 持有的密钥加密——不是原始 OpenAI encrypted_content。
+ *       这意味着 OpenRouter 密封载荷不能与 OpenAI Responses 直连互换，
+ *       即使两者都目标 openai 族。
  */
 export type SealedSchema = string;
 
@@ -138,10 +135,10 @@ export function normalizeThinkingArtifact(value: unknown): ThinkingArtifact | nu
 }
 
 // ------------------------------------------------------------------
-// Legacy reasoning_state inference
+// 旧版 reasoning_state 推断
 // ------------------------------------------------------------------
 
-/** OpenAI Responses native reasoning items: `[{type:"reasoning"}, {type:"function_call"}, ...]`. */
+/** OpenAI Responses 原生推理项：`[{type:"reasoning"}, {type:"function_call"}, ...]`。 */
 export function isOpenAIResponsesSealedPayload(value: unknown): boolean {
   if (!Array.isArray(value) || value.length === 0) return false;
   return value.some((item) => {
@@ -151,7 +148,7 @@ export function isOpenAIResponsesSealedPayload(value: unknown): boolean {
   });
 }
 
-/** Anthropic Messages native thinking blocks: `[{type:"thinking"}, {type:"redacted_thinking"}]`. */
+/** Anthropic Messages 原生思考块：`[{type:"thinking"}, {type:"redacted_thinking"}]`。 */
 export function isAnthropicMessagesSealedPayload(value: unknown): boolean {
   if (!Array.isArray(value) || value.length === 0) return false;
   return value.every((item) => {
@@ -162,11 +159,11 @@ export function isAnthropicMessagesSealedPayload(value: unknown): boolean {
 }
 
 /**
- * OpenRouter's reasoning_details array:
- *   `[{type:"reasoning.text"|"reasoning.summary"|"reasoning.encrypted", ...}]`.
+ * OpenRouter 的 reasoning_details 数组：
+ *   `[{type:"reasoning.text"|"reasoning.summary"|"reasoning.encrypted", ...}]`。
  *
- * Used by `inferThinkingArtifact` to recognize legacy `_reasoning_state`
- * arrays produced before swarmflow tracked `_thinking_artifact` explicitly.
+ * 被 `inferThinkingArtifact` 用于识别在 swarmflow 显式追踪
+ * `_thinking_artifact` 之前产生的旧版 `_reasoning_state` 数组。
  */
 export function isOpenRouterChatSealedPayload(value: unknown): boolean {
   if (!Array.isArray(value) || value.length === 0) return false;
@@ -179,13 +176,13 @@ export function isOpenRouterChatSealedPayload(value: unknown): boolean {
       hasReasoningDotEntry = true;
       continue;
     }
-    // Unknown type 鈫?not an OpenRouter reasoning_details array
+    // 未知类型 → 非 OpenRouter reasoning_details 数组
     return false;
   }
   return hasReasoningDotEntry;
 }
 
-/** Heuristic: any OpenRouter reasoning_details entry tagged "reasoning.encrypted". */
+/** 启发式：任意 OpenRouter reasoning_details 条目标记为 "reasoning.encrypted"。 */
 function openRouterEntriesHaveEncrypted(value: unknown): boolean {
   if (!Array.isArray(value)) return false;
   return value.some((item) => {
@@ -194,7 +191,7 @@ function openRouterEntriesHaveEncrypted(value: unknown): boolean {
   });
 }
 
-/** Heuristic: any OpenRouter reasoning_details entry carries a non-empty `signature` field. */
+/** 启发式：任意 OpenRouter reasoning_details 条目携带非空 `signature` 字段。 */
 function openRouterEntriesHaveSignature(value: unknown): boolean {
   if (!Array.isArray(value)) return false;
   return value.some((item) => {
@@ -205,10 +202,9 @@ function openRouterEntriesHaveSignature(value: unknown): boolean {
 }
 
 /**
- * Reconstruct a ThinkingArtifact from legacy fields (`reasoning_content` +
- * `_reasoning_state`). Used when reloading sessions saved before
- * `_thinking_artifact` was tracked, or when artifacts come in from other code
- * paths that still use the old field shape.
+ * 从旧版字段（`reasoning_content` + `_reasoning_state`）重建 ThinkingArtifact。
+ * 在重新加载 `_thinking_artifact` 追踪功能上线之前保存的会话，
+ * 或产物来自仍使用旧字段形状的其他代码路径时使用。
  */
 export function inferThinkingArtifact(
   plainReplayText: unknown,
@@ -240,18 +236,17 @@ export function inferThinkingArtifact(
   }
 
   if (isOpenRouterChatSealedPayload(reasoningState)) {
-    // OpenRouter reasoning_details 鈥?figure out encryption family from entry
-    // shape.  The cases we can reliably distinguish:
-    //   - reasoning.encrypted present: came from an encrypting upstream. We
-    //     guess "openai" because Claude on OpenRouter uses reasoning.text +
-    //     signature, not reasoning.encrypted. The Fernet `data` wrapping is
-    //     symmetric AES held by OpenRouter, but the inner ciphertext is the
-    //     upstream model's encryption; for safety the round-trip target must
-    //     be another OpenRouter+OpenAI call (schema and family both match).
-    //   - signature present on reasoning.text/summary: Claude family marker.
-    //   - neither: open-source / non-encrypted model. Encryption "none";
-    //     skip sealed (we can't safely round-trip without a family tag, and
-    //     plain replay via reasoning_content covers the common case).
+    // OpenRouter reasoning_details —— 根据条目形状推断加密族。
+    // 我们可以可靠区分的情况：
+    //   - 存在 reasoning.encrypted：来自加密上游。我们猜测 "openai"，
+    //     因为 OpenRouter 上的 Claude 使用 reasoning.text + signature，
+    //     而非 reasoning.encrypted。Fernet `data` 包装是 OpenRouter 持有的
+    //     对称 AES，但内部密文是上游模型的加密；为安全起见，
+    //     往返目标必须是另一个 OpenRouter+OpenAI 调用（模式和族都匹配）。
+    //   - reasoning.text/summary 上存在 signature：Claude 族标记。
+    //   - 都不存在：开源/非加密模型。加密为 "none"；
+    //     跳过密封（没有族标记无法安全往返，且通过 reasoning_content
+    //     的明文重放覆盖常见情况）。
     const hasEncrypted = openRouterEntriesHaveEncrypted(reasoningState);
     const hasSignature = openRouterEntriesHaveSignature(reasoningState);
     if (hasEncrypted) {
@@ -270,7 +265,7 @@ export function inferThinkingArtifact(
         SEALED_SCHEMA_OPENROUTER_CHAT,
       );
     }
-    // Non-encrypted OpenRouter model 鈥?sealed round-trip unavailable.
+    // Non-encrypted OpenRouter model — sealed round-trip unavailable.
     return createThinkingArtifact("none", replayText);
   }
 
@@ -294,23 +289,21 @@ export function resolveMessageThinkingArtifact(
 }
 
 /**
- * Decide what reasoning payload to send to the target provider.
+ * 决定向目标提供商发送何种推理载荷。
  *
- *   1. Send the sealed payload IFF all three match:
- *        - artifact carries a sealed payload
- *        - artifact.sealedSchema === target's accepted schema (wire format)
- *        - artifact.encryption === target's encryption family (trust domain)
- *      The two gates are independent: e.g. OpenRouter+Claude and OpenRouter+GPT
- *      both use schema "openrouter-chat" but differ in encryption family, so
- *      sealed payloads do not cross between them even though the schema lines
- *      up.  Conversely, Anthropic direct and Copilot Anthropic share both
- *      schema and family, so their signatures round-trip cleanly (verified
- *      empirically 2026-05).
- *   2. Otherwise, if the target accepts plain thinking (encryption === "none"),
- *      replay the plainReplayText.
- *   3. Otherwise, omit (encrypted-family targets like OpenAI / Anthropic
- *      silently drop plaintext thinking, so sending it would only waste
- *      tokens).
+ *   1. 仅当以下三者全部匹配时才发送密封载荷：
+ *        - 产物携带密封载荷
+ *        - artifact.sealedSchema === 目标接受的模式（线格式）
+ *        - artifact.encryption === 目标的加密族（信任域）
+ *      两个门控是独立的：例如 OpenRouter+Claude 和 OpenRouter+GPT
+ *      都使用模式 "openrouter-chat" 但加密族不同，因此即使模式对齐，
+ *      密封载荷也不会在它们之间交叉传输。相反，Anthropic 直连与
+ *      Copilot Anthropic 共享模式和族，因此签名可干净往返
+ *      （2026-05 实证验证）。
+ *   2. 否则，如果目标接受明文思考（encryption === "none"），
+ *      重放 plainReplayText。
+ *   3. 否则，省略（加密族目标如 OpenAI / Anthropic
+ *      会静默丢弃明文思考，发送只会浪费 token）。
  */
 export function selectThinkingTransmission(
   artifact: ThinkingArtifact | null | undefined,
@@ -413,12 +406,11 @@ export function resolveThinkingEncryption(
 }
 
 /**
- * Decide which sealed-payload schema a given (provider, model, transport)
- * combination can produce and consume.
+ * 决定给定（提供商、模型、传输）组合能产生和消费哪种密封载荷模式。
  *
- * Vendors that never produce sealed payloads (e.g. Kimi/DeepSeek/MiniMax/Xiaomi,
- * Ollama, GLM, LM Studio) return null 鈥?sealed transmission is unavailable for
- * them and they fall through to plain replay or omit.
+ * 从不产生密封载荷的厂商（如 Kimi/DeepSeek/MiniMax/Xiaomi、
+ * Ollama、GLM、LM Studio）返回 null —— 密封传输对它们不可用，
+ * 会降级为明文重放或省略。
  */
 export function resolveSealedSchema(
   provider: string,
@@ -434,9 +426,9 @@ export function resolveSealedSchema(
       : SEALED_SCHEMA_OPENAI_RESPONSES;
   }
   if (id === "openrouter") {
-    // OpenRouter wraps everything in its own Fernet-based reasoning_details
-    // envelope, so cross-vendor sealed reuse is unsafe even for same-family
-    // models.  All OpenRouter responses share this schema.
+    // OpenRouter 用其自有的基于 Fernet 的 reasoning_details 信封包装一切，
+    // 因此即使同族模型，跨厂商密封重用也不安全。
+    // 所有 OpenRouter 响应共享此模式。
     return SEALED_SCHEMA_OPENROUTER_CHAT;
   }
   return null;

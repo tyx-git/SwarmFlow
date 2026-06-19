@@ -1,14 +1,14 @@
 ﻿/**
- * Linux clipboard provider.
+ * Linux 剪贴板 provider。
  *
- * Probes the environment once at module load:
- *   1. Wayland (`$WAYLAND_DISPLAY` set + `wl-copy`/`wl-paste` on $PATH)
- *      鈫?use wl-clipboard
- *   2. X11 (`$DISPLAY` set + `xclip` on $PATH) 鈫?use xclip
- *   3. Otherwise 鈫?fall back to OSC 52 (text only)
+ * 在模块加载时探测环境一次：
+ *   1. Wayland（设置了 `$WAYLAND_DISPLAY` + `$PATH` 上有 `wl-copy`/`wl-paste`）
+ *      → 使用 wl-clipboard
+ *   2. X11（设置了 `$DISPLAY` + `$PATH` 上有 `xclip`）→ 使用 xclip
+ *   3. 否则 → 回退到 OSC 52（仅文本）
  *
- * Image reads only work under Wayland or X11 with the right tool;
- * fallback returns null.
+ * 图片读取仅在有正确工具的 Wayland 或 X11 下工作；
+ * 回退返回 null。
  */
 
 import { spawn } from "node:child_process";
@@ -67,7 +67,7 @@ function xselTooling(): LinuxClipboardTooling | null {
  * Wayland session + xclip-but-no-wl-clipboard previously fell straight
  * through to OSC 52). When no display server is detected we build an
  * empty chain so writeText goes straight to the OSC 52 tail and
- * readImage returns null. This realizes the wl-copy 鈫?xclip 鈫?OSC 52
+ * readImage returns null. This realizes the wl-copy →xclip →OSC 52
  * cascade documented in types.ts.
  */
 function pickToolingChain(): LinuxClipboardTooling[] {

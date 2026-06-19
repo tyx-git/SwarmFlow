@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Sign the model registry JSON files with the Ed25519 private key, producing the
- * detached `.sig` files SwarmFlow verifies on fetch.
+ * 使用 Ed25519 私钥签名模型 registry JSON 文件，生成 SwarmFlow
+ * 在获取时验证的独立 `.sig` 文件。
  *
  *   bun run scripts/sign-registry.ts <private-key.pem> [registry-dir]
  *
- * Default registry-dir is assets/model-registry. Run this each time you publish
- * an updated models.json / providers.json, then commit the .json + .sig files.
+ * 默认 registry-dir 为 assets/model-registry。每次发布更新后的
+ * models.json / providers.json 时运行此脚本，然后提交 .json + .sig 文件。
  */
 
 import { createPrivateKey, sign as cryptoSign } from "node:crypto";

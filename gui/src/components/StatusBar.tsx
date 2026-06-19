@@ -1,6 +1,6 @@
 /**
- * StatusBar — thin working-state indicator between transcript and composer.
- * Template-style: only shows when actively working (dashed border + label).
+ * StatusBar — transcript 和 composer 之间的薄型工作状态指示器。
+ * 模板风格：仅在活跃工作时显示（虚线边框 + 标签）。
  */
 import type { TabState } from '@/state/sessionStore.js'
 

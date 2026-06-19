@@ -1,29 +1,29 @@
 ﻿/**
- * Shell-aware prompt fragments.
+ * Shell 感知的提示片段。
  *
- * Generates context notes injected into the system prompt so the model
- * knows which shell it is driving and adjusts its syntax accordingly.
+ * 生成注入到系统提示中的上下文注释，
+ * 以便模型知道它正在驱动哪个 shell 并相应地调整其语法。
  */
 
 import type { ShellKind } from "../platform/types.js";
 
 /**
- * Build shell notes for the {SHELL_NOTES} template variable in tools.md.
- * For bash/sh this is empty (default assumption). For PowerShell variants
- * it explains the syntax differences the model must respect.
+ * 为 tools.md 中的 {SHELL_NOTES} 模板变量构建 shell 注释。
+ * 对于 bash/sh，这是空的（默认假设）。对于 PowerShell 变体，
+ * 它解释模型必须遵守的语法差异。
  */
 export function buildShellNotes(kind: ShellKind): string {
   if (kind === "bash" || kind === "sh") {
-    return "> **Shell: bash** 鈥?all `bash` tool commands run through bash.";
+    return "> **Shell: bash** —all `bash` tool commands run through bash.";
   }
 
   const edition = kind === "pwsh" ? "PowerShell 7+" : "Windows PowerShell 5.1";
   const chainNote = kind === "pwsh"
     ? "You can chain dependent commands with `&&` (supported in pwsh 7+), or use `cmd1; if ($?) { cmd2 }`."
-    : "Chain dependent commands with `cmd1; if ($?) { cmd2 }` 鈥?Windows PowerShell 5.1 does **NOT** support `&&`.";
+    : "Chain dependent commands with `cmd1; if ($?) { cmd2 }` —Windows PowerShell 5.1 does **NOT** support `&&`.";
 
   return [
-    `> **Shell: ${edition}** 鈥?all \`bash\` tool commands run through PowerShell, not bash. Write PowerShell syntax.`,
+    `> **Shell: ${edition}** —all \`bash\` tool commands run through PowerShell, not bash. Write PowerShell syntax.`,
     "",
     "**PowerShell syntax reminders:**",
     "- Use full cmdlet names: `Get-ChildItem`, `Set-Content`, `Remove-Item`, `New-Item`, `Test-Path`.",

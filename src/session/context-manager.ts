@@ -1,10 +1,15 @@
-﻿/**
- * ContextManager 鈥?context-pressure state and decisions (P2.3).
+/**
+ * ContextManager —— 上下文压力状态与决策（P2.3）。
  *
- * Owns the configurable thresholds, the two-tier hint state machine with
- * hysteresis, the context budget arithmetic, and the mid-turn compact
- * trigger. Pure decision logic: message delivery, compact execution, and
- * token accounting stay with Session and arrive through the deps interface.
+ * 拥有可配置阈值、双层提示状态机、上下文预算算法、
+ * 以及中途压缩触发器。纯决策逻辑：
+ * 消息传递、压缩执行、token 记账留在 Session，通过 deps 接口传入。
+ *
+ * 阈值层次：
+ *   - 50%：一级提示——建议针对性压缩
+ *   - 75%：二级提示——警告即将自动 compact
+ *   - 85%：回合前 compact
+ *   - 90%：回合中 compact
  */
 
 import type { ModelConfig } from "../config/config.js";
@@ -14,30 +19,34 @@ import {
   computeHysteresisThresholds,
 } from "../config/settings.js";
 
+/** 压缩提示状态机状态。 */
 export type HintState = "none" | "level1_sent" | "level2_sent";
 
-// -- Hint prompt generators (two-tier) --
+// -- 提示文本生成器（两级）--
+
+/** 一级提示文本：当上下文使用达到第一阈值时发送给模型。 */
 function HINT_LEVEL1_PROMPT(pct: string, level2Pct: string): string {
-  return `[SYSTEM: Context usage has reached ${pct}. This is the first-level reminder 鈥?a second will arrive at ${level2Pct}. No immediate action is required:
+  return `[SYSTEM: Context usage has reached ${pct}. This is the first-level reminder — a second will arrive at ${level2Pct}. No immediate action is required:
 - If the task is mostly done, you may simply ignore this notice.
-- If a large part of the task remains and the user has NOT already stated a summarization policy (in AGENTS.md or earlier in this conversation), consider asking the user (the \`ask\` tool fits well): (1) whether you may summarize older context with \`summarize_context\` as the session grows, and (2) whether you may choose the timing yourself. The user may not be familiar with this mechanism 鈥?briefly explain that summarizing turns already-consumed tool outputs and finished exploration into shorter summaries while keeping their own messages intact, and mention they can also do it manually anytime with /summarize.
+- If a large part of the task remains and the user has NOT already stated a summarization policy (in AGENTS.md or earlier in this conversation), consider asking the user (the \`ask\` tool fits well): (1) whether you may summarize older context with \`summarize_context\` as the session grows, and (2) whether you may choose the timing yourself. The user may not be familiar with this mechanism — briefly explain that summarizing turns already-consumed tool outputs and finished exploration into shorter summaries while keeping their own messages intact, and mention they can also do it manually anytime with /summarize.
 Never summarize on your own without granted or standing permission. After handling this notice, continue your work.]`;
 }
 
+/** 二级提示文本：当上下文使用达到第二阈值时发送。 */
 function HINT_LEVEL2_PROMPT(pct: string): string {
-  return `[SYSTEM: Context usage has reached ${pct} 鈥?second-level reminder. When the window fills up, auto-compact will rewrite the whole conversation into a single summary, which is far more lossy than targeted summarization.
-- If the remaining work is small, just finish it 鈥?no need to ask anything.
-- If substantial work remains: with permission already granted (in this conversation or AGENTS.md), now is a good time to act 鈥?inspect with \`show_context\`, then \`summarize_context\` consumed tool results, finished exploration, and completed subtasks. Without permission, you are advised to ask the user for a summarization policy now 鈥?but if they previously declined, respect that and do not ask again.]`;
+  return `[SYSTEM: Context usage has reached ${pct} — second-level reminder. When the window fills up, auto-compact will rewrite the whole conversation into a single summary, which is far more lossy than targeted summarization.
+- If the remaining work is small, just finish it — no need to ask anything.
+- If substantial work remains: with permission already granted (in this conversation or AGENTS.md), now is a good time to act — inspect with \`show_context\`, then \`summarize_context\` consumed tool results, finished exploration, and completed subtasks. Without permission, you are advised to ask the user for a summarization policy now — but if they previously declined, respect that and do not ask again.]`;
 }
 
 export interface ContextManagerDeps {
   getModelConfig(): ModelConfig;
   getBudgetCalcMode(): string | undefined;
   isCompactInProgress(): boolean;
-  /** Root sessions auto-compact; children only get the 90% wrap-up warning. */
+  /** 根会话自动压缩；子会话仅有 90%  wrap-up 警告。 */
   canAutoCompact(): boolean;
   getLastInputTokens(): number;
-  /** Queue a system notice for the model (hint prompts, child warning). */
+  /** 将系统通知加入模型输入队列（提示、子会话警告）。 */
   deliverSystemNotice(content: string): void;
 }
 
@@ -59,7 +68,7 @@ export class ContextManager {
     this._hintState = value;
   }
 
-  /** Live threshold object 鈥?summarize-hint config mutates it in place. */
+  /** 实时阈值对象——summarize-hint 配置会就地修改。 */
   get thresholds(): ContextThresholds {
     return this._thresholds;
   }
@@ -72,16 +81,16 @@ export class ContextManager {
     this._budgetPercent = Math.max(1, Math.min(100, value));
   }
 
-  /** Effective context length for a ModelConfig, scaled by budget percent. */
+  /** 根据 ModelConfig 和预算百分比计算有效上下文长度。 */
   effectiveContextLength(mc: ModelConfig): number {
     return Math.round(mc.contextLength * this._budgetPercent / 100);
   }
 
   /**
-   * Context budget for pressure decisions (hints, compact triggers,
-   * show_context), per the provider's accounting mode: fullContext budgets
-   * the whole window and checks input tokens only; otherwise output headroom
-   * is reserved out of the window.
+   * 压力决策用的上下文预算（提示、压缩触发、show_context）。
+   * 根据 provider 的记账模式：
+   * - fullContext：预算整个窗口，只检查输入 token
+   * - 其他：保留输出 headroom，从窗口中扣除
    */
   budgetInfo(): { budget: number; fullContext: boolean } {
     const mc = this.deps.getModelConfig();
@@ -90,7 +99,7 @@ export class ContextManager {
     return { budget: fullContext ? effective : effective - mc.maxTokens, fullContext };
   }
 
-  /** Current two-tier summarize hint configuration. */
+  /** 当前两级 summarize hint 配置。 */
   getSummarizeHintConfig(): { enabled: boolean; level1: number; level2: number } {
     return {
       enabled: this._summarizeHintEnabled,
@@ -100,8 +109,8 @@ export class ContextManager {
   }
 
   /**
-   * Update the two-tier summarize hint configuration (takes effect live).
-   * Levels must be pre-validated by the caller (validateSummarizeHintLevels).
+   * 更新两级 summarize hint 配置（实时生效）。
+   * 层级必须预先验证（validateSummarizeHintLevels）。
    */
   setSummarizeHintConfig(config: { enabled?: boolean; level1?: number; level2?: number }): void {
     if (config.enabled !== undefined) this._summarizeHintEnabled = config.enabled;
@@ -113,9 +122,10 @@ export class ContextManager {
   }
 
   /**
-   * Check and inject summarize-hint prompts if thresholds are met.
-   * Two-tier: level 1 and level 2, configurable via settings.json
-   * (`summarize_hint`) and the /summarize_hint command.
+   * 检查并在需要时注入 summarize-hint 提示。
+   * 两级：level 1 和 level 2，通过 settings.json（summarize_hint）和 /summarize_hint 命令配置。
+   *
+   * 子会话：仅在 90% 警告，无 summarize_context 指导。
    */
   checkAndInjectHint(): void {
     if (this.deps.isCompactInProgress()) return;
@@ -126,11 +136,11 @@ export class ContextManager {
     const ratio = this.deps.getLastInputTokens() / budget;
     const pct = `${Math.round(ratio * 100)}%`;
 
-    // Child sessions: single warning at 90%, no summarize_context guidance
+    // 子会话：90% 单次警告
     if (!this.deps.canAutoCompact()) {
       if (ratio >= 0.90 && this._hintState === "none") {
         this.deps.deliverSystemNotice(
-          `[SYSTEM: Context usage has reached ${pct}. You are approaching the context limit and do NOT have context management tools. Finish your current work as quickly as possible 鈥?avoid reading large files, reduce tool calls, and focus only on producing your final output. If work progress is not promising, stop now and output what you have so far.]`,
+          `[SYSTEM: Context usage has reached ${pct}. You are approaching the context limit and do NOT have context management tools. Finish your current work as quickly as possible — avoid reading large files, reduce tool calls, and focus only on producing your final output. If work progress is not promising, stop now and output what you have so far.]`,
         );
         this._hintState = "level2_sent";
       }
@@ -153,9 +163,8 @@ export class ContextManager {
   }
 
   /**
-   * Update hint state based on actual inputTokens from the latest API call.
-   * Implements hysteresis to prevent oscillation.
-   * Reset thresholds are auto-derived from trigger thresholds.
+   * 根据最新 API 调用的实际 inputTokens 更新提示状态。
+   * 实现迟滞以防止振荡；重置阈值从触发阈值自动推导。
    */
   updateHintStateAfterApiCall(): void {
     const { budget } = this.budgetInfo();
@@ -168,20 +177,19 @@ export class ContextManager {
     } else if (ratio < this._hintResetLevel1) {
       this._hintState = "level1_sent";
     }
-    // ratio >= hintResetLevel1: keep current state (don't downgrade)
+    // ratio >= hintResetLevel1：保持当前状态（不降级）
   }
 
   /**
-   * Build the mid-turn compact trigger for the tool loop, or undefined when
-   * compact checking is off (compact already running, or a child session).
+   * 为 tool loop 构建中途压缩触发器。
+   * 当压缩进行中或为子会话时返回 undefined。
    */
   buildCompactCheck(): ((
     inputTokens: number, outputTokens: number, hasToolCalls: boolean,
   ) => { compactNeeded: boolean; scenario?: "mid_turn" } | null) | undefined {
     if (this.deps.isCompactInProgress()) return undefined;
 
-    // Child sessions do not auto-compact; they receive a 90% warning instead
-    // (see checkAndInjectHint) and are expected to finish or stop.
+    // 子会话不自动压缩；收到 90% 警告后自行结束（见 checkAndInjectHint）
     if (!this.deps.canAutoCompact()) return undefined;
 
     const { budget, fullContext } = this.budgetInfo();
@@ -191,8 +199,8 @@ export class ContextManager {
     const midTurnRatio = this._thresholds.compact_mid_turn / 100;
 
     return (inputTokens: number, outputTokens: number, hasToolCalls: boolean) => {
-      // Only trigger mid-turn compact on tool-call path. Text-only responses
-      // mean the turn is ending; compact at the start of the NEXT turn instead.
+      // 仅在 tool-call 路径触发中途压缩。纯文本响应意味着回合即将结束；
+      // 在下一个回合开始时压缩。
       if (!hasToolCalls) return { compactNeeded: false };
 
       const tokensToCheck = fullContext

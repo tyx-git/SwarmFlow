@@ -1,11 +1,11 @@
-﻿/**
- * Tool classification -- maps a tool call to a PermissionClass.
+/**
+ * 工具分类 — 将工具调用映射到 PermissionClass。
  *
- * Uses tree-sitter for AST-accurate command parsing (bash and PowerShell).
- * The sync classifyTool returns a conservative write_potent for shell tools;
- * all real classification goes through classifyToolAsync.
+ * 使用 tree-sitter 进行 AST 精确的命令解析（bash 和 PowerShell）。
+ * 同步的 classifyTool 对 shell 工具返回保守的 write_potent；
+ * 所有真正的分类都通过 classifyToolAsync。
  *
- * Risk tiers with git subcommand awareness:
+ * 风险层级（带有 git 子命令感知）：
  *   safe -> write_reversible -> write_potent -> write_danger -> catastrophic
  */
 
@@ -19,12 +19,13 @@ import type { ShellKind } from "../platform/index.js";
 import { resolveCdContextParsed } from "./cd-context.js";
 
 // ------------------------------------------------------------------
-// Tree-sitter parser (lazy async init)
+// Tree-sitter 解析器（延迟异步初始化）
 // ------------------------------------------------------------------
 
 let parserReady: Promise<typeof import("./bash/parser.js")> | null = null;
 let parserModule: typeof import("./bash/parser.js") | null = null;
 
+/** 初始化 bash 解析器 */
 export function initBashParser(): void {
   if (parserReady) return;
   parserReady = import("./bash/parser.js").then(async (mod) => {
@@ -43,9 +44,10 @@ function isPowerShellKind(kind?: ShellKind): boolean {
 }
 
 // ------------------------------------------------------------------
-// Static tool classification
+// 静态工具分类
 // ------------------------------------------------------------------
 
+/** 只读工具集合 */
 const READ_TOOLS = new Set([
   "read_file", "list_dir", "glob", "grep",
   "web_fetch", "web_search", "$web_search",
@@ -55,22 +57,26 @@ const READ_TOOLS = new Set([
   "kill_shell",
 ]);
 
+/** 可逆写工具集合 */
 const WRITE_REVERSIBLE_TOOLS = new Set([
   "write_file", "edit_file",
 ]);
 
+/** 派生工具集合 */
 const SPAWN_TOOLS = new Set([
   "spawn",
 ]);
 
+/** 危险写工具集合 */
 const WRITE_DANGER_TOOLS = new Set([
   "kill_agent",
 ]);
 
 // ------------------------------------------------------------------
-// Bash command sets
+// Bash 命令集合
 // ------------------------------------------------------------------
 
+/** Bash 安全命令集合 */
 const BASH_SAFE_COMMANDS = new Set([
   "ls", "ll", "la", "dir", "cat", "head", "tail", "less", "more",
   "wc", "file", "stat", "readlink", "realpath", "basename", "dirname",
@@ -89,21 +95,25 @@ const BASH_SAFE_COMMANDS = new Set([
   "cd",
 ]);
 
+/** Bash 可逆命令（mkdir） */
 const BASH_REVERSIBLE_COMMANDS = new Set(["mkdir"]);
+/** Bash 动态可逆命令（cp, mv） */
 const BASH_DYNAMIC_REVERSIBLE = new Set(["cp", "mv"]);
 
-// POSIX-shared danger commands. Stored lowercase. The lookup is
-// case-sensitive ONLY on case-sensitive filesystems (Linux): there
-// `RM` is genuinely a different file from `rm`. On case-insensitive
-// filesystems (default macOS, Windows Git Bash) classifyParsedCommand
-// lower-cases the parsed name before comparing 鈥?see the
-// caseInsensitiveFilesystem capability 鈥?so uppercase spellings
-// cannot bypass the gate.
-//
-// Platform-specific danger commands (Windows registry/disk/network
-// tools) live in osCapabilities.platformSpecificDangerCommands and
-// are matched case-insensitively because Windows file lookup is
-// case-insensitive (REG QUERY 鈫?reg.exe).
+/**
+ * POSIX 共享的危险命令。以小写存储。
+ * 查找在仅区分大小写的文件系统（Linux）上是区分大小写的：
+ * 在那里 `RM` 与 `rm` 是不同的文件。在不区分大小写的
+ * 文件系统（macOS 和 Windows Git Bash 默认）上，
+ * classifyParsedCommand 在比较前将解析的名称小写化 — 参见
+ * caseInsensitiveFilesystem 能力 — 所以大写拼写
+ * 无法绕过门控。
+ *
+ * 平台特定危险命令（Windows 注册表/磁盘/网络工具）
+ * 位于 osCapabilities.platformSpecificDangerCommands 中，
+ * 以不区分大小写的方式匹配，因为 Windows 文件查找
+ * 是不区分大小写的（REG QUERY → reg.exe）。
+ */
 const BASH_DANGER_COMMANDS = new Set([
   "rm", "rmdir",
   "sudo", "su", "doas",
@@ -120,11 +130,12 @@ const BASH_DANGER_COMMANDS = new Set([
 
 function isDangerCommand(name: string): boolean {
   if (BASH_DANGER_COMMANDS.has(name)) return true;
-  // Windows-specific names: lowercased compare so `REG`, `Reg`, `reg`
-  // all flag (Git Bash uses Win32 case-insensitive file lookup).
+  // Windows 特定名称：小写比较使 `REG`、`Reg`、`reg` 都标记
+  //（Git Bash 使用 Win32 不区分大小写的文件查找）
   return osCapabilities.platformSpecificDangerCommands.has(name.toLowerCase());
 }
 
+/** Bash 强能力命令集合 */
 const BASH_POTENT_COMMANDS = new Set([
   "touch", "ln",
   "npm", "npx", "pnpm", "yarn", "bun",
@@ -150,14 +161,16 @@ const BASH_POTENT_COMMANDS = new Set([
   "openssl",
 ]);
 
+/** 进程包装器 */
 const PROCESS_WRAPPERS = new Set([
   "timeout", "time", "nice", "nohup", "stdbuf", "command", "builtin",
 ]);
 
 // ------------------------------------------------------------------
-// PowerShell command sets (case-insensitive 鈥?all entries are lowercase)
+// PowerShell 命令集合（不区分大小写 — 所有条目都是小写）
 // ------------------------------------------------------------------
 
+/** PowerShell 安全命令集合 */
 const PS_SAFE_COMMANDS = new Set([
   "get-childitem", "get-content", "get-item", "get-itemproperty",
   "test-path", "resolve-path", "split-path", "join-path",
@@ -177,20 +190,25 @@ const PS_SAFE_COMMANDS = new Set([
   "get-acl", "get-executionpolicy",
 ]);
 
-// Only filesystem-only operations are reversible. cmdlets that can
-// target non-filesystem providers (registry, env, etc.) are potent.
+/**
+ * 仅文件系统操作的命令是可逆的。能够针对非文件系统
+ * 提供程序（注册表、环境等）的 cmdlet 是强能力的。
+ */
 const PS_REVERSIBLE_COMMANDS = new Set([
   "add-content",
 ]);
 
-// Set-Location/Push-Location are potent (not reversible) because
-// the cd-context tracker only understands bash `cd` 鈥?PowerShell
-// directory changes would bypass external-cwd detection and let
-// subsequent reads from outside projectRoot auto-allow silently.
+/**
+ * Set-Location/Push-Location 是强能力的（不可逆），
+ * 因为 cd-context 跟踪器只理解 bash `cd` — PowerShell
+ * 目录更改会绕过 external-cwd 检测，让后续读取
+ * 从项目根目录外自动静默允许。
+ */
 const PS_CWD_COMMANDS = new Set([
   "set-location", "push-location", "pop-location",
 ]);
 
+/** PowerShell 危险命令集合 */
 const PS_DANGER_COMMANDS = new Set([
   "remove-item", "clear-content", "clear-item",
   "stop-process", "stop-service", "restart-service",
@@ -200,6 +218,7 @@ const PS_DANGER_COMMANDS = new Set([
   "set-executionpolicy",
 ]);
 
+/** PowerShell 强能力命令集合 */
 const PS_POTENT_COMMANDS = new Set([
   "new-item", "copy-item", "move-item", "rename-item",
   "new-itemproperty", "set-itemproperty",
@@ -215,23 +234,26 @@ const PS_POTENT_COMMANDS = new Set([
   "set-acl",
 ]);
 
-/** Dangerous PowerShell patterns: eval-equivalents and code injection vectors. */
+/** 危险的 PowerShell 模式：eval 等价物和代码注入向量 */
 const PS_EVAL_COMMANDS = new Set([
   "invoke-expression", "iex",
 ]);
 
-// PowerShell disk-management cmdlets that irreversibly destroy data 鈥?// escalate to catastrophic (the only class yolo still prompts on),
-// mirroring the POSIX mkfs/fdisk/dd handling in classifyParsedCommand.
+/**
+ * PowerShell 磁盘管理 cmdlet，会不可逆地销毁数据 —
+ * 升级为 catastrophic（yolo 仍会提示的唯一类别），
+ * 与 classifyParsedCommand 中 POSIX mkfs/fdisk/dd 处理对应。
+ */
 const PS_CATASTROPHIC_COMMANDS = new Set([
   "format-volume", "clear-disk", "initialize-disk", "remove-partition",
 ]);
 
-/** PowerShell common aliases 鈫?canonical cmdlet name (lowercase). */
+/** PowerShell 常见别名 → 规范 cmdlet 名称（小写） */
 const PS_ALIASES = new Map<string, string>([
-  // Navigation
+  // 导航
   ["cd", "set-location"], ["chdir", "set-location"],
   ["pushd", "push-location"], ["popd", "pop-location"],
-  // Files
+  // 文件
   ["ls", "get-childitem"], ["dir", "get-childitem"], ["gci", "get-childitem"],
   ["cat", "get-content"], ["type", "get-content"], ["gc", "get-content"],
   ["cp", "copy-item"], ["copy", "copy-item"], ["ci", "copy-item"],
@@ -240,17 +262,17 @@ const PS_ALIASES = new Map<string, string>([
   ["rmdir", "remove-item"], ["erase", "remove-item"], ["ri", "remove-item"],
   ["ren", "rename-item"], ["rni", "rename-item"],
   ["ni", "new-item"], ["md", "new-item"], ["mkdir", "new-item"],
-  // Output
+  // 输出
   ["echo", "write-output"], ["write", "write-output"],
-  // Search
+  // 搜索
   ["sls", "select-string"],
-  // Process
+  // 进程
   ["ps", "get-process"], ["gps", "get-process"],
   ["kill", "stop-process"], ["spps", "stop-process"],
-  // Filtering / iteration (these execute script blocks!)
+  // 过滤/迭代（这些执行脚本块！）
   ["where", "where-object"], ["?", "where-object"],
   ["foreach", "foreach-object"], ["%", "foreach-object"],
-  // Misc
+  // 其他
   ["cls", "clear-host"], ["clear", "clear-host"],
   ["iex", "invoke-expression"],
   ["iwr", "invoke-webrequest"],
@@ -266,9 +288,10 @@ const PS_ALIASES = new Map<string, string>([
 ]);
 
 // ------------------------------------------------------------------
-// Git subcommand sets (only for commands NOT handled by classifyGitDetailed)
+// Git 子命令集合（仅用于未被 classifyGitDetailed 处理的命令）
 // ------------------------------------------------------------------
 
+/** Git 安全子命令 */
 const GIT_SAFE_SUBCOMMANDS = new Set([
   "status", "log", "diff", "show",
   "rev-parse",
@@ -281,6 +304,7 @@ const GIT_SAFE_SUBCOMMANDS = new Set([
   "for-each-ref",
 ]);
 
+/** Git 可逆子命令 */
 const GIT_REVERSIBLE_SUBCOMMANDS = new Set([
   "add", "commit", "fetch", "pull",
   "switch",
@@ -289,18 +313,22 @@ const GIT_REVERSIBLE_SUBCOMMANDS = new Set([
   "init",
 ]);
 
+/** Git 危险子命令 */
 const GIT_DANGER_SUBCOMMANDS = new Set([
   "push", "rebase",
 ]);
 
+/** Git 强制标志 */
 const GIT_FORCE_FLAGS = new Set([
   "--force", "-f", "--force-with-lease", "--hard", "--no-preserve-root",
 ]);
 
+/** Git 删除标志 */
 const GIT_DELETE_FLAGS = new Set([
   "-D", "-d", "--delete",
 ]);
 
+/** 权限类别排序 */
 const CLASS_ORDER: Record<PermissionClass, number> = {
   read: 0,
   spawn: 1,
@@ -311,9 +339,13 @@ const CLASS_ORDER: Record<PermissionClass, number> = {
 };
 
 // ------------------------------------------------------------------
-// classifyTool 鈥?sync entry point (non-bash only)
+// classifyTool — 同步入口点（非 bash 专用）
 // ------------------------------------------------------------------
 
+/**
+ * 对工具调用进行同步分类。
+ * 用于非 bash 工具和解析失败的情况。
+ */
 export function classifyTool(
   toolName: string,
   toolArgs: Record<string, unknown>,
@@ -342,9 +374,12 @@ export function classifyTool(
 }
 
 // ------------------------------------------------------------------
-// classifyToolAsync 鈥?tree-sitter shell classification
+// classifyToolAsync — tree-sitter shell 分类
 // ------------------------------------------------------------------
 
+/**
+ * 异步工具分类 — 使用 tree-sitter 解析 shell 命令。
+ */
 export async function classifyToolAsync(
   toolName: string,
   toolArgs: Record<string, unknown>,
@@ -360,7 +395,7 @@ export async function classifyToolAsync(
     return { permissionClass: "write_potent", toolName };
   }
 
-  // Ensure parser is loaded (self-init on first use)
+  // 确保解析器已加载（首次使用自初始化）
   if (!parserModule) {
     if (!parserReady) initBashParser();
     if (parserReady) await parserReady;
@@ -383,22 +418,21 @@ export async function classifyToolAsync(
     ? path.resolve(defaultCwd, bashCwd)
     : defaultCwd;
 
-  // Phase 1: cd context resolution on parsed AST
+  // 阶段 1：在解析的 AST 上进行 cd 上下文解析
   let segments = result.segments as ParsedBashSegment[];
   let cdEffectiveCwd = effectiveCwd;
   let isExternal = false;
 
   if (projectRoot) {
-    // Always check initial cwd externality (covers explicit cwd arg)
+    // 始终检查初始 cwd 的外部性（覆盖显式 cwd 参数）
     const rel = path.relative(projectRoot, effectiveCwd);
     if (rel.startsWith("..") || path.isAbsolute(rel)) {
       isExternal = true;
     }
-    // cd context strips cd segments and tracks cwd changes.
-    // Only for bash 鈥?PowerShell's cd (Set-Location) can navigate to
-    // provider paths (HKLM:\, Env:\, etc.) that the bash resolver
-    // doesn't understand. PS cd commands are classified as write_potent
-    // via PS_CWD_COMMANDS instead.
+    // cd 上下文剥离 cd 段并跟踪 cwd 更改。
+    // 仅限 bash — PowerShell 的 cd（Set-Location）可以导航到
+    // bash 解析器不理解的提供程序路径（HKLM:\、Env:\ 等）。
+    // PS cd 命令通过 PS_CWD_COMMANDS 分类为 write_potent。
     if (!usePS && segments.length > 1) {
       const cdCtx = resolveCdContextParsed(segments, projectRoot, effectiveCwd);
       segments = cdCtx.segments as ParsedBashSegment[];
@@ -407,7 +441,7 @@ export async function classifyToolAsync(
     }
   }
 
-  // Phase 2: classify each segment, collect command names and max class
+  // 阶段 2：对每个段进行分类，收集命令名称和最大类别
   let maxClass: PermissionClass = "read";
   const allCommandNames: string[] = [];
   const segmentClasses: PermissionClass[] = [];
@@ -417,8 +451,8 @@ export async function classifyToolAsync(
     for (const cmd of segment.commands) {
       const stripped = usePS ? cmd : stripWrappersFromParsed(cmd);
       const cls = usePS ? classifyPSCommand(stripped) : classifyParsedCommand(stripped);
-      // Fold so the cp/mv escalation (Phase 5) and memoized rule lookups
-      // match `CP`/`MV` like `cp`/`mv` on case-insensitive filesystems.
+      // 大写折叠，使 cp/mv 升级（第 5 阶段）和记忆化规则查找
+      // 在不区分大小写的文件系统上匹配 `CP`/`MV` 如 `cp`/`mv`。
       allCommandNames.push(usePS ? stripped.name : normalizedCommandName(stripped.name));
       if (CLASS_ORDER[cls] > CLASS_ORDER[segClass]) segClass = cls;
     }
@@ -429,7 +463,7 @@ export async function classifyToolAsync(
     if (CLASS_ORDER[segClass] > CLASS_ORDER[maxClass]) maxClass = segClass;
   }
 
-  // Phase 3: safe segment stripping 鈥?if only one non-read segment, keep it
+  // 阶段 3：安全段剥离 — 如果只有一个非只读段，保留它
   let effectiveSegments = segments;
   if (segments.length > 1) {
     const nonSafeIndices = segmentClasses
@@ -440,7 +474,7 @@ export async function classifyToolAsync(
     }
   }
 
-  // Phase 4: memoize from effective segments
+  // 阶段 4：从有效段记忆化
   const isSingleCommand = effectiveSegments.length === 1 &&
     effectiveSegments[0]!.commands.length === 1;
   let canMemoize = isSingleCommand && maxClass !== "catastrophic" && !isExternal;
@@ -464,7 +498,7 @@ export async function classifyToolAsync(
     assessment.canonicalPattern = undefined;
   }
 
-  // Phase 5: dynamic cp/mv check (target is existing directory 鈫?write_potent)
+  // 阶段 5：动态 cp/mv 检查（目标是现有目录 → write_potent）
   if (assessment.permissionClass === "write_reversible" &&
       allCommandNames.some(c => BASH_DYNAMIC_REVERSIBLE.has(c))) {
     for (const seg of effectiveSegments) {
@@ -486,7 +520,7 @@ export async function classifyToolAsync(
               assessment.permissionClass = "write_potent";
               break;
             }
-          } catch { /* target doesn't exist 鈥?stays reversible */ }
+          } catch { /* 目标不存在 — 保持可逆 */ }
         }
       }
       if (assessment.permissionClass === "write_potent") break;
@@ -497,14 +531,17 @@ export async function classifyToolAsync(
 }
 
 // ------------------------------------------------------------------
-// Per-command classification (tree-sitter)
+// 每个命令的分类（tree-sitter）
 // ------------------------------------------------------------------
 
+/**
+ * 对解析后的 bash 命令进行分类。
+ * 在不区分大小写的文件系统上大小写折叠 — 参见 normalizedCommandName。
+ */
 function classifyParsedCommand(cmd: ParsedBashCommand): PermissionClass {
-  // Case-folded on case-insensitive filesystems 鈥?see normalizedCommandName.
   const name = normalizedCommandName(cmd.name);
 
-  // Catastrophic: disk tools
+  // 灾难性：磁盘工具
   if (["mkfs", "fdisk", "parted", "wipefs", "shred", "dd"].includes(name)) {
     if (name === "dd") {
       const hasDevTarget = cmd.argv.some(
@@ -516,14 +553,14 @@ function classifyParsedCommand(cmd: ParsedBashCommand): PermissionClass {
     }
   }
 
-  // Catastrophic: platform-specific disk-wipe tools (Windows
-  // format/diskpart via Git Bash). Empty set on POSIX, so a command
-  // coincidentally named `format` on a POSIX host is never mis-flagged.
+  // 灾难性：平台特定磁盘擦除工具（Windows
+  // format/diskpart 通过 Git Bash）。在 POSIX 上为空集，
+  // 所以在 POSIX 主机上恰好命名为 `format` 的命令不会被错误标记。
   if (osCapabilities.platformSpecificCatastrophicCommands.has(name)) {
     return "catastrophic";
   }
 
-  // Catastrophic: rm -rf targeting root/home
+  // 灾难性：rm -rf 针对根/主目录
   if (name === "rm") {
     const hasRecursiveForce = cmd.argv.some(
       (t) => t.kind === "literal" && /^-[a-zA-Z]*r[a-zA-Z]*f|^-[a-zA-Z]*f[a-zA-Z]*r|^--force$/.test(t.value),
@@ -561,9 +598,12 @@ function classifyParsedCommand(cmd: ParsedBashCommand): PermissionClass {
 }
 
 // ------------------------------------------------------------------
-// Git detailed subcommand classification
+// Git 详细子命令分类
 // ------------------------------------------------------------------
 
+/**
+ * 对 git 子命令进行详细分类。
+ */
 function classifyGitDetailed(cmd: ParsedBashCommand): PermissionClass {
   const positionals: string[] = [];
   const flags = new Set<string>();
@@ -581,7 +621,7 @@ function classifyGitDetailed(cmd: ParsedBashCommand): PermissionClass {
   const sub2 = positionals[1] ?? "";
   if (!sub) return "write_potent";
 
-  // Global flag escalation
+  // 全局标志升级
   if (flags.has("--force") || flags.has("-f") || flags.has("--force-with-lease")) return "write_danger";
   if (flags.has("--hard")) return "write_danger";
 
@@ -595,8 +635,8 @@ function classifyGitDetailed(cmd: ParsedBashCommand): PermissionClass {
     }
     case "checkout": {
       if (flags.has("--")) return "write_danger";
-      // `git checkout .` or `git checkout <file>` without -b 鈫?danger
-      // Heuristic: if there's a positional that looks like a file path and no -b flag
+      // `git checkout .` 或没有 -b 的 `git checkout <file>` → 危险
+      // 启发式：如果有像文件路径的位置参数且没有 -b 标志
       if (!flags.has("-b") && !flags.has("-B") && positionals.length >= 2) {
         const target = positionals[1]!;
         if (target === "." || target === "./" || target.includes("/") || target.includes(".")) {
@@ -606,7 +646,7 @@ function classifyGitDetailed(cmd: ParsedBashCommand): PermissionClass {
       return "write_reversible";
     }
     case "reset": {
-      // --hard already caught by global flag check above
+      // --hard 已被上面的全局标志检查捕获
       return "write_reversible";
     }
     case "clean": {
@@ -637,7 +677,7 @@ function classifyGitDetailed(cmd: ParsedBashCommand): PermissionClass {
     }
     case "config": {
       if (flags.has("--unset") || flags.has("--remove-section")) return "write_potent";
-      // 1 positional (key) = read, 2+ (key value) = write
+      // 1 个位置参数（key）= 只读，2+（key value）= 写
       if (positionals.length <= 2) return "read";
       return "write_potent";
     }
@@ -652,29 +692,32 @@ function classifyGitDetailed(cmd: ParsedBashCommand): PermissionClass {
 }
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
 /**
- * Basename of a command, case-folded on case-insensitive filesystems
- * (default macOS APFS, Windows Git Bash over NTFS) so uppercase
- * spellings (`RM`, `ENV`, `NICE`) resolve to the same canonical name the
- * shell would exec. MUST be used by EVERY layer that matches a command
- * name against a safety set 鈥?wrapper stripping, danger/catastrophic
- * classification, and the cp/mv escalation. Folding in only one layer
- * lets an uppercase spelling slip past an earlier case-sensitive layer
- * and land on a more permissive branch: e.g. with wrapper-stripping left
- * case-sensitive, `ENV rm -rf ~` is never unwrapped and the folded `env`
- * reaches the SAFE `env` branch 鈫?`read` (auto-allowed in every mode),
- * strictly WORSE than the unfolded `write_potent`. On case-sensitive
- * Linux the capability is false and the original casing is preserved (a
- * file truly named `RM` is distinct from `rm`).
+ * 命令的基名，在不区分大小写的文件系统上大小写折叠
+ *（macOS APFS 和 Windows Git Bash over NTFS 默认），
+ * 使大写拼写（`RM`、`ENV`、`NICE`）解析到与 shell
+ * 执行的相同规范名称。必须在每个层使用 — 包装器剥离、
+ * 危险/灾难性分类和 cp/mv 升级。只在一个层折叠
+ * 会让大写拼写绕过较早的大小写敏感层，
+ * 落到更宽松的分支：例如包装器剥离保持大小写敏感，
+ * `ENV rm -rf ~` 永远不会被展开，折叠的 `env`
+ * 到达安全的 `env` 分支 → `read`（每种模式自动允许），
+ * 比未折叠的 `write_potent` 严格更差。在区分大小写的
+ * Linux 上能力为 false，保留原始大小写
+ *（名为 `RM` 的文件与 `rm` 确实不同）。
  */
 function normalizedCommandName(rawName: string): string {
   const base = rawName.split("/").pop() ?? rawName;
   return osCapabilities.caseInsensitiveFilesystem ? base.toLowerCase() : base;
 }
 
+/**
+ * 从解析后的命令中剥离包装器。
+ * 如 `env git status` → `git status`。
+ */
 function stripWrappersFromParsed(cmd: ParsedBashCommand): ParsedBashCommand {
   const name = normalizedCommandName(cmd.name);
 
@@ -707,6 +750,10 @@ function stripWrappersFromParsed(cmd: ParsedBashCommand): ParsedBashCommand {
   return cmd;
 }
 
+/**
+ * 从解析后的命令构建规范模式。
+ * 用于记忆化规则匹配。
+ */
 function buildCanonicalPatternFromParsed(cmd: ParsedBashCommand): string {
   const name = normalizedCommandName(cmd.name);
 
@@ -727,42 +774,42 @@ function buildCanonicalPatternFromParsed(cmd: ParsedBashCommand): string {
 }
 
 // ------------------------------------------------------------------
-// PowerShell per-command classification
+// PowerShell 每个命令的分类
 // ------------------------------------------------------------------
 
 /**
- * Resolve a PowerShell command name to its canonical cmdlet (lowercase).
- * Handles aliases and Module\Cmdlet prefix stripping.
+ * 将 PowerShell 命令名称解析为其规范 cmdlet（小写）。
+ * 处理别名和 Module\Cmdlet 前缀剥离。
  */
 function resolvePSCommandName(rawName: string): string {
   let name = rawName.toLowerCase();
-  // Strip surrounding quotes: & "Remove-Item" or & 'rm'
+  // 剥离周围引号：& "Remove-Item" 或 & 'rm'
   if ((name.startsWith('"') && name.endsWith('"')) || (name.startsWith("'") && name.endsWith("'"))) {
     name = name.slice(1, -1);
   }
-  // Strip module prefix: Microsoft.PowerShell.Management\Get-ChildItem 鈫?get-childitem
+  // 剥离模块前缀：Microsoft.PowerShell.Management\Get-ChildItem → get-childitem
   const backslash = name.lastIndexOf("\\");
   if (backslash >= 0) name = name.slice(backslash + 1);
-  // Resolve alias
+  // 解析别名
   return PS_ALIASES.get(name) ?? name;
 }
 
-// PowerShell accepts unambiguous parameter prefixes: -e, -en, -enc, ...
-// all resolve to -EncodedCommand. Minimum 2 chars after dash.
+// PowerShell 接受明确的参数前缀：-e、-en、-enc...
+// 都解析为 -EncodedCommand。破折号后最少 2 个字符。
 function isEncodedCommandFlag(value: string): boolean {
   const lower = value.toLowerCase();
   return lower.startsWith("-e") && "-encodedcommand".startsWith(lower);
 }
 
-/** Check if `value` is a valid PowerShell prefix of `fullParam` (e.g. "-rec" matches "-recurse"). */
+/** 检查 `value` 是否是 `fullParam` 的有效 PowerShell 前缀（如 "-rec" 匹配 "-recurse"）*/
 function isPSParamPrefix(value: string, fullParam: string): boolean {
   const lower = value.toLowerCase();
   return lower.length >= 2 && lower.startsWith("-") && fullParam.startsWith(lower);
 }
 
-/** Check if any argv token contains executable PowerShell code:
- *  script blocks `{ ... }`, subexpressions `$(...)`, or grouped
- *  command expressions `(...)`. */
+/** 检查任何 argv 标记是否包含可执行的 PowerShell 代码：
+ *  脚本块 `{ ... }`、子表达式 `$(...)` 或分组
+ *  命令表达式 `(...)`。 */
 function hasExecutableExpression(cmd: ParsedBashCommand): boolean {
   return cmd.argv.some(
     (t) => t.kind === "unresolved_expression" &&
@@ -770,15 +817,18 @@ function hasExecutableExpression(cmd: ParsedBashCommand): boolean {
   );
 }
 
+/**
+ * 对 PowerShell 命令进行分类。
+ */
 function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
   const name = resolvePSCommandName(cmd.name);
 
-  // Eval-equivalent commands are always dangerous.
+  // Eval 等价命令始终危险
   if (PS_EVAL_COMMANDS.has(name)) return "write_danger";
 
-  // Dangerous flags: -EncodedCommand on pwsh/powershell re-invocation.
-  // PowerShell accepts unambiguous parameter prefixes, so -enc, -en, -e
-  // all resolve to -EncodedCommand.
+  // 危险标志：pwsh/powershell 重新调用上的 -EncodedCommand。
+  // PowerShell 接受明确的参数前缀，所以 -enc、-en、-e
+  // 都解析为 -EncodedCommand。
   if (name === "pwsh" || name === "powershell" || name === "powershell.exe" || name === "pwsh.exe") {
     const hasEncoded = cmd.argv.some(
       (t) => t.kind === "literal" && isEncodedCommandFlag(t.value),
@@ -787,11 +837,11 @@ function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
     return "write_potent";
   }
 
-  // Native executables that pass through (git, npm, etc.) use the
-  // same bash classification since they're not PowerShell-specific.
+  // 通过的本机可执行文件（git、npm 等）使用相同的
+  // bash 分类，因为它们不是 PowerShell 特定的。
   if (name === "git") return classifyGitDetailed(cmd);
 
-  // Catastrophic: Remove-Item -Recurse -Force targeting root/home/drive.
+  // 灾难性：Remove-Item -Recurse -Force 针对根/主目录/驱动器
   if (name === "remove-item") {
     const hasRecurse = cmd.argv.some(
       (t) => t.kind === "literal" && isPSParamPrefix(t.value, "-recurse"),
@@ -802,14 +852,14 @@ function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
     if (hasRecurse && hasForce) {
       const targetsDangerousPath = cmd.argv.some((t) => {
         if (t.value.startsWith("-")) return false;
-        // Normalize: strip trailing slashes, backslashes, wildcards, and dots.
-        // This catches C:\, C:\*, C:\., ~\*, etc.
+        // 规范化：剥离尾随斜杠、反斜杠、通配符和点。
+        // 这捕获 C:\、C:\*、C:\. 等。
         const v = t.value.replace(/[\\/]+$/, "").replace(/[\\/][.*]+$/, "").replace(/[\\/]+$/, "");
-        // Drive roots: C:, C:\, /
+        // 驱动器根：C:、C:\、/
         if (/^[a-z]:?$/i.test(v) || v === "/" || v === "\\") return true;
-        // Home references
+        // 主目录引用
         if (v === "~" || v === "$HOME" || /^\$env:USERPROFILE$/i.test(v) || /^\$env:HOME$/i.test(v)) return true;
-        // System paths
+        // 系统路径
         if (/^\$env:(SYSTEMROOT|WINDIR|PROGRAMFILES)$/i.test(v)) return true;
         return false;
       });
@@ -818,43 +868,44 @@ function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
     return "write_danger";
   }
 
-  // Catastrophic: PowerShell disk-wipe cmdlets, plus the Windows
-  // format/diskpart exes when invoked from PowerShell (empty set off
-  // Windows). Checked before the danger set so they escalate fully.
+  // 灾难性：PowerShell 磁盘擦除 cmdlet，加上从 PowerShell
+  // 调用时的 Windows format/diskpart 可执行文件（非 Windows 上为空集）。
+  // 在危险集之前检查，所以它们完全升级。
   if (PS_CATASTROPHIC_COMMANDS.has(name)) return "catastrophic";
   if (osCapabilities.platformSpecificCatastrophicCommands.has(name)) return "catastrophic";
 
-  // Check PowerShell-specific command sets.
+  // 检查 PowerShell 特定命令集
   if (PS_DANGER_COMMANDS.has(name)) return "write_danger";
 
-  // Add-Type is runtime .NET compilation 鈥?potent.
+  // Add-Type 是运行时 .NET 编译 — 强能力
   if (name === "add-type") return "write_potent";
 
-  // invoke-item / ii is ShellExecute 鈥?can run arbitrary executables.
+  // invoke-item / ii 是 ShellExecute — 可以运行任意可执行文件
   if (name === "invoke-item") return "write_danger";
 
   if (PS_CWD_COMMANDS.has(name)) return "write_potent";
   if (PS_POTENT_COMMANDS.has(name)) return "write_potent";
   if (PS_REVERSIBLE_COMMANDS.has(name)) return "write_reversible";
 
-  // Safe commands 鈥?but if they receive a script block argument,
-  // that block can contain arbitrary code (e.g. ForEach-Object { rm foo }).
-  // Escalate to write_potent so the user gets prompted.
+  // 安全命令 — 但如果它们接收脚本块参数，
+  // 该块可以包含任意代码（包括删除）。
+  // 升级到 write_potent，让用户收到提示。
   if (PS_SAFE_COMMANDS.has(name)) {
-    // Script blocks and subexpressions can contain arbitrary code
-    // (including deletes). We can't inspect their contents statically,
-    // so escalate to write_danger, which prompts in read_only/reversible
-    // modes. (yolo only force-prompts `catastrophic`, so a script-block
-    // delete still auto-runs there; classifying every script-block-
-    // bearing read cmdlet as catastrophic would be far too aggressive.)
+    // 脚本块和子表达式可以包含任意代码
+    //（包括删除）。我们无法静态检查它们的内容，
+    // 所以升级到 write_danger，这会在 read_only/reversible
+    // 模式下提示。（yolo 只强制提示 `catastrophic`，
+    // 所以脚本块删除仍会在那里自动运行；
+    // 将每个携带脚本块的只读 cmdlet 分类为 catastrophic
+    // 会过于激进。）
     return hasExecutableExpression(cmd) ? "write_danger" : "read";
   }
 
-  // Native executables that also appear in the bash sets.
+  // 也出现在 bash 集合中的本机可执行文件
   if (isDangerCommand(name)) return "write_danger";
   if (BASH_SAFE_COMMANDS.has(name)) return "read";
   if (BASH_POTENT_COMMANDS.has(name)) return "write_potent";
 
-  // Unknown commands default to potent (fail-safe).
+  // 未知命令默认为强能力（故障安全）
   return "write_potent";
 }

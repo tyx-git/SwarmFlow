@@ -1,7 +1,7 @@
 /**
- * Render a unified-diff-style display field as a styled diff card.
+ * 将统一 diff 风格的显示字段渲染为样式化的 diff 卡片。
  *
- * Vigil's write_file/edit_file tool emits a `display` of the form:
+ * Vigil 的 write_file/edit_file 工具发出的 `display` 格式如下：
  *
  *      --- /abs/path/file.ts
  *      +++ /abs/path/file.ts
@@ -61,7 +61,7 @@ function parseDiff(text: string): ParsedDiff | null {
       const hunkMatch = raw.match(HUNK_RE)
       if (hunkMatch) {
         inHeader = false
-        // Detect new file via "@@ -1,0" / "@@ -0,0" signatures
+        // 通过 "@@ -1,0" / "@@ -0,0" 签名检测新文件
         if (/-(?:0|1),0\s/.test(raw)) isNewFile = true
         oldLine = Number(hunkMatch[1] ?? 0)
         newLine = Number(hunkMatch[2] ?? 0)
@@ -80,7 +80,7 @@ function parseDiff(text: string): ParsedDiff | null {
       ) {
         continue
       }
-      // not a known header line — treat the whole text as plain
+      // 不是已知的 header 行——将整个文本作为纯文本处理
       return null
     } else {
       const hunkMatch = raw.match(HUNK_RE)

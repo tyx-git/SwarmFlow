@@ -17,9 +17,9 @@
  *
  *   agent.prompt = roleBody + toolPromptContent + knowledge
  *
- *   1. roleBody      鈥?system_prompt_file (required)
- *   2. toolPrompt    鈥?tools_prompt_file (preferred) OR tier-default (fallback)
- *   3. knowledge     鈥?all files under knowledge/ (optional)
+ *   1. roleBody      —system_prompt_file (required)
+ *   2. toolPrompt    —tools_prompt_file (preferred) OR tier-default (fallback)
+ *   3. knowledge     —all files under knowledge/ (optional)
  *
  * Session-level layers (AGENTS.md memory, agent model pins, future hooks)
  * are added separately by `src/prompt-assembler.ts` on top of agent.prompt.
@@ -36,7 +36,7 @@ import { BASIC_TOOLS, BASIC_TOOLS_MAP } from "../tools/basic.js";
 import type { MCPClientManager } from "../clients/mcp-client.js";
 
 // ------------------------------------------------------------------
-// Constants
+// 常量
 // ------------------------------------------------------------------
 
 const AGENT_YAML = "agent.yaml";
@@ -45,9 +45,9 @@ const MIN_TEMPLATE_MAX_TOOL_ROUNDS = 100;
 
 
 /**
- * Tool packs 鈥?named groups of related tools.
- * Used in agent.yaml `tools` field: `tools: [read, shell, util]`
- * Pack names and individual tool names can be freely mixed.
+ * 工具包 — 相关工具的命名组。
+ * 用于 agent.yaml 的 `tools` 字段：`tools: [read, shell, util]`
+ * 工具包名称和单独工具名称可以自由混合。
  */
 export const TOOL_PACKS: Record<string, string[]> = {
   read:  ["read_file", "list_dir", "glob", "grep"],
@@ -58,21 +58,21 @@ export const TOOL_PACKS: Record<string, string[]> = {
 
 
 // ------------------------------------------------------------------
-// Tool tiers (swarmflow-style)
+// 工具层级（swarmflow 风格）
 // ------------------------------------------------------------------
 
 export type ToolTier = "read_only" | "reversible" | "all";
 
-/** Map tool_tier to the tool names that tier exposes. */
+/** 将 tool_tier 映射到该层级暴露的工具名称。 */
 export const TOOL_TIER_TOOLS: Record<ToolTier, string[]> = {
   read_only: [...TOOL_PACKS.read, ...TOOL_PACKS.util],
   reversible: [...TOOL_PACKS.read, ...TOOL_PACKS.edit, ...TOOL_PACKS.shell, ...TOOL_PACKS.util],
-  all: "all" as unknown as string[], // sentinel 鈥?handled specially
+  all: "all" as unknown as string[], // sentinel —handled specially
 };
 
 /**
- * Resolve tool_tier from an agent spec. Throws on invalid values.
- * Returns null if not specified (caller should fall back to the `tools` list).
+ * 从 agent spec 中解析 tool_tier。无效值抛出异常。
+ * 如果未指定则返回 null（调用方应回退到 `tools` 列表）。
  */
 export function resolveToolTier(spec: Record<string, unknown>): ToolTier | null {
   const raw = spec["tool_tier"];
@@ -83,11 +83,11 @@ export function resolveToolTier(spec: Record<string, unknown>): ToolTier | null 
   );
 }
 
-/** Resolve a tier-default tool prompt. Returns null if no bundled prompt exists. */
+/** 解析层级默认工具提示。如果没有捆绑提示则返回 null。 */
 function resolveTierDefaultPrompt(_spec: Record<string, unknown>): string | null {
-  // Tier default prompts are a future extension point.
-  // Currently all bundled templates declare tools_prompt_file, so this
-  // only fires for custom templates that omit it. Return null to skip.
+  // 层级默认提示是未来扩展点。
+  // 当前所有捆绑模板都声明了 tools_prompt_file，所以这
+  // 只在省略了它的自定义模板上触发。返回 null 以跳过。
   return null;
 }
 
@@ -102,7 +102,7 @@ export interface PromptRecipe {
 }
 
 // ------------------------------------------------------------------
-// Public API
+// 公共 API
 // ------------------------------------------------------------------
 
 /**
@@ -122,13 +122,13 @@ export interface PromptRecipe {
  * This is the core assembly pipeline, extracted so Session can rebuild the
  * cached prompt when templates, AGENTS.md, skills, or config are reloaded.
  */
-/** Individual prompt layers, before concatenation. */
+/** 连接前的各个提示层级。 */
 export interface PromptLayers {
-  /** Role body from system_prompt.md (core behavioral instructions). */
+  /** system_prompt.md 中的角色主体（核心行为指令）。 */
   roleBody: string;
-  /** Tool documentation from tools.md (detailed usage docs per tool). */
+  /** tools.md 中的工具文档（每个工具的详细使用文档）。 */
   toolDocs: string;
-  /** Knowledge files (optional, concatenated). */
+  /** 知识文件（可选，连接在一起）。 */
   knowledge: string;
 }
 
@@ -270,10 +270,10 @@ export function loadTemplate(
  *
  * Three-layer template loading with layered override:
  *
- * 1. **Bundled** 鈥?always loaded from the package.
- * 2. **User-global** (`~/.swarmflow/prompts/templates/`) 鈥?adds new templates only;
+ * 1. **Bundled** —always loaded from the package.
+ * 2. **User-global** (`~/.swarmflow/prompts/templates/`) —adds new templates only;
  *    cannot override bundled templates (their prompt assembly assumes a specific format).
- * 3. **Project-local** (`{project}/.swarmflow/prompts/templates/`) 鈥?highest priority;
+ * 3. **Project-local** (`{project}/.swarmflow/prompts/templates/`) —highest priority;
  *    CAN override both bundled and user-global templates.
  *
  * @param bundledRoot  Bundled templates root (always available from the package).
@@ -297,7 +297,7 @@ export function loadTemplates(
     throw new Error(`Bundled templates root not found: ${bundledRoot}`);
   }
 
-  // Pass 1: bundled templates (base layer)
+  // 第一遍：捆绑模板（基础层）
   const templateDirs: Record<string, string> = {};
   const bundledNames = new Set<string>();
   for (const child of readdirSync(bundledRoot).sort()) {
@@ -308,7 +308,7 @@ export function loadTemplates(
     }
   }
 
-  // Pass 2: user-global additions (cannot override bundled)
+  // 第二遍：用户全局补充（不能覆盖捆绑模板）
   if (userRoot && existsSync(userRoot) && statSync(userRoot).isDirectory()) {
     for (const child of readdirSync(userRoot).sort()) {
       if (bundledNames.has(child)) continue; // never override bundled templates
@@ -320,7 +320,7 @@ export function loadTemplates(
     }
   }
 
-  // Pass 3: project-local templates (CAN override bundled and user-global)
+  // 第三遍：项目本地模板（可以覆盖捆绑模板和用户全局模板）
   if (projectRoot && existsSync(projectRoot) && statSync(projectRoot).isDirectory()) {
     for (const child of readdirSync(projectRoot).sort()) {
       if (child.startsWith("_")) continue;
@@ -452,18 +452,18 @@ export function resolvePromptsDir(templatesRoot: string): string | undefined {
 }
 
 /**
- * Resolve tool names from the `tools` field in agent.yaml.
+ * 从 agent.yaml 的 `tools` 字段解析工具名称。
  *
- * - `"all"` 鈫?all tools in TOOL_PROMPT_ORDER
- * - Array of names/packs 鈫?expand packs, deduplicate
- * - Absent / null 鈫?EXECUTOR_DEFAULT_TOOLS (for custom templates)
+ * - `"all"` → TOOL_PROMPT_ORDER 中的所有工具
+ * - 名称/工具包数组 → 展开工具包，去重
+ * - 缺失/null → EXECUTOR_DEFAULT_TOOLS（用于自定义模板）
  *
- * Pack names and individual tool names can be mixed freely:
- *   tools: [read, bash, time]   鈫? read_file, list_dir, glob, grep, bash, time
+ * 工具包名称和单独工具名称可以自由混合：
+ *   tools: [read, bash, time]   → read_file, list_dir, glob, grep, bash, time
  */
 /**
- * Expand an array of tool specs (pack names and/or individual tool names)
- * into a deduplicated list of individual tool names.
+ * 将工具规格数组（工具包名称和/或单独工具名称）
+ * 展开为去重后的单独工具名称列表。
  */
 function expandToolSpecs(specs: string[]): string[] {
   const seen = new Set<string>();
@@ -541,7 +541,7 @@ function validateTemplateMaxToolRounds(spec: Record<string, unknown>): string | 
  * - Absent / null => empty list (custom templates get defaults via resolveToolNames)
  */
 function resolveTools(spec: Record<string, unknown>): ToolDef[] {
-  // Primary: tool_tier (swarmflow-style). Throws on invalid values.
+  // 主要方式：tool_tier（swarmflow 风格）。无效值抛出异常。
   const tier = resolveToolTier(spec);
   if (tier !== null) {
     if (tier === "all") return [...BASIC_TOOLS];
@@ -553,7 +553,7 @@ function resolveTools(spec: Record<string, unknown>): ToolDef[] {
     return resolved;
   }
 
-  // Fallback: explicit tools list (backward compat for custom templates)
+  // 回退：显式工具列表（自定义模板的向后兼容）
   const toolsSpec = spec["tools"];
   if (toolsSpec == null) return [];
 

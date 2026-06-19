@@ -1,3 +1,10 @@
+// =============================================================================
+// SwarmFlow GUI — Electron 主进程入口
+// =============================================================================
+// 职责：窗口管理、IPC 路由、文件系统操作、Git 操作、设置持久化
+// 架构：主进程 + 渲染进程（React）+ Preload 桥接
+// 通信：渲染进程通过 contextBridge 调用主进程，主进程通过 webContents.send 推送事件
+
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
@@ -28,11 +35,12 @@ import type {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// 环境检测：是否为开发模式（未打包）
 const DEV = !app.isPackaged
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL ?? 'http://localhost:5174'
 const execFileAsync = promisify(execFile)
 
-// Expose CDP in dev so the Claude electron skill / agent-browser can attach.
+// 在开发模式下暴露 CDP，以便 Claude electron skill / agent-browser 可以附加。
 if (DEV) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
@@ -95,7 +103,14 @@ app.on('before-quit', async () => {
   await manager.closeAll()
 })
 
+// =============================================================================
+// IPC 处理器注册
+// =============================================================================
+// 所有 handle 以 'tabId.method' 形式路由到对应的 SessionProcess
+// 渲染进程通过 preload 桥接调用，返回 Promise
+
 function registerIpc(): void {
+  // ── Tab 管理 ──────────────────────────────────────────────────────────────
   ipcMain.handle('tabs:list', () => manager.listTabs())
 
   ipcMain.handle('tabs:create', async (_e, input: { workDir: string; selectedModel?: string; selectedAgent?: string }) => {
@@ -110,6 +125,7 @@ function registerIpc(): void {
     return manager.request(args.tabId, args.method, args.params)
   })
 
+  // ── 历史记录 ──────────────────────────────────────────────────────────────
   ipcMain.handle('history:listWorkspaces', () => listWorkspaceHistory())
 
   ipcMain.handle('history:archiveSession', (_e, input: ArchiveSessionInput) => {
@@ -120,6 +136,12 @@ function registerIpc(): void {
     setSessionPinned(input)
   })
 
+  // ── 工作区操作 ────────────────────────────────────────────────────────────
+  // pickDirectory: 打开目录选择对话框
+  // pickFiles: 打开文件选择对话框
+  // listFiles: 列出工作区文件（有 git 则用 git ls-files，否则遍历文件系统）
+  // searchText: 使用 ripgrep 搜索文本
+  // openPath: 在系统文件管理器中打开路径
   ipcMain.handle('workspace:pickDirectory', async () => {
     const res = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
@@ -152,6 +174,11 @@ function registerIpc(): void {
     if (err) throw new Error(err)
   })
 
+  // ── Git 操作 ─────────────────────────────────────────────────────────────
+  // git:status: 获取 git status --porcelain=v1 输出
+  // git:diff: 获取文件 diff（支持 staged 和 unstaged）
+  // git:stage/unstage: 单文件暂存/取消暂存
+  // git:stageAll/unstageAll: 全部暂存/取消暂存
   ipcMain.handle('git:status', async (_e, workDir: string) => {
     return readGitStatus(workDir)
   })
@@ -176,6 +203,9 @@ function registerIpc(): void {
     await unstageAllGitFiles(input)
   })
 
+  // ── 设置管理 ─────────────────────────────────────────────────────────────
+  // settings.json 存储在 ~/.swarmflow/settings.json
+  // 支持：auto_update、default_model、thinking_level、permission_mode、providers、mcpServers
   ipcMain.handle('settings:get', () => readSettingsSnapshot())
 
   ipcMain.handle('settings:setAutoUpdate', (_e, enabled: boolean) => {
@@ -205,7 +235,7 @@ function registerIpc(): void {
       if (v === null || v === undefined || v === '') update.permission_mode = null
       else update.permission_mode = String(v)
     }
-    // Strip null values so they don't pollute the JSON.
+    // 去除 null 值，避免污染 JSON。
     const merged = { ...readGlobalSettings() } as Record<string, unknown>
     for (const [k, v] of Object.entries(update)) {
       if (v === null) delete merged[k]
@@ -230,11 +260,17 @@ function registerIpc(): void {
     if (err) throw new Error(err)
   })
 
+  // ── 主题 ─────────────────────────────────────────────────────────────────
+  // 监听系统主题变化，实时通知渲染进程
   ipcMain.handle('theme:getSystem', () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'))
   nativeTheme.on('updated', () => {
     mainWindow?.webContents.send('theme:systemChanged', nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
   })
 }
+
+// =============================================================================
+// 设置读写
+// =============================================================================
 
 function readSettingsSnapshot(): SettingsSnapshot {
   const settings = readGlobalSettings()
@@ -353,8 +389,16 @@ function globalSettingsPath(): string {
 }
 
 function swarmflowHomeDir(): string {
+  // SWARMFLOW_HOME 环境变量优先，否则使用 ~/.swarmflow
   return process.env.SWARMFLOW_HOME || path.join(homedir(), '.swarmflow')
 }
+
+// =============================================================================
+// 工作区历史记录
+// =============================================================================
+// ~/.swarmflow/projects/<slug>/project.json 存储原始路径
+// 每个 session 有 meta.json 和 log.json
+// slug 是 workDir 的哈希或标识符
 
 function listWorkspaceHistory(): WorkspaceHistoryGroup[] {
   const projectsDir = path.join(swarmflowHomeDir(), 'projects')
@@ -593,6 +637,13 @@ function stripJsoncComments(text: string): string {
   ))
 }
 
+// =============================================================================
+// 工作区文件操作
+// =============================================================================
+// 优先使用 git ls-files 获取版本控制文件列表（忽略 .gitignore）
+// 无 git 时回退到文件系统遍历
+// 忽略常见构建目录以减少噪音
+
 const WORKSPACE_FILE_LIMIT = 500
 const WORKSPACE_SEARCH_LIMIT = 200
 const WORKSPACE_FILE_IGNORE_DIRS = new Set([
@@ -621,7 +672,7 @@ async function listWorkspaceFiles(workDir: string): Promise<readonly WorkspaceFi
       if (!st.isFile()) continue
       entries.push({ path: filePath, size: st.size, mtimeMs: st.mtimeMs })
     } catch {
-      // The file can disappear while the panel is refreshing.
+      // 文件可能在面板刷新时消失。
     }
   }
 
@@ -665,7 +716,7 @@ function listFilesystemWorkspacePaths(workDir: string): string[] {
         if (st.isDirectory()) walk(abs, rel)
         else if (st.isFile()) out.push(rel)
       } catch {
-        // Skip transient files.
+        // 跳过临时文件。
       }
     }
   }
@@ -731,6 +782,14 @@ function parseWorkspaceTextSearchLine(line: string): WorkspaceTextSearchResult |
     text: match[4] ?? '',
   }
 }
+
+// =============================================================================
+// Git 操作
+// =============================================================================
+// git status: porcelain=v1 格式解析，获取分支、追踪、上游、文件列表
+// git diff: 支持 staged 和 working tree diff，也支持新文件的 --no-index diff
+// git stage/unstage: 通过 git restore --staged 或 git rm --cached
+// enrichGitFileStats: 使用 --numstat 获取每个文件的增减行数
 
 async function readGitStatus(workDir: string): Promise<GitStatus> {
   const base: GitStatus = {

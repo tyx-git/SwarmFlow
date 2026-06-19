@@ -241,8 +241,9 @@ export function acceptCommandPickerSelection(
     };
   }
 
-  // Enter custom-input mode only when not already in it. While IN the mode,
-  // an accept falls through to submit (note carries the typed text) 鈥?  // otherwise re-accepting would re-enter the mode and clear the field.
+  // 仅在未处于自定义输入模式时才进入自定义输入模式。处于该模式时，
+  // 接受会穿透到提交（note 携带输入的文本）—— 否则
+  // 再次接受会重新进入模式并清空字段。
   if (option.customInput && !picker.customInputMode) {
     return {
       kind: "custom_input",

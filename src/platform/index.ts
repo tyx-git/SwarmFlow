@@ -1,16 +1,15 @@
 ﻿/**
- * Platform Abstraction Layer 鈥?entry point.
+ * 平台抽象层 — 入口点。
  *
- * Business code imports providers from this module. Per-OS
- * implementations live in `shell/`, `clipboard/`, `browser/`, and
- * `binary-asset/` subdirectories. The selectors at the bottom of this
- * file pick the active implementation once at module load time so the
- * choice is fixed for the process lifetime.
+ * 业务代码从本模块导入 providers。每个操作系统
+ * 的实现位于 `shell/`、`clipboard/`、`browser/` 和
+ * `binary-asset/` 子目录中。此文件底部的选择器在模块
+ * 加载时选择活动实现一次，因此选择在进程生命周期内是固定的。
  *
- * Discipline: nothing outside `src/platform/` should consult
- * `process.platform` or branch on OS. When you need a new
- * capability, define an interface in `types.ts`, ship an
- * implementation for darwin/linux/win, and import it through here.
+ * 原则：`src/platform/` 之外的代码不应咨询
+ * `process.platform` 或在操作系统上分支。当需要新
+ * 能力时，在 `types.ts` 中定义接口，为 darwin/linux/win
+ * 交付实现，并通过此处导入。
  */
 
 import { selectShell } from "./shell/index.js";

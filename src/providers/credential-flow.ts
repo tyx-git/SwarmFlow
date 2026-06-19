@@ -31,10 +31,10 @@ export interface CredentialPromptAdapter {
 }
 
 // ------------------------------------------------------------------
-// Credential slots 鈥?one provider-agnostic abstraction over the three
-// places a key can live (a registry `env` var, a managed internal var, or a
-// custom provider's SWARMFLOW_CUSTOM_* var). OAuth and local providers have no
-// manageable key and resolve to `undefined`.
+// 凭据槽位 — 一个独立于提供者的抽象，涵盖三个
+// 密钥可以存放的位置（注册表 `env` 变量、管理式内部变量或
+// 自定义提供者的 SWARMFLOW_CUSTOM_* 变量）。OAuth 和本地提供者没有
+// 可管理的密钥，返回 `undefined`。
 // ------------------------------------------------------------------
 
 export type CredentialSlotKind = "env" | "managed" | "custom";
@@ -42,13 +42,13 @@ export type CredentialSlotKind = "env" | "managed" | "custom";
 export interface CredentialSlot {
   providerId: string;
   kind: CredentialSlotKind;
-  /** The ~/.swarmflow/.env variable that holds the key. */
+  /** 保存密钥的 ~/.swarmflow/.env 变量。 */
   envVar: string;
-  /** Human-friendly provider label. */
+  /** 人类友好的提供者标签。 */
   label: string;
 }
 
-/** Deterministic env var name a custom provider stores its key under. */
+/** 自定义提供者用于存储密钥的确定性 env 变量名。 */
 export function customProviderEnvVar(providerId: string): string {
   return `SWARMFLOW_CUSTOM_${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_KEY`;
 }
@@ -58,9 +58,9 @@ function providerLabel(providerId: string): string {
 }
 
 /**
- * Resolve the credential slot for a provider, or undefined if it has no
- * manageable key (OAuth / local). Custom (non-registry) providers map to a
- * SWARMFLOW_CUSTOM_* slot; pass `opts.label` for a nice display name.
+ * 解析提供者的凭据槽位，如果没有可管理的密钥则返回 undefined
+ *（OAuth/本地）。自定义（非注册表）提供者映射到
+ * SWARMFLOW_CUSTOM_* 槽位；传递 `opts.label` 以获得友好的显示名称。
  */
 export function resolveCredentialSlot(
   providerId: string,
@@ -82,7 +82,7 @@ export function resolveCredentialSlot(
     return undefined;
   }
 
-  // Not in the registry 鈫?user-defined custom provider.
+  // 不在注册表中 → 用户定义的自定义提供者。
   return {
     providerId,
     kind: "custom",
@@ -91,7 +91,7 @@ export function resolveCredentialSlot(
   };
 }
 
-/** Current key value for a slot (trimmed-nonempty), or undefined. */
+/** 当前槽位的密钥值（修整后非空），或 undefined。 */
 export function currentCredentialKey(slot: CredentialSlot): string | undefined {
   const raw = process.env[slot.envVar];
   return typeof raw === "string" && raw.trim() !== "" ? raw : undefined;
@@ -101,15 +101,15 @@ export function isCredentialConfigured(slot: CredentialSlot): boolean {
   return currentCredentialKey(slot) !== undefined;
 }
 
-/** Importable shell candidates (managed providers only). */
+/** 可导入的 shell候选项（仅限托管提供者）。 */
 export function credentialImportCandidates(slot: CredentialSlot): DetectedCredentialCandidate[] {
   return slot.kind === "managed" ? detectManagedCredentialCandidates(slot.providerId) : [];
 }
 
-/** Mask a key for display, e.g. "ends 鈥3f9". */
+/** 遮蔽密钥以用于显示，例如 "ends —3f9"。 */
 export function maskKey(key: string): string {
   const tail = key.trim().slice(-4);
-  return tail ? `ends 鈥?{tail}` : "saved";
+  return tail ? `ends —{tail}` : "saved";
 }
 
 function describeCurrentKey(slot: CredentialSlot): string {
@@ -118,8 +118,8 @@ function describeCurrentKey(slot: CredentialSlot): string {
 }
 
 // ------------------------------------------------------------------
-// Write ops 鈥?write/remove the underlying .env var and, for custom
-// providers, keep the settings `${...}` reference in sync.
+// 写操作 — 写入/删除底层的 .env 变量，对于自定义
+// 提供者，保持 settings `${...}` 引用同步。
 // ------------------------------------------------------------------
 
 function syncCustomProviderKeyRef(providerId: string, envVar: string, homeDir?: string): void {
@@ -153,16 +153,17 @@ export function setCredentialKey(slot: CredentialSlot, value: string, homeDir?: 
 }
 
 export interface RemoveCredentialResult {
-  /** True when an identically-named shell var may re-provide the key next launch. */
+  /** 当同名的 shell 变量可能在下次启动时重新提供密钥时为 true。 */
+
   shellMayResurface: boolean;
 }
 
 export function removeCredentialKey(slot: CredentialSlot, homeDir?: string): RemoveCredentialResult {
   unsetDotenvKey(slot.envVar, homeDir);
   if (slot.kind === "custom") clearCustomProviderKeyRef(slot.providerId, homeDir);
-  // For `env` providers the runtime reads the env var directly, so a shell
-  // export of the same name resurfaces next launch. Managed/custom use a
-  // swarmflow-namespaced var that the runtime treats as the sole source.
+// 对于 `env` 提供者，运行时直接读取 env 变量，所以 shell
+// 导出相同名称在下一次启动时重新出现。托管/自定义使用
+// swarmflow 命名空间的变量，运行时将其视为唯一来源。
   return { shellMayResurface: slot.kind === "env" };
 }
 
@@ -171,10 +172,11 @@ export function removeCredentialKey(slot: CredentialSlot, homeDir?: string): Rem
 // ------------------------------------------------------------------
 
 export interface EnsureCredentialOptions {
+  /** 对于自定义提供者的显示标签（注册表提供者忽略它）。 */
   mode: "init" | "model";
   allowReplaceExisting?: boolean;
   homeDir?: string;
-  /** Display label for custom providers (registry providers ignore it). */
+
   label?: string;
 }
 
@@ -184,7 +186,7 @@ export interface EnsureCredentialResult {
   envVar: string;
 }
 
-// Back-compat aliases (managed-only call sites).
+// 向后兼容别名（仅托管提供者调用点）。
 export type EnsureManagedCredentialOptions = EnsureCredentialOptions;
 export type EnsureManagedCredentialResult = EnsureCredentialResult;
 
@@ -246,9 +248,9 @@ async function configureNewKey(
 }
 
 /**
- * Ensure a provider's API key is configured, optionally offering to replace an
- * existing one. Used by init (keep/replace, no removal) and by `/model` when a
- * managed credential is missing. Throws for providers with no manageable key.
+ * 确保提供者的 API 密钥已配置，可选择替换现有密钥。
+ * 由 init（保持/替换，不删除）和 `/model` 在托管凭据缺失时使用。
+ * 对于没有可管理密钥的提供者抛出异常。
  */
 export async function ensureProviderCredential(
   providerId: string,
@@ -294,13 +296,13 @@ export async function ensureProviderCredential(
 }
 
 /**
- * Back-compat wrapper for managed-provider call sites. Behaves identically to
- * {@link ensureProviderCredential} (callers gate on `isManagedProvider`).
+ * 托管提供者调用点的向后兼容包装器。行为与
+ * {@link ensureProviderCredential} 完全相同（调用方在 `isManagedProvider` 上进行门控）。
  */
 export const ensureManagedProviderCredential = ensureProviderCredential;
 
 // ------------------------------------------------------------------
-// Full management flow (the `/key` command): set / replace / remove / import.
+// 完整的管理流程（`/key` 命令）：设置 / 替换 / 删除 / 导入。
 // ------------------------------------------------------------------
 
 export interface ManageCredentialResult {
@@ -342,7 +344,7 @@ export async function runCredentialManageFlow(
   }
   options.push({ label: "Cancel", value: "cancel" });
 
-  const action = await adapter.select({ message: `${slot.label} 鈥?API key`, options });
+  const action = await adapter.select({ message: `${slot.label} —API key`, options });
   if (!action || action === "cancel") {
     return { status: "skipped", envVar: slot.envVar, label: slot.label };
   }
@@ -372,7 +374,7 @@ export async function runCredentialManageFlow(
     return { status: "removed", shellMayResurface, envVar: slot.envVar, label: slot.label };
   }
 
-  // set / replace 鈫?paste loop
+  // set / replace →paste loop
   while (true) {
     const pasted = await adapter.secret({ message: `${slot.label}: Paste API key`, allowEmpty: false });
     if (pasted === undefined) {

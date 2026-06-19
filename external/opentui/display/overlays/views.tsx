@@ -1,5 +1,11 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — Overlay 视图层
+// =============================================================================
+// 职责：渲染所有覆盖层 UI（命令选择器/复选框/OAuth/密钥输入/提示选择等）
+// Overlay 层级（条件渲染，由 OpenTuiScreen 统一管理）
+
 import React from "react";
 
 import type { InputRenderable } from "@opentui/core";

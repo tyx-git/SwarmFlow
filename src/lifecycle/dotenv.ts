@@ -1,8 +1,9 @@
 ﻿/**
- * Minimal .env file loader for ~/.swarmflow/.env.
+ * ~/.swarmflow/.env 的最小 .env 文件加载器。
  *
- * Loads KEY=VALUE pairs into process.env with override semantics 鈥? * values in .env take precedence over existing environment variables.
- * This ensures keys pasted during `swarmflow init` always win.
+ * 将 KEY=VALUE 对加载到 process.env，具有覆盖语义——
+ * .env 中的值优先于现有环境变量。
+ * 这确保了在 `swarmflow init` 期间粘贴的密钥始终获胜。
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
@@ -16,8 +17,8 @@ function envFilePath(homeDir?: string): string {
 }
 
 /**
- * Load ~/.swarmflow/.env into process.env (override mode).
- * Silently skips if file doesn't exist or is unreadable.
+ * 将 ~/.swarmflow/.env 加载到 process.env（覆盖模式）。
+ * 如果文件不存在或无法读取，则静默跳过。
  */
 export function loadDotenv(homeDir?: string): void {
   const path = envFilePath(homeDir);
@@ -47,8 +48,8 @@ export function loadDotenv(homeDir?: string): void {
 }
 
 /**
- * Write or update a key in ~/.swarmflow/.env.
- * Preserves existing entries; updates value if key already exists.
+ * 在 ~/.swarmflow/.env 中写入或更新密钥。
+ * 保留现有条目；如果密钥已存在则更新值。
  */
 export function setDotenvKey(key: string, value: string, homeDir?: string): void {
   const dir = homeDir ?? getSwarmflowHomeDir();
@@ -64,7 +65,7 @@ export function setDotenvKey(key: string, value: string, homeDir?: string): void
     }
   }
 
-  // Check if key already exists 鈥?update in place
+  // Check if key already exists — update in place
   let found = false;
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
@@ -96,12 +97,12 @@ export function setDotenvKey(key: string, value: string, homeDir?: string): void
 }
 
 /**
- * Remove a key from ~/.swarmflow/.env and from the current process env.
+ * 从 ~/.swarmflow/.env 和当前进程环境中移除密钥。
  *
- * Note: this only removes what swarmflow controls. If the same variable is also
- * exported in the user's shell, it will reappear on the next launch (loadDotenv
- * won't re-add it, but the shell value is already in the environment). Callers
- * that surface removal to the user should say so for shell-sourced keys.
+ * 注意：这仅移除 swarmflow 控制的内容。如果相同变量也在
+ * 用户的 shell 中导出，它将在下次启动时重新出现（loadDotenv
+ * 不会重新添加它，但 shell 值已在环境中）。向用户
+ * 展示移除的调用者应该对 shell 源密钥进行说明。
  */
 export function unsetDotenvKey(key: string, homeDir?: string): void {
   const path = envFilePath(homeDir ?? getSwarmflowHomeDir());

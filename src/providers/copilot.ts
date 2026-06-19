@@ -1,17 +1,17 @@
 ﻿/**
- * GitHub Copilot provider 鈥?dispatcher + inner implementations.
+ * GitHub Copilot 提供者 — 分派器 + 内部实现。
  *
- * Architecture:
- *   CopilotProvider (dispatcher; the only thing registry.ts knows about)
- *     鈹溾攢 CopilotAnthropicImpl (extends AnthropicProvider)
- *     鈹?   routes Claude models through Copilot's /v1/messages endpoint
- *     鈹斺攢 CopilotResponsesImpl (extends OpenAIResponsesProvider)
- *          routes GPT / Codex models through Copilot's /responses endpoint
+ * 架构：
+ *   CopilotProvider（分派器；registry.ts 唯一知道的类）
+ *     ├── CopilotAnthropicImpl（继承 AnthropicProvider）
+ *     │   通过 Copilot 的 /v1/messages 端点路由 Claude 模型
+ *     └── CopilotResponsesImpl（继承 OpenAIResponsesProvider）
+ *         通过 Copilot 的 /responses 端点路由 GPT / Codex 模型
  *
- * The short-lived Copilot API token is managed by copilotTokenManager
- * (in-memory cache, auto-refresh every ~25 minutes). On every sendMessage
- * call, the inner provider rebuilds its underlying SDK client with the
- * fresh token and the Copilot gateway base URL from the token response.
+ * 短生命周期 Copilot API token 由 copilotTokenManager 管理
+ *（内存缓存，约每 25 分钟自动刷新）。每次 sendMessage 调用时，
+ * 内部提供者都会使用新 token 和 token 响应中的 Copilot 网关 base URL
+ * 重建其底层 SDK 客户端。
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -35,26 +35,26 @@ import {
 } from "./copilot-headers.js";
 
 // =============================================================================
-// Model routing
+// 模型路由
 // =============================================================================
 
 /**
- * Route by model family rather than a hardcoded allowlist, so new Copilot
- * models (fetched live from /models) work without a code change:
- *   - Claude models 鈫?Anthropic-shaped /v1/messages
- *   - everything else (GPT/Codex, Gemini, MAI, 鈥? 鈫?OpenAI-shaped /responses
- * A hardcoded set previously drifted from Copilot's catalog and threw
- * "Unknown Copilot model" for valid models (e.g. claude-opus-4.7, gpt-5.5).
+ * 按模型家族路由，而不是使用硬编码 allowlist，这样从 /models 实时获取的新 Copilot
+ * 模型无需改代码即可工作：
+ *   - Claude 模型 → Anthropic 形状的 /v1/messages
+ *   - 其他所有模型（GPT/Codex、Gemini、MAI 等）→ OpenAI 形状的 /responses
+ * 过去硬编码集合会与 Copilot 目录漂移，并对有效模型抛出
+ * "Unknown Copilot model"（例如 claude-opus-4.7、gpt-5.5）。
  */
 function isAnthropicShapedModel(modelId: string): boolean {
   return modelId.startsWith("claude");
 }
 
 // =============================================================================
-// Helpers
+// 辅助函数
 // =============================================================================
 
-/** Detect 401 Unauthorized errors from either SDK. */
+/** 检测任一 SDK 返回的 401 Unauthorized 错误。 */
 function is401Error(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as Record<string, unknown>;
@@ -66,7 +66,7 @@ function is401Error(err: unknown): boolean {
 }
 
 // =============================================================================
-// Inner: Anthropic-shaped (Claude models via Copilot /v1/messages)
+// 内部实现：Anthropic 形状（Claude 模型经 Copilot /v1/messages）
 // =============================================================================
 
 class CopilotAnthropicImpl extends AnthropicProvider {
@@ -75,15 +75,14 @@ class CopilotAnthropicImpl extends AnthropicProvider {
     const copilotHeaders = buildCopilotRequestHeaders({ vision, isAgent });
 
     this._client = new Anthropic({
-      // Placeholder 鈥?real auth is injected in the fetch hook below to avoid
-      // the SDK's default x-api-key header, which Copilot's proxy rejects.
+      // 占位符 — 真实认证在下面的 fetch 钩子中注入，
+      // 避免 SDK 默认的 x-api-key 头（Copilot 代理会拒绝它）。
       apiKey: "unused-copilot-token-manager-owned",
       baseURL: apiToken.endpointApi,
-      // Disable the SDK's built-in retry loop. Our outer tool-loop has its own
-      // network-retry layer (`src/network-retry.ts`) which is correctly scoped
-      // (excludes 400s, exponential backoff, logged). A second hidden retry
-      // layer inside the SDK silently multiplies Copilot billing on any
-      // transient 429/5xx/`x-should-retry: true`.
+      // 禁用 SDK 内置重试循环。外层 tool-loop 有自己的 network-retry 层
+      //（`src/network-retry.ts`），其作用域正确（排除 400、指数退避、有日志）。
+      // SDK 内部第二层隐藏重试会在任何临时 429/5xx/`x-should-retry: true`
+      // 上静默放大 Copilot 计费。
       maxRetries: 0,
       fetch: async (input, init) => {
         const freshToken = await copilotTokenManager.getToken();
@@ -120,7 +119,7 @@ class CopilotAnthropicImpl extends AnthropicProvider {
 }
 
 // =============================================================================
-// Inner: OpenAI Responses-shaped (GPT/Codex models via Copilot /responses)
+// 内部实现：OpenAI Responses 形状（GPT/Codex 模型经 Copilot /responses）
 // =============================================================================
 
 class CopilotResponsesImpl extends OpenAIResponsesProvider {
@@ -129,13 +128,12 @@ class CopilotResponsesImpl extends OpenAIResponsesProvider {
     const copilotHeaders = buildCopilotRequestHeaders({ vision, isAgent });
 
     this._client = new OpenAI({
-      // OpenAI SDK turns apiKey into `Authorization: Bearer ${apiKey}`.
+      // OpenAI SDK 会将 apiKey 转换为 `Authorization: Bearer ${apiKey}`。
       apiKey: apiToken.token,
       baseURL: apiToken.endpointApi,
       defaultHeaders: copilotHeaders,
-      // Disable the SDK's built-in retry loop (default is 2 retries). See the
-      // comment in CopilotAnthropicImpl above 鈥?a second retry layer inside
-      // the SDK silently multiplies Copilot billing on transient errors.
+      // 禁用 SDK 内置重试循环（默认重试 2 次）。见上方 CopilotAnthropicImpl 注释 —
+      // SDK 内部第二层重试会在临时错误上静默放大 Copilot 计费。
       maxRetries: 0,
     });
   }
@@ -162,18 +160,17 @@ class CopilotResponsesImpl extends OpenAIResponsesProvider {
 }
 
 // =============================================================================
-// Dispatcher: the only class exposed to registry.ts
+// 分派器：唯一暴露给 registry.ts 的类
 // =============================================================================
 
 /**
- * GitHub Copilot provider dispatcher.
+ * GitHub Copilot 提供者分派器。
  *
- * Routes by `config.model`:
- *   - Claude models 鈫?CopilotAnthropicImpl (/v1/messages)
- *   - GPT / Codex models 鈫?CopilotResponsesImpl (/responses)
+ * 按 `config.model` 路由：
+ *   - Claude 模型 → CopilotAnthropicImpl (/v1/messages)
+ *   - GPT / Codex 模型 → CopilotResponsesImpl (/responses)
  *
- * Exposes a single "copilot" provider ID; the Claude vs GPT split is invisible
- * to the rest of the system.
+ * 暴露单个 "copilot" 提供者 ID；Claude vs GPT 的拆分对系统其余部分不可见。
  */
 export class CopilotProvider extends BaseProvider {
   override readonly requiresAlternatingRoles: boolean;

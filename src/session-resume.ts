@@ -6,7 +6,7 @@ import { loadLog, validateAndRepairLog, type SessionStore } from "./config/persi
 import type { Session } from "./session.js";
 
 /**
- * One swarmflow session located on disk. Exposed by `findSessionById`.
+ * 磁盘上的一个 swarmflow 会话。由 `findSessionById` 暴露。
  */
 export interface FoundSession {
   /** Absolute path to the session directory. */
@@ -20,8 +20,8 @@ export interface FoundSession {
 }
 
 /**
- * Look up a session by its UUID across all projects in the swarmflow home.
- * Returns null if no project contains a directory with this name.
+ * 在 swarmflow 主目录的所有项目中按 UUID 查找会话。
+ * 如果没有项目包含此名称的目录，则返回 null。
  */
 export function findSessionById(sessionId: string, homeDir?: string): FoundSession | null {
   const base = homeDir ?? getSwarmflowHomeDir();
@@ -73,12 +73,12 @@ export interface RestoreResult {
 }
 
 /**
- * Load a session log into an existing (freshly bootstrapped) Session, swapping
- * in its history, model, title, etc. The store is rebound to the resumed dir.
+ * 将会话日志加载到现有（ freshly bootstrapped）Session 中，
+ * 交换其历史记录、模型、标题等。存储绑定到恢复的目录。
  *
- * Used by both:
- *   鈥?the `/session <id>` slash command (via cmdResume)
- *   鈥?the `swarmflow --resume <id>` CLI flag (via main.tsx after bootstrap)
+ * 用于：
+ *   —`/session <id>` 斜杠命令（通过 cmdResume）
+ *   —`swarmflow --resume <id>` CLI 标志（通过 bootstrap 后的 main.tsx）
  */
 export function applySessionRestore(
   session: Session,

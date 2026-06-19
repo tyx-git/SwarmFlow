@@ -1,22 +1,22 @@
 ﻿/**
- * Update checker and self-updater.
+ * 更新检查器和自我更新器。
  *
- * Checks GitHub Releases for a newer version at most once per 24 hours.
- * Caches the result in ~/.swarmflow/.update-check.json.
+ * 每次启动最多一次在后台检查 GitHub Releases 是否有新版本。
+ * 将结果缓存到 ~/.swarmflow/.update-check.json。
  *
- * Update flow:
- *   1. Background check finds a new version 鈫?downloads tarball to ~/.swarmflow/staged/
- *   2. TUI shows a hint: "v0.3.0 ready 鈥?restart to apply"
- *   3. On next startup, applyStaged() installs staged files into the install
- *      dir in-process 鈥?on every platform. Windows refuses to delete or
- *      overwrite a file whose image is in use (the running swarmflow.exe, a DLL
- *      loaded by another instance) but allows RENAMING it, so locked files
- *      are renamed aside to *.old.<timestamp> and the new file moved in;
- *      leftovers are cleaned up best-effort on later launches. Same idiom as
- *      Claude Code's native installer and rustup. If an install still fails
- *      (transient lock), staged is kept and retried on the next launch.
+ * 更新流程：
+ *   1. 后台检查发现新版本 → 下载 tarball 到 ~/.swarmflow/staged/
+ *   2. TUI 显示提示："v0.3.0 ready — restart to apply"
+ *   3. 在下次启动时，applyStaged() 将暂存文件安装到安装
+ *      目录（进程内）— 在每个平台上。Windows 拒绝删除或
+ *      覆盖正在使用的文件（运行中的 swarmflow.exe、被另一个实例
+ *      加载的 DLL），但允许重命名，因此被锁定的文件
+ *      被重命名为 *.old.<timestamp>，新文件移入；
+ *      残留物在后续启动时最佳努力清理。与
+ *      Claude Code 的原生安装程序和 rustup 相同。如果安装仍然失败
+ *      （临时锁定），暂存文件保留并在下次启动时重试。
  *
- * `swarmflow update` uses the same staging path and asks the user to restart.
+ * `swarmflow update` 使用相同的暂存路径并要求用户重启。
  */
 
 import {
@@ -41,7 +41,7 @@ import { getSwarmflowHomeDir } from "./lib/home-path.js";
 
 const GITHUB_REPO = "tyx-git/SwarmFlow";
 const CACHE_FILE = ".update-check.json";
-// No longer throttled 鈥?every launch checks for updates in the background.
+// 不再节流 — 每次启动都在后台检查更新。
 
 interface UpdateCache {
   lastCheck: number;
@@ -80,7 +80,7 @@ function readCache(home: string): UpdateCache | null {
     if (typeof raw.lastCheck === "number" && typeof raw.latestVersion === "string") {
       return raw as UpdateCache;
     }
-  } catch { /* ignore */ }
+  } catch { /* 忽略 */ }
   return null;
 }
 
@@ -88,7 +88,7 @@ function writeCache(cache: UpdateCache, home: string): void {
   try {
     mkdirSync(home, { recursive: true });
     writeFileSync(cachePath(home), JSON.stringify(cache));
-  } catch { /* ignore */ }
+  } catch { /* 忽略 */ }
 }
 
 function parseVersion(v: string): { parts: number[]; pre: string | undefined } {
@@ -99,10 +99,10 @@ function parseVersion(v: string): { parts: number[]; pre: string | undefined } {
 }
 
 /**
- * Returns true if `latest` is a newer version than `current`.
- * Handles prerelease: release > prerelease for same major.minor.patch.
- * Does NOT compare prerelease identifiers (alpha.1 vs alpha.2) 鈥?those
- * are treated as equal (manual `swarmflow update` handles prerelease upgrades).
+ * 如果 `latest` 比 `current` 更新则返回 true。
+ * 处理预发布版本：相同 major.minor.patch 下正式版 > 预发布版。
+ * 不比较预发布标识符（alpha.1 vs alpha.2）— 它们被视为相等
+ *（手动 `swarmflow update` 会处理预发布升级）。
  */
 export function compareVersions(current: string, latest: string): boolean {
   const c = parseVersion(current);
@@ -119,8 +119,8 @@ export function compareVersions(current: string, latest: string): boolean {
 }
 
 /**
- * Three-way version comparison: a < b 鈫?-1, a === b 鈫?0, a > b 鈫?1.
- * Used for disk-version checks where we need >=, not just "is newer".
+ * 三向版本比较：a < b → -1，a === b → 0，a > b → 1。
+ * 用于磁盘版本检查，此处需要 >=，而不只是“是否更新”。
  */
 export function compareVersionOrder(a: string, b: string): -1 | 0 | 1 {
   const pa = parseVersion(a);
@@ -138,9 +138,9 @@ export function compareVersionOrder(a: string, b: string): -1 | 0 | 1 {
 }
 
 /**
- * Classify the update as patch, minor, or major.
- * Only call after `compareVersions(current, latest) === true`.
- * Returns null if latest <= current (defensive).
+ * 将更新分类为 patch、minor 或 major。
+ * 仅在 `compareVersions(current, latest) === true` 后调用。
+ * 如果 latest <= current 则返回 null（防御性处理）。
  */
 export function getReleaseType(current: string, latest: string): "patch" | "minor" | "major" | null {
   const c = parseVersion(current);
@@ -176,8 +176,8 @@ function isProductionInstall(
   return basename(execPath).toLowerCase() === expected.toLowerCase();
 }
 
-// Pre-v0.3.10 Windows updates went through a detached PowerShell handoff;
-// these are its on-disk leftovers. Removed best-effort on every launch.
+// v0.3.10 之前的 Windows 更新会经过分离的 PowerShell 交接；
+// 这些是它留在磁盘上的残留物。每次启动时尽力删除。
 const LEGACY_HANDOFF_FILES = [
   ".update-handoff-pending",
   "apply-staged-helper.ps1",
@@ -198,11 +198,10 @@ function cleanupLegacyHandoffArtifacts(home: string, installDir: string): void {
 const RENAMED_OLD_PATTERN = /\.old\.\d+$/;
 
 /**
- * Delete *.old.<timestamp> files left behind by installFile's rename-away
- * fallback. Deletion fails while the renamed image is still mapped by a
- * running process 鈥?those are skipped and retried on a later launch.
- * Depth 3 covers everywhere locked files live: the executable (root) and
- * native libraries (native/<platform>/<lib>).
+ * 删除 installFile 重命名回退留下的 *.old.<timestamp> 文件。
+ * 当重命名后的镜像仍被运行中进程映射时删除会失败 — 这些文件会被跳过，
+ * 并在后续启动时重试。深度 3 覆盖所有锁定文件可能存在的位置：
+ * 可执行文件（根目录）和原生库（native/<platform>/<lib>）。
  */
 function cleanupRenamedOldFiles(dir: string, depth = 3): void {
   try {
@@ -213,7 +212,7 @@ function cleanupRenamedOldFiles(dir: string, depth = 3): void {
       } else if (RENAMED_OLD_PATTERN.test(entry.name)) {
         try {
           rmSync(full, { force: true });
-        } catch { /* still mapped by a running process; next launch */ }
+        } catch { /* 仍被运行中进程映射；下次启动再试 */ }
       }
     }
   } catch { /* best-effort */ }
@@ -259,18 +258,16 @@ async function fetchLatestRelease(): Promise<{ version: string; downloadUrl: str
   }
 }
 
-// Abort a download if no bytes arrive for this long. Bun's fetch has no
-// built-in stall timeout, so a connection that hangs with no progress
-// (a blocked host behind a proxy the process can't reach) would
-// otherwise wait forever 鈥?the bug that surfaced as a self-update stuck
-// at "Downloading update...". A stall watchdog (rather than a fixed
-// total timeout) still tolerates a slow-but-progressing large download.
+// 如果这么久没有收到任何字节，则中止下载。Bun 的 fetch 没有内置停滞超时，
+// 因此没有进展的挂起连接（进程无法到达代理后的受阻主机）否则会永远等待 —
+// 这个 bug 曾表现为自更新卡在 "Downloading update..."。停滞看门狗
+//（而不是固定总超时）仍能容忍缓慢但持续推进的大文件下载。
 const DOWNLOAD_STALL_TIMEOUT_MS = 30_000;
 
 /**
- * Download a URL into memory with a stall watchdog: the timer is armed
- * before the request (so it also bounds connect/TTFB) and reset on every
- * chunk; if it fires, the fetch is aborted. Returns the full body bytes.
+ * 使用停滞看门狗将 URL 下载到内存：计时器在请求前启动
+ *（因此也限制连接/TTFB），并在每个 chunk 上重置；
+ * 如果触发，则中止 fetch。返回完整 body 字节。
  */
 async function downloadToBytes(
   url: string,
@@ -332,7 +329,7 @@ async function downloadAndStage(downloadUrl: string, home: string): Promise<void
     const actualHash = computeSha256(bytes);
     if (actualHash.toLowerCase() !== expectedHash.toLowerCase()) {
       rmSync(staged, { recursive: true, force: true });
-      throw new Error("Checksum mismatch 鈥?download may be corrupted");
+      throw new Error("Checksum mismatch — download may be corrupted");
     }
   }
 
@@ -349,13 +346,11 @@ async function downloadAndStage(downloadUrl: string, home: string): Promise<void
 }
 
 /**
- * Install one file via copy鈫抰mp鈫抮ename. On POSIX the rename atomically
- * replaces dest even while it is executing (the old inode lives on unnamed).
- * On Windows, replacing a file whose image is in use fails 鈥?but renaming
- * that file is allowed, so the fallback moves dest aside to *.old.<ts>,
- * moves the new file in, and rolls the rename back if that fails. The .old
- * file is deleted immediately when possible, otherwise by
- * cleanupRenamedOldFiles on a later launch.
+ * 通过 copy→temp→rename 安装单个文件。在 POSIX 上，即使 dest 正在执行，
+ * rename 也会原子替换 dest（旧 inode 以无名形式继续存在）。
+ * 在 Windows 上，替换正在使用镜像的文件会失败 — 但允许重命名该文件，
+ * 因此回退路径会将 dest 移到 *.old.<ts>，再移入新文件；如果失败则回滚重命名。
+ * .old 文件会在可行时立即删除，否则由后续启动中的 cleanupRenamedOldFiles 清理。
  */
 function installFile(src: string, dest: string, preserveDestMode: boolean): void {
   const tmp = `${dest}.tmp`;
@@ -364,7 +359,7 @@ function installFile(src: string, dest: string, preserveDestMode: boolean): void
   if (preserveDestMode && osCapabilities.supportsPosixPermissions) {
     try {
       chmodSync(tmp, statSync(dest).mode);
-    } catch { /* dest might not exist yet */ }
+    } catch { /* Dest可能还不存在 */ }
   }
   try {
     renameSync(tmp, dest);
@@ -376,17 +371,17 @@ function installFile(src: string, dest: string, preserveDestMode: boolean): void
       renameSync(tmp, dest);
     } catch (moveErr) {
       try {
-        renameSync(old, dest); // roll back so the install keeps working
-      } catch { /* leave the renamed copy; nothing destructive happened */ }
+        renameSync(old, dest); // 回滚以保持安装仍可工作
+      } catch { /* 留下重命名的副本；没有发生什么破坏性的事情 */ }
       throw moveErr;
     }
     try {
       rmSync(old, { force: true });
-    } catch { /* image still mapped; cleaned up on a later launch */ }
+    } catch { /* 镜像仍被映射；后续启动时清理 */ }
   }
 }
 
-/** Per-file merge of src dir into dest dir; replaces files, keeps strays. */
+/* 将 src 目录按文件叠加到 dest 目录；替换文件并保留目录结构。 */
 function overlayEntry(src: string, dest: string): void {
   if (statSync(src).isDirectory()) {
     if (existsSync(dest) && !statSync(dest).isDirectory()) {
@@ -402,14 +397,13 @@ function overlayEntry(src: string, dest: string): void {
 }
 
 /**
- * Install staged entries into the install directory, binaries last: the
- * executable swap is the commit point, so a failure partway through leaves
- * the old binary launchable and the next launch retries from staged.
+ * 将暂存条目安装到安装目录，二进制文件最后处理：
+ * 可执行文件替换是提交点，因此中途失败会留下可启动的旧二进制，
+ * 下次启动会从暂存目录重试。
  *
- * Directories are replaced wholesale (clears files dropped by the new
- * version); when that fails 鈥?e.g. a DLL inside is loaded by another
- * running instance on Windows 鈥?they fall back to a per-file overlay with
- * rename-away handling for the locked files.
+ * 目录会整体替换（清理新版本已删除的文件）；当失败时 — 例如 Windows 上
+ * 其中的 DLL 被另一个运行中实例加载 — 回退为逐文件叠加，
+ * 并对锁定文件使用重命名移开处理。
  */
 function installStagedEntries(staged: string, installDir: string): void {
   const entries = readdirSync(staged);
@@ -437,10 +431,10 @@ function installStagedEntries(staged: string, installDir: string): void {
 }
 
 /**
- * Apply a staged update on startup. Installs files from ~/.swarmflow/staged/
- * into the install directory (~/.swarmflow/bin/) 鈥?same in-process path on every
- * platform (see the module header for the Windows locked-file strategy).
- * On failure, staged is kept and the apply retries on the next launch.
+ * 启动时应用暂存更新。将文件从 ~/.swarmflow/staged/ 安装到安装目录
+ *（~/.swarmflow/bin/）— 每个平台都使用相同的进程内路径
+ *（Windows 锁定文件策略见模块头部）。失败时保留 staged，
+ * 并在下次启动时重试应用。
  */
 export function applyStaged(
   homeDirOverride?: string,
@@ -467,7 +461,7 @@ export function applyStaged(
   const cache = readCache(home);
   const version = cache?.latestVersion ?? null;
 
-  // Disk version check: skip if another instance already applied
+  // 磁盘版本检查：如果另一个实例已应用则跳过
   if (version) {
     try {
       const binaryPath = join(installDir, executableNameForPlatform(platform));
@@ -481,15 +475,14 @@ export function applyStaged(
         rmSync(staged, { recursive: true, force: true });
         return { kind: "none" };
       }
-    } catch { /* proceed with apply */ }
+    } catch { /* 继续申请 */ }
   }
 
   try {
     installStagedEntries(staged, installDir);
   } catch (err) {
-    // Most likely a transient lock (another swarmflow instance still running).
-    // Keep staged so the next launch retries; this session runs the current
-    // binary.
+    // 很可能是临时锁定（另一个 swarmflow 实例仍在运行）。
+    // 保留 staged 以便下次启动重试；本会话继续运行当前二进制。
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`swarmflow: staged update not applied (${msg}); will retry on next launch.`);
     return { kind: "none" };
@@ -499,11 +492,11 @@ export function applyStaged(
 }
 
 /**
- * Non-blocking background update check.
- * `autoUpdate` controls download behavior:
- *   - true (default): patch/minor auto-download; major notify only
- *   - "notify": all versions notify only
- * Returns a callback that yields the current UpdateState.
+ * 非阻塞后台更新检查。
+ * `autoUpdate` 控制下载行为：
+ *   - true（默认）：patch/minor 自动下载；major 仅通知
+ *   - "notify"：所有版本都仅通知
+ * 返回一个生成当前 UpdateState 的回调。
  */
 export function checkForUpdates(
   currentVersion: string,
@@ -553,7 +546,7 @@ export function checkForUpdates(
 }
 
 /**
- * Check-only: fetch latest version and print comparison.
+ * 仅检查：获取最新版本并打印比较结果。
  */
 export async function runUpdateCheck(currentVersion: string): Promise<void> {
   console.log("Checking for updates...");
@@ -566,7 +559,7 @@ export async function runUpdateCheck(currentVersion: string): Promise<void> {
     console.log(`Already up to date (${currentVersion}).`);
   } else {
     const type = getReleaseType(currentVersion, release.version);
-    console.log(`Update available: ${currentVersion} 鈫?${release.version} (${type ?? "unknown"})`);
+    console.log(`Update available: ${currentVersion} → ${release.version} (${type ?? "unknown"})`);
     if (!release.downloadUrl) {
       console.log(`No binary found for ${process.platform}-${process.arch}.`);
     }
@@ -574,7 +567,7 @@ export async function runUpdateCheck(currentVersion: string): Promise<void> {
 }
 
 /**
- * Full update: download, verify, and stage for the next restart.
+ * 完整更新：下载、验证，并为下次重启暂存。
  */
 export async function runUpdate(currentVersion: string, homeDirOverride?: string): Promise<void> {
   const home = homeDir(homeDirOverride);
@@ -609,14 +602,14 @@ export async function runUpdate(currentVersion: string, homeDirOverride?: string
   writeCache({ lastCheck: Date.now(), latestVersion: release.version }, home);
 
   console.log("[2/3] Verifying checksum...");
-  // Checksum was already verified inside downloadAndStage if .sha256 was available.
+  // 如果 .sha256 可用，校验和已在 downloadAndStage 内验证。
 
   console.log("[3/3] Staging update...");
-  console.log(`鉁?v${release.version} ready. Restart swarmflow to apply the update.`);
+  console.log(`✓ v${release.version} ready. Restart swarmflow to apply the update.`);
 }
 
 // ------------------------------------------------------------------
-// Structured update state for TUI consumption
+// 供 TUI 消费的结构化更新状态
 // ------------------------------------------------------------------
 
 export type UpdatePhase =
@@ -661,15 +654,15 @@ export function getUpdateNotice(): string | null {
   const state = getUpdateState();
   switch (state.phase) {
     case "staged":
-      return `鉁?v${state.latestVersion} ready (restart to apply)`;
+      return `✓ v${state.latestVersion} ready (restart to apply)`;
     case "available":
-      return `v${state.latestVersion} available 鈥?run \`swarmflow update\``;
+      return `v${state.latestVersion} available — run \`swarmflow update\``;
     case "downloading":
       return `Downloading v${state.latestVersion}...`;
     case "failed":
       return state.latestVersion
-        ? `Update to v${state.latestVersion} failed 鈥?check proxy/network`
-        : "Update check failed 鈥?check proxy/network";
+        ? `Update to v${state.latestVersion} failed — check proxy/network`
+        : "Update check failed — check proxy/network";
     default:
       return null;
   }

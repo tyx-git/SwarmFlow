@@ -1,18 +1,18 @@
-﻿/**
- * Session persistence 鈥?log-native session storage on disk.
+/**
+ * 会话持久化——基于日志的磁盘存储。
  *
- * Storage layout:
+ * 存储布局：
  *
  *   <base_dir>/
- *   鈹斺攢鈹€ projects/
- *       鈹溾攢鈹€ <project_slug>/           # <dir_name>_<sha256[:6]>
- *       鈹?  鈹溾攢鈹€ project.json
- *       鈹?  鈹溾攢鈹€ <session_uuid_v7>/    # e.g. 019de786-1e41-7d21-b1e6-43919a4be1ce
- *       鈹?  鈹?  鈹溾攢鈹€ log.json
- *       鈹?  鈹?  鈹溾攢鈹€ meta.json
- *       鈹?  鈹?  鈹斺攢鈹€ artifacts/
- *       鈹?  鈹斺攢鈹€ ...
- *       鈹斺攢鈹€ general/                  # sessions without a project path
+ *   └── projects/
+ *       ├── <project_slug>/           # <dir_name>_<sha256[:6]>
+ *       │   ├── project.json
+ *       │   ├── <session_uuid_v7>/    # 例如 019de786-1e41-7d21-b1e6-43919a4be1ce
+ *       │   │   ├── log.json
+ *       │   │   ├── meta.json
+ *       │   │   └── artifacts/
+ *       │   └── ...
+ *       └── general/                  # 无项目路径的会话
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -35,32 +35,39 @@ import { parseJsonc } from "./lib/jsonc.js";
 import type { MCPServerConfig } from "./config/config.js";
 
 // ------------------------------------------------------------------
-// Constants
+// 常量
 // ------------------------------------------------------------------
 
+/** 设置文件名 */
 const SETTINGS_FILE = "settings.json";
+/** 状态目录名 */
 const STATE_DIR = "state";
+/** 模型选择文件名 */
 const MODEL_SELECTION_FILE = "model-selection.json";
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
+/** 生成项目路径的 slug 格式：<name>_<sha256前6位> */
 function projectSlug(projectPath: string): string {
   const name = basename(projectPath) || "root";
   const h = createHash("sha256").update(projectPath).digest("hex").slice(0, 6);
   return `${name}_${h}`;
 }
 
+/** 解析首选基础目录，将 ~ 替换为用户主目录 */
 function resolvePreferredBaseDir(baseDir?: string): string {
   if (baseDir) return baseDir.replace(/^~/, homedir());
   return getSwarmflowHomeDir();
 }
 
+/** 获取当前会话的时区标识符 */
 function resolveSessionTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
+/** 将 Date 对象格式化为带本地时区偏移的 ISO 字符串 */
 function formatLocalIso(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
   const offsetMinutes = -d.getTimezoneOffset();
@@ -75,6 +82,7 @@ function formatLocalIso(d: Date): string {
   ].join("");
 }
 
+/** 将 UTC ISO 字符串转换为带本地时区偏移的 ISO 字符串 */
 function toLocalIsoFromUtc(utcIso: string): string {
   if (!utcIso) return "";
   const ms = Date.parse(utcIso);
@@ -82,6 +90,7 @@ function toLocalIsoFromUtc(utcIso: string): string {
   return formatLocalIso(new Date(ms));
 }
 
+/** 获取当前时间的多种格式时间戳 */
 function nowTimestamps(): {
   utcIso: string;
   localIso: string;
@@ -98,9 +107,8 @@ function nowTimestamps(): {
 }
 
 /**
- * Generate a UUIDv7 鈥?48-bit ms timestamp (big-endian) + version + random.
- * Time-ordered so lexicographic and chronological listings agree, useful as
- * the session directory name (which doubles as the session ID).
+ * 生成 UUIDv7——48 位毫秒时间戳（大端序）+ 版本号 + 随机数。
+ * 时间有序，使得字典序和时间顺序一致，用作会话目录名（同时作为会话 ID）。
  */
 export function randomSessionId(): string {
   const ts = BigInt(Date.now());
@@ -119,14 +127,16 @@ export function randomSessionId(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+/** UUID 格式的会话 ID 正则表达式 */
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** 检查字符串是否看起来像会话 ID */
 function looksLikeSessionId(name: string): boolean {
   return SESSION_ID_RE.test(name);
 }
 
 // ------------------------------------------------------------------
-// SessionStore
+// SessionStore——会话存储管理
 // ------------------------------------------------------------------
 
 export class SessionStore {
@@ -147,8 +157,9 @@ export class SessionStore {
     this._projectDir = join(this._preferredBaseDir, "projects", this._projectSlug);
   }
 
-  // -- lifecycle --
+  // -- 生命周期 --
 
+  /** 返回候选的基础目录列表（首选目录 + 临时目录） */
   private _candidateBaseDirs(): string[] {
     const candidates = [
       this._preferredBaseDir,
@@ -164,6 +175,7 @@ export class SessionStore {
     return dedup;
   }
 
+  /** 确保项目元数据文件存在，不存在则创建 */
   private _ensureProjectMetadata(projectDir: string): void {
     const projectJson = join(projectDir, "project.json");
     if (existsSync(projectJson)) return;
@@ -182,9 +194,9 @@ export class SessionStore {
     );
   }
 
+  /** 查找唯一的会话目录，UUIDv7 碰撞概率极低，发生时重新生成 */
   private static _findUniqueSessionDir(projectDir: string): string {
-    // UUIDv7 collisions are astronomically unlikely; if it ever happens,
-    // we just regenerate.
+    // UUIDv7 碰撞概率极低；如果发生，只需重新生成。
     for (let attempt = 0; attempt < 8; attempt++) {
       const candidate = join(projectDir, randomSessionId());
       if (!existsSync(candidate)) return candidate;
@@ -192,6 +204,7 @@ export class SessionStore {
     throw new Error("Failed to allocate a unique session directory.");
   }
 
+  /** 创建新的会话目录结构，返回会话目录路径 */
   createSession(): string {
     const errors: string[] = [];
 
@@ -207,7 +220,7 @@ export class SessionStore {
         mkdirSync(sessionDir, { recursive: true });
         mkdirSync(join(sessionDir, "artifacts"), { recursive: true });
 
-        // Ensure global AGENTS.md exists (fallback for users who skipped init wizard)
+        // 确保全局 AGENTS.md 存在（跳过初始化向导的用户的回退方案）
         const globalAgentsMd = join(baseDir, "AGENTS.md");
         if (!existsSync(globalAgentsMd)) {
           try { writeFileSync(globalAgentsMd, ""); } catch { /* non-critical */ }
@@ -234,12 +247,13 @@ export class SessionStore {
     throw new Error(`Unable to create session storage directory. Tried: ${detail}`);
   }
 
-  /** Clear the current session directory (used by /new to defer creation). */
+  /** 清除当前会话目录（用于 /new 延迟创建） */
   clearSession(): void {
     this._sessionDir = undefined;
     this._predictedSessionDir = undefined;
   }
 
+  /** 捕获当前绑定状态快照 */
   captureBindingState(): {
     activeBaseDir: string | undefined;
     projectDir: string;
@@ -254,6 +268,7 @@ export class SessionStore {
     };
   }
 
+  /** 从快照恢复绑定状态 */
   restoreBindingState(state: {
     activeBaseDir: string | undefined;
     projectDir: string;
@@ -266,6 +281,7 @@ export class SessionStore {
     this._predictedSessionDir = state.predictedSessionDir;
   }
 
+  /** 附加到现有会话目录 */
   attachToExistingSession(sessionDir: string): void {
     this._sessionDir = sessionDir;
     this._predictedSessionDir = undefined;
@@ -277,6 +293,7 @@ export class SessionStore {
     }
   }
 
+  /** 预测下一个会话目录路径（不创建，仅预测） */
   predictNextSessionDir(): string {
     if (this._sessionDir) return this._sessionDir;
     if (this._predictedSessionDir) return this._predictedSessionDir;
@@ -301,10 +318,12 @@ export class SessionStore {
     throw new Error(`Unable to predict session storage directory. Tried: ${detail}`);
   }
 
+  /** 预测下一个工件目录路径 */
   predictNextArtifactsDir(): string {
     return join(this.predictNextSessionDir(), "artifacts");
   }
 
+  /** 列出当前项目的所有会话，按最后活跃时间降序排列 */
   listSessions(): Array<{ sessionId: string; path: string; created: string; lastActiveAt: string; summary: string; title?: string; turns: number }> {
     if (!existsSync(this._projectDir)) return [];
 
@@ -320,7 +339,7 @@ export class SessionStore {
         continue;
       }
 
-      // Prefer meta.json for fast listing
+      // 优先使用 meta.json 进行快速列表
       const metaFile = join(d, "meta.json");
       if (existsSync(metaFile)) {
         try {
@@ -333,7 +352,7 @@ export class SessionStore {
           const title = raw.title ?? undefined;
           const turns = raw.turn_count ?? 0;
           const sessionId = (raw.session_id as string | undefined) || name;
-          // Skip empty sessions (0 turns) and archived sessions
+          // 跳过空会话（0 轮）和已归档的会话
           if (turns === 0) continue;
           if (raw.archived) continue;
           sessions.push({ sessionId, path: d, created, lastActiveAt, summary, title, turns });
@@ -343,7 +362,7 @@ export class SessionStore {
         }
       }
 
-      // Fallback to log.json
+      // 回退到 log.json
       const logFile = join(d, "log.json");
       if (!existsSync(logFile)) continue;
       try {
@@ -365,7 +384,7 @@ export class SessionStore {
       }
     }
 
-    // Sort by lastActiveAt descending (most recently active first)
+    // 按最后活跃时间降序排列（最近活跃的排在前面）
     sessions.sort((a, b) => {
       if (!a.lastActiveAt && !b.lastActiveAt) return 0;
       if (!a.lastActiveAt) return 1;
@@ -376,7 +395,7 @@ export class SessionStore {
     return sessions;
   }
 
-  /** List all projects across the storage directory, sorted by last_active_at descending. */
+  /** 列出存储目录中的所有项目，按最后活跃时间降序排列 */
   listProjects(): Array<{
     slug: string;
     originalPath: string;
@@ -413,7 +432,7 @@ export class SessionStore {
       } catch { continue; }
     }
 
-    // Sort by last_active_at descending
+    // 按 last_active_at 降序排列
     result.sort((a, b) => {
       if (!a.lastActiveAt && !b.lastActiveAt) return 0;
       if (!a.lastActiveAt) return 1;
@@ -424,10 +443,12 @@ export class SessionStore {
     return result;
   }
 
+  /** 获取项目目录路径 */
   get projectDir(): string {
     return this._projectDir;
   }
 
+  /** 获取工件目录路径，不存在时自动创建 */
   get artifactsDir(): string | undefined {
     if (!this._sessionDir) return undefined;
     const d = join(this._sessionDir, "artifacts");
@@ -440,6 +461,7 @@ export class SessionStore {
     return d;
   }
 
+  /** 获取当前会话目录路径 */
   get sessionDir(): string | undefined {
     return this._sessionDir;
   }
@@ -449,9 +471,9 @@ export class SessionStore {
   }
 
   /**
-   * Scan every session's log.json across all projects and sum token_update
-   * entries. Returns cumulative input/output/cached/uncached + session count.
-   * Designed for the /stat panel 鈥?tolerates corrupt/missing files gracefully.
+   * 扫描所有项目的每个会话的 log.json，汇总 token_update 条目。
+   * 返回累计输入/输出/缓存/未缓存 token 数 + 会话数。
+   * 为 /stat 面板设计——优雅地容忍损坏/缺失的文件。
    */
   computeGlobalTokenStats(): GlobalTokenStats {
     const projectsDir = join(this._preferredBaseDir, "projects");
@@ -498,155 +520,189 @@ export class SessionStore {
   }
 }
 
+/** 全局 token 统计数据 */
 export interface GlobalTokenStats {
+  /** 累计输入 token 数 */
   cumulativeInput: number;
+  /** 累计输出 token 数 */
   cumulativeOutput: number;
+  /** 累计缓存读取 token 数 */
   cumulativeCacheRead: number;
+  /** 累计未缓存 token 数 */
   cumulativeUncached: number;
+  /** 包含 token 数据的会话数 */
   sessionCount: number;
 }
 
 // ====================================================================
-// Log-native persistence (v2)
+// 基于日志的持久化（v2）
 // ====================================================================
 
 // ------------------------------------------------------------------
-// LogSessionMeta
+// LogSessionMeta——会话元数据接口
 // ------------------------------------------------------------------
 
+/** 会话元数据——存储在 meta.json 中 */
 export interface LogSessionMeta {
+  /** 元数据版本号 */
   version: number;
+  /** 会话 UUID */
   sessionId: string;
+  /** 创建时间（UTC ISO 格式） */
   createdAt: string;
+  /** 最后更新时间（UTC ISO 格式） */
   updatedAt: string;
+  /** 原始项目路径 */
   projectPath: string;
+  /** 模型配置名称 */
   modelConfigName: string;
+  /** 模型提供商 */
   modelProvider?: string;
+  /** 模型选择键 */
   modelSelectionKey?: string;
+  /** 模型 ID */
   modelId?: string;
-  /** Model identity at session creation. Stable across resumes and /model switches. */
+  /** 会话创建时的模型身份，在恢复和 /model 切换时保持稳定 */
   initialModel?: string;
+  /** 会话摘要 */
   summary: string;
+  /** 会话标题 */
   title?: string;
+  /** 对话轮数 */
   turnCount: number;
+  /** 压缩次数 */
   compactCount: number;
+  /** 思维链级别 */
   thinkingLevel: string;
+  /** 子会话元数据记录 */
   childSessions?: ChildSessionMetaRecord[];
-  /** Root session's frozen inbox (persisted on close for snapshot/restore). */
+  /** 根会话的冻结收件箱（关闭时持久化，用于快照/恢复） */
   inbox?: import("./session-tree-types.js").MessageEnvelope[];
 }
 
-/** Local inference server config (oMLX, LM Studio, etc.) */
-/** One model under a custom/local provider (resolved runtime shape). */
+/** 自定义/本地提供商下的单个模型（解析后的运行时形状） */
 export interface LocalModelEntry {
+  /** 模型 ID */
   id: string;
+  /** 上下文长度（token 数） */
   contextLength: number;
+  /** 最大输出 token 数 */
   maxOutputTokens?: number;
+  /** 是否支持多模态输入 */
   multimodal?: boolean;
+  /** 可用的思维链级别列表 */
   thinkingLevels?: string[];
+  /** 是否支持网络搜索 */
   webSearch?: boolean;
 }
 
 /**
- * A custom / local provider: one endpoint, one or more models. Covers both
- * user-defined custom providers and the legacy single-model local servers
- * (which resolve to a one-element `models`).
+ * 自定义/本地提供商：一个端点，一个或多个模型。
+ * 涵盖用户定义的自定义提供商和旧版单模型本地服务器
+ * （后者解析为单元素 `models`）。
  */
 export interface LocalProviderConfig {
+  /** API 基础 URL */
   baseUrl: string;
-  /** Wire protocol. Default "openai-chat". */
+  /** 传输协议。默认 "openai-chat" */
   protocol?: "openai-chat" | "anthropic";
-  /** API key for endpoints that require auth. Defaults to "local" if omitted. */
+  /** 需要认证的端点的 API 密钥。省略时默认为 "local" */
   apiKey?: string;
-  /** Display name shown in the picker. */
+  /** 选择器中显示的名称 */
   label?: string;
+  /** 模型列表 */
   models: LocalModelEntry[];
 }
 
 // ------------------------------------------------------------------
-// New settings types (replaces GlobalTuiPreferences)
+// 新设置类型（替代 GlobalTuiPreferences）
 // ------------------------------------------------------------------
 
-/** A single sub-agent model tier entry: stable model identity + thinking level. */
+/** 子代理模型层级条目：稳定的模型身份 + 思维链级别 */
 export interface ModelTierEntry {
+  /** 服务提供商 */
   provider: string;
+  /** 选择键 */
   selection_key: string;
+  /** 模型 ID */
   model_id: string;
-  /** Required. Use one of the model's available levels, or "none" for non-thinking models. */
+  /** 必填。使用模型的可用级别之一，或 "none" 用于非思维链模型 */
   thinking_level: string;
 }
 
-/** Per-template model pin: locks a specific agent template to a fixed model. */
+/** 每模板模型固定配置：将特定代理模板锁定到固定模型 */
 export type AgentModelEntry = ModelTierEntry;
 
-/** User-editable settings. Lives in settings.json (JSONC). */
+/** 用户可编辑的设置。存储在 settings.json（JSONC）中 */
 export interface SwarmflowSettings {
-  // -- Model --
-  /** Declarative default model. Overrides state/model-selection.json. */
+  // -- 模型 --
+  /** 声明式默认模型。覆盖 state/model-selection.json */
   default_model?: string;
-  /** Sub-agent model tiers. Each level maps to a model + optional thinking level. */
+  /** 子代理模型层级。每个级别映射到一个模型 + 可选思维链级别 */
   model_tiers?: {
     high?: ModelTierEntry;
     medium?: ModelTierEntry;
     low?: ModelTierEntry;
   };
-  /** Default thinking level for the main agent. */
+  /** 主代理的默认思维链级别 */
   thinking_level?: string;
-  /** Main-session context budget percentage (1鈥?00). */
+  /** 主会话上下文预算百分比（1-100） */
   context_budget_percent?: number;
 
-  // -- Providers (global only, not overridden by local settings) --
-  /** Cloud provider 鈫?env var name, or local provider 鈫?full config. */
+  // -- 提供商（仅全局，不被本地设置覆盖）--
+  /** 云提供商 → 环境变量名，或本地提供商 → 完整配置 */
   providers?: Record<string, ProviderEntry>;
 
-  // -- Display --
+  // -- 显示 --
+  /** 强调色 */
   accent_color?: string;
-  /** Theme mode: "auto" (follow terminal) | "light" | "dark". Default: "auto". */
+  /** 主题模式："auto"（跟随终端）| "light" | "dark"。默认："auto" */
   theme_mode?: "auto" | "light" | "dark";
-  /** Inline write/edit diff display mode. Default: "compact". */
+  /** 内联写入/编辑差异显示模式。默认："compact" */
   diff_display?: "compact" | "full";
-  /** Copy-on-select: auto-copy a drag selection to the clipboard. Default: true. */
+  /** 选择时自动复制：将拖拽选择自动复制到剪贴板。默认：true */
   copy_on_select?: boolean;
 
-  // -- Permissions --
-  /** Default permission mode: "read_only" | "reversible" | "yolo". */
+  // -- 权限 --
+  /** 默认权限模式："read_only" | "reversible" | "yolo" */
   permission_mode?: string;
 
-  // -- Sub-agent inheritance --
-  /** Sub-agents inherit the parent's MCP servers/tools. Default: true. */
+  // -- 子代理继承 --
+  /** 子代理继承父代理的 MCP 服务器/工具。默认：true */
   sub_agent_inherit_mcp?: boolean;
-  /** Sub-agents inherit the parent's hooks. Default: true. */
+  /** 子代理继承父代理的钩子。默认：true */
   sub_agent_inherit_hooks?: boolean;
 
-  // -- Skills --
+  // -- 技能 --
+  /** 禁用的技能列表 */
   disabled_skills?: string[];
 
-  // -- Agent Models (per-template model pins, global + local merge) --
+  // -- 代理模型（每模板模型固定配置，全局 + 本地合并）--
   agent_models?: Record<string, AgentModelEntry>;
 
-  // -- MCP Servers (global + local merge) --
+  // -- MCP 服务器（全局 + 本地合并）--
   mcp_servers?: Record<string, MCPServerSettingsEntry>;
 
-  // -- Updates --
+  // -- 更新 --
   /**
-   * Background update behavior. Default: true.
-   * - true: patch/minor auto-download + staged; major notify only
-   * - "notify": all versions notify only, never auto-download
-   * - false: disable update checks entirely
+   * 后台更新行为。默认：true。
+   * - true：补丁/次版本自动下载 + 暂存；主版本仅通知
+   * - "notify"：所有版本仅通知，不自动下载
+   * - false：完全禁用更新检查
    */
   auto_update?: boolean | "notify";
 
-  // -- Summarize hints --
+  // -- 摘要提示 --
   /**
-   * Two-tier context summarize hints (main session). Managed by the
-   * /summarize_hint command. Levels are integers, 0 < level1 < level2 < 85.
+   * 双层上下文摘要提示（主会话）。由 /summarize_hint 命令管理。
+   * 级别为整数，0 < level1 < level2 < 85。
    */
   summarize_hint?: {
-    /** Master switch for the two-tier hints. Default: true. */
+    /** 双层提示的主开关。默认：true */
     enabled?: boolean;
-    /** Level-1 trigger (percentage of effective context budget). Default: 50. */
+    /** 第一层触发器（有效上下文预算的百分比）。默认：50 */
     level1?: number;
-    /** Level-2 trigger (percentage). Default: 75. */
+    /** 第二层触发器（百分比）。默认：75 */
     level2?: number;
   };
 }
@@ -655,89 +711,113 @@ export interface SwarmflowSettings {
  * A provider entry in settings.json.
  * Cloud providers have `api_key_env`; local providers have `base_url` + `model`.
  */
+/** settings.json 中的提供商条目。云提供商有 `api_key_env`；本地提供商有 `base_url` + `model` */
 export interface ProviderEntry {
-  /** Environment variable name holding the API key (cloud providers). */
+  /** 持有 API 密钥的环境变量名（云提供商） */
   api_key_env?: string;
-  /** Base URL (local providers / custom endpoints). */
+  /** 基础 URL（本地提供商/自定义端点） */
   base_url?: string;
-  /** Model identifier (legacy single-model local providers). */
+  /** 模型标识符（旧版单模型本地提供商） */
   model?: string;
-  /** Context window size (legacy single-model local providers). */
+  /** 上下文窗口大小（旧版单模型本地提供商） */
   context_length?: number;
-  /** Optional API key for local servers / custom endpoints that need auth. */
+  /** 需要认证的本地服务器/自定义端点的可选 API 密钥 */
   api_key?: string;
-  /** Marks a user-defined custom provider (arbitrary name + endpoint). */
+  /** 标记为用户定义的自定义提供商（任意名称 + 端点） */
   custom?: boolean;
-  /** Display name shown in the picker (custom providers). */
+  /** 选择器中显示的名称（自定义提供商） */
   label?: string;
-  /** Wire protocol for a custom endpoint. Default "openai-chat". */
+  /** 自定义端点的传输协议。默认 "openai-chat" */
   protocol?: "openai-chat" | "anthropic";
-  /** Multiple models under one custom provider (preferred over single `model`). */
+  /** 一个自定义提供商下的多个模型（优先于单个 `model`） */
   models?: CustomModelEntry[];
 }
 
-/** One model under a custom provider (settings.json shape). */
+/** 自定义提供商下的单个模型（settings.json 形状） */
 export interface CustomModelEntry {
-  /** API model id sent to the endpoint. */
+  /** 发送到端点的 API 模型 ID */
   id: string;
-  /** Context window. Required 鈥?the UI won't save without it. */
+  /** 上下文窗口。必填——UI 不保存没有它的条目 */
   context_length: number;
-  /** Max output tokens (used as the request max_tokens cap). */
+  /** 最大输出 token 数（用作请求 max_tokens 上限） */
   max_output_tokens?: number;
-  /** Image / multimodal input. Default false. */
+  /** 图像/多模态输入。默认 false */
   multimodal?: boolean;
-  /** Thinking levels, e.g. ["off","on"]. Default none (not a thinking model). */
+  /** 思维链级别，例如 ["off","on"]。默认 none（非思维链模型） */
   thinking_levels?: string[];
-  /** Native web search. Default false. */
+  /** 原生网络搜索。默认 false */
   web_search?: boolean;
 }
 
-/** MCP server entry in settings.json. Same shape as the old mcp.json values. */
+/** settings.json 中的 MCP 服务器条目。与旧版 mcp.json 值形状相同 */
 export interface MCPServerSettingsEntry {
+  /** 传输类型 */
   transport?: "stdio" | "sse";
+  /** 启动命令 */
   command?: string;
+  /** 命令行参数 */
   args?: string[];
+  /** SSE URL */
   url?: string;
+  /** 环境变量 */
   env?: Record<string, string>;
+  /** 环境变量白名单 */
   env_allowlist?: string[];
+  /** 敏感工具列表 */
   sensitive_tools?: string[];
+  /** 是否禁用 */
   disabled?: boolean;
 }
 
-/** System-managed model selection state. Lives in state/model-selection.json. */
+/** 系统管理的模型选择状态。存储在 state/model-selection.json 中 */
 export interface ModelSelectionState {
+  /** 模型配置名称 */
   config_name?: string;
+  /** 服务提供商 */
   provider?: string;
+  /** 选择键 */
   selection_key?: string;
+  /** 模型 ID */
   model_id?: string;
+  /** 思维链级别 */
   thinking_level?: string;
 }
 
 // ------------------------------------------------------------------
-// Old preferences type (kept temporarily during migration)
+// 旧版偏好设置类型（迁移期间临时保留）
 // ------------------------------------------------------------------
 
+/** 旧版全局 TUI 偏好设置（已弃用，保留用于迁移） */
 export interface GlobalTuiPreferences {
+  /** 版本号 */
   version: number;
+  /** 模型配置名称 */
   modelConfigName?: string;
+  /** 模型提供商 */
   modelProvider?: string;
+  /** 模型选择键 */
   modelSelectionKey?: string;
+  /** 模型 ID */
   modelId?: string;
+  /** 思维链级别 */
   thinkingLevel: string;
+  /** 强调色 */
   accentColor?: string;
+  /** 禁用的技能列表 */
   disabledSkills?: string[];
-  /** Provider 鈫?environment variable name mapping (e.g. { "openai": "OPENAI_API_KEY_1" }) */
+  /** 提供商 → 环境变量名映射（例如 { "openai": "OPENAI_API_KEY_1" }） */
   providerEnvVars?: Record<string, string>;
-  /** Local inference server configurations (e.g. { "lmstudio": { baseUrl, model, contextLength } }) */
+  /** 本地推理服务器配置（例如 { "lmstudio": { baseUrl, model, contextLength } }） */
   localProviders?: Record<string, LocalProviderConfig>;
-  /** Main-session context budget percentage (1鈥?00). Default 100. */
+  /** 主会话上下文预算百分比（1-100）。默认 100 */
   contextBudgetPercent?: number;
-  /** Whether to show the Codex usage card in the sidebar. Default true. */
+  /** 是否在侧边栏显示 Codex 使用量卡片。默认 true */
   showCodexUsage?: boolean;
-  /** Permission mode preference. Default "reversible". */
+  /** 权限模式偏好。默认 "reversible" */
   permissionMode?: string;
 }
 
+/** 创建默认的全局 TUI 偏好设置对象 */
 export function createGlobalTuiPreferences(
   partial?: Partial<GlobalTuiPreferences>,
 ): GlobalTuiPreferences {
@@ -752,6 +832,7 @@ export function createGlobalTuiPreferences(
   };
 }
 
+/** 创建默认的会话元数据对象 */
 export function createLogSessionMeta(
   partial?: Partial<LogSessionMeta>,
 ): LogSessionMeta {
@@ -776,9 +857,10 @@ export function createLogSessionMeta(
 }
 
 // ------------------------------------------------------------------
-// camelCase 鈫?snake_case conversion for LogEntry
+// LogEntry 的 camelCase → snake_case 转换
 // ------------------------------------------------------------------
 
+/** 将 LogEntry 对象转换为 snake_case 键名的记录（用于 JSON 序列化） */
 function entryToSnake(entry: LogEntry): Record<string, unknown> {
   const obj: Record<string, unknown> = {
     id: entry.id,
@@ -798,6 +880,7 @@ function entryToSnake(entry: LogEntry): Record<string, unknown> {
   return obj;
 }
 
+/** 从 snake_case 键名的记录恢复为 LogEntry 对象（用于 JSON 反序列化） */
 function entryFromSnake(obj: Record<string, unknown>): LogEntry {
   return {
     id: obj.id as string,
@@ -817,23 +900,32 @@ function entryFromSnake(obj: Record<string, unknown>): LogEntry {
 }
 
 // ------------------------------------------------------------------
-// Session meta.json (lightweight summary for fast listing)
+// 会话 meta.json（轻量级摘要，用于快速列表）
 // ------------------------------------------------------------------
 
+/** 会话元数据摘要——用于快速列表展示 */
 export interface SessionMetaSummary {
+  /** 会话 ID */
   session_id?: string;
+  /** 创建时间 */
   created_at: string;
+  /** 最后活跃时间 */
   last_active_at: string;
+  /** 会话摘要 */
   summary: string;
+  /** 会话标题 */
   title?: string;
+  /** 对话轮数 */
   turn_count: number;
+  /** 是否已归档 */
   archived?: boolean;
 }
 
+/** 保存会话元数据到 meta.json 文件 */
 export function saveSessionMeta(sessionDir: string, meta: LogSessionMeta): void {
   const metaFile = join(sessionDir, "meta.json");
   const tmp = metaFile + ".tmp";
-  // Preserve fields set externally (e.g. "archived") by merging with existing meta
+  // 通过与现有元数据合并来保留外部设置的字段（例如 "archived"）
   let existing: Record<string, unknown> = {};
   try {
     if (existsSync(metaFile)) {
@@ -853,6 +945,7 @@ export function saveSessionMeta(sessionDir: string, meta: LogSessionMeta): void 
   renameSync(tmp, metaFile);
 }
 
+/** 更新项目元数据中的最后活跃时间 */
 function updateProjectLastActive(projectDir: string, lastActiveAt: string): void {
   const projectJson = join(projectDir, "project.json");
   if (!existsSync(projectJson)) return;
@@ -863,14 +956,15 @@ function updateProjectLastActive(projectDir: string, lastActiveAt: string): void
     writeFileSync(tmp, JSON.stringify(raw, null, 2));
     renameSync(tmp, projectJson);
   } catch {
-    // Best-effort update
+    // 尽力更新
   }
 }
 
 // ------------------------------------------------------------------
-// saveLog / loadLog
+// saveLog / loadLog——日志保存与加载
 // ------------------------------------------------------------------
 
+/** 保存会话日志到磁盘（log.json + meta.json） */
 export function saveLog(
   dir: string,
   meta: LogSessionMeta,
@@ -897,8 +991,8 @@ export function saveLog(
     compact_count: meta.compactCount,
     thinking_level: meta.thinkingLevel,
     child_sessions: meta.childSessions ?? null,
-    // entries marked meta.ephemeral === true are in-memory only (e.g. /fork
-    // origin pointer); they reach the TUI but never persist.
+    // 标记为 meta.ephemeral === true 的条目仅存在于内存中（例如 /fork
+    // 来源指针）；它们会到达 TUI 但永远不会持久化。
     entries: entries.filter((e) => !e.meta?.["ephemeral"]).map(entryToSnake),
   };
 
@@ -907,27 +1001,32 @@ export function saveLog(
   writeFileSync(tmp, JSON.stringify(payload, null, 2));
   renameSync(tmp, logFile);
 
-  // Write lightweight meta.json alongside log.json
+  // 在 log.json 旁边写入轻量级 meta.json
   try {
     saveSessionMeta(dir, meta);
   } catch {
-    // Best-effort
+    // 尽力而为
   }
 
-  // Update project.json last_active_at
+  // 更新 project.json 的 last_active_at
   try {
     updateProjectLastActive(dirname(dir), meta.updatedAt);
   } catch {
-    // Best-effort
+    // 尽力而为
   }
 }
 
+/** 日志加载结果 */
 export interface LoadLogResult {
+  /** 会话元数据 */
   meta: LogSessionMeta;
+  /** 日志条目列表 */
   entries: LogEntry[];
+  /** ID 分配器 */
   idAllocator: LogIdAllocator;
 }
 
+/** 从磁盘加载会话日志（log.json） */
 export function loadLog(dir: string): LoadLogResult {
   const logFile = join(dir, "log.json");
   const raw = JSON.parse(readFileSync(logFile, "utf-8"));
@@ -953,7 +1052,7 @@ export function loadLog(dir: string): LoadLogResult {
   const rawEntries = (raw.entries ?? []) as Array<Record<string, unknown>>;
   const entries = rawEntries.map(entryFromSnake);
 
-  // Validate entry ID uniqueness
+  // 验证条目 ID 唯一性
   const seenIds = new Set<string>();
   for (const entry of entries) {
     if (seenIds.has(entry.id)) {
@@ -962,7 +1061,7 @@ export function loadLog(dir: string): LoadLogResult {
     seenIds.add(entry.id);
   }
 
-  // Restore ID allocator via full scan
+  // 通过全量扫描恢复 ID 分配器
   const idAllocator = new LogIdAllocator();
   idAllocator.restoreFrom(entries);
 
@@ -970,15 +1069,20 @@ export function loadLog(dir: string): LoadLogResult {
 }
 
 // ------------------------------------------------------------------
-// validateAndRepairLog
+// validateAndRepairLog——日志验证与修复
 // ------------------------------------------------------------------
 
+/** 日志修复结果 */
 export interface LogRepairResult {
+  /** 修复后的日志条目列表 */
   entries: LogEntry[];
+  /** 是否进行了修复 */
   repaired: boolean;
+  /** 修复过程中产生的警告信息 */
   warnings: string[];
 }
 
+/** 验证并修复日志条目，处理孤立的 compactPhase、缺失的 tool_result 等问题 */
 export function validateAndRepairLog(
   entries: LogEntry[],
 ): LogRepairResult {
@@ -989,9 +1093,9 @@ export function validateAndRepairLog(
     return { entries: entries ?? [], repaired: false, warnings: [] };
   }
 
-  // --- 1. Orphaned compactPhase entries (no compact_marker after them) ---
+  // --- 1. 孤立的 compactPhase 条目（后面没有 compact_marker）---
   {
-    // Find the last compact_marker index
+    // 查找最后一个 compact_marker 的索引
     let lastCompactMarkerIdx = -1;
     for (let i = entries.length - 1; i >= 0; i--) {
       if (entries[i].type === "compact_marker" && !entries[i].discarded) {
@@ -999,7 +1103,7 @@ export function validateAndRepairLog(
         break;
       }
     }
-    // Mark compactPhase entries after the last compact_marker as discarded
+    // 将最后一个 compact_marker 之后的 compactPhase 条目标记为丢弃
     for (let i = lastCompactMarkerIdx + 1; i < entries.length; i++) {
       if (entries[i].meta?.compactPhase && !entries[i].discarded) {
         entries[i].discarded = true;
@@ -1009,14 +1113,14 @@ export function validateAndRepairLog(
     }
   }
 
-  // --- 2. Fix orphaned tool_calls (missing tool_results) ---
+  // --- 2. 修复孤立的 tool_calls（缺少 tool_results）---
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     if (entry.type !== "tool_call" || entry.discarded) continue;
     if (entry.apiRole !== "assistant") continue;
 
     const toolCallId = entry.meta.toolCallId as string;
-    // Check if there's a matching tool_result
+    // 检查是否有匹配的 tool_result
     let hasResult = false;
     for (let j = i + 1; j < entries.length; j++) {
       if (entries[j].type === "tool_result" && entries[j].meta.toolCallId === toolCallId && !entries[j].discarded) {
@@ -1025,7 +1129,7 @@ export function validateAndRepairLog(
       }
     }
     if (!hasResult) {
-      // Check if this is the last entry or near the end 鈥?likely a crash
+      // 检查这是否是最后或接近最后的条目——可能是崩溃
       const isNearEnd = entries.length - i <= 5;
       if (isNearEnd) {
         const execState = entry.meta.toolExecState as string | undefined;
@@ -1033,7 +1137,7 @@ export function validateAndRepairLog(
           execState === "running"
             ? "Session recovered. Tool execution was interrupted and may have caused partial or unknown real-world effects."
             : "Session recovered. Tool result unavailable due to abnormal termination.";
-        // Add a recovered tool_result (we need an ID 鈥?use a predictable format)
+        // 添加恢复的 tool_result（需要 ID——使用可预测的格式）
         const recoveredId = `tr-recovered-${toolCallId}`;
         const recoveredEntry: LogEntry = {
           id: recoveredId,
@@ -1068,9 +1172,9 @@ export function validateAndRepairLog(
     }
   }
 
-  // --- 3. ask repair ---
+  // --- 3. ask 修复 ---
   {
-    // Build ask_request 鈫?ask_resolution mapping
+    // 构建 ask_request → ask_resolution 映射
     const askRequests = new Map<string, number>();
     const askResolutions = new Map<string, number>();
     for (let i = 0; i < entries.length; i++) {
@@ -1083,7 +1187,7 @@ export function validateAndRepairLog(
       }
     }
 
-    // Orphan ask_resolution (no matching ask_request) 鈫?discard
+    // 孤立的 ask_resolution（无匹配的 ask_request）→ 丢弃
     for (const [askId, idx] of askResolutions) {
       if (!askRequests.has(askId)) {
         entries[idx].discarded = true;
@@ -1092,7 +1196,7 @@ export function validateAndRepairLog(
       }
     }
 
-    // ask_resolution exists but no tool_result 鈫?add recovered tool_result
+    // ask_resolution 存在但无 tool_result → 添加恢复的 tool_result
     for (const [askId, resIdx] of askResolutions) {
       if (entries[resIdx].discarded) continue;
       const reqIdx = askRequests.get(askId);
@@ -1102,7 +1206,7 @@ export function validateAndRepairLog(
       const toolCallId = reqEntry.meta.toolCallId as string;
       if (!toolCallId) continue;
 
-      // Check if there's a tool_result for this toolCallId after the resolution
+      // 检查解析后是否有此 toolCallId 的 tool_result
       let hasToolResult = false;
       for (let j = resIdx + 1; j < entries.length; j++) {
         if (entries[j].type === "tool_result" && entries[j].meta.toolCallId === toolCallId && !entries[j].discarded) {
@@ -1144,12 +1248,12 @@ export function validateAndRepairLog(
     }
   }
 
-  // --- 4. Heal reasoning entries split from their round by a stale turnIndex ---
+  // --- 4. 修复因过时的 turnIndex 而与轮次分离的推理条目 ---
   // Pre-fix (see Session._runActivation / activationTurnIndex), a queued
   // message draining mid-activation could advance `_turnCount` so a round's
   // streamed `reasoning` got a higher turnIndex than its sibling tool_call /
   // tool_result entries. projectToApiMessages groups by (turnIndex, roundIndex),
-  // so such reasoning becomes an orphan 鈫?a degenerate "thinking-only" assistant
+  // so such reasoning becomes an orphan →a degenerate "thinking-only" assistant
   // message that strict backends (DeepSeek /anthropic) reject. Re-stamp an
   // orphaned reasoning entry to the turnIndex of its own round's action
   // entries. Tightly scoped: only fires when the reasoning's (turn,round) has
@@ -1160,8 +1264,8 @@ export function validateAndRepairLog(
       if (entry.type !== "reasoning" || entry.discarded) continue;
       if (entry.roundIndex === undefined) continue;
 
-      // Is this reasoning's own (turnIndex, roundIndex) missing any action? If
-      // an action sibling shares its exact turn+round, it is not orphaned.
+      // 此推理条目自己的 (turnIndex, roundIndex) 是否缺少任何操作？
+      // 如果操作兄弟条目共享完全相同的 turn+round，则它不是孤立的。
       let hasOwnAction = false;
       const roundTurns = new Set<number>();
       for (const e of entries) {
@@ -1171,13 +1275,13 @@ export function validateAndRepairLog(
         roundTurns.add(e.turnIndex);
       }
       if (hasOwnAction) continue;
-      // The round's action entries must all live under exactly one other turn,
-      // otherwise we can't unambiguously pick the correct turnIndex.
+      // 轮次的操作条目必须全部位于完全另一个 turn 下，
+      // 否则我们无法明确选择正确的 turnIndex。
       if (roundTurns.size !== 1) continue;
 
       const targetTurn = [...roundTurns][0];
       warnings.push(
-        `Re-stamped orphaned reasoning ${entry.id} turnIndex ${entry.turnIndex} 鈫?${targetTurn} ` +
+        `Re-stamped orphaned reasoning ${entry.id} turnIndex ${entry.turnIndex} →${targetTurn} ` +
         `(round ${entry.roundIndex}; split by mid-activation turn drift).`,
       );
       entry.turnIndex = targetTurn;
@@ -1189,9 +1293,10 @@ export function validateAndRepairLog(
 }
 
 // ------------------------------------------------------------------
-// Archive window
+// 归档窗口
 // ------------------------------------------------------------------
 
+/** 将归档条目压缩并写入归档文件 */
 function writeArchiveFile(
   dir: string,
   fileName: string,
@@ -1204,6 +1309,7 @@ function writeArchiveFile(
   writeFileSync(join(archiveDir, fileName), compressed);
 }
 
+/** 归档指定窗口范围内的日志条目内容到压缩文件 */
 export function archiveWindow(
   dir: string,
   windowIndex: number,
@@ -1216,8 +1322,8 @@ export function archiveWindow(
     const e = entries[i];
     if (e.content !== null && !e.archived) targets.push(e);
   }
-  // Write first, strip after 鈥?a failed write must leave content resident
-  // (a stripped entry with no archive file is unrecoverable).
+  // 先写入，后剥离——写入失败时必须保留内容
+  // （没有归档文件的已剥离条目无法恢复）。
   writeArchiveFile(
     dir,
     `window-${windowIndex}.json.gz`,
@@ -1230,12 +1336,11 @@ export function archiveWindow(
 }
 
 /**
- * Archive the content of the given entries into `archive/<fileName>`,
- * nulling each entry's content and marking it archived (same contract as
- * archiveWindow, but with an explicit target list). Entries that are already
- * archived or have no content are skipped. No file is written when nothing
- * qualifies; returns the number of entries archived. Write-then-strip: if
- * the write throws, every entry keeps its content.
+ * 将指定条目的内容归档到 `archive/<fileName>`，
+ * 将每个条目的内容置空并标记为已归档（与 archiveWindow 相同的契约，
+ * 但使用显式目标列表）。已归档或无内容的条目会被跳过。
+ * 没有符合条件的条目时不写入文件；返回归档的条目数。
+ * 先写入后剥离：如果写入抛出异常，每个条目都保留其内容。
  */
 export function archiveEntryContents(
   dir: string,
@@ -1256,6 +1361,7 @@ export function archiveEntryContents(
   return archivable.length;
 }
 
+/** 加载指定窗口索引的归档文件 */
 export function loadArchive(
   dir: string,
   windowIndex: number,
@@ -1267,9 +1373,9 @@ export function loadArchive(
 }
 
 /**
- * Load an archive file by name. Returns null when the file doesn't exist
- * (e.g. archives written by an older binary, or a session dir that was
- * pruned) 鈥?callers degrade to leaving the entries archived.
+ * 按名称加载归档文件。文件不存在时返回 null
+ * （例如由旧版二进制写入的归档，或已被修剪的会话目录）
+ * ——调用者会降级为保留条目的归档状态。
  */
 export function loadArchiveFile(
   dir: string,
@@ -1283,9 +1389,8 @@ export function loadArchiveFile(
 }
 
 /**
- * Restore archived content back into entries (in-memory only). Restored
- * entries drop their archived flag so they re-enter API projection and can
- * be re-archived by a later summary/compact.
+ * 将归档内容恢复回条目中（仅内存中）。恢复的条目会丢弃其归档标志，
+ * 以便重新进入 API 投影，并可被后续的摘要/压缩重新归档。
  */
 export function restoreArchiveToEntries(
   entries: LogEntry[],
@@ -1301,17 +1406,24 @@ export function restoreArchiveToEntries(
 }
 
 // ------------------------------------------------------------------
-// fixStorage 鈥?repair missing project.json and meta.json
+// fixStorage——修复缺失的 project.json 和 meta.json
 // ------------------------------------------------------------------
 
+/** 存储修复结果 */
 export interface FixStorageResult {
+  /** 检查的项目数 */
   projectsChecked: number;
+  /** 修复的项目数 */
   projectsFixed: number;
+  /** 检查的会话数 */
   sessionsChecked: number;
+  /** 修复的会话数 */
   sessionsFixed: number;
+  /** 修复过程中产生的警告信息 */
   warnings: string[];
 }
 
+/** 修复存储中的缺失文件（project.json、meta.json） */
 export function fixStorage(baseDir?: string): FixStorageResult {
   const resolvedBase = resolvePreferredBaseDir(baseDir);
   const projectsDir = join(resolvedBase, "projects");
@@ -1334,7 +1446,7 @@ export function fixStorage(baseDir?: string): FixStorageResult {
 
     result.projectsChecked++;
 
-    // Check / create project.json
+    // 检查/创建 project.json
     const projectJson = join(projectDir, "project.json");
     let projectData: Record<string, unknown>;
     if (!existsSync(projectJson)) {
@@ -1355,7 +1467,7 @@ export function fixStorage(baseDir?: string): FixStorageResult {
       }
     }
 
-    // Scan sessions and fix meta.json
+    // 扫描会话并修复 meta.json
     let latestActiveAt = "";
     for (const sessionName of readdirSync(projectDir)) {
       if (!looksLikeSessionId(sessionName)) continue;
@@ -1396,7 +1508,7 @@ export function fixStorage(baseDir?: string): FixStorageResult {
           result.warnings.push(`No log.json or meta.json for ${projectName}/${sessionName}`);
         }
       } else {
-        // meta.json exists 鈥?track latest for project-level update
+        // meta.json 存在——跟踪最新的用于项目级更新
         try {
           const raw = JSON.parse(readFileSync(metaFile, "utf-8"));
           const activeAt = raw.last_active_at ?? "";
@@ -1407,7 +1519,7 @@ export function fixStorage(baseDir?: string): FixStorageResult {
       }
     }
 
-    // Update project.json last_active_at if missing or stale
+    // 如果 project.json 的 last_active_at 缺失或过时则更新
     if (latestActiveAt && projectData.last_active_at !== latestActiveAt) {
       projectData.last_active_at = latestActiveAt;
       try {
@@ -1423,10 +1535,10 @@ export function fixStorage(baseDir?: string): FixStorageResult {
 }
 
 // ------------------------------------------------------------------
-// New settings API
+// 新设置 API
 // ------------------------------------------------------------------
 
-/** Load global settings from ~/.swarmflow/settings.json (JSONC). */
+/** 从 ~/.swarmflow/settings.json（JSONC）加载全局设置 */
 export function loadGlobalSettings(homeDir?: string): SwarmflowSettings {
   const dir = homeDir ?? getSwarmflowHomeDir();
   const path = join(dir, SETTINGS_FILE);
@@ -1440,14 +1552,14 @@ export function loadGlobalSettings(homeDir?: string): SwarmflowSettings {
 }
 
 /**
- * Load project-local settings.
+ * 加载项目本地设置。
  *
- * Two layers (project-store < workspace, workspace wins on conflict):
- *   1. ~/.swarmflow/projects/<slug>/.swarmflow/settings.json  (system-managed)
- *   2. {projectPath}/.swarmflow/settings.json             (user-authored)
+ * 两层（project-store < workspace，冲突时 workspace 胜出）：
+ *   1. ~/.swarmflow/projects/<slug>/.swarmflow/settings.json  （系统管理）
+ *   2. {projectPath}/.swarmflow/settings.json             （用户编写）
  *
- * When projectStoreDir is omitted, only the workspace layer is loaded
- * (backwards-compatible with callers that don't have the slug yet).
+ * 省略 projectStoreDir 时，仅加载 workspace 层
+ * （与尚无 slug 的调用者向后兼容）。
  */
 export function loadLocalSettings(projectPath: string, projectStoreDir?: string): SwarmflowSettings {
   let base: SwarmflowSettings = {};
@@ -1472,18 +1584,18 @@ export function loadLocalSettings(projectPath: string, projectStoreDir?: string)
 }
 
 /**
- * Merge global + local settings.
+ * 合并全局和本地设置。
  *
- * Rules:
- * - Scalars: local overrides global
- * - Objects (model_tiers, mcp_servers): per-key merge (local keys override)
- * - Arrays (disabled_skills): local replaces global
- * - `providers`: global only 鈥?local value is ignored
+ * 规则：
+ * - 标量：本地覆盖全局
+ * - 对象（model_tiers、mcp_servers）：按键合并（本地键覆盖）
+ * - 数组（disabled_skills）：本地替换全局
+ * - `providers`：仅全局——本地值被忽略
  */
 export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSettings): SwarmflowSettings {
   const merged: SwarmflowSettings = { ...global };
 
-  // Scalars 鈥?local overrides if present
+  // 标量——如果存在则本地覆盖
   if (local.default_model !== undefined) merged.default_model = local.default_model;
   if (local.thinking_level !== undefined) merged.thinking_level = local.thinking_level;
   if (local.context_budget_percent !== undefined) merged.context_budget_percent = local.context_budget_percent;
@@ -1493,10 +1605,10 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
   if (local.sub_agent_inherit_mcp !== undefined) merged.sub_agent_inherit_mcp = local.sub_agent_inherit_mcp;
   if (local.sub_agent_inherit_hooks !== undefined) merged.sub_agent_inherit_hooks = local.sub_agent_inherit_hooks;
 
-  // Arrays 鈥?local replaces
+  // 数组——本地替换
   if (local.disabled_skills !== undefined) merged.disabled_skills = local.disabled_skills;
 
-  // Objects 鈥?per-key merge
+  // 对象——按键合并
   if (local.model_tiers) {
     merged.model_tiers = { ...merged.model_tiers, ...local.model_tiers };
   }
@@ -1510,13 +1622,13 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
     merged.agent_models = { ...merged.agent_models, ...local.agent_models };
   }
 
-  // providers: global only 鈥?do NOT merge local.providers
+  // providers：仅全局——不合并 local.providers
   return merged;
 }
 
 /**
- * Parse process-local `-c key=value` overrides. These are intentionally
- * limited to context budget and are never persisted.
+ * 解析进程本地的 `-c key=value` 覆盖项。这些有意限制为上下文预算，
+ * 永远不会被持久化。
  */
 export function parseSettingsOverrides(overrides: readonly string[] = []): SwarmflowSettings {
   const settings: SwarmflowSettings = {};
@@ -1547,7 +1659,7 @@ export function parseSettingsOverrides(overrides: readonly string[] = []): Swarm
   return settings;
 }
 
-/** Load model selection state from state/model-selection.json. */
+/** 从 state/model-selection.json 加载模型选择状态 */
 export function loadModelSelectionState(homeDir?: string): ModelSelectionState {
   const dir = homeDir ?? getSwarmflowHomeDir();
   const path = join(dir, STATE_DIR, MODEL_SELECTION_FILE);
@@ -1566,7 +1678,7 @@ export function loadModelSelectionState(homeDir?: string): ModelSelectionState {
   }
 }
 
-/** Save model selection state to state/model-selection.json. Atomic write. */
+/** 保存模型选择状态到 state/model-selection.json。原子写入。 */
 export function saveModelSelectionState(state: ModelSelectionState, homeDir?: string): void {
   const dir = homeDir ?? getSwarmflowHomeDir();
   const stateDir = join(dir, STATE_DIR);
@@ -1578,14 +1690,14 @@ export function saveModelSelectionState(state: ModelSelectionState, homeDir?: st
 }
 
 /**
- * Save settings.json (global or local). Atomic write.
- * Only writes the fields that are defined 鈥?undefined fields are omitted.
+ * 保存 settings.json（全局或本地）。原子写入。
+ * 仅写入已定义的字段——undefined 字段会被省略。
  */
 export function saveSettings(settings: SwarmflowSettings, filePath: string): void {
   const dir = dirname(filePath);
   mkdirSync(dir, { recursive: true });
   const tmp = filePath + ".tmp";
-  // Build a clean object without undefined values
+  // 构建不含 undefined 值的干净对象
   const clean: Record<string, unknown> = {};
   if (settings.default_model !== undefined) clean.default_model = settings.default_model;
   if (settings.model_tiers !== undefined) clean.model_tiers = settings.model_tiers;
@@ -1607,25 +1719,25 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   renameSync(tmp, filePath);
 }
 
-/** Merge a partial update into the global settings.json file. */
+/** 将部分更新合并到全局 settings.json 文件 */
 export function saveGlobalSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: string): void {
   const existing = loadGlobalSettings(homeDir);
   saveSettings({ ...existing, ...patch }, globalSettingsPath(homeDir));
 }
 
-/** Get the global settings.json path. */
+/** 获取全局 settings.json 路径 */
 export function globalSettingsPath(homeDir?: string): string {
   return join(homeDir ?? getSwarmflowHomeDir(), SETTINGS_FILE);
 }
 
-/** Get the project-local settings.json path. */
+/** 获取项目本地 settings.json 路径 */
 export function localSettingsPath(projectPath: string): string {
   return join(projectPath, ".swarmflow", SETTINGS_FILE);
 }
 
 /**
- * Convert SwarmflowSettings providers + mcp_servers into the formats
- * expected by Config and MCPClientManager.
+ * 将 SwarmflowSettings 的 providers + mcp_servers 转换为
+ * Config 和 MCPClientManager 期望的格式。
  */
 export function settingsToConfigInputs(settings: SwarmflowSettings): {
   providerEnvVars: Record<string, string>;
@@ -1638,10 +1750,10 @@ export function settingsToConfigInputs(settings: SwarmflowSettings): {
   if (settings.providers) {
     for (const [id, entry] of Object.entries(settings.providers)) {
       if (entry.api_key_env) {
-        // Cloud provider
+        // 云提供商
         providerEnvVars[id] = entry.api_key_env;
       } else if (entry.base_url && (entry.models?.length || entry.model)) {
-        // Custom / local provider: prefer models[]; fall back to legacy single model.
+        // 自定义/本地提供商：优先使用 models[]；回退到旧版单模型。
         const models: LocalModelEntry[] = entry.models?.length
           ? entry.models.map((m) => ({
               id: m.id,
@@ -1671,7 +1783,7 @@ export function settingsToConfigInputs(settings: SwarmflowSettings): {
       const env: Record<string, string> = {};
       if (cfg.env) {
         for (const [k, v] of Object.entries(cfg.env)) {
-          // Resolve ${ENV_VAR} references
+          // 解析 ${ENV_VAR} 引用
           if (typeof v === "string" && v.startsWith("${") && v.endsWith("}")) {
             const envName = v.slice(2, -1);
             const resolved = process.env[envName];

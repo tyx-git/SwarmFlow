@@ -1,16 +1,15 @@
-﻿/**
- * Single source of truth for model & provider static data.
+/**
+ * 模型和提供者静态数据的单一真实来源。
  *
- * The *schema* and *validator* live here (code, ships with the version). The
- * *data* lives in `assets/model-registry/{models,providers}.json` (pure data,
- * bundled at build time via `import`, and remotely overridable 鈥?see
- * Docs/provider-model-maintainability-plan.md 搂10).
+ * *schema* 和 *validator* 位于此处（代码，随版本发布）。
+ * *data* 位于 `assets/model-registry/{models,providers}.json`（纯数据，
+ * 在构建时通过 `import` 打包，并且可以远程覆盖 — 参见
+ * Docs/provider-model-maintainability-plan.md §10）。
  *
- * Everything the old scattered tables used to hold (KNOWN_* capability tables,
- * PROVIDER_PRESETS, label overrides, default base urls, the three wire-axis
- * switches) is DERIVED from these two registries. Adding a model = one object
- * in models.json; a missing field fails the build-time validator, not silently
- * at runtime.
+ * 旧分散表曾持有的所有内容（KNOWN_* 能力表、
+ * PROVIDER_PRESETS、标签覆盖、默认基础 URL、三个线轴
+ * 开关）都从这两个注册表*派生*。添加模型 = models.json 中的一个对象；
+ * 缺失字段导致构建时验证器失败，而不是在运行时静默失败。
  */
 
 import factoryModelsRaw from "../assets/model-registry/models.json" with { type: "json" };
@@ -27,40 +26,41 @@ import {
 } from "./lib/thinking-artifact.js";
 
 // ------------------------------------------------------------------
-// ModelSpec 鈥?one object per model
+// ModelSpec — 每个模型一个对象
 // ------------------------------------------------------------------
 
 export interface ModelSpec {
-  /** Canonical API id (no vendor prefix). Primary capability lookup key. */
+  /** 规范 API id（无供应商前缀）。主要能力查找键。 */
   id: string;
   /**
-   * Equivalent id spellings used by other providers (e.g. Anthropic-direct
-   * `claude-haiku-4-5` vs OpenRouter `claude-haiku-4.5`). All aliases map to
-   * this spec's capabilities 鈥?capabilities are described exactly once.
+   * 其他提供者使用的等效 id 拼写（如 Anthropic 直连
+   * `claude-haiku-4-5` vs OpenRouter `claude-haiku-4.5`）。所有别名映射到
+   * 此 spec 的能力 — 能力精确描述一次。
    */
   aliases?: readonly string[];
-  /** Human-facing display name, e.g. "GPT-5.4 Mini". The sole label source. */
+  /** 面向人类的显示名称，如 "GPT-5.4 Mini"。唯一标签来源。 */
   displayName: string;
-  /** Context window. Required (> 0). */
+  /** 上下文窗口。必需（> 0）。 */
   contextLength: number;
-  /** Max output tokens. */
+  /** 最大输出 token 数。 */
   maxOutputTokens?: number;
-  /** Image / multimodal input support. */
+  /** 图片/多模态输入支持。 */
   multimodal: boolean;
-  /** Available thinking levels; empty (or only ["off"]) 鈬?not a thinking model. */
+  /** 可用的思考级别；空（或只有 ["off"]）— 不是思考模型。 */
   thinkingLevels: readonly string[];
-  /** Native server-side web search support. Explicit, no default. */
+  /** 原生服务端 Web 搜索支持。显式，无默认值。 */
   webSearch: boolean;
-  /** OpenAI 24h extended prompt-cache retention. */
+  /** OpenAI 24 小时扩展 prompt 缓存保留。 */
   extendedCache?: boolean;
   /**
-   * Minimum app (semver) version that can run this entry. Used only by remote
-   * delivery: a lower-version swarmflow skips entries it cannot handle. Omitted 鈬?   * available to all versions. (Honored in Phase 6; harmless before then.)
+   * 可以运行此条目的最小应用（semver）版本。仅用于远程
+   * 传递：较低版本的 swarmflow 会跳过其无法处理的条目。省略 —
+   * 对所有版本可用。（在第 6 阶段生效；之前无害。）
    */
   minAppVersion?: string;
 }
 
-/** Shape of `assets/model-registry/models.json`. */
+/** `assets/model-registry/models.json` 的形状。 */
 export interface RawModelRegistry {
   schemaVersion: number;
   models: ModelSpec[];
@@ -70,21 +70,21 @@ export const MODEL_REGISTRY_SCHEMA_VERSION = 1;
 
 const VALID_THINKING_LEVEL = /^[a-z]+$/;
 
-/** All id spellings a spec answers to. */
+/** spec 回答的所有 id 拼写。 */
 export function modelSpecIds(spec: ModelSpec): string[] {
   return [spec.id, ...(spec.aliases ?? [])];
 }
 
-/** A thinking model = has at least one non-off/none level. */
+/** 思考模型 = 至少有一个非 off/none 级别。 */
 export function isThinkingSpec(spec: ModelSpec): boolean {
   return spec.thinkingLevels.some((l) => l !== "off" && l !== "none");
 }
 
 /**
- * Validate a raw model registry and return its ModelSpec[]. Throws on any
- * structural / invariant violation (factory data 鈫?build-time failure; remote
- * data 鈫?caller rejects and falls back). The error lists ALL problems found,
- * not just the first, so a bad data file is fixed in one pass.
+ * 验证原始模型注册表并返回其 ModelSpec[]。在任何
+ * 结构/不变量违反时抛出（工厂数据 → 构建时失败；
+ * 远程数据 → 调用者拒绝并回退）。错误列出*所有*发现的问题，
+ * 而不仅仅是第一个，所以坏的数据文件可以一次修复。
  */
 export function loadModelSpecs(raw: unknown): ModelSpec[] {
   const problems: string[] = [];
@@ -99,7 +99,7 @@ export function loadModelSpecs(raw: unknown): ModelSpec[] {
     );
   }
 
-  const seenIds = new Map<string, string>(); // id spelling -> owning spec id
+  const seenIds = new Map<string, string>(); // id 拼写 -> 拥有的 spec id
   for (const [i, spec] of reg.models.entries()) {
     const where = `models[${i}]${spec?.id ? ` (${spec.id})` : ""}`;
     if (!spec || typeof spec !== "object") {
@@ -139,7 +139,7 @@ export function loadModelSpecs(raw: unknown): ModelSpec[] {
     if (spec.aliases !== undefined && !Array.isArray(spec.aliases)) {
       problems.push(`${where}: aliases must be an array when present`);
     }
-    // Global uniqueness across id + every alias.
+    // 跨 id + 每个别名的全局唯一性
     if (typeof spec.id === "string") {
       for (const spelling of modelSpecIds(spec)) {
         const owner = seenIds.get(spelling);
@@ -159,7 +159,7 @@ export function loadModelSpecs(raw: unknown): ModelSpec[] {
 }
 
 // ------------------------------------------------------------------
-// Capability derivation 鈥?replaces the seven KNOWN_* tables
+// 能力派生 — 替换七个 KNOWN_* 表
 // ------------------------------------------------------------------
 
 export interface DerivedModelTables {
@@ -170,11 +170,11 @@ export interface DerivedModelTables {
   thinkingLevels: Record<string, string[]>;
   noWebSearch: Set<string>;
   extendedCache: Set<string>;
-  /** canonicalized-id -> displayName, replacing MODEL_LABEL_OVERRIDES. */
+  /** 规范化 id -> displayName，替换 MODEL_LABEL_OVERRIDES */
   labelOverrides: Record<string, string>;
 }
 
-/** Same canonicalization model-presentation uses for MODEL_LABEL_OVERRIDES keys. */
+/** model-presentation 用于 MODEL_LABEL_OVERRIDES 键的相同规范化模型 */
 export function canonicalizeModelKey(model: string): string {
   const idx = model.lastIndexOf("/");
   const noPrefix = idx >= 0 ? model.slice(idx + 1) : model;
@@ -185,7 +185,7 @@ export function canonicalizeModelKey(model: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Build every derived capability table from a ModelSpec[]. */
+/** 从 ModelSpec[] 构建每个派生能力表 */
 export function deriveModelTables(specs: readonly ModelSpec[]): DerivedModelTables {
   const tables: DerivedModelTables = {
     contextLengths: {},
@@ -215,24 +215,24 @@ export function deriveModelTables(specs: readonly ModelSpec[]): DerivedModelTabl
 }
 
 // ------------------------------------------------------------------
-// Factory defaults (bundled) + legacy carve-outs
+// 工厂默认值（打包）+ 遗留例外
 // ------------------------------------------------------------------
 
-/** Factory model specs bundled into the binary. Phase 5 layers remote over this. */
+/** 打包到二进制中的工厂模型 spec。第 5 阶段在此之上分层远程。 */
 export const FACTORY_MODEL_SPECS: ModelSpec[] = loadModelSpecs(factoryModelsRaw);
 
 /**
- * Derived capability tables for the factory specs. Single shared instance so
- * config.ts and model-presentation.ts don't each re-derive. Phase 5 replaces
- * this with a getter over the live (factory 鈭?remote) effective registry.
+ * 工厂 spec 的派生能力表。单一共享实例，
+ * config.ts 和 model-presentation.ts 不会各自重新派生。
+ * 第 5 阶段用活动（工厂 — 远程）有效注册表上的 getter 替换此。
  */
 export const FACTORY_MODEL_TABLES: DerivedModelTables = deriveModelTables(FACTORY_MODEL_SPECS);
 
 /**
- * Extended-cache-only OpenAI ids that predate the registry: retired models not
- * in any preset and lacking full specs (no context length etc.), kept so a
- * hand-configured settings.json referencing them still reports extended cache.
- * Unioned into KNOWN_EXTENDED_CACHE_MODELS; not part of MODEL_SPECS.
+ * 早于注册表的扩展缓存专用 OpenAI id：不在任何预设中的已停用模型
+ * 且缺少完整 spec（无上下文长度等），保留以便引用它们的
+ * 手动配置的 settings.json 仍然报告扩展缓存。
+ * 联合到 KNOWN_EXTENDED_CACHE_MODELS；不属于 MODEL_SPECS。
  */
 export const LEGACY_EXTENDED_CACHE_IDS: readonly string[] = [
   "gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-mini", "gpt-5.1-chat-latest",
@@ -240,10 +240,10 @@ export const LEGACY_EXTENDED_CACHE_IDS: readonly string[] = [
 ];
 
 // ------------------------------------------------------------------
-// ProviderSpec 鈥?one object per provider
+// ProviderSpec — 每个提供者一个对象
 // ------------------------------------------------------------------
 
-/** Which concrete provider class handles this provider (registry dispatch, data-driven). */
+/** 处理此提供者的具体提供者类（注册表调度，数据驱动） */
 export type ProviderClassKind =
   | "anthropic"
   | "openai-responses"
@@ -263,7 +263,7 @@ const PROVIDER_CLASS_KINDS: ReadonlySet<string> = new Set<ProviderClassKind>([
   "minimax-anthropic", "xiaomi-anthropic",
 ]);
 
-/** How a provider's API credential is sourced. One discriminated answer, not a pile of optionals. */
+/** 提供者 API 凭据的来源方式。一个辨别答案，不是一堆可选值。 */
 export type CredentialSpec =
   | { kind: "env"; envVar: string }
   | { kind: "managed"; internalEnvVar: string; externalEnvVars: readonly string[] }
@@ -271,10 +271,10 @@ export type CredentialSpec =
   | { kind: "local"; envVar: string };
 
 /**
- * Wire-axis defaults. A concrete value pins the axis; the "by-family" sentinel
- * defers to the model family (Copilot routes Claude vs GPT differently), and
- * "openrouter" pins the OpenRouter Fernet envelope. The resolution rule is
- * data 鈥?the result per model is computed by resolveProviderWireAxes.
+ * 线轴默认值。具体值固定轴；"by-family" 哨兵
+ * 延迟到模型族（Copilot 对 Claude vs GPT 的路由不同），而
+ * "openrouter" 固定 OpenRouter Fernet 信封。解析规则是
+ * 数据 — 每个模型的结果由 resolveProviderWireAxes 计算。
  */
 export interface WireDefaults {
   transportProtocol: TransportProtocol | "by-family";
@@ -282,22 +282,22 @@ export interface WireDefaults {
   sealedSchema: SealedSchema | null | "by-family" | "openrouter";
 }
 
-/** A model a provider exposes 鈥?a reference into MODEL_SPECS plus per-entry overrides. */
+/** 提供者公开的模型 — 对 MODEL_SPECS 的引用加上每个条目的覆盖。 */
 export interface ProviderModelRef {
-  /** API model id sent to the provider; default = spec (e.g. OpenRouter "anthropic/claude-haiku-4.5"). */
+  /** 发送到提供者的 API 模型 id；默认 = spec（如 OpenRouter "anthropic/claude-haiku-4.5"） */
   id?: string;
-  /** ModelSpec id for capabilities/label; also the default API id. Omit only for spec-less models. */
+  /** 用于能力/标签的 ModelSpec id；也是默认 API id。仅对无 spec 模型省略。 */
   spec?: string;
-  /** picker selector; default = effective id. */
+  /** picker 选择器；默认 = 有效 id。 */
   key?: string;
-  /** display label override; default = referenced spec's displayName. */
+  /** 显示标签覆盖；默认 = 引用 spec 的 displayName。 */
   label?: string;
   optionNote?: string;
   aliases?: readonly string[];
   config?: Record<string, unknown>;
 }
 
-/** Three-level picker grouping (region/plan families). */
+/** 三级 picker 分组（区域/计划族） */
 export interface ProviderGroup {
   id: string;
   label: string;
@@ -306,11 +306,11 @@ export interface ProviderGroup {
 
 export interface ProviderSpec {
   id: string;
-  /** Full name for init / error messages, e.g. "Anthropic (Claude)". */
+  /** 用于 init / 错误消息的完整名称，如 "Anthropic (Claude)"。 */
   name: string;
-  /** Brand key/label (BRAND_LABEL_OVERRIDES). */
+  /** 品牌键/标签（BRAND_LABEL_OVERRIDES）。 */
   brand: string;
-  /** Picker provider-node label (PROVIDER_LABEL_OVERRIDES). Default derived from name. */
+  /** Picker 提供者节点标签（PROVIDER_LABEL_OVERRIDES）。默认从 name 派生。 */
   providerLabel?: string;
   credential: CredentialSpec;
   defaultBaseUrl?: string;
@@ -326,17 +326,17 @@ export interface RawProviderRegistry {
   providers: ProviderSpec[];
 }
 
-/** Effective API model id for a ref: explicit id, else the referenced spec id. */
+/** 引用的有效 API 模型 id：显式 id，否则引用 spec id。 */
 export function providerModelEffectiveId(ref: ProviderModelRef): string {
   return ref.id ?? ref.spec ?? "";
 }
 
-/** Effective picker selector key for a ref: explicit key, else effective id. */
+/** 引用的有效 picker 选择器键：显式键，否则有效 id。 */
 export function providerModelKey(ref: ProviderModelRef): string {
   return ref.key ?? providerModelEffectiveId(ref);
 }
 
-/** The env var a credential sources its key from (managed 鈫?internal slot). */
+/** 凭据从中获取密钥的环境变量（managed → 内部槽）。 */
 export function credentialEnvVar(c: CredentialSpec): string {
   switch (c.kind) {
     case "env": return c.envVar;
@@ -347,9 +347,10 @@ export function credentialEnvVar(c: CredentialSpec): string {
 }
 
 /**
- * OpenRouter's vendor-prefix 鈫?our brand label. Irreducible: OpenRouter names
- * vendors differently from us (moonshotai鈮燢imi, z-ai鈮燝LM) and that mapping can't
- * be derived from anything else 鈥?but it lives here, in one place, not scattered.
+ * OpenRouter 的供应商前缀 → 我们的品牌标签。不可约简：OpenRouter 名称
+ * 与我们不同（moonshotai → Kimi，z-ai → GLM），
+ * 该映射无法从其他任何东西派生 — 但它位于此处，集中在
+ * 一个地方，而不是分散的。
  */
 export const OPENROUTER_VENDOR_BRAND: Record<string, string> = {
   "anthropic": "Anthropic",
@@ -363,10 +364,10 @@ export const OPENROUTER_VENDOR_BRAND: Record<string, string> = {
 };
 
 /**
- * Resolve the three wire axes for a concrete (provider-wire, model) pair,
- * expanding the "by-family" / "openrouter" sentinels. Mirrors the old
+ * 为具体的（提供者-线轴，模型）对解析三个线轴，
+ * 展开 "by-family" / "openrouter" 哨兵。精确镜像旧的
  * resolveTransportProtocol / resolveThinkingEncryption / resolveSealedSchema
- * switches exactly 鈥?now driven by ProviderSpec.wire data.
+ * 开关 — 现在由 ProviderSpec.wire 数据驱动。
  */
 export function resolveProviderWireAxes(
   wire: WireDefaults,
@@ -401,9 +402,9 @@ export function resolveProviderWireAxes(
 }
 
 /**
- * Validate a raw provider registry and return its ProviderSpec[]. `knownModelIds`
- * is the set of all ModelSpec id+alias spellings, used to check every
- * model.spec reference resolves. Throws listing ALL problems.
+ * 验证原始提供者注册表并返回其 ProviderSpec[]。`knownModelIds`
+ * 是所有 ModelSpec id+别名拼写的集合，用于检查每个
+ * model.spec 引用是否解析。抛出列出*所有*问题。
  */
 export function loadProviderSpecs(raw: unknown, knownModelIds: ReadonlySet<string>): ProviderSpec[] {
   const problems: string[] = [];
@@ -446,7 +447,7 @@ export function loadProviderSpecs(raw: unknown, knownModelIds: ReadonlySet<strin
           problems.push(`${mw}: needs id or spec`);
           continue;
         }
-        // A ref must resolve a label: either reference a known spec, or carry an explicit label.
+        // 引用必须解析标签：要么引用已知 spec，要么带有显式标签
         if (m.spec !== undefined) {
           if (!knownModelIds.has(m.spec)) problems.push(`${mw}: spec '${m.spec}' not in model registry`);
         } else if (typeof m.label !== "string" || m.label.trim() === "") {
@@ -463,11 +464,11 @@ export function loadProviderSpecs(raw: unknown, knownModelIds: ReadonlySet<strin
 }
 
 // ------------------------------------------------------------------
-// Factory provider defaults (bundled)
+// 工厂提供者默认值（打包）
 // ------------------------------------------------------------------
 
-/** All ModelSpec id+alias spellings 鈥?used to validate provider model refs. */
+/** 所有 ModelSpec id+别名拼写 — 用于验证提供者模型引用 */
 const FACTORY_MODEL_ID_SET: ReadonlySet<string> = new Set(FACTORY_MODEL_SPECS.flatMap(modelSpecIds));
 
-/** Factory provider specs bundled into the binary. Phase 5 layers remote over this. */
+/** 打包到二进制中的工厂提供者 spec。第 5 阶段在此之上分层远程。 */
 export const FACTORY_PROVIDER_SPECS: ProviderSpec[] = loadProviderSpecs(factoryProvidersRaw, FACTORY_MODEL_ID_SET);

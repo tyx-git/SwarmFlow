@@ -1,34 +1,45 @@
 ﻿/**
- * User-facing progress reporting.
+ * 面向用户的进度报告。
  *
- * Provides a lightweight callback-based system for reporting session
- * progress to end users. Events include agent lifecycle, tool calls,
- * streaming text, context compaction, and sub-agent status.
+ * 提供轻量的回调系统，用于向终端用户报告会话进度。
+ * 事件包括代理生命周期、工具调用、流式文本、上下文压缩和子代理状态。
  */
 
 // ------------------------------------------------------------------
-// Types
+// 类型定义
 // ------------------------------------------------------------------
 
+/** 进度级别 */
 export type ProgressLevel = "quiet" | "normal" | "verbose";
 
+/** 进度事件 */
 export interface ProgressEvent {
+  /** 步骤号 */
   step: number;
+  /** 代理名称 */
   agent: string;
+  /** 操作类型 */
   action: string;
+  /** 事件消息 */
   message: string;
+  /** 详细级别 */
   level: ProgressLevel;
+  /** 时间戳（秒） */
   timestamp: number;
+  /** Token 用量信息 */
   usage: Record<string, number>;
+  /** 扩展字段 */
   extra: Record<string, unknown>;
 }
 
+/** 进度回调函数类型 */
 export type ProgressCallback = (event: ProgressEvent) => void;
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
+/** 构造进度事件对象（自动填充时间戳） */
 function makeEvent(partial: Omit<ProgressEvent, "timestamp"> & { timestamp?: number }): ProgressEvent {
   return {
     ...partial,
@@ -40,6 +51,7 @@ function makeEvent(partial: Omit<ProgressEvent, "timestamp"> & { timestamp?: num
 // ProgressReporter
 // ------------------------------------------------------------------
 
+/** 流式操作——这类事件不会存入 messages 列表 */
 const STREAMING_ACTIONS = new Set(["text_chunk", "reasoning_chunk", "no_reply_clear"]);
 
 export class ProgressReporter {
@@ -52,16 +64,16 @@ export class ProgressReporter {
     this.level = opts?.level ?? "normal";
   }
 
-  /** Dispatch a progress event if it meets the verbosity threshold. */
+  /** 派发进度事件（若满足详细级别阈值则触发回调） */
   emit(event: ProgressEvent): void {
-    // Filter by level
+    // 按级别过滤
     if (this.level === "quiet") {
       if (event.level === "normal" || event.level === "verbose") return;
     } else if (this.level === "normal") {
       if (event.level === "verbose") return;
     }
 
-    // Non-streaming events are stored; streaming events only trigger callback
+    // 非流式事件存入列表，流式事件仅触发回调
     if (!STREAMING_ACTIONS.has(event.action)) {
       this.messages.push(event);
     }
@@ -72,7 +84,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // Convenience emitters
+  // 便捷发送方法
   // ------------------------------------------------------------------
 
   onToolCall(
@@ -131,7 +143,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // Network retry emitters
+  // 网络重试发送方法
   // ------------------------------------------------------------------
 
   onRetryAttempt(
@@ -167,7 +179,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // Compact lifecycle emitters
+  // 压缩生命周期发送方法
   // ------------------------------------------------------------------
 
   onCompactStart(agent: string, scenario: string): void {
@@ -187,7 +199,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // Agent lifecycle emitters
+  // 代理生命周期发送方法
   // ------------------------------------------------------------------
 
   onAgentStart(wave: number, agent: string, extra?: Record<string, unknown>): void {
@@ -229,7 +241,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // NO_REPLY event emitters
+  // NO_REPLY 事件发送方法
   // ------------------------------------------------------------------
 
   onAgentNoReply(agent: string): void {
@@ -241,7 +253,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // Streaming text events
+  // 流式文本事件发送方法
   // ------------------------------------------------------------------
 
   onTextChunk(agent: string, chunk: string): void {
@@ -270,7 +282,7 @@ export class ProgressReporter {
 }
 
 // ------------------------------------------------------------------
-// ConsoleProgress
+// 控制台进度输出器
 // ------------------------------------------------------------------
 
 export class ConsoleProgress extends ProgressReporter {
@@ -292,7 +304,7 @@ export class ConsoleProgress extends ProgressReporter {
         this._streamed = true;
       }
     } else if (event.action === "no_reply_clear") {
-      // Silent event, no output needed
+      // 静默事件，无需输出
     } else {
       if (this._streamed) {
         process.stdout.write("\n");
@@ -302,7 +314,7 @@ export class ConsoleProgress extends ProgressReporter {
     }
   }
 
-  /** Return true if text was streamed since last call, then reset. */
+  /** 返回自上次调用以来是否有文本流式输出过，然后重置。 */
   popStreamed(): boolean {
     const result = this._streamed;
     this._streamed = false;

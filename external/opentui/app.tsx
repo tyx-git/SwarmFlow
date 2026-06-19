@@ -1,5 +1,21 @@
 ﻿/** @jsxImportSource @opentui/react */
 
+// =============================================================================
+// SwarmFlow GUI — OpenTUI React 主应用
+// =============================================================================
+// 职责：React 主组件，协调所有 UI 状态、事件处理、命令分发
+// 架构：
+//   OpenTuiApp（根组件）
+//   ├── 状态层：phase（idle/Working/Asking/closing）、tabs、theme、draftValue 等
+//   ├── 事件层：session 事件轮询、进度回调、OAuth 回调
+//   ├── 渲染层：OpenTuiScreen（主界面）、各 Overlay（command/checkbox/prompt 等）
+//   └── 集成层：session.turn()、commandRegistry、store 持久化
+//
+// 数据流：
+//   用户输入 → handleSubmit → session.turn() → 进度事件 → handleProgressRef
+//   子进程事件 → session → usePresentationEntries → presentationEntries → OpenTuiScreen
+//   命令输入 → buildCommandContext() → command.handler() → session/UI 状态更新
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { clipboard } from "../src/platform/index.js";
@@ -353,6 +369,7 @@ export function OpenTuiApp({
       renderer.off("theme_mode", handler);
     };
   }, [renderer, themeModePref]);
+  // ── 核心状态：phase / processing / tokens / child sessions ─────────────────
   const [processing, _setProcessing] = useState(false);
   const processingRef = useRef(false);
   const setProcessing = useCallback((v: boolean) => {
@@ -610,10 +627,8 @@ export function OpenTuiApp({
     applyMarkdownTheme(theme);
   }, [theme]);
 
-  // -- Usage poller lifecycle (Codex + Copilot) --
-  // Start/stop based on current provider. The poller survives model switches
-  // within the same session, but must be torn down and rebuilt when the user
-  // switches between Codex and Copilot (different fetch fn + different token).
+  // ── Usage poller 生命周期（Codex + Copilot）─────────────────────────────────
+  // 根据当前 provider 启动/停止。provider 切换时必须重建（不同的 fetchFn + token）。
   useEffect(() => {
     const provider = session.primaryAgent?.modelConfig?.provider;
 
@@ -1226,7 +1241,7 @@ export function OpenTuiApp({
     });
   }, [startOAuthFlow]);
 
-  // -- Startup OAuth check: prompt login if default model's token is missing/expired --
+  // ── 启动时 OAuth 检查：token 缺失/过期时提示登录 ──────────────────────────────
   const startupOAuthCheckedRef = useRef(false);
   useEffect(() => {
     if (startupOAuthCheckedRef.current) return;
@@ -1289,7 +1304,7 @@ export function OpenTuiApp({
     };
   }, [copyOnSelect, renderer, flashCopyToast, showHint]);
 
-  // 鈹€鈹€ Background shells: stop action + picker 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // ── 后台 Shell：停止操作 + 选择器 ────────────────────────────────────────────
 
   const stopShellFromUi = useCallback((shellId: string) => {
     void (async () => {
@@ -1671,6 +1686,8 @@ export function OpenTuiApp({
     };
   }, []);
 
+  // ── buildCommandContext: 命令执行上下文 ─────────────────────────────────────
+  // 提供给命令 handler 的 API：session、store、commandRegistry、UI 操作回调等
   const buildCommandContext = useCallback((): CommandContext => {
     return {
       session,
@@ -1903,17 +1920,14 @@ export function OpenTuiApp({
     return serializeComposerText(composer, ensureComposerTokenType(composer));
   }, [draftValue]);
 
-  // Commands that run regardless of streaming state. /copy is here so its
-  // "wait until the agent finishes" hint actually fires (otherwise the
-  // default path would queue "/copy" as a user message to the LLM).
+  // ── 命令分类：UI-only / Session-config ──────────────────────────────────────
+  // UI_ONLY: 即使在 processing 时也拦截（如 /agents /sidebar /copy /new）
+  // SESSION_CONFIG: 修改运行时配置，processing 时仅提示不排队（/mcp /skills）
   const UI_ONLY_COMMANDS = new Set(["/agents", "/raw", "/sidebar", "/copy", "/new"]);
-  // Commands that mutate session runtime config (skills / MCP). They run as
-  // ordinary commands when idle 鈥?the Session serializes the actual reload
-  // against turns via its turn lock, so they need no UI "Working" state. While
-  // a turn is processing we only intercept them with a hint so they are not
-  // queued to the LLM as a user message.
   const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills"]);
 
+  // ── handleSubmit: 核心输入处理 ──────────────────────────────────────────────
+  // 流程：UI-only 命令 → pendingAsk 审批 → 命令选择器 → session.turn()
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;

@@ -1,9 +1,9 @@
 ﻿/**
- * Shared argument-validation helpers for tool executors.
+ * 工具执行器的共享参数验证辅助函数。
  *
- * Extracted from Session so that standalone manager classes
- * (BackgroundShellManager, etc.) can validate tool arguments
- * without depending on the Session instance.
+ * 从 Session 中提取，以便独立管理类
+ *（BackgroundShellManager 等）可以验证工具参数
+ * 而不依赖 Session 实例。
  */
 
 import { ToolResult } from "../providers/base.js";
@@ -48,9 +48,9 @@ export function argRequiredStringArray(
   key: string,
 ): string[] | ToolResult {
   const raw = args[key];
-  // validate-then-repair: only attempt coercion once the as-is value fails the
-  // array check. Covers '["a","b"]' JSON strings, {} placeholders, and bare
-  // strings 鈥?the recoverable shapes open models emit. See arg-repair.ts.
+  // 验证后修复：只有当原值未通过数组检查时才尝试强制转换。
+  // 覆盖 '["a","b"]' JSON 字符串、{} 占位符和裸字符串
+  // —— 这些是开放模型产生的可恢复形状。参见 arg-repair.ts。
   let value: unknown[];
   if (Array.isArray(raw)) {
     value = raw;
@@ -70,10 +70,10 @@ export function argRequiredStringArray(
 }
 
 /**
- * Optional path/file argument: like `argOptionalString` but unwraps the
- * degenerate markdown auto-link some models emit into a path field
- * (`"[notes.md](http://notes.md)"` 鈫?`"notes.md"`). Use for path arguments
- * only 鈥?never for free-text fields, which may contain genuine markdown links.
+ * 可选路径/文件参数：类似 `argOptionalString`，但会解包
+ * 某些模型发送到路径字段的退化 markdown 自动链接
+ *（`"[notes.md](http://notes.md)"` → `"notes.md"`）。仅用于路径参数
+ * — 永远不要用于自由文本字段，其中可能包含真正的 markdown 链接。
  */
 export function argOptionalPath(
   toolName: string,

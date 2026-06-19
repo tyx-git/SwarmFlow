@@ -1,8 +1,8 @@
 ﻿/**
- * Release tarball naming + install path conventions per platform.
+ * 每个平台的发布 tarball 命名 + 安装路径约定。
  *
- * Used by build scripts, the install.sh script, and the update
- * checker so they all agree on what file lives at what URL.
+ * 被构建脚本、install.sh 脚本和更新检查器使用，
+ * 以便它们都同意什么文件位于什么 URL。
  */
 
 import type { BinaryAssetProvider } from "../types.js";

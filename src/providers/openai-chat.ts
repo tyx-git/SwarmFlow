@@ -1,8 +1,8 @@
 ﻿/**
- * OpenAI Chat Completions API provider.
+ * OpenAI Chat Completions API 提供者。
  *
- * Also serves as the base class for Kimi, GLM, MiniMax,
- * and OpenRouter providers that use OpenAI-compatible endpoints.
+ * 也作为使用 OpenAI 兼容端点的 Kimi、GLM、MiniMax
+ * 和 OpenRouter 提供者的基类。
  */
 
 import OpenAI from "openai";
@@ -68,17 +68,16 @@ export class OpenAIChatProvider extends BaseProvider {
       reasoningState !== replayText
         ? reasoningState
         : undefined;
-    // Base OpenAIChatProvider doesn't know what wire-format schema its
-    // sealed payload follows 鈥?subclasses that emit sealed payloads
-    // (e.g. OpenRouter wrapping its reasoning_details array) override
-    // _buildThinkingArtifact or set the schema in their own path.
-    // Without a known schema we cannot safely round-trip sealed data, so
-    // we omit the schema tag here 鈥?same effect as omit for sealed selection.
+    // Base OpenAIChatProvider 不知道其密封负载遵循的线路格式 schema —
+    // 发出密封负载的子类（例如 OpenRouter 包装其 reasoning_details 数组）
+    // 会覆盖 _buildThinkingArtifact 或在自己路径中设置 schema。
+    // 没有已知 schema 我们无法安全地往返密封数据，所以
+    // 我们在这里省略 schema 标签 — 与密封选择中省略的效果相同。
     const sealedSchema = this._sealedSchemaForChatProvider();
     return createThinkingArtifact(targetEncryption, replayText, sealedPayload, sealedSchema);
   }
 
-  /** Override in subclasses (e.g. OpenRouter) to declare a sealed schema. */
+  /** 在子类中覆盖（例如 OpenRouter）以声明密封 schema。 */
   protected _sealedSchemaForChatProvider(): string | null {
     return null;
   }
@@ -106,7 +105,7 @@ export class OpenAIChatProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Tool conversion
+  // 工具转换
   // ------------------------------------------------------------------
 
   protected _convertTools(
@@ -120,7 +119,7 @@ export class OpenAIChatProvider extends BaseProvider {
           hasWebSearch = true;
           continue;
         }
-        // No native support 鈥?fall through to register as a regular function tool
+        // 没有原生支持 — 继续注册为常规函数工具
       }
       result.push({
         type: "function",
@@ -135,7 +134,7 @@ export class OpenAIChatProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Message conversion
+  // 消息转换
   // ------------------------------------------------------------------
 
   protected _convertMessages(messages: Message[]): Record<string, unknown>[] {
@@ -145,8 +144,8 @@ export class OpenAIChatProvider extends BaseProvider {
       const m = msg as Record<string, unknown>;
 
       if (m["role"] === "tool_result") {
-        // OpenAI Chat API tool results only accept string content;
-        // extract text from multimodal content blocks if present.
+        // OpenAI Chat API 工具结果仅接受字符串内容；
+        // 如果存在，则从多模态内容块中提取文本。
         const rawContent = m["content"];
         const textContent = Array.isArray(rawContent)
           ? (rawContent as Array<Record<string, unknown>>)
@@ -247,7 +246,7 @@ export class OpenAIChatProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Response parsing
+  // 响应解析
   // ------------------------------------------------------------------
 
   private _parseResponse(resp: OpenAI.Chat.Completions.ChatCompletion): ProviderResponse {
@@ -274,17 +273,17 @@ export class OpenAIChatProvider extends BaseProvider {
       usage = new Usage(
         resp.usage.prompt_tokens ?? 0,
         resp.usage.completion_tokens ?? 0,
-        0, // no cache creation for OpenAI
+        0, // OpenAI 没有缓存创建
         promptDetails?.["cached_tokens"] ?? 0,
       );
     }
 
-    // Capture reasoning_content if present (Kimi: reasoning_content, Ollama: reasoning)
+    // 如果存在则捕获 reasoning_content（Kimi: reasoning_content，Ollama: reasoning）
     const msgRecord = message as unknown as Record<string, unknown>;
     const reasoning =
       (msgRecord["reasoning_content"] as string) || (msgRecord["reasoning"] as string) || "";
 
-    // Extract web search citations from annotations (url_citation)
+    // 从注释中提取网络搜索引用（url_citation）
     const annotations =
       ((message as unknown as Record<string, unknown>)["annotations"] as Record<string, unknown>[]) || [];
     const citations: Citation[] = [];
@@ -310,13 +309,13 @@ export class OpenAIChatProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Thinking params
+  // 思考参数
   // ------------------------------------------------------------------
 
   protected _applyThinkingParams(kwargs: Record<string, unknown>, options?: SendMessageOptions): void {
     if (!this._config.supportsThinking) return;
     kwargs["reasoning_effort"] = "high";
-    // o-series doesn't support temperature; uses max_completion_tokens
+    // o 系列不支持 temperature；使用 max_completion_tokens
     delete kwargs["temperature"];
     if ("max_tokens" in kwargs) {
       kwargs["max_completion_tokens"] = kwargs["max_tokens"];
@@ -332,11 +331,11 @@ export class OpenAIChatProvider extends BaseProvider {
       options?: SendMessageOptions;
     },
   ): void {
-    // Subclasses can inject provider-specific request parameters.
+    // 子类可以注入提供者特定的请求参数。
   }
 
   // ------------------------------------------------------------------
-  // Core API call
+  // 核心 API 调用
   // ------------------------------------------------------------------
 
   async sendMessage(
@@ -369,7 +368,7 @@ export class OpenAIChatProvider extends BaseProvider {
       }
     }
 
-    // Apply config.extra BEFORE thinking params (thinking has final control)
+    // 在思考参数之前应用 config.extra（思考有最终控制权）
     if (this._config.extra) {
       const extraBody = this._config.extra["extra_body"] as
         | Record<string, unknown>
@@ -398,7 +397,7 @@ export class OpenAIChatProvider extends BaseProvider {
 
     this._applyThinkingParams(kwargs, options);
 
-    // Clean up empty extra_body
+    // 清理空的 extra_body
     if (
       kwargs["extra_body"] &&
       typeof kwargs["extra_body"] === "object" &&
@@ -426,7 +425,7 @@ export class OpenAIChatProvider extends BaseProvider {
   }
 
   // ------------------------------------------------------------------
-  // Streaming
+  // 流式传输
   // ------------------------------------------------------------------
 
   private async _callStream(
@@ -462,12 +461,12 @@ export class OpenAIChatProvider extends BaseProvider {
         (kwargs["extra_body"] as Record<string, unknown>)["reasoning_split"] === true
       );
     let hasVendorReasoningSplit = requestedReasoningSplit;
-    // Track <think> tag extraction for APIs that embed reasoning in content
-    // (e.g. MiniMax sends <think>...</think> in delta.content instead of reasoning_details,
-    //  or LM Studio which outputs <think> tags as plain text in content)
+    // 跟踪 <think> 标签提取，用于将 reasoning 嵌入 content 的 API
+    //（例如 MiniMax 在 delta.content 中发送 <think>...</think> 而不是 reasoning_details，
+    // 或 LM Studio 将 <think> 标签作为普通文本输出到 content 中）。
     let thinkTagEmittedLen = 0;
-    // Detect <think> in content for servers without vendor reasoning split (e.g. LM Studio).
-    // null = first content delta not yet seen; then true/false.
+    // 对没有供应商 reasoning split 的服务器（例如 LM Studio）检测 content 中的 <think>。
+    // null = 尚未看到第一个 content delta；之后为 true/false。
     let contentHasInlineThink: boolean | null = null;
 
     function normalizeReasoningDetails(details: unknown): { text: string; state: unknown } | null {
@@ -605,7 +604,7 @@ export class OpenAIChatProvider extends BaseProvider {
         }
       }
 
-      // Reasoning / thinking content (Kimi: reasoning_content, Ollama: reasoning)
+      // Reasoning / thinking 内容（Kimi: reasoning_content，Ollama: reasoning）
       const reasoning = ((delta as Record<string, unknown>)[
         "reasoning_content"
       ] ?? (delta as Record<string, unknown>)[
@@ -621,7 +620,7 @@ export class OpenAIChatProvider extends BaseProvider {
         );
       }
 
-      // MiniMax reasoning_split (reasoning_details) and similar vendor extensions
+      // MiniMax reasoning_split（reasoning_details）及类似供应商扩展
       const reasoningDetails = (delta as Record<string, unknown>)[
         "reasoning_details"
       ];
@@ -640,13 +639,13 @@ export class OpenAIChatProvider extends BaseProvider {
         }
       }
 
-      // Text content
+      // 文本内容
       if (delta.content) {
         closeToolIndex(activeToolIndex);
         if (hasVendorReasoningSplit) {
           rawTextSoFar = reconcileMaybeCumulative(delta.content, rawTextSoFar);
 
-          // Extract <think> content as reasoning (MiniMax-style: reasoning in content tags)
+          // 将 <think> 内容提取为 reasoning（MiniMax 风格：reasoning 位于 content 标签中）
           const trimmed = rawTextSoFar.replace(/^\s*/, "");
           if (trimmed.startsWith("<think>")) {
             const tagStart = rawTextSoFar.indexOf("<think>") + "<think>".length;
@@ -667,9 +666,9 @@ export class OpenAIChatProvider extends BaseProvider {
           textSoFar = appendMaybeCumulative(visible, visibleTextSoFar, textParts, onTextChunk);
           visibleTextSoFar = textSoFar;
         } else {
-          // Detect <think> tags on first content delta (LM Studio, local LLMs).
-          // <think> is a single special token in Qwen/DeepSeek, so the first chunk
-          // is always the complete "<think>" string.
+          // 在第一个 content delta 上检测 <think> 标签（LM Studio、本地 LLM）。
+          // <think> 在 Qwen/DeepSeek 中是单个特殊 token，所以第一个 chunk
+          // 总是完整的 "<think>" 字符串。
           if (contentHasInlineThink === null) {
             contentHasInlineThink = delta.content.replace(/^\s*/, "").startsWith("<think>");
           }
@@ -700,7 +699,7 @@ export class OpenAIChatProvider extends BaseProvider {
         }
       }
 
-      // Tool call deltas (incremental accumulation)
+      // 工具调用 delta（增量累积）
       if (delta.tool_calls) {
         for (const tcDelta of delta.tool_calls) {
           const idx = tcDelta.index;
@@ -745,7 +744,7 @@ export class OpenAIChatProvider extends BaseProvider {
         }
       }
 
-      // Usage in final chunk
+      // 最终 chunk 中的用量
       if (chunk.usage) {
         const promptDetails = (chunk.usage as unknown as Record<string, unknown>)[
           "prompt_tokens_details"

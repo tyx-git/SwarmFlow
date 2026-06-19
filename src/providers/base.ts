@@ -1,23 +1,23 @@
 ﻿/**
- * Provider abstraction layer 鈥?base types and abstract class.
+ * 提供者抽象层 — 基础类型和抽象类。
  *
- * Defines the unified interfaces for tool calls, usage tracking,
- * provider responses, and the abstract BaseProvider contract.
+ * 定义工具调用、使用跟踪、
+ * 提供者响应和抽象 BaseProvider 合约的统一接口。
  */
 
 import type { ThinkingArtifact } from "../lib/thinking-artifact.js";
 
 // ------------------------------------------------------------------
-// Data interfaces
+// 数据接口
 // ------------------------------------------------------------------
 
-/** An image content block for multimodal messages. */
+/** 多模态消息的图像内容块。 */
 export interface ImageBlock {
-  mediaType: string;   // e.g. "image/png", "image/jpeg"
-  data: string;        // base64-encoded image data
+  mediaType: string;   // 例如 "image/png", "image/jpeg"
+  data: string;        // base64 编码的图像数据
 }
 
-/** A single tool invocation returned by a model. */
+/** 模型返回的单个工具调用。 */
 export interface ToolCall {
   id: string;
   name: string;
@@ -26,14 +26,14 @@ export interface ToolCall {
   parseError: string | null;
 }
 
-/** Normalized web search citation. */
+/** 标准化的网页搜索引用。 */
 export interface Citation {
   url: string;
   title: string;
   citedText?: string;
 }
 
-/** Provider-agnostic tool definition. */
+/** 提供者无关的工具定义。 */
 export type ToolTuiPartialRevealPolicy =
   | "immediate"
   | "closed"
@@ -41,8 +41,8 @@ export type ToolTuiPartialRevealPolicy =
 
 export interface ToolTuiPolicy {
   /**
-   * When a partial tool call becomes eligible to render in the TUI.
-   * Hidden/override decisions can still be applied at runtime by Session.
+   * 部分工具调用何时有资格渲染到 TUI。
+   * 隐藏/覆盖决策仍可由 Session 在运行时应用。
    */
   partialReveal?: ToolTuiPartialRevealPolicy;
 }
@@ -50,19 +50,19 @@ export interface ToolTuiPolicy {
 export interface ToolDef {
   name: string;
   description: string;
-  /** JSON Schema for the function arguments. */
+  /** 函数参数的 JSON Schema。 */
   parameters: Record<string, unknown>;
   /**
-   * Format string for one-line summaries of tool invocations.
-   * `{agent}` is always available; other placeholders map to argument keys.
+   * 工具调用单行摘要的格式字符串。
+   * `{agent}` 始终可用；其他占位符映射到参数键。
    */
   summaryTemplate?: string;
-  /** Local-only TUI behavior hints; never forwarded to providers. */
+  /** 仅本地使用的 TUI 行为提示；永不转发给提供者。 */
   tuiPolicy?: ToolTuiPolicy;
 }
 
 // ------------------------------------------------------------------
-// Message type for conversation messages
+// 对话消息的消息类型
 // ------------------------------------------------------------------
 
 export type MessageRole = "system" | "user" | "assistant" | "tool" | "tool_result";
@@ -74,7 +74,7 @@ export interface Message {
 }
 
 // ------------------------------------------------------------------
-// Options for sendMessage
+// sendMessage 的选项
 // ------------------------------------------------------------------
 
 export interface SendMessageOptions {
@@ -82,22 +82,22 @@ export interface SendMessageOptions {
   maxTokens?: number;
   onTextChunk?: (chunk: string) => void;
   onReasoningChunk?: (chunk: string) => void;
-  /** Fired as a tool call becomes visible and its raw JSON argument buffer evolves. */
+  /** 当工具调用变得可见且其原始 JSON 参数缓冲区变化时触发。 */
   onToolCallPartial?: (callId: string, name: string, rawArguments: string) => void;
-  /** Fired when a tool call is closed and canonicalized by the provider. */
+  /** 当工具调用关闭并由提供者规范化时触发。 */
   onToolCallClosed?: (call: ToolCall) => void;
   signal?: AbortSignal;
-  /** Unified thinking level string ("off", "low", "medium", "high", "adaptive", etc.) */
+  /** 统一思考级别字符串（"off", "low", "medium", "high", "adaptive" 等）。 */
   thinkingLevel?: string;
-  /** Routing key for OpenAI prompt cache affinity (e.g. child session id). */
+  /** OpenAI prompt cache affinity 的路由键（例如子 session id）。 */
   promptCacheKey?: string;
 }
 
 // ------------------------------------------------------------------
-// Classes with computed properties
+// 带计算属性的类
 // ------------------------------------------------------------------
 
-/** Token usage tracker. */
+/** Token 用量跟踪器。 */
 export class Usage {
   inputTokens: number;
   outputTokens: number;
@@ -116,7 +116,7 @@ export class Usage {
   }
 }
 
-/** Unified response from any provider. */
+/** 任意提供者的统一响应。 */
 export class ProviderResponse {
   text: string;
   toolCalls: ToolCall[];
@@ -182,17 +182,17 @@ export function finalizeToolCall(
   }
 }
 
-/** Extended tool execution result with optional metadata. */
+/** 带可选元数据的扩展工具执行结果。 */
 export class ToolResult {
   content: string;
   actionHint?: string;
   tags: string[];
   metadata: Record<string, unknown>;
   /**
-   * Optional multimodal content blocks for providers that support them
-   * (e.g. Anthropic tool_result with image blocks).
-   * When present, providers should use these instead of `content` string.
-   * The `content` string still serves as the text fallback / TUI display.
+   * 支持多模态的提供者可使用的可选多模态内容块
+   *（例如带图像块的 Anthropic tool_result）。
+   * 存在时，提供者应使用这些块而不是 `content` 字符串。
+   * `content` 字符串仍作为文本回退 / TUI 显示。
    */
   contentBlocks?: Array<Record<string, unknown>>;
 
@@ -216,29 +216,29 @@ export class ToolResult {
 }
 
 // ------------------------------------------------------------------
-// Partial JSON recovery for interrupted streaming
+// 中断流式传输的部分 JSON 恢复
 // ------------------------------------------------------------------
 
 /**
- * Recover complete key-value pairs from a truncated JSON object string.
- * Used when streaming is interrupted mid-arguments.
+ * 从截断的 JSON 对象字符串中恢复完整键值对。
+ * 用于流式传输在参数中途被中断时。
  *
- * Strategy:
- * 1. Try normal JSON.parse (works if JSON is actually complete)
- * 2. Try appending common closers ("}", ""}", etc.) to close truncated values
- * 3. Truncate at the last top-level comma and close with "}"
- * 4. Fall back to {}
+ * 策略：
+ * 1. 尝试普通 JSON.parse（如果 JSON 实际完整则可用）
+ * 2. 尝试追加常见闭合符（"}", ""}" 等）以闭合截断值
+ * 3. 在最后一个顶层逗号处截断并用 "}" 闭合
+ * 4. 回退到 {}
  */
 export function recoverPartialArgs(partial: string): Record<string, unknown> {
   if (!partial) return {};
 
-  // 1. Try normal parse
+  // 1. 尝试普通解析
   try {
     const r = JSON.parse(partial);
     if (r && typeof r === "object" && !Array.isArray(r)) return r;
   } catch {}
 
-  // 2. Try appending common closers
+  // 2. 尝试追加常见闭合符
   for (const closer of ['"}', "}", '"]}'  , "null}"]) {
     try {
       const r = JSON.parse(partial + closer);
@@ -246,7 +246,7 @@ export function recoverPartialArgs(partial: string): Record<string, unknown> {
     } catch {}
   }
 
-  // 3. Truncate at last comma and close
+  // 3. 在最后一个逗号处截断并闭合
   for (let i = partial.length - 1; i >= 0; i--) {
     if (partial[i] === ",") {
       try {
@@ -260,28 +260,28 @@ export function recoverPartialArgs(partial: string): Record<string, unknown> {
 }
 
 // ------------------------------------------------------------------
-// Abstract base provider
+// 抽象基础提供者
 // ------------------------------------------------------------------
 
 /**
- * Interface that every provider adapter must implement.
+ * 每个提供者适配器必须实现的接口。
  */
 export abstract class BaseProvider {
   /**
-   * Whether this provider requires strictly alternating user/assistant roles.
-   * When true, the rendering pipeline merges consecutive same-role messages.
+   * 此提供者是否要求 user/assistant 角色严格交替。
+   * 为 true 时，渲染管线会合并连续的同角色消息。
    */
   readonly requiresAlternatingRoles: boolean = false;
 
   /**
-   * How to calculate the token budget for compact detection.
-   * - "subtract_output": budget = contextLength - maxOutputTokens (default)
-   * - "full_context": budget = contextLength, check only inputTokens
+   * compact 检测如何计算 token 预算。
+   * - "subtract_output": budget = contextLength - maxOutputTokens（默认）
+   * - "full_context": budget = contextLength，仅检查 inputTokens
    */
   readonly budgetCalcMode: "subtract_output" | "full_context" = "subtract_output";
 
   /**
-   * Send a message to the model and return a unified response.
+   * 向模型发送消息并返回统一响应。
    */
   abstract sendMessage(
     messages: Message[],
@@ -290,12 +290,12 @@ export abstract class BaseProvider {
   ): Promise<ProviderResponse>;
 
   /**
-   * Async send with optional streaming callbacks.
+   * 带可选流式回调的异步发送。
    *
-   * Delegates to `sendMessage` with the full options object, including
-   * streaming callbacks and abort signal.  Each provider's `sendMessage`
-   * checks for `onTextChunk`/`onReasoningChunk` and routes to its
-   * streaming implementation when present.
+   * 使用完整 options 对象委托给 `sendMessage`，其中包括
+   * 流式回调和中止信号。每个提供者的 `sendMessage`
+   * 会检查 `onTextChunk`/`onReasoningChunk`，存在时路由到其
+   * 流式实现。
    */
   async asyncSendMessage(
     messages: Message[],

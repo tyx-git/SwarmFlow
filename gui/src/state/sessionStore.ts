@@ -1,12 +1,16 @@
 /**
- * Renderer state store.
+ * 渲染器状态存储（Zustand）。
  *
- * Holds:
- *   - tabs: list of all sessions
- *   - activeTabId: currently focused tab
- *   - perTab: map of tabId → { log, status, meta, models, ... }
+ * 数据流：
+ *   init() → 订阅 rpc:event → handleEvent() 路由到 perTab
+ *   刷新方法 → api.rpc.request() → SessionProcess → 子进程
  *
- * Subscribes to `rpc:event` once on init and routes events into the right tab.
+ * Tab 类型：
+ *   - draft: 临时 Tab，未启动子进程，只有 workDir 和 selectedModel
+ *   - starting: 子进程正在启动
+ *   - ready: 正常运行
+ *   - error: 启动失败
+ *   - closed: 已关闭
  */
 
 import { create } from 'zustand'
@@ -20,15 +24,17 @@ import type {
   WorkspaceHistoryGroup,
 } from '@shared/rpc.js'
 
+/** 单个 Tab 的运行时状态 */
 export interface TabState {
-  readonly meta: SessionMeta | null
-  readonly status: SessionStatus | null
-  readonly logEntries: unknown[]
-  readonly logRevision: number
-  readonly activeLogEntryId: string | null
-  readonly pendingAsk: { id: string; kind: string; summary: string } | null
-  readonly models: readonly ModelDescriptor[]
-  readonly stderrLog: string[]
+  readonly meta: SessionMeta | null       // session.getMeta
+  readonly status: SessionStatus | null  // 当前运行状态（token 计数、权限等）
+  readonly logEntries: unknown[]         // session.getLogSnapshot
+  readonly logRevision: number          // 日志版本号，用于检测变化
+  readonly activeLogEntryId: string | null // 流式写入中的活动条目 ID
+  readonly pendingAsk: { id: string; kind: string; summary: string } | null // 待批准的请求
+  readonly models: readonly ModelDescriptor[]  // 可用模型
+  readonly stderrLog: string[]           // stderr 诊断日志
+}
 }
 
 interface SessionStoreState {
@@ -441,6 +447,11 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   },
 }))
 
+// =============================================================================
+// 辅助函数
+// =============================================================================
+
+/** 更新 perTab[tabId] 中的 TabState 字段 */
 function patchTabState(
   set: (s: Partial<SessionStoreState>) => void,
   get: () => SessionStoreState,
@@ -452,6 +463,7 @@ function patchTabState(
   set({ perTab: { ...get().perTab, [tabId]: next } })
 }
 
+/** 将 draft Tab 转换为真实的子进程 Tab */
 async function materializeDraftTab(
   set: (s: Partial<SessionStoreState>) => void,
   get: () => SessionStoreState,
@@ -489,11 +501,16 @@ async function materializeDraftTab(
   }
 }
 
+// =============================================================================
+// handleEvent — RPC 事件处理器（由主进程 webContents.send 触发）
+// =============================================================================
+
 function handleEvent(e: RpcEvent): void {
   const { tabId, method, params } = e
   const store = useSessionStore.getState()
 
   switch (method) {
+    // ── ready: 子进程启动完成，获取 sessionId、title、model 等元信息
     case 'ready': {
       touchTab(
         (s) => useSessionStore.setState(s),
@@ -531,13 +548,13 @@ function handleEvent(e: RpcEvent): void {
       void store.refreshModels(tabId)
       break
     }
+    // ── log.changed: 日志有更新，刷新 log 和 status
     case 'log.changed': {
       touchTab(
         (s) => useSessionStore.setState(s),
         () => useSessionStore.getState(),
         tabId,
       )
-      // A turn made progress. Pull the latest log + status.
       const status = (params as { status?: SessionStatus })?.status
       void store.refreshLog(tabId)
       if (status) {
@@ -552,6 +569,7 @@ function handleEvent(e: RpcEvent): void {
       }
       break
     }
+    // ── turn.started: 新的 turn 开始
     case 'turn.started': {
       touchTab(
         (s) => useSessionStore.setState(s),
@@ -561,6 +579,7 @@ function handleEvent(e: RpcEvent): void {
       void store.refreshStatus(tabId)
       break
     }
+    // ── turn.ended: turn 结束，更新状态并刷新历史
     case 'turn.ended': {
       const ended = params as { status?: unknown } | undefined
       patchTabState(
@@ -587,10 +606,12 @@ function handleEvent(e: RpcEvent): void {
       void store.refreshHistory()
       break
     }
+    // ── session.saved: 会话已保存，刷新历史
     case 'session.saved': {
       void store.refreshHistory()
       break
     }
+    // ── ask.pending:有待批准的请求（工具执行等）
     case 'ask.pending': {
       const ask = params as { id: string; kind: string; summary: string }
       patchTabState(
@@ -601,6 +622,7 @@ function handleEvent(e: RpcEvent): void {
       )
       break
     }
+    // ── ask.resolved: 批准请求已解决
     case 'ask.resolved': {
       patchTabState(
         (s) => useSessionStore.setState(s),
@@ -614,6 +636,7 @@ function handleEvent(e: RpcEvent): void {
       // Plan state updates — the renderer can pull on demand
       break
     }
+    // ── model.changed: 模型变更
     case 'model.changed': {
       void store.refreshMeta(tabId)
       break
@@ -622,6 +645,7 @@ function handleEvent(e: RpcEvent): void {
       void store.refreshStatus(tabId)
       break
     }
+    // ── server.stderr: stderr 输出（诊断）
     case 'server.stderr': {
       const text = (params as { text: string })?.text ?? ''
       patchTabState(
@@ -632,6 +656,7 @@ function handleEvent(e: RpcEvent): void {
       )
       break
     }
+    // ── tab.closed: Tab 被关闭
     case 'tab.closed': {
       const tabs = useSessionStore.getState().tabs.filter((t) => t.tabId !== tabId)
       const perTab = { ...useSessionStore.getState().perTab }
@@ -642,8 +667,9 @@ function handleEvent(e: RpcEvent): void {
       storeActiveTabId(activeTabId)
       break
     }
+    // ── tab.error: Tab 启动错误
     case 'tab.error': {
-      // surface errors via stderrLog
+      // 将错误通过 stderrLog 显示
       const text = `[error] ${(params as { message: string })?.message ?? 'unknown'}\n`
       patchTabState(
         (s) => useSessionStore.setState(s),
@@ -656,6 +682,7 @@ function handleEvent(e: RpcEvent): void {
   }
 }
 
+/** 更新 tabs 数组中指定 tabId 的 SessionTab 快照 */
 function patchTabSnapshot(
   set: (s: Partial<SessionStoreState>) => void,
   get: () => SessionStoreState,
@@ -668,6 +695,7 @@ function patchTabSnapshot(
   set({ tabs })
 }
 
+/** 更新 Tab 的 lastActiveAt 时间戳 */
 function touchTab(
   set: (s: Partial<SessionStoreState>) => void,
   get: () => SessionStoreState,
@@ -676,6 +704,7 @@ function touchTab(
   patchTabSnapshot(set, get, tabId, () => ({ lastActiveAt: Date.now() }))
 }
 
+/** 获取工作区最近使用过的模型 */
 function currentModelForWorkspace(tabs: readonly SessionTab[], workDir: string): string | null {
   const workspaceTab = [...tabs]
     .reverse()

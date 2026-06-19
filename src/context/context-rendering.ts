@@ -1,10 +1,10 @@
 ﻿/**
- * Context-tag and message-shaping utilities shared by the log-native runtime.
+ * 上下文标签和消息整形工具——由基于日志的运行时共享。
  *
- * Provides:
- *  - Compact marker constants and type guards
- *  - Context ID injection utilities
- *  - Consecutive same-role merging for provider-specific alternation rules
+ * 提供：
+ *  - 压缩标记常量和类型守卫
+ *  - 上下文 ID 注入工具
+ *  - 连续同角色合并（用于提供商特定的交替规则）
  */
 
 import { randomBytes } from "node:crypto";
@@ -13,17 +13,17 @@ import { randomBytes } from "node:crypto";
 // Compact marker
 // ------------------------------------------------------------------
 
-/** Sentinel role used for compact markers in the conversation array. */
+/** 对话数组中压缩标记使用的哨兵角色 */
 export const COMPACT_MARKER_ROLE = "__compact_marker";
 
-/** Shape of a compact marker in provider-message-like projections. */
+/** 类似提供商消息投影中的压缩标记形状 */
 export interface CompactMarker {
   role: typeof COMPACT_MARKER_ROLE;
   marker_type: "plan_advance" | "auto_compact" | "context_reset";
   timestamp: number;
 }
 
-/** Type guard: is this message a compact marker? */
+/** 类型守卫：此消息是否为压缩标记？ */
 export function isCompactMarker(msg: Record<string, unknown>): boolean {
   return msg["role"] === COMPACT_MARKER_ROLE;
 }
@@ -32,12 +32,12 @@ export function isCompactMarker(msg: Record<string, unknown>): boolean {
 // Context ID
 // ------------------------------------------------------------------
 
-/** Metadata field name for context IDs stored on messages. */
+/** 存储在消息上的上下文 ID 的元数据字段名 */
 export const CONTEXT_ID_KEY = "_context_id";
 
 /**
- * Allocate a unique random hex context ID (4 hex chars).
- * Retries on collision (up to 10 times), then falls back to 6 hex chars.
+ * 分配唯一的随机十六进制上下文 ID（4 个十六进制字符）。
+ * 碰撞时重试（最多 10 次），然后回退到 6 个十六进制字符。
  */
 export function allocateContextId(usedIds: Set<string>): string {
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -53,28 +53,27 @@ export function allocateContextId(usedIds: Set<string>): string {
   return id;
 }
 
-/** Format a context ID into the injection tag: `搂{contextId}搂` */
+/** 将上下文 ID 格式化为注入标签：`搂{contextId}搂` */
 export function formatContextTag(contextId: string): string {
   return `搂{${contextId}}搂`;
 }
 
-/** Regex matching any `搂{...}搂` context tag, plus optional trailing newline (global). */
+/** 匹配任何 `搂{...}搂` 上下文标签的正则表达式，包含可选的尾随换行符（全局） */
 export const CONTEXT_TAG_REGEX = /搂\{[^}]*\}搂\n?/g;
 
-/** Strip all `搂{...}搂` context tags (and their trailing newline) from text. */
+/** 从文本中剥离所有 `搂{...}搂` 上下文标签（及其尾随换行符） */
 export function stripContextTags(text: string): string {
   return text.replace(CONTEXT_TAG_REGEX, "");
 }
 
 // ------------------------------------------------------------------
-// ContextTagStripBuffer 鈥?streaming strip for 搂{...}搂 tags
+// ContextTagStripBuffer——流式剥离搂{...}搂 标签
 // ------------------------------------------------------------------
 
 /**
- * Buffers streaming text to strip `搂{...}搂` context tags that the model
- * may produce. When `搂` is encountered, buffering starts. If the buffer
- * completes a `搂{...}搂` pattern, it's discarded. Otherwise the buffer
- * is flushed downstream.
+ * 缓冲流式文本以剥离模型可能产生的 `搂{...}搂` 上下文标签。
+ * 遇到 `搂` 时开始缓冲。如果缓冲区完成 `搂{...}搂` 模式则丢弃；
+ * 否则将缓冲区刷新到下游。
  */
 export class ContextTagStripBuffer {
   private _downstream: (chunk: string) => void;
@@ -91,7 +90,7 @@ export class ContextTagStripBuffer {
       if (this._swallowNewline) {
         this._swallowNewline = false;
         if (ch === "\n") continue;  // consumed
-        // Not a newline 鈥?fall through to normal processing
+        // Not a newline —fall through to normal processing
       }
       if (this._buffering) {
         this._buffer += ch;
@@ -103,7 +102,7 @@ export class ContextTagStripBuffer {
             this._buffering = false;
             this._swallowNewline = true;
           } else {
-            // Not a valid tag 鈥?flush buffer
+            // Not a valid tag —flush buffer
             this._flush();
           }
         } else if (this._buffer.length > 50) {
@@ -119,7 +118,7 @@ export class ContextTagStripBuffer {
     }
   }
 
-  /** Flush any remaining buffered content. */
+  /** 刷新任何剩余的缓冲内容 */
   flush(): void {
     if (this._buffer) {
       this._downstream(this._buffer);
@@ -136,10 +135,10 @@ export class ContextTagStripBuffer {
 }
 
 /**
- * Inject a context tag at the beginning of message content.
+ * 在消息内容开头注入上下文标签。
  *
- * Handles both string content and Anthropic-style array content
- * (array of content blocks with `{type, text, ...}`).
+ * 处理字符串内容和 Anthropic 风格的数组内容
+ * （包含 `{type, text, ...}` 的内容块数组）。
  */
 export function injectContextIdTag(
   content: string | Array<Record<string, unknown>>,
@@ -152,7 +151,7 @@ export function injectContextIdTag(
   }
 
   if (Array.isArray(content)) {
-    // Find first text block and prepend the tag
+    // 查找第一个文本块并在前面插入标签
     const copy = content.map((block) => ({ ...block }));
     let injected = false;
     for (const block of copy) {
@@ -163,7 +162,7 @@ export function injectContextIdTag(
       }
     }
     if (!injected) {
-      // No text block found 鈥?insert one at the beginning
+      // 未找到文本块——在开头插入一个
       copy.unshift({ type: "text", text: tag });
     }
     return copy;
@@ -173,20 +172,20 @@ export function injectContextIdTag(
 }
 
 // ------------------------------------------------------------------
-// Consecutive same-role merging
+// 连续同角色消息合并
 // ------------------------------------------------------------------
 
 /**
- * Role-aware merge for consecutive same-role messages.
+ * 角色感知的连续同角色消息合并。
  *
- * For providers that require strictly alternating user/assistant turns.
+ * 用于需要严格交替 user/assistant turn 的提供商。
  *
- * Rules:
- *  - system messages: never merged
- *  - tool_result messages: never merged (each has its own tool_call_id)
- *  - assistant with tool_calls: never merged, but absorbs preceding pure-text assistant
- *  - user + user: block concat (concatAsContentBlocks)
- *  - assistant(text) + assistant(text): text concat via \n\n
+ * 规则：
+ *  - 系统消息：永不合并
+ *  - tool_result 消息：永不合并（每个都有自己的 tool_call_id）
+ *  - 带 tool_calls 的 assistant：永不合并，但吸收前面的纯文本 assistant
+ *  - user + user：块拼接（concatAsContentBlocks）
+ *  - assistant(text) + assistant(text)：通过 \n\n 文本拼接
  */
 export function mergeConsecutiveSameRole(
   messages: Array<Record<string, unknown>>,
@@ -198,7 +197,7 @@ export function mergeConsecutiveSameRole(
   for (const msg of messages) {
     const role = msg["role"] as string;
 
-    // Never merge these 鈥?but handle adjacent assistant edge case
+    // 永不合并这些——但处理相邻 assistant 的边缘情况
     if (
       role === "system" ||
       role === "tool_result"
@@ -208,10 +207,8 @@ export function mergeConsecutiveSameRole(
     }
 
     if (role === "assistant" && msg["tool_calls"]) {
-      // If the previous message is a pure-text assistant (e.g. a summary
-      // inserted by summarize_context), merge its text into this message
-      // to avoid consecutive model turns that violate strict
-      // role-alternation requirements.
+      // 如果前一条消息是纯文本 assistant（例如 summarize_context 插入的摘要），
+      // 将其文本合并到此消息中，以避免违反严格角色交替要求的连续模型 turn。
       const prev = result.length > 0 ? result[result.length - 1] : null;
       if (
         prev &&
@@ -230,7 +227,7 @@ export function mergeConsecutiveSameRole(
           result.pop();
           result.push(merged);
         } else {
-          // prev is empty 鈥?just remove it
+          // 前一条为空——直接移除
           result.pop();
           result.push(msg);
         }
@@ -246,7 +243,7 @@ export function mergeConsecutiveSameRole(
       continue;
     }
 
-    // Previous message also shouldn't be a "never merge" type
+    // 前一条消息也不应是"永不合并"类型
     if (
       prev["role"] === "system" ||
       prev["role"] === "tool_result" ||
@@ -256,7 +253,7 @@ export function mergeConsecutiveSameRole(
       continue;
     }
 
-    // Merge into previous
+    // 合并到前一条消息
     const prevContent = prev["content"];
     const curContent = msg["content"];
 
@@ -267,8 +264,8 @@ export function mergeConsecutiveSameRole(
 }
 
 /**
- * Merge two message content values together.
- * Handles string + string, array + array, string + array, array + string.
+ * 合并两个消息内容值。
+ * 处理 string + string、array + array、string + array、array + string。
  */
 function mergeContent(
   a: unknown,
@@ -283,7 +280,7 @@ function mergeContent(
     return `${a}\n\n${b}`;
   }
 
-  // Convert strings to text blocks for array merging
+  // 将字符串转换为文本块用于数组合并
   const aBlocks = aIsArray
     ? (a as Array<Record<string, unknown>>)
     : aIsString

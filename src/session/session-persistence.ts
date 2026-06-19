@@ -1,27 +1,25 @@
-﻿/**
- * SessionPersistence 鈥?restore parsing + log surgery (P2.5).
+/**
+ * SessionPersistence —— 恢复解析 + 日志手术（P2.5）。
  *
- * Replaces the shadow-Session trick: `parseRestoredState` turns a persisted
- * log into a plain `RestoredSessionState` data structure without touching any
- * Session. Everything that can fail (model resolution, log surgery) happens
- * here, in the parse stage 鈥?so a failed restore never pollutes the live
- * session; `Session._applyRestoredState` is then a single assignment pass.
+ * 替换影子 Session 方案：parseRestoredState 将持久化日志转换为
+ * 纯 RestoredSessionState 数据结构，而不触碰任何 Session 实例。
+ * 所有可能失败的工作（模型解析、日志手术）都在此处的解析阶段完成——
+ * 失败的恢复不会污染 live session；
+ * Session._applyRestoredState 之后只是一个赋值传递。
  *
- * The log-surgery functions (deny-resolve open asks, normalize an
- * interrupted turn, complete missing tool_results, finish work) are shared
- * with the LIVE interrupt paths through the `LogSurgery` interface: the parse
- * stage drives them against a plain in-memory state, while Session drives the
- * same functions against a view of itself (`_logSurgeryView`) 鈥?one
- * implementation, no restore/live drift.
+ * 日志手术函数（拒绝解决 open asks、中断 turn 正规化、
+ * 完成缺失的 tool_results、结束 work）与 LIVE 中断路径
+ * 通过 LogSurgery 接口共享：解析阶段在克隆数据上驱动它们，
+ * 而 Session 在自身的视图（_logSurgeryView）上驱动相同函数——
+ * 一个实现，无恢复/live 漂移。
  *
- * Invariants (see Docs/session-refactor-plan-2026-06-11.md):
- *   1. The live session's log revision is never reset by a restore 鈥?apply
- *      only ever bumps it, so UI subscribers always detect the swap.
- *   2. Open asks are deny-resolved BEFORE interrupted-turn normalization
- *      (ESC-deny model): normalization must see them as completed
- *      tool_call 鈫?tool_result pairs.
- *   3. A restore that throws leaves the current session untouched (all
- *      throwing work is in the parse stage, on cloned data).
+ * 不变式（详见 Docs/session-refactor-plan-2026-06-11.md）：
+ *   1. Live session 的 log revision 绝不因恢复而重置——apply 只递增它，
+ *      UI 订阅者始终检测到交换。
+ *   2. Open asks 在中断 turn 正规化之前被拒绝解决（ESC-deny 模型）：
+ *      正规化必须将它们视为已完成的 tool_call → tool_result 对。
+ *   3. 恢复抛出时当前 session 保持不变（所有抛出的工作都在解析阶段，
+ *      作用于克隆数据）。
  */
 
 import { allocateContextId } from "../context/context-rendering.js";
@@ -41,7 +39,7 @@ import type { ChildSessionPhase } from "../session-tree-types.js";
 import type { PersistedModelSelection } from "../models/selection.js";
 import { stampProviderRoundId } from "./session-log.js";
 
-/** Tools whose interruption cannot leave partial effects behind. */
+/** 中断后不会留下部分副作用的工具。 */
 export const SAFE_INTERRUPT_TOOLS = new Set([
   "ask",
   "check_status",
@@ -62,26 +60,28 @@ export const SAFE_INTERRUPT_TOOLS = new Set([
   "bash_output",
 ]);
 
+/** 该工具中断后可能留下部分副作用。 */
 export function toolMayHavePartialEffects(toolName: string): boolean {
   return !SAFE_INTERRUPT_TOOLS.has(toolName);
 }
 
 // ------------------------------------------------------------------
-// LogSurgery 鈥?the mutable surface log surgery operates on
+// LogSurgery —— 日志手术操作的可变表面
 // ------------------------------------------------------------------
 
 /**
- * Implemented two ways: Session._logSurgeryView() proxies the live session
- * (appendEntry routes through the log store so revision/listeners fire),
- * while the parse stage uses a plain in-memory state.
+ * 两种实现方式：
+ * Session._logSurgeryView() 代理 live session
+ *（appendEntry 经由日志存储触发 revision/listeners），
+ * 而解析阶段使用纯内存状态。
  */
 export interface LogSurgery {
-  /** Live entry array 鈥?scans read it; all appends go through appendEntry. */
+  /** 实时条目数组——扫描读取；所有追加经由 appendEntry。 */
   readonly entries: LogEntry[];
   appendEntry(entry: LogEntry): void;
   nextLogId(type: LogEntry["type"]): string;
   allocateContextId(): string;
-  /** Record a session event line (bounded recent-events list). */
+  /** 记录会话事件行（有限最近事件列表）。 */
   recordEvent(text: string): void;
   turnCount: number;
   workCount: number;
@@ -92,9 +92,10 @@ export interface LogSurgery {
 }
 
 // ------------------------------------------------------------------
-// Scan helpers (pure)
+// 扫描辅助函数（纯函数）
 // ------------------------------------------------------------------
 
+/** 在给定 turn 中找到最后一个 round 的 roundIndex + 1。 */
 function computeNextRoundIndexIn(entries: readonly LogEntry[], turnIndex: number): number {
   let maxRound = -1;
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -107,6 +108,7 @@ function computeNextRoundIndexIn(entries: readonly LogEntry[], turnIndex: number
   return maxRound + 1;
 }
 
+/** 最近一次 live compact_marker 的起始索引之后的位置。 */
 function activeWindowStartIdxIn(entries: readonly LogEntry[]): number {
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i].type === "compact_marker" && !entries[i].discarded) {
@@ -116,10 +118,11 @@ function activeWindowStartIdxIn(entries: readonly LogEntry[]): number {
   return 0;
 }
 
+/** 在活动窗口中按 toolCallId 查找 tool_call 条目。 */
 function findToolCallEntryIn(entries: readonly LogEntry[], toolCallId: string): LogEntry | undefined {
   if (!toolCallId) return undefined;
   const windowStart = activeWindowStartIdxIn(entries);
-  for (let i = entries.length - 1; i >= windowStart; i--) {
+  for (let i = windowStart; i < entries.length; i++) {
     const entry = entries[i];
     if (entry.discarded) continue;
     if (entry.type !== "tool_call") continue;
@@ -129,6 +132,7 @@ function findToolCallEntryIn(entries: readonly LogEntry[], toolCallId: string): 
   return undefined;
 }
 
+/** 在指定 turn/round 中查找 context_id。 */
 function findRoundContextIdIn(entries: readonly LogEntry[], turnIndex: number, roundIndex: number): string | undefined {
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
@@ -144,6 +148,7 @@ function findRoundContextIdIn(entries: readonly LogEntry[], turnIndex: number, r
   return undefined;
 }
 
+/** 按 toolCallId 或 roundIndex 查找 context_id。 */
 function findToolCallContextIdIn(
   surgery: LogSurgery,
   toolCallId: string,
@@ -161,10 +166,10 @@ function findToolCallContextIdIn(
 }
 
 // ------------------------------------------------------------------
-// Log surgery (shared by live interrupt paths and restore parsing)
+// 日志手术（live 中断路径和恢复解析共用）
 // ------------------------------------------------------------------
 
-/** Open a work span if none is active; returns the active workId. */
+/** 若无活动 work span 则开启一个；返回活动的 workId。 */
 export function beginWorkIfNeededIn(s: LogSurgery): string {
   if (s.currentWorkId) return s.currentWorkId;
   s.workCount += 1;
@@ -175,7 +180,7 @@ export function beginWorkIfNeededIn(s: LogSurgery): string {
   return workId;
 }
 
-/** Close the current work span with a status (work_end entry + bookkeeping). */
+/** 关闭当前 work span（work_end 条目 + 记账）。 */
 export function finishWorkInLog(
   s: LogSurgery,
   status: "completed" | "interrupted" | "error",
@@ -199,9 +204,8 @@ export function finishWorkInLog(
 }
 
 /**
- * Scan entries from `fromIdx` onwards: for each tool_call (apiRole=assistant)
- * that has no matching tool_result, append a contextual interrupted
- * tool_result with a system-message body.
+ * 从 fromIdx 往后扫描：每个没有匹配 tool_result 的 tool_call
+ *（apiRole=assistant）追加一个含中断上下文的 tool_result。
  */
 export function completeMissingToolResultsInLog(s: LogSurgery, fromIdx: number): void {
   const pendingToolCalls: Array<{
@@ -269,10 +273,9 @@ export function completeMissingToolResultsInLog(s: LogSurgery, fromIdx: number):
 }
 
 /**
- * Drop reasoning only when the interrupted round has no durable assistant
- * output yet, or when a partial tool-call argument stream made the whole
- * assistant action non-sendable. Completed thinking paired with partial text
- * is a valid prefix and must be preserved.
+ * 仅在中断 round 尚无持久化助手输出时丢弃推理，
+ * 或当部分 tool-call 参数流使整个助手动作不可发送时。
+ * 与部分文本配对的已完成思考是有效前缀，必须保留。
  */
 export function discardInterruptedRoundReasoningInLog(
   entries: readonly LogEntry[],
@@ -315,9 +318,9 @@ export function discardInterruptedRoundReasoningInLog(
 }
 
 /**
- * Normalize a turn that ended without a work_end (crash / suspend): discard
- * dangling reasoning, complete missing tool_results, inject a recovery
- * system-message, and close the work span as interrupted.
+ * 正规化一个没有 work_end 的中断 turn（崩溃/挂起）：
+ * 丢弃悬空推理、完成缺失的 tool_results、
+ * 注入恢复 system-message、关闭 work span 为 interrupted。
  */
 export function normalizeInterruptedTurnInLog(s: LogSurgery, message: string): void {
   let turnStartIndex = -1;
@@ -345,7 +348,7 @@ export function normalizeInterruptedTurnInLog(s: LogSurgery, message: string): v
   s.turnCount = interruptedTurnIndex;
   completeMissingToolResultsInLog(s, turnStartIndex);
 
-  // Inject <system-message> about the recovery (same format as live interrupt).
+  // 注入关于恢复的 system-message（与 live 中断格式相同）
   const interruptionContent = `<system-message>\n${message}\n</system-message>`;
   const interruptionCtxId = s.allocateContextId();
   const interruptionEntry = createUserMessageEntry(
@@ -364,9 +367,9 @@ export function normalizeInterruptedTurnInLog(s: LogSurgery, message: string): v
 }
 
 /**
- * Resolve every open ask_request as Deny/Decline with a matching error
- * tool_result, so the log carries a definite outcome (ESC-deny model).
- * Must run BEFORE normalizeInterruptedTurnInLog.
+ * 将每个 open ask_request 解决为 Deny/Decline，
+ * 附带匹配的 error tool_result，使日志携带确定性结果（ESC-deny 模型）。
+ * 必须在 normalizeInterruptedTurnInLog 之前运行。
  */
 export function resolveOpenAsksAsDenyInLog(s: LogSurgery): void {
   const resolvedAskIds = new Set<string>();
@@ -448,9 +451,10 @@ export function resolveOpenAsksAsDenyInLog(s: LogSurgery): void {
 }
 
 // ------------------------------------------------------------------
-// Restore parsing
+// 恢复解析
 // ------------------------------------------------------------------
 
+/** 恢复的廉价运行时信号。 */
 export interface RestoredRuntimeSignals {
   lifetimeToolCallCount: number;
   lastToolCallSummary: string;
@@ -459,7 +463,7 @@ export interface RestoredRuntimeSignals {
   selfPhase: ChildSessionPhase;
 }
 
-/** Rebuild the cheap runtime signals (tool counts, recent events) from a log. */
+/** 从日志重建廉价运行时信号。 */
 function rebuildRuntimeSignalsIn(entries: readonly LogEntry[]): RestoredRuntimeSignals {
   const signals: RestoredRuntimeSignals = {
     lifetimeToolCallCount: 0,
@@ -505,25 +509,25 @@ function rebuildRuntimeSignalsIn(entries: readonly LogEntry[]): RestoredRuntimeS
 }
 
 export interface ParseRestoreDeps {
-  /** Wraps resolvePersistedModelSelection(session, 鈥?. May throw. */
+  /** 包装 resolvePersistedModelSelection。可能抛出。 */
   resolveModelSelection(meta: LogSessionMeta): {
     selectedConfigName: string;
     modelProvider?: string;
     modelSelectionKey?: string;
     modelId?: string;
   };
-  /** Wraps config.getModel. May throw (unknown model = failed restore). */
+  /** 包装 config.getModel。可能抛出（未知模型 = 恢复失败）。 */
   getModelConfig(configName: string): ModelConfig;
   resolveThinkingLevel(modelName: string, preferredLevel: string): string;
-  /** Fallback when meta carries no initialModel. */
+  /** 当 meta 没有 initialModel 时的回退。 */
   describeInitialModelFallback(): string;
-  /** Fallback when meta carries no createdAt. */
+  /** 当 meta 没有 createdAt 时的回退。 */
   fallbackCreatedAt: string;
-  /** Agent name recorded as the source of rebuilt ask-history records. */
+  /** 重建 ask 历史记录的来源 Agent 名称。 */
   agentName: string;
 }
 
-/** Everything Session._applyRestoredState assigns onto the live session. */
+/** Session._applyRestoredState 赋值到 live session 的所有内容。 */
 export interface RestoredSessionState {
   modelConfig: ModelConfig;
   persistedModelSelection: PersistedModelSelection;
@@ -547,9 +551,9 @@ export interface RestoredSessionState {
 }
 
 /**
- * Parse a persisted log into a RestoredSessionState. Pure with respect to the
- * live session: operates only on the (caller-cloned) entries + allocator.
- * All throwing work (model resolution, surgery) happens here.
+ * 将持久化日志解析为 RestoredSessionState。
+ * 相对于 live session 是纯的：只操作（调用方克隆的）entries + allocator。
+ * 所有可能抛出的工作（模型解析、手术）都在此处。
  */
 export function parseRestoredState(
   deps: ParseRestoreDeps,
@@ -557,7 +561,7 @@ export function parseRestoredState(
   entries: LogEntry[],
   idAllocator: LogIdAllocator,
 ): RestoredSessionState {
-  // Model resolution first 鈥?the common failure mode, before any surgery.
+  // 模型解析优先——这是常见失败模式，在任何手术之前。
   const selection = deps.resolveModelSelection(meta);
   const modelConfig = deps.getModelConfig(selection.selectedConfigName);
   const preferredThinkingLevel = meta.thinkingLevel ?? "";
@@ -569,7 +573,7 @@ export function parseRestoredState(
     modelId: selection.modelId,
   };
 
-  // Rebuild usedContextIds / work count from entries.
+  // 从 entries 重建 usedContextIds / work count。
   const usedContextIds = new Set<string>();
   let workCount = 0;
   for (const e of entries) {
@@ -578,8 +582,7 @@ export function parseRestoredState(
     if (e.type === "work_start" && !e.discarded) workCount += 1;
   }
 
-  // Restore last token counts from log. A zero token_update means the provider
-  // ended without usable usage data, so keep looking for the last real count.
+  // 从日志恢复最后 token 计数。若 token_update 无有效 usage，继续找上一个。
   let lastInputTokens = 0;
   let lastTotalTokens = 0;
   let lastCacheReadTokens = 0;
@@ -596,7 +599,7 @@ export function parseRestoredState(
 
   const signals = rebuildRuntimeSignalsIn(entries);
 
-  // Plain surgery state over the cloned data.
+  // 在克隆数据上的纯手术状态。
   const surgery: LogSurgery = {
     entries,
     appendEntry(entry: LogEntry): void {
@@ -626,13 +629,13 @@ export function parseRestoredState(
     activeLogEntryId: null,
   };
 
-  // ESC-deny model: resolve open asks as Deny/Decline FIRST so the
-  // subsequent normalization sees them as completed tool_call 鈫?tool_result
-  // pairs and doesn't add spurious "interrupted" markers.
+  // ESC-deny 模型：先将 open asks 解决为 Deny/Decline，
+  // 使后续正规化将它们视为已完成的 tool_call → tool_result 对，
+  // 而非添加虚假的"中断"标记。
   resolveOpenAsksAsDenyInLog(surgery);
   normalizeInterruptedTurnInLog(surgery, "Last turn was interrupted unexpectedly and recovered after restart.");
 
-  // Rebuild ask history from ask_resolution entries.
+  // 从 ask_resolution 条目重建 ask 历史。
   const askHistory: AskAuditRecord[] = [];
   for (const e of entries) {
     if (e.type === "ask_resolution" && !e.discarded) {

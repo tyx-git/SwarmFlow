@@ -1,18 +1,18 @@
-﻿/**
- * GitHub Copilot short-lived API token manager.
+/**
+ * GitHub Copilot 短生命周期 API Token 管理器。
  *
- * Copilot has a two-tier token architecture:
- *   1. Long-lived GitHub OAuth token (~8 hours, refreshable via refresh_token)
- *   2. Short-lived Copilot API token (~25 minutes, minted on demand)
+ * Copilot 采用双层 Token 架构：
+ *   1. 长生命周期 GitHub OAuth 令牌（约 8 小时，可通过 refresh_token 刷新）
+ *   2. 短生命周期 Copilot API 令牌（约 25 分钟，按需铸造）
  *
- * The Copilot API token is what goes into Authorization: Bearer <token>
- * headers when calling api.individual.githubcopilot.com/*. It must be
- * exchanged from the long-lived GitHub token by hitting
- * GET api.github.com/copilot_internal/v2/token.
+ * Copilot API 令牌是调用 api.individual.githubcopilot.com/* 时
+ * 放在 Authorization: Bearer <token> 头中的令牌。
+ * 通过 GET api.github.com/copilot_internal/v2/token
+ * 从长生命周期 GitHub 令牌换取。
  *
- * This manager keeps the short-lived token in memory (never written to disk)
- * and refreshes it automatically when expiry approaches. Concurrent callers
- * share a single in-flight refresh to avoid thundering-herd.
+ * 此管理器将短生命周期令牌保留在内存中（从不写入磁盘），
+ * 并在即将过期时自动刷新。并发调用方共享单个进行中的刷新请求，
+ * 避免雷鸣群（thundering-herd）问题。
  */
 
 import {
@@ -21,42 +21,44 @@ import {
 } from "./github-copilot-oauth.js";
 
 // =============================================================================
-// Constants
+// 常量
 // =============================================================================
 
 const COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token";
 
-/** Refresh the short-lived Copilot API token 60 seconds before its stated expiry. */
+/** 在声明的过期时间前 60 秒刷新短生命周期 Copilot API 令牌。 */
 const REFRESH_SKEW_SECONDS = 60;
 
 const HTTP_TIMEOUT_MS = 15_000;
 
 // =============================================================================
-// Types
+// 类型
 // =============================================================================
 
 export interface CopilotApiToken {
-  /** The short-lived token to put in `Authorization: Bearer`. */
+  /** 放入 Authorization: Bearer 的短生命周期令牌。 */
   token: string;
-  /** Absolute expiry in seconds since epoch (from the server response). */
+  /** 绝对过期时间（自 epoch 以来的秒数，来自服务器响应）。 */
   expiresAt: number;
-  /** Base URL for Copilot API requests (e.g. https://api.individual.githubcopilot.com). */
+  /** Copilot API 请求的 Base URL（如 https://api.individual.githubcopilot.com）。 */
   endpointApi: string;
 }
 
 // =============================================================================
-// Token Manager
+// Token 管理器
 // =============================================================================
 
 class CopilotTokenManager {
+  /** 缓存的令牌（内存中）。 */
   private _cached: CopilotApiToken | null = null;
+  /** 进行中的刷新 Promise（防止并发刷新）。 */
   private _inflight: Promise<CopilotApiToken> | null = null;
 
   /**
-   * Get a valid short-lived Copilot API token.
-   * - Returns cached if still fresh.
-   * - Otherwise refreshes via /copilot_internal/v2/token.
-   * - Concurrent callers share the same in-flight refresh.
+   * 获取有效的短生命周期 Copilot API 令牌。
+   * - 若缓存仍有效则直接返回。
+   * - 否则通过 /copilot_internal/v2/token 刷新。
+   * - 并发调用方共享同一个进行中的刷新。
    */
   async getToken(): Promise<CopilotApiToken> {
     if (this._cached && !this._isExpiring(this._cached)) {
@@ -72,18 +74,20 @@ class CopilotTokenManager {
   }
 
   /**
-   * Discard the cached token, forcing the next getToken() call to re-fetch.
-   * Call this on 401 responses from Copilot API endpoints.
+   * 丢弃缓存令牌，强制下次 getToken() 调用重新获取。
+   * 在 Copilot API 端点返回 401 时调用。
    */
   invalidate(): void {
     this._cached = null;
   }
 
+  /** 检查令牌是否即将过期。 */
   private _isExpiring(t: CopilotApiToken): boolean {
     const now = Math.floor(Date.now() / 1000);
     return t.expiresAt <= now + REFRESH_SKEW_SECONDS;
   }
 
+  /** 向 Copilot Token 端点请求新的短生命周期令牌。 */
   private async _fetchFresh(): Promise<CopilotApiToken> {
     const githubToken = getGitHubAccessToken();
 
@@ -142,5 +146,5 @@ class CopilotTokenManager {
   }
 }
 
-/** Shared singleton used by all Copilot provider instances. */
+/** 所有 Copilot Provider 实例共享的单例。 */
 export const copilotTokenManager = new CopilotTokenManager();

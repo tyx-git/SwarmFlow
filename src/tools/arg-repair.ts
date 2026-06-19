@@ -1,30 +1,30 @@
 ﻿/**
- * Tool-input repair 鈥?forgiving coercions for the small, finite set of
- * malformed-but-recoverable tool arguments that open models (DeepSeek, GLM,
- * Qwen, Kimi, 鈥? routinely emit.
+ * 工具输入修复 — 对一小部分可恢复的错误格式工具参数的
+ * 宽容强制转换，这些参数是开放模型（DeepSeek、GLM、
+ * Qwen、Kimi 等）经常产生的。
  *
- * Design principle: VALIDATE-THEN-REPAIR, never preprocess. Callers parse the
- * input as-is first; only ON a type mismatch do they consult these repairs at
- * the exact failing argument. Valid inputs are never touched 鈥?this is what
- * keeps a `write_file` `content` that merely *looks* like JSON from being
- * silently rewritten. The validator localizes the bug; we only spend repair
- * budget where the schema actually disagreed.
+ * 设计原则：验证然后修复，绝不预处理。调用者首先按原样
+ * 解析输入；只有在类型不匹配时才在这些修复中查找
+ * 确切失败的参数。有效输入永远不会被触碰——这就是
+ * 保持一个 merely *looks* like JSON 的 `write_file` `content`
+ * 不会被静默重写的原因。验证器定位 bug；我们只在架构
+ * 实际不同意的地方花费修复预算。
  *
- * The catalogue is deliberately tiny and closed. Across the open models we
- * serve, the same shape mistakes repeat almost exactly:
- *   1. `null` for an optional field instead of omitting it
- *        鈫?already absorbed by callers' optional-arg helpers (`v == null`).
- *   2. `'["a","b"]'` emitted as a JSON *string* instead of an array.
- *   3. a value wrapped in an object `{}` placeholder where an array was wanted.
- *   4. a bare string `"foo"` where an array `["foo"]` was wanted.
+ * 目录故意很小且封闭。在我们服务的开放模型中，
+ * 相同的形状错误几乎完全重复：
+ *   1. `null` 用于可选字段而不是省略它
+ *        →已被调用者的可选参数辅助函数吸收（`v == null`）。
+ *   2. `'["a","b"]'` 作为 JSON *string* 而不是数组发出。
+ *   3. 一个值包装在对象 `{}` 占位符中，而需要的是数组。
+ *   4. 一个裸字符串 `"foo"`，而需要的是数组 `["foo"]`。
  *
- * ORDER MATTERS: the JSON-string-array parse (2) must run before the
- * bare-string wrap (4), otherwise `'["a","b"]'` becomes `['["a","b"]']`.
+ * 顺序很重要：JSON 字符串数组解析（2）必须在
+ * 裸字符串包装（4）之前运行，否则 `'["a","b"]'` 变成 `['["a","b"]']`。
  *
- * Separately, a path-specific repair unwraps the degenerate markdown
- * auto-link a model leaks from its chat distribution into a path field
- * (`"[notes.md](http://notes.md)"`), where link text equals the URL minus its
- * protocol. Genuine links (`[click](https://example.com)`) pass through.
+ * 单独地，路径特定修复解包一个模型从其聊天分发中泄漏到
+ * 路径字段的退化 markdown 自动链接
+ *（`"[notes.md](http://notes.md)"`），其中链接文本等于 URL 减去其
+ * 协议。真正的链接（`[click](https://example.com)`）通过。
  */
 
 export type ArgRepairKind =
@@ -33,8 +33,8 @@ export type ArgRepairKind =
   | "bare_string_to_array"
   | "autolink_path_unwrap";
 
-/** Optional telemetry sink. Lets the harness watch per-(model,tool) repair
- *  rates without coupling this pure module to Session/logging. No-op default. */
+/** 可选的遥测接收器。允许测试工具监控每个（模型、工具）的修复
+ * 速率，而无需将这个纯模块耦合到 Session/日志记录。默认无操作。 */
 let repairSink: ((info: { tool: string; key: string; kind: ArgRepairKind }) => void) | null = null;
 
 export function setArgRepairSink(
@@ -52,15 +52,15 @@ function reportRepair(tool: string, key: string, kind: ArgRepairKind): void {
 }
 
 /**
- * Attempt to coerce a non-array `value` into a string[] using repairs 2鈥?.
+ * Attempt to coerce a non-array `value` into a string[] using repairs 2—.
  * Returns the repaired array (and which repair fired) or null if unrepairable.
- * Pure 鈥?does not report telemetry; callers report on accept so the failing
+ * Pure —does not report telemetry; callers report on accept so the failing
  * path is known.
  */
 export function repairToStringArray(
   value: unknown,
 ): { value: string[]; kind: ArgRepairKind } | null {
-  // (2) stringified JSON array 鈥?MUST precede the bare-string wrap below.
+  // (2) 字符串化的 JSON 数组 —— 必须放在下面的裸字符串包装之前。
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
@@ -70,20 +70,19 @@ export function repairToStringArray(
           return { value: parsed as string[], kind: "json_string_array" };
         }
       } catch {
-        /* not valid JSON 鈥?fall through to bare-string wrap */
+        /* 不是有效 JSON —— 继续执行裸字符串包装 */
       }
     }
-    // (4) bare string 鈫?single-element array.
+    // (4) 裸字符串 → 单元素数组。
     return { value: [value], kind: "bare_string_to_array" };
   }
 
-  // (3) object placeholder. An empty object {} stands for an empty array; an
-  // object whose values are all strings is unwrapped to those values via
-  // Object.values (insertion order). NOTE: this is only safe for string[]
-  // targets whose element keys carry NO semantics (order is the only meaning,
-  // e.g. kill_shell/kill_agent `ids`). Do not route a keyed-semantic field
-  // through repairToStringArray 鈥?`{"first":..,"second":..}` would be flattened
-  // to an unordered-by-meaning value list.
+  // (3) 对象占位符。空对象 {} 表示空数组；
+  // 所有值都是字符串的对象通过 Object.values（插入顺序）解包为那些值。
+  // 注意：这仅对 element keys 没有语义的 string[] 目标安全
+  //（顺序是唯一含义，例如 kill_shell/kill_agent 的 `ids`）。
+  // 不要将带键语义字段通过 repairToStringArray ——
+  // `{"first":..,"second":..}` 会被扁平化为无序的值列表。
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const vals = Object.values(value as Record<string, unknown>);
     if (vals.length === 0) {
@@ -97,7 +96,7 @@ export function repairToStringArray(
   return null;
 }
 
-/** Public entry: repair + report. Returns string[] or null. */
+/** 公共入口：修复 + 报告。返回 string[] 或 null。 */
 export function coerceStringArray(
   tool: string,
   key: string,
@@ -112,9 +111,9 @@ export function coerceStringArray(
 const AUTOLINK_RE = /^\[([^\]]+)\]\(([^)]+)\)$/;
 
 /**
- * Unwrap ONLY the degenerate markdown auto-link a model leaks into a path:
- * link text equals the URL with any `http(s)://` stripped. Genuine links are
- * left untouched. Returns the unwrapped path (or the original string).
+ * 仅解包模型泄漏到路径中的退化 markdown 自动链接：
+ * 链接文本等于去掉任何 `http(s)://` 的 URL。真正的链接保持不变。
+ * 返回解包后的路径（或原始字符串）。
  */
 export function repairAutolinkPath(value: string): { value: string; repaired: boolean } {
   const m = value.trim().match(AUTOLINK_RE);
@@ -129,7 +128,7 @@ export function repairAutolinkPath(value: string): { value: string; repaired: bo
   return { value, repaired: false };
 }
 
-/** Public entry: unwrap autolink path + report. */
+/** 公共入口：解包 autolink 路径 + 报告。 */
 export function coercePathString(tool: string, key: string, value: string): string {
   const { value: unwrapped, repaired } = repairAutolinkPath(value);
   if (repaired) reportRepair(tool, key, "autolink_path_unwrap");

@@ -1,19 +1,17 @@
 ﻿/**
- * Xiaomi (MiMo) Anthropic-compatible provider.
+ * Xiaomi（MiMo）Anthropic 兼容提供者。
  *
- * Endpoints:
- *   - Pay-as-you-go (global):  https://api.xiaomimimo.com/anthropic
- *   - Token Plan (CN):         https://token-plan-cn.xiaomimimo.com/anthropic
- *   - Token Plan (Singapore):  https://token-plan-sgp.xiaomimimo.com/anthropic
- *   - Token Plan (Europe):     https://token-plan-ams.xiaomimimo.com/anthropic
+ * 端点：
+ *   - 按量付费（全球）：https://api.xiaomimimo.com/anthropic
+ *   - Token 计划（中国）：https://token-plan-cn.xiaomimimo.com/anthropic
+ *   - Token 计划（新加坡）：https://token-plan-sgp.xiaomimimo.com/anthropic
+ *   - Token 计划（欧洲）：https://token-plan-ams.xiaomimimo.com/anthropic
  *
- * Per official docs the API supports text, image, function calls, and
- * deep thinking through standard Anthropic shape. Thinking is a simple
- * on/off via `thinking.type` 鈥?the vendor does not expose effort sub-levels.
+ * 根据官方文档，API 通过标准 Anthropic 形状支持文本、图像、函数调用和
+ * 深度思考。Thinking 通过 `thinking.type` 简单开/关 — 供应商不暴露 effort 子级。
  *
- * No `cache_control` marker is sent (consistent with the rest of the
- * open-source vendor family; if Xiaomi adds explicit cache support later
- * we can opt in via a flag).
+ * 不发送 `cache_control` 标记（与其他开源供应商家族一致；如果 Xiaomi 未来
+ * 添加显式缓存支持，我们可以通过标志启用）。
  */
 
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";

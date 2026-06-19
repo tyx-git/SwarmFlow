@@ -1,16 +1,15 @@
 ﻿/**
- * Kimi (Moonshot) Anthropic-compatible provider.
+ * Kimi (Moonshot) Anthropic 兼容提供者。
  *
- * Endpoints:
+ * 端点：
  *   - Global: https://api.moonshot.ai/anthropic
  *   - China:  https://api.moonshot.cn/anthropic
  *
- * Verified live (2026-05): the endpoint returns standard Anthropic Messages
- * shape with structured thinking/text blocks. Backend runs automatic prefix
- * cache 鈥?`cache_control` markers are unnecessary. `thinking.signature` is
- * absent (open-source model) so we do not round-trip it.
+ * 实机验证（2026-05）：端点返回标准 Anthropic Messages 形状，
+ * 包含结构化 thinking/text 块。后端运行自动前缀缓存 — 不需要 `cache_control` 标记。
+ * `thinking.signature` 缺失（开源模型），因此我们不对其往返。
  *
- * Vendor quirks: K2.5 thinking requires temperature=1.
+ * 供应商特性：K2.5 thinking 要求 temperature=1。
  */
 
 import type { ModelConfig } from "../config/config.js";
@@ -29,18 +28,18 @@ export class KimiAnthropicProvider extends BaseAnthropicProvider {
   }
 
   /**
-   * Kimi's `/anthropic` web_search emits `input_json_delta` events without a
-   * `partial_json` field on degenerate (empty) searches, which crashes the
-   * SDK's stream parser. Repair the SSE before the SDK sees it.
+   * Kimi 的 `/anthropic` web_search 在退化（空）搜索时会发出没有
+   * `partial_json` 字段的 `input_json_delta` 事件，这会让 SDK 的流解析器崩溃。
+   * 在 SDK 看到之前修复 SSE。
    */
   protected override _wrapFetch() {
     return makeAnthropicSSERepairFetch();
   }
 
   /**
-   * Kimi prepends a "Search results for query: ..." text block before its
-   * server-side web_search on every search turn. Suppress it from the live
-   * stream (only relevant when web search is actually enabled).
+   * Kimi 在每个搜索回合的服务端 web_search 前都会预置
+   * "Search results for query: ..." 文本块。
+   * 在实时流中抑制它（仅在实际启用网页搜索时相关）。
    */
   protected override _dropsLeadingSearchPreamble(): boolean {
     return this._config.supportsWebSearch;
@@ -60,7 +59,7 @@ export class KimiAnthropicProvider extends BaseAnthropicProvider {
   ): void {
     const thinkingOff = options?.thinkingLevel === "off" || options?.thinkingLevel === "none";
     if (this._config.supportsThinking && !thinkingOff) {
-      // Kimi K2.5/K2.6 thinking mode requires temperature=1.
+      // Kimi K2.5/K2.6 thinking 模式要求 temperature=1。
       kwargs["temperature"] = 1;
       return;
     }

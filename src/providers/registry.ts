@@ -1,9 +1,9 @@
 ﻿/**
- * Provider factory 鈥?maps provider identifiers to concrete provider classes.
+ * 提供者工厂 — 将提供者标识符映射到具体提供者类。
  *
- * Dispatch is data-driven: provider id 鈫?providerClass (from the provider
- * registry) 鈫?constructor. The few valid non-preset ids (openai-chat, the
- * kimi-ai alias) keep explicit class mappings here.
+ * 分派是数据驱动的：provider id → providerClass（来自提供者
+ * 注册表）→ 构造函数。少数有效的非预设 id（openai-chat，
+ * kimi-ai 别名）在此保留显式类映射。
  */
 
 import type { ModelConfig } from "../config/config.js";
@@ -22,7 +22,7 @@ import { DeepSeekAnthropicProvider } from "./deepseek-anthropic.js";
 import { MiniMaxAnthropicProvider } from "./minimax-anthropic.js";
 import { XiaomiAnthropicProvider } from "./xiaomi-anthropic.js";
 
-// DEPRECATED 鈥?superseded by *-anthropic.ts variants. Kept importable for rollback only.
+// 已弃用 — 由 *-anthropic.ts 变体取代。仅为回滚而保留可导入性。
 // import { KimiProvider } from "./kimi.js";
 // import { MiniMaxProvider } from "./minimax.js";
 // import { DeepSeekProvider } from "./deepseek.js";
@@ -44,7 +44,7 @@ const CTOR_BY_CLASS: Record<ProviderClassKind, ProviderCtor> = {
   "xiaomi-anthropic": XiaomiAnthropicProvider,
 };
 
-/** Provider-class mappings for valid ids that aren't picker presets. */
+/** 非 picker 预设的有效 id 的 provider-class 映射。 */
 const EXTRA_PROVIDER_CLASSES: Record<string, ProviderClassKind> = {
   "openai-chat": "openai-chat",
   "kimi-ai": "kimi-anthropic",
@@ -62,9 +62,9 @@ export function createProvider(config: ModelConfig): BaseProvider {
   if (providerClass) {
     return new CTOR_BY_CLASS[providerClass](config);
   }
-  // Custom provider (arbitrary name + base_url): dispatch by wire protocol
-  // instead of by a known id. Anthropic-compatible endpoints use the Anthropic
-  // class; everything else is treated as OpenAI-compatible chat.
+  // 自定义提供者（任意名称 + base_url）：按线路协议分派，
+  // 而不是按已知 id。Anthropic 兼容端点使用 Anthropic 类；
+  // 其余都按 OpenAI 兼容 chat 处理。
   if (config.baseUrl) {
     return config.transportProtocol === "anthropic"
       ? new AnthropicProvider(config)

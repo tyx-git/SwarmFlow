@@ -1,10 +1,20 @@
 /**
- * Shared types for the SwarmFlow GUI ↔ subprocess JSON-RPC.
+ * SwarmFlow GUI ↔ 子进程 JSON-RPC 的共享类型。
  *
- * Mirrors src/server/rpc-transport.ts. Used by both the Electron main process
- * (which talks to the subprocess) and the renderer (which talks to main via
- * the preload bridge).
+ * 镜像 src/server/rpc-transport.ts。由 Electron 主进程
+ *（与子进程通信）和渲染器（通过 preload bridge 与主进程通信）共用。
+ *
+ * 数据流：
+ *   渲染器 --contextBridge--> preload --ipcRenderer.invoke--> 主进程 --SessionProcess--> swarmflow 子进程
+ *   swarmflow 子进程 --NDJSON--> SessionProcess --webContents.send--> 渲染器
  */
+
+// =============================================================================
+// 核心类型
+// =============================================================================
+
+/** IPC 事件推送：主进程 → 渲染器 */
+export interface RpcEvent {
 
 export interface RpcEvent {
   readonly tabId: string

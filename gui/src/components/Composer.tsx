@@ -1,7 +1,7 @@
 /**
- * Composer: borderless input + fade overlay + simplified status pills.
- * Matches template: no top border, pane-2 bg textarea, fade-out overlay
- * above, minimal status bar (accept edits / attach / model picker / theme).
+ * Composer：无边框输入框 + 淡出遮罩 + 简化的状态药丸。
+ * 符合模板：无顶部边框，pane-2 背景 textarea，上方淡出遮罩，
+ * 最小状态栏（接受编辑 / 附加 / 模型选择器 / 主题）。
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -117,7 +117,7 @@ export function Composer({
       await api.rpc.request(tab.tabId, 'session.requestTurnInterrupt')
       await refreshStatus(tab.tabId)
     } catch {
-      // ignore
+      // 忽略
     }
   }
 
@@ -148,13 +148,13 @@ export function Composer({
   const meta = state?.meta
   const status = state?.status
   const modelName = meta?.modelConfigName ?? tab.selectedModel ?? ''
-  // Drafts have no subprocess to call listAvailableModels — fall back to the
-  // shared cache populated by other live tabs.
+  // 草稿没有子进程来调用 listAvailableModels——回退到由其他
+  // 活动标签页填充的共享缓存。
   const visibleModels = state?.models && state.models.length > 0 ? state.models : globalModels
   const activeModel = visibleModels.find((model) => model.name === modelName)
   const modelLabelRaw = compactModelLabel(modelName, activeModel?.model)
-  // Strip `provider:` prefix on the picker trigger to mirror the grouped
-  // dropdown — the brand is conveyed by the group header.
+  // 在选择器触发器上去掉 `provider:` 前缀以匹配分组下拉框——
+  // 品牌由分组标题传达。
   const modelLabel = activeModel
     ? stripProviderPrefix(modelLabelRaw, activeModel.provider)
     : modelLabelRaw
@@ -599,7 +599,7 @@ function groupModelsByProvider(
   models: readonly ModelDescriptor[],
   current: string,
 ): readonly ModelProviderGroup[] {
-  // Preserve first-seen order, but float the active model's provider to top.
+  // 保持首次出现的顺序，但将活动模型所属的 provider 浮动到顶部。
   const order: string[] = []
   const map = new Map<string, ModelDescriptor[]>()
   for (const m of models) {
@@ -663,7 +663,7 @@ function addPromptHistoryEntry(
   try {
     localStorage.setItem(promptHistoryKey(workDir), JSON.stringify(next))
   } catch {
-    // Persistence is convenience only; keep the in-memory history usable.
+    // 持久化仅为便利；保持内存中的历史可用。
   }
   return next
 }

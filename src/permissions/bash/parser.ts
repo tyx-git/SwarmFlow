@@ -1,10 +1,8 @@
-﻿/**
- * Tree-sitter-based shell command parser.
+/**
+ * 基于 tree-sitter 的 shell 命令解析器。
  *
- * Supports both bash and PowerShell grammars. Parses commands into
- * structured segments for permission classification. Unsupported
- * constructs are flagged explicitly 鈥?the classifier can escalate
- * them to "ask".
+ * 支持 bash 和 PowerShell 语法。将命令解析为用于权限分类的结构化段。
+ * 不支持的语法结构会被明确标记 — 分类器可以将它们升级为 "ask"。
  */
 
 import { createRequire } from "node:module";
@@ -25,10 +23,11 @@ import type {
 
 const require = createRequire(import.meta.url);
 
+/** 默认解析超时（毫秒） */
 const DEFAULT_TIMEOUT_MS = 50;
 
 // ------------------------------------------------------------------
-// WASM resolution
+// WASM 路径解析
 // ------------------------------------------------------------------
 
 function isCompiledBinary(): boolean {
@@ -60,13 +59,14 @@ function resolveTreeSitterPowerShellWasmPath(): string {
 }
 
 // ------------------------------------------------------------------
-// Singleton parser initialization 鈥?loads both bash and PowerShell
+// 单例解析器初始化 — 加载 bash 和 PowerShell
 // ------------------------------------------------------------------
 
-// Bash parser 鈥?always loaded (used on all platforms).
+// Bash 解析器 — 始终加载（所有平台使用）
 let bashParserInit: Promise<Parser> | null = null;
 let parserRuntimeReady = false;
 
+/** 确保解析器运行时已初始化 */
 async function ensureParserRuntime(): Promise<void> {
   if (parserRuntimeReady) return;
   await Parser.init({
@@ -85,13 +85,14 @@ async function initializeBashParser(): Promise<Parser> {
   return parser;
 }
 
+/** 获取解析器实例 */
 export async function getParser(): Promise<Parser> {
   if (!bashParserInit) bashParserInit = initializeBashParser();
   return bashParserInit;
 }
 
-// PowerShell parser 鈥?lazy-loaded only when shellKind is pwsh/powershell,
-// so a missing WASM file on macOS/Linux never degrades the bash classifier.
+// PowerShell 解析器 — 仅在 shellKind 为 pwsh/powershell 时延迟加载，
+// 这样 macOS/Linux 上缺少 WASM 文件不会降级 bash 分类器
 let psParserInit: Promise<Parser> | null = null;
 
 async function initializePSParser(): Promise<Parser> {
@@ -108,7 +109,7 @@ async function getPSParser(): Promise<Parser> {
 }
 
 /**
- * Parse a bash command string into structured segments.
+ * 将 bash 命令字符串解析为结构化段。
  */
 export async function parseBashCommand(
   command: string,
@@ -139,9 +140,12 @@ export async function parseBashCommand(
 }
 
 // ------------------------------------------------------------------
-// AST walking
+// AST 遍历
 // ------------------------------------------------------------------
 
+/**
+ * 遍历 AST 节点，构建段列表。
+ */
 function walkNode(
   node: TreeNode,
   state: { connectorBefore: BashConnector | null },
@@ -158,7 +162,7 @@ function walkNode(
     case "redirected_statement":
       return handleRedirectedStatement(node, state, segments);
     case "file_redirect":
-      // Standalone file_redirect outside a redirected_statement 鈥?safe to ignore
+      // 独立的 file_redirect 在 redirected_statement 之外 — 安全忽略
       return;
     case "heredoc_redirect":
     case "heredoc_start":
@@ -176,7 +180,7 @@ function walkNode(
         node,
       );
     case "variable_assignment":
-      // Standalone variable assignment (e.g. `FOO=bar`) is a no-op in subprocess 鈥?skip
+      // 独立的变量赋值（如 `FOO=bar`）在子进程中是空操作 — 跳过
       return;
     default:
       if (node.isNamed) {
@@ -186,6 +190,9 @@ function walkNode(
   }
 }
 
+/**
+ * 顺序遍历节点列表。
+ */
 function walkSequential(
   node: TreeNode,
   state: { connectorBefore: BashConnector | null },
@@ -204,6 +211,9 @@ function walkSequential(
   }
 }
 
+/**
+ * 追加命令段。
+ */
 function appendCommandSegment(
   node: TreeNode,
   operator: "command" | "pipeline",
@@ -234,13 +244,12 @@ function appendCommandSegment(
 }
 
 /**
- * Handle `redirected_statement`: unwrap the inner command / pipeline / list,
- * and check if the redirect writes to a real file (vs /dev/null or an fd dup).
+ * 处理 `redirected_statement`：展开内部命令/管道/列表，
+ * 并检查重定向是否写入真实文件（vs /dev/null 或 fd dup）。
  *
- * When the inner is a `list` (e.g. `cd x && npm install 2>&1`), recurse so the
- * `&&` / `||` / `;` chain expands into per-command segments; otherwise a
- * trailing redirect would force the whole compound into the unsupported path
- * and disable memoization.
+ * 当内部是 `list`（如 `cd x && npm install 2>&1`）时，递归遍历，
+ * 使 `&&` / `||` / `;` 链展开为每个命令的段；否则
+ * 尾部重定向会强制整个复合语句进入不支持的路径并禁用记忆化。
  */
 function handleRedirectedStatement(
   node: TreeNode,
@@ -260,7 +269,7 @@ function handleRedirectedStatement(
       if (child.type === "heredoc_redirect") {
         return unsupported("heredoc", "Shell heredoc syntax requires manual approval.", child);
       }
-      // Determine if this redirect writes to a real file
+      // 确定此重定向是否写入真实文件
       const redirectTarget = getRedirectTarget(child);
       if (redirectTarget && redirectTarget !== "/dev/null") {
         hasFileWrite = true;
@@ -272,9 +281,8 @@ function handleRedirectedStatement(
     return unsupported("unsupported_node", "Redirected statement has no inner command.", node);
   }
 
-  // Compound inner (`cmd1 && cmd2 > out`): walk the list so each command
-  // becomes its own segment, then attach the file-write flag to the final
-  // segment (bash binds a trailing redirect to the last command).
+  // 复合内部（`cmd1 && cmd2 > out`）：遍历列表，使每个命令成为自己的段，
+  // 然后将文件写标志附加到最后一段（bash 将尾部重定向绑定到最后命令）。
   if (innerNode.type === "list") {
     const startIdx = segments.length;
     const result = walkSequential(innerNode, state, segments);
@@ -311,11 +319,14 @@ function handleRedirectedStatement(
   state.connectorBefore = null;
 }
 
+/**
+ * 获取重定向目标路径。
+ */
 function getRedirectTarget(fileRedirectNode: TreeNode): string | null {
   for (let i = 0; i < fileRedirectNode.childCount; i++) {
     const child = fileRedirectNode.child(i);
     if (!child) continue;
-    // The target is typically a "word" node after the operator (>, >>, 2>)
+    // 目标通常是操作符（>, >>, 2>）后的 "word" 节点
     if (child.type === "word" || child.type === "string" || child.type === "raw_string") {
       return child.text.replace(/^["']|["']$/g, "");
     }
@@ -324,15 +335,18 @@ function getRedirectTarget(fileRedirectNode: TreeNode): string | null {
 }
 
 // ------------------------------------------------------------------
-// Command tokenization
+// 命令标记化
 // ------------------------------------------------------------------
 
+/**
+ * 将命令节点标记化。
+ */
 function tokenizeCommandNode(node: TreeNode): ParsedBashCommand | UnsupportedBashScript {
   const tokens: BashToken[] = [];
   let nameToken: BashToken | null = null;
 
   for (const child of namedChildren(node)) {
-    // VAR=val prefix before a command 鈥?skip, classify the real command
+    // 命令前的 VAR=val 前缀 — 跳过，对真实命令进行分类
     if (child.type === "variable_assignment") continue;
 
     const forbidden = findForbiddenNode(child);
@@ -353,6 +367,9 @@ function tokenizeCommandNode(node: TreeNode): ParsedBashCommand | UnsupportedBas
   return { text: node.text, name: nameToken.value, nameToken, argv: tokens };
 }
 
+/**
+ * 将节点标记化。
+ */
 function tokenizeNode(node: TreeNode): BashToken {
   switch (node.type) {
     case "word":
@@ -371,6 +388,9 @@ function tokenizeNode(node: TreeNode): BashToken {
   }
 }
 
+/**
+ * 标记化字符串节点。
+ */
 function tokenizeString(node: TreeNode): BashToken {
   const named = namedChildren(node);
   if (named.some((child) => child.type !== "string_content")) {
@@ -384,6 +404,9 @@ function tokenizeString(node: TreeNode): BashToken {
   };
 }
 
+/**
+ * 标记化展开节点。
+ */
 function tokenizeExpansion(node: TreeNode): BashToken {
   const isHome = node.text === "$HOME" || node.text === "${HOME}";
   return {
@@ -394,6 +417,9 @@ function tokenizeExpansion(node: TreeNode): BashToken {
   };
 }
 
+/**
+ * 标记化连接节点。
+ */
 function tokenizeConcatenation(node: TreeNode): BashToken {
   const parts = namedChildren(node).map(tokenizeNode);
   const unresolved = parts.some((p) => p.kind === "unresolved_expression");
@@ -409,9 +435,12 @@ function tokenizeConcatenation(node: TreeNode): BashToken {
 }
 
 // ------------------------------------------------------------------
-// Forbidden node detection
+// 禁止节点检测
 // ------------------------------------------------------------------
 
+/**
+ * 查找禁止的节点。
+ */
 function findForbiddenNode(node: TreeNode): UnsupportedBashScript | null {
   switch (node.type) {
     case "command_substitution":
@@ -442,7 +471,7 @@ function findForbiddenNode(node: TreeNode): UnsupportedBashScript | null {
 }
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
 function parseConnector(type: string): BashConnector | null {
@@ -481,21 +510,21 @@ function namedChildren(node: TreeNode): TreeNode[] {
 }
 
 // ------------------------------------------------------------------
-// PowerShell parser
+// PowerShell 解析器
 // ------------------------------------------------------------------
 
 /**
- * Parse a PowerShell command string into structured segments.
+ * 将 PowerShell 命令字符串解析为结构化段。
  *
- * Uses tree-sitter-powershell for AST-accurate parsing. The output
- * reuses the same BashParseResult / ParsedBashCommand types so the
- * classifier can handle both shell kinds uniformly.
+ * 使用 tree-sitter-powershell 进行 AST 精确解析。输出
+ * 重用相同的 BashParseResult / ParsedBashCommand 类型，
+ * 使分类器可以统一处理两种 shell 类型。
  *
- * AST structure (tree-sitter-powershell):
- *   program 鈫?statement_list 鈫?pipeline 鈫?pipeline_chain 鈫?command
- *   Pipeline chains (&&/||) split into multiple pipeline_chain nodes.
- *   Command arguments live under a `command_elements` container.
- *   Redirections appear as `redirection` nodes inside command_elements.
+ * AST 结构（tree-sitter-powershell）：
+ *   program → statement_list → pipeline → pipeline_chain → command
+ *   管道链（&&/||）拆分为多个 pipeline_chain 节点。
+ *   命令参数位于 `command_elements` 容器下。
+ *   重定向出现在 command_elements 内部的 `redirection` 节点中。
  */
 export async function parsePowerShellCommand(
   command: string,
@@ -518,8 +547,8 @@ export async function parsePowerShellCommand(
   const segments: ParsedBashSegment[] = [];
   walkPSNode(tree.rootNode, segments);
 
-  // Safety guard: if non-empty input produced zero segments, the AST
-  // contained constructs we didn't recognize 鈥?escalate to unsupported.
+  // 安全保护：如果非空输入产生零段，
+  // AST 包含我们无法识别的结构 — 升级为不支持
   if (segments.length === 0 && command.trim().length > 0) {
     return unsupported("unsupported_node", "PowerShell command structure not recognized; requires manual approval.");
   }
@@ -527,7 +556,7 @@ export async function parsePowerShellCommand(
   return { kind: "ok", segments };
 }
 
-// Walk the PowerShell AST top-down, collecting command segments.
+// 遍历 PowerShell AST 自顶向下，收集命令段
 function walkPSNode(
   node: TreeNode,
   segments: ParsedBashSegment[],
@@ -552,9 +581,9 @@ function walkPSNode(
       return;
 
     case "pipeline": {
-      // A pipeline contains one or more pipeline_chain nodes.
-      // Each pipeline_chain may contain piped commands (cmd | cmd).
-      // Multiple pipeline_chains are linked by pipeline_chain_tail (&&/||).
+      // 管道包含一个或多个 pipeline_chain 节点
+      // 每个 pipeline_chain 可能包含管道命令（cmd | cmd）
+      // 多个 pipeline_chains 由 pipeline_chain_tail（&&/||）链接
       for (const child of namedChildren(node)) {
         walkPSNode(child, segments);
       }
@@ -562,7 +591,7 @@ function walkPSNode(
     }
 
     case "pipeline_chain": {
-      // Collect all commands in this chain (may be piped: cmd | cmd).
+      // 收集此链中的所有命令（可能有管道：cmd | cmd）
       const commands: ParsedBashCommand[] = [];
       let hasFileWrite = false;
       for (const child of namedChildren(node)) {
@@ -603,13 +632,13 @@ function walkPSNode(
       return;
     }
 
-    // Skip these structural nodes.
+    // 跳过这些结构节点
     case "pipeline_chain_tail":
     case "empty_statement":
       return;
 
     default:
-      // Recurse into any unrecognized container that might hold commands.
+      // 递归到任何可能包含命令的无法识别的容器
       if (node.namedChildCount > 0) {
         for (const child of namedChildren(node)) {
           walkPSNode(child, segments);
@@ -624,6 +653,9 @@ interface PSTokenizeResult {
   hasRedirect: boolean;
 }
 
+/**
+ * 标记化 PowerShell 命令。
+ */
 function tokenizePSCommand(node: TreeNode): PSTokenizeResult | null {
   let nameToken: BashToken | null = null;
   const argv: BashToken[] = [];
@@ -638,7 +670,7 @@ function tokenizePSCommand(node: TreeNode): PSTokenizeResult | null {
         break;
       }
       case "command_elements":
-        // Container for all arguments, parameters, and redirections.
+        // 所有参数、参数和重定向的容器
         for (const elem of namedChildren(child)) {
           if (elem.type === "redirection") {
             hasRedirect = true;
@@ -668,6 +700,9 @@ function tokenizePSCommand(node: TreeNode): PSTokenizeResult | null {
   };
 }
 
+/**
+ * 标记化 PowerShell 元素。
+ */
 function tokenizePSElement(node: TreeNode, argv: BashToken[]): void {
   switch (node.type) {
     case "command_parameter":
@@ -678,9 +713,9 @@ function tokenizePSElement(node: TreeNode, argv: BashToken[]): void {
       argv.push({ text: node.text, value: node.text, kind: "literal", quoted: false });
       break;
     case "string_literal": {
-      // string_literal wraps expandable_string_literal (double-quoted)
-      // or verbatim_string_literal (single-quoted). If it contains
-      // interpolation (sub_expression, variable), mark as unresolved.
+      // string_literal 包装 expandable_string_literal（双引号）
+      // 或 verbatim_string_literal（单引号）。如果包含
+      // 插值（sub_expression、variable），标记为未解析。
       const inner = firstNamedChild(node);
       if (inner && inner.type === "expandable_string_literal" && inner.namedChildCount > 0) {
         argv.push({ text: node.text, value: node.text, kind: "unresolved_expression", quoted: true });
@@ -707,7 +742,7 @@ function tokenizePSElement(node: TreeNode, argv: BashToken[]): void {
       break;
     case "array_literal_expression":
     case "unary_expression": {
-      // These may contain string literals 鈥?try to unwrap.
+      // 这些可能包含字符串字面量 — 尝试展开
       const inner = firstNamedChild(node);
       if (inner) {
         tokenizePSElement(inner, argv);
@@ -717,10 +752,10 @@ function tokenizePSElement(node: TreeNode, argv: BashToken[]): void {
       break;
     }
     case "command_argument_sep":
-      // Whitespace separator 鈥?skip.
+      // 空白分隔符 — 跳过
       break;
     case "redirection":
-      // Already handled at the command level.
+      // 已在命令级别处理
       break;
     default:
       if (node.text.trim()) {

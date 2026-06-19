@@ -1,12 +1,12 @@
-﻿/**
- * OpenAI OAuth for ChatGPT account login.
+/**
+ * OpenAI OAuth（ChatGPT 账户登录）。
  *
- * Two login methods:
- *   1. Browser login (PKCE) 鈥?recommended, opens browser for one-click auth
- *   2. Device code 鈥?fallback for SSH / headless environments
+ * 两种登录方式：
+ *   1. 浏览器登录（PKCE）——推荐，一键授权
+ *   2. 设备码——SSH/无头环境备选
  *
- * Token persistence in ~/.swarmflow/state/oauth.json with automatic refresh.
- * No external dependencies 鈥?uses Node 18+ built-in fetch, crypto, http.
+ * Token 持久化到 ~/.swarmflow/state/oauth.json，支持自动刷新。
+ * 无外部依赖——使用 Node.js 18+ 内置 fetch、crypto、http。
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -24,7 +24,7 @@ import {
 } from "./github-copilot-oauth.js";
 
 // =============================================================================
-// Constants
+// 常量
 // =============================================================================
 
 const ISSUER = "https://auth.openai.com";
@@ -37,23 +37,23 @@ const DEVICE_VERIFY_URL = `${ISSUER}/codex/device`;
 const DEVICE_REDIRECT_URI = `${ISSUER}/deviceauth/callback`;
 export const CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex";
 
-// PKCE browser flow
+// PKCE 浏览器流程
 const PKCE_CALLBACK_PORT = 1455;
 const PKCE_CALLBACK_HOST = "127.0.0.1";
 const PKCE_REDIRECT_URI = `http://localhost:${PKCE_CALLBACK_PORT}/auth/callback`;
 const PKCE_SCOPES = "openid profile email offline_access";
 
-/** Refresh the access token 2 minutes before it actually expires. */
+/** 在令牌实际过期前 2 分钟刷新。 */
 const REFRESH_SKEW_SECONDS = 120;
 
-/** Maximum time to wait for the user to complete login. */
-const AUTH_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+/** 等待用户完成登录的最大时间。 */
+const AUTH_TIMEOUT_MS = 15 * 60 * 1000; // 15 分钟
 
-/** Timeout for individual HTTP requests. */
+/** 单次 HTTP 请求超时。 */
 const HTTP_TIMEOUT_MS = 15_000;
 
 // =============================================================================
-// Types
+// 类型
 // =============================================================================
 
 export interface OAuthTokens {
@@ -70,19 +70,21 @@ export interface AuthStoreData {
   };
   github_copilot?: {
     access_token: string;
-    /** ISO timestamp of when the token was obtained (for display only). */
+    /** 令牌获取时间的 ISO 时间戳（仅用于显示）。 */
     obtained_at: string;
   };
 }
 
 // =============================================================================
-// Auth store (sync file I/O)
+// Auth Store（同步文件 I/O）
 // =============================================================================
 
+/** 返回 oauth.json 文件路径。 */
 function authStorePath(): string {
   return join(getSwarmflowHomeDir(), "state", "oauth.json");
 }
 
+/** 同步加载 oauth.json。若文件不存在或解析失败，返回空存储。 */
 export function loadAuthStore(): AuthStoreData {
   const p = authStorePath();
   if (!existsSync(p)) return { version: 1 };
@@ -98,23 +100,26 @@ export function loadAuthStore(): AuthStoreData {
   }
 }
 
+/**
+ * 同步保存 oauth.json。
+ * mode 0o600 将此令牌文件（OpenAI Codex + GitHub Copilot 访问/刷新令牌）
+ * 限制为 POSIX 下仅所有者可读写。
+ * 在 Windows 上 mode 只切换只读属性——0o600 位不映射到 NTFS ACL，
+ * 保密性依赖从 %USERPROFILE% 继承的默认 ACL
+ *（已排除其他标准用户）。可接受剩余风险；
+ * 若要收紧需在 PAL 中使用显式 ACL 助手（icacls / SetNamedSecurityInfo）。
+ */
 export function saveAuthStore(store: AuthStoreData): void {
   const p = authStorePath();
   const stateDir = join(getSwarmflowHomeDir(), "state");
   mkdirSync(stateDir, { recursive: true });
-  // mode 0o600 restricts this token file (OpenAI Codex + GitHub Copilot
-  // access/refresh tokens) to the owner on POSIX. On Windows `mode` only
-  // toggles the read-only attribute 鈥?the 0o600 bits don't map to NTFS
-  // ACLs 鈥?so confidentiality there relies on the default ACL inherited
-  // from %USERPROFILE% (which already excludes other standard users).
-  // Accepted residual risk; tightening would need an explicit ACL helper
-  // (icacls / SetNamedSecurityInfo) in the PAL 鈥?see decisions.md L-4.
   writeFileSync(p, JSON.stringify(store, null, 2) + "\n", {
     encoding: "utf-8",
     mode: 0o600,
   });
 }
 
+/** 保存 OpenAI Codex OAuth 令牌到 oauth.json。 */
 export function saveOAuthTokens(tokens: OAuthTokens): void {
   const store = loadAuthStore();
   store.openai_codex = {
@@ -125,6 +130,7 @@ export function saveOAuthTokens(tokens: OAuthTokens): void {
   saveAuthStore(store);
 }
 
+/** 从 oauth.json 删除 OpenAI Codex OAuth 令牌。 */
 export function clearOAuthTokens(): void {
   const store = loadAuthStore();
   delete store.openai_codex;
@@ -132,8 +138,8 @@ export function clearOAuthTokens(): void {
 }
 
 /**
- * Read the stored OAuth access token (sync).
- * Returns null if no tokens are stored.
+ * 读取存储的 OAuth 访问令牌（同步）。
+ * 无存储时返回 null。
  */
 export function readOAuthAccessToken(): string | null {
   const store = loadAuthStore();
@@ -141,7 +147,7 @@ export function readOAuthAccessToken(): string | null {
   return typeof token === "string" && token.trim() !== "" ? token : null;
 }
 
-/** Check whether OAuth tokens exist in the auth store. */
+/** 检查 oauth.json 中是否存在 OAuth 令牌。 */
 export function hasOAuthTokens(): boolean {
   const store = loadAuthStore();
   const codex = store.openai_codex;
@@ -153,9 +159,10 @@ export function hasOAuthTokens(): boolean {
 }
 
 // =============================================================================
-// JWT helpers
+// JWT 辅助函数
 // =============================================================================
 
+/** 解码 JWT payload（不验证签名，仅提取声明）。 */
 function decodeJwtPayload(token: string): Record<string, unknown> {
   const parts = token.split(".");
   if (parts.length < 2) return {};
@@ -171,11 +178,12 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 }
 
 /**
- * Extract the ChatGPT account id from a codex OAuth access token. ChatGPT users
- * can belong to multiple accounts (personal / workspace / org); the codex backend
- * uses the `ChatGPT-Account-Id` request header to pick which one bills + applies
- * its quota. The id lives in the `chatgpt_account_id` claim, nested under either
- * `https://api.openai.com/auth` or at the top level depending on token shape.
+ * 从 codex OAuth 访问令牌中提取 ChatGPT 账户 ID。
+ * ChatGPT 用户可属于多个账户（个人/工作区/org）；
+ * codex 后端使用 ChatGPT-Account-Id 请求头选择哪个账户计费并应用配额。
+ * ID 位于 JWT 的 chatgpt_account_id 声明中，
+ * 可能嵌套在 https://api.openai.com/auth 下或位于顶层，
+ * 取决于令牌形态。
  */
 export function getCodexAccountId(accessToken: string): string | undefined {
   if (typeof accessToken !== "string" || !accessToken) return undefined;
@@ -194,9 +202,8 @@ export function getCodexAccountId(accessToken: string): string | undefined {
 }
 
 /**
- * Check whether an OAuth access token is about to expire.
- * Returns true if the token will expire within `skewSeconds` seconds,
- * or if the expiry cannot be determined.
+ * 检查 OAuth 访问令牌是否即将过期。
+ * 若令牌将在 skewSeconds 秒内过期或无法确定过期时间，返回 true。
  */
 export function isTokenExpiring(
   accessToken: string,
@@ -208,6 +215,7 @@ export function isTokenExpiring(
   return exp <= Math.floor(Date.now() / 1000) + Math.max(0, skewSeconds);
 }
 
+/** 从访问令牌中提取过期时间。 */
 export function getTokenExpiry(accessToken: string): Date | null {
   const claims = decodeJwtPayload(accessToken);
   const exp = claims["exp"];
@@ -216,9 +224,10 @@ export function getTokenExpiry(accessToken: string): Date | null {
 }
 
 // =============================================================================
-// HTTP helpers
+// HTTP 辅助函数
 // =============================================================================
 
+/** 带超时控制的 JSON 请求封装。 */
 async function fetchJson(
   url: string,
   init: RequestInit,
@@ -234,6 +243,7 @@ async function fetchJson(
   }
 }
 
+/** 发送 form-encoded 请求的便捷封装。 */
 async function fetchForm(
   url: string,
   body: Record<string, string>,
@@ -246,45 +256,45 @@ async function fetchForm(
 }
 
 // =============================================================================
-// Session helpers
+// Session 辅助函数
 // =============================================================================
 
+/** 通过平台 browser provider 打开 URL（open / xdg-open / start）。 */
 function openBrowser(url: string): void {
-  // Routes through the platform browser provider (open / xdg-open /
-  // start). All failure modes are swallowed inside the provider so
-  // the user just sees the printed URL fall back to "please copy
-  // this manually".
   browser.openUrl(url);
 }
 
+/** 检测是否在远程会话中（SSH）。 */
 function isRemoteSession(): boolean {
   return Boolean(process.env["SSH_CLIENT"] || process.env["SSH_TTY"]);
 }
 
 // =============================================================================
-// PKCE helpers
+// PKCE 辅助函数
 // =============================================================================
 
+/** 生成 PKCE code verifier（RFC 7636 推荐 43-128 字符）。 */
 function generateCodeVerifier(): string {
-  // 32 random bytes 鈫?43 base64url chars (RFC 7636 recommends 43-128)
   return randomBytes(32).toString("base64url");
 }
 
+/** 从 verifier 计算 PKCE code challenge（S256 方法）。 */
 function generateCodeChallenge(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
 }
 
+/** 生成 OAuth state 参数（防 CSRF）。 */
 function generateState(): string {
   return randomBytes(16).toString("hex");
 }
 
 // =============================================================================
-// PKCE Browser OAuth flow
+// PKCE 浏览器 OAuth 流程
 // =============================================================================
 
 /**
- * Start a temporary HTTP server on localhost to capture the OAuth callback.
- * Returns a promise that resolves with the authorization code.
+ * 启动临时 HTTP 服务器监听 localhost 以捕获 OAuth 回调。
+ * 返回一个 Promise，在收到授权码后 resolve。
  */
 function waitForCallback(
   expectedState: string,
@@ -336,6 +346,7 @@ function waitForCallback(
   return { promise, server };
 }
 
+/** OAuth 回调页面的简约 HTML。 */
 function callbackHtml(title: string, message: string): string {
   return `<!DOCTYPE html><html><head><title>${title}</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;
@@ -347,10 +358,10 @@ p{color:#666;margin:0}</style></head>
 }
 
 // =============================================================================
-// Headless OAuth flows (UI-agnostic, callback-driven)
+// 无头 OAuth 流程（UI 无关，回调驱动）
 // =============================================================================
 
-/** Progress events emitted by headless OAuth flows. */
+/** 无头 OAuth 流程发送的进度事件。 */
 export type OAuthProgress =
   | { phase: "browser_waiting"; url: string }
   | { phase: "device_code"; url: string; userCode: string }
@@ -360,17 +371,17 @@ export type OAuthProgress =
   | { phase: "error"; message: string };
 
 export interface HeadlessOAuthOptions {
-  /** Called with progress updates for UI rendering. */
+  /** 进度更新回调，用于 UI 渲染。 */
   onProgress?: (event: OAuthProgress) => void;
-  /** AbortSignal to cancel the flow (e.g. user presses Esc). */
+  /** 中止信号，用于取消流程（如用户按 Esc）。 */
   signal?: AbortSignal;
-  /** Whether to auto-open the browser (default: true for non-SSH). */
+  /** 是否自动打开浏览器（非 SSH 下默认 true）。 */
   openBrowserAutomatically?: boolean;
 }
 
 /**
- * Headless PKCE browser login 鈥?no console.log, no inquirer.
- * Opens browser (unless suppressed), starts callback server, returns tokens.
+ * 无头 PKCE 浏览器登录——无 console.log，无 inquirer。
+ * 打开浏览器（除非被禁止），启动回调服务器，返回令牌。
  */
 export async function browserLoginHeadless(
   opts?: HeadlessOAuthOptions,
@@ -452,8 +463,8 @@ export async function browserLoginHeadless(
 }
 
 /**
- * Headless device code login 鈥?no console.log, no inquirer.
- * Requests device code, polls for authorization, returns tokens.
+ * 无头设备码登录——无 console.log，无 inquirer。
+ * 请求设备码，轮询授权结果，返回令牌。
  */
 export async function deviceCodeLoginHeadless(
   opts?: HeadlessOAuthOptions,
@@ -463,7 +474,7 @@ export async function deviceCodeLoginHeadless(
 
   if (signal?.aborted) throw new Error("Cancelled");
 
-  // Step 1: Request device code
+  // 步骤 1：请求设备码
   let deviceData: Record<string, unknown>;
   try {
     const { status, data } = await fetchJson(DEVICE_CODE_URL, {
@@ -485,12 +496,10 @@ export async function deviceCodeLoginHeadless(
 
   onProgress({ phase: "device_code", url: DEVICE_VERIFY_URL, userCode });
 
-  // Step 2: Poll for authorization code.
-  // NOTE: we intentionally do NOT emit `phase: "polling"` inside this loop.
-  // The `device_code` phase's own rendering already shows "Waiting for
-  // sign-in..." alongside the URL and user code; switching to `polling` would
-  // replace that display with a bare status line, erasing the code before
-  // the user could copy it.
+  // 步骤 2：轮询授权码。
+  // 注意：有意不在此循环内发送 phase: "polling"。
+  // device_code 阶段自己的渲染已经显示了 "Waiting for sign-in..."
+  // 并附上 URL 和用户码；切换到 polling 会替换为裸露的状态行。
   const deadline = Date.now() + AUTH_TIMEOUT_MS;
   let codeResp: Record<string, unknown> | null = null;
 
@@ -516,7 +525,7 @@ export async function deviceCodeLoginHeadless(
 
   if (codeResp === null) throw new Error("Login timed out after 15 minutes.");
 
-  // Step 3: Exchange authorization code for tokens
+  // 步骤 3：用授权码换取令牌
   const authorizationCode = String(codeResp["authorization_code"] ?? "");
   const codeVerifierFromResp = String(codeResp["code_verifier"] ?? "");
   if (!authorizationCode || !codeVerifierFromResp) {
@@ -548,12 +557,10 @@ export async function deviceCodeLoginHeadless(
 }
 
 // =============================================================================
-// CLI wrappers (console.log + inquirer for `swarmflow oauth` command)
+// CLI 封装（console.log + inquirer，用于 `swarmflow oauth` 命令）
 // =============================================================================
 
-/**
- * CLI browser login 鈥?wraps headless flow with console output.
- */
+/** CLI 浏览器登录——封装 headless flow 并添加控制台输出。 */
 export async function browserLogin(): Promise<OAuthTokens> {
   return browserLoginHeadless({
     openBrowserAutomatically: !isRemoteSession(),
@@ -576,9 +583,7 @@ export async function browserLogin(): Promise<OAuthTokens> {
   });
 }
 
-/**
- * CLI device code login 鈥?wraps headless flow with console output.
- */
+/** CLI 设备码登录——封装 headless flow 并添加控制台输出。 */
 export async function deviceCodeLogin(): Promise<OAuthTokens> {
   return deviceCodeLoginHeadless({
     onProgress: (event) => {
@@ -601,9 +606,10 @@ export async function deviceCodeLogin(): Promise<OAuthTokens> {
 }
 
 // =============================================================================
-// Token refresh
+// Token 刷新
 // =============================================================================
 
+/** 用 refresh_token 换取新的 access_token。 */
 export async function refreshAccessToken(
   refreshToken: string,
 ): Promise<OAuthTokens> {
@@ -650,9 +656,13 @@ export async function refreshAccessToken(
 }
 
 // =============================================================================
-// Composite: ensure fresh token
+// 组合：确保令牌新鲜
 // =============================================================================
 
+/**
+ * 确保返回有效的 access_token。
+ * 若无存储或即将过期，自动刷新后返回。
+ */
 export async function ensureFreshToken(): Promise<string> {
   const store = loadAuthStore();
   const codex = store.openai_codex;
@@ -677,42 +687,44 @@ export async function ensureFreshToken(): Promise<string> {
 }
 
 // =============================================================================
-// CLI command: `swarmflow oauth [action] [service]`
+// CLI 命令：`swarmflow oauth [action] [service]`
 // =============================================================================
 //
-// Supports two OAuth services:
-//   - codex    鈥?OpenAI ChatGPT login (existing)
-//   - copilot  鈥?GitHub Copilot device flow (new)
+// 支持两种 OAuth 服务：
+//   - codex    ——OpenAI ChatGPT 登录（已有）
+//   - copilot  ——GitHub Copilot 设备码流程（新增）
 //
-// Command forms:
-//   swarmflow oauth                    鈫?picker: service 脳 action
-//   swarmflow oauth login              鈫?picker: service
-//   swarmflow oauth logout             鈫?picker: which service to clear
-//   swarmflow oauth status             鈫?show all services' statuses
-//   swarmflow oauth login codex        鈫?direct
-//   swarmflow oauth login copilot      鈫?direct
-//   swarmflow oauth logout codex       鈫?direct
-//   swarmflow oauth logout copilot     鈫?direct
+// 命令形式：
+//   swarmflow oauth                    ——选择器：service × action
+//   swarmflow oauth login              ——选择器：service
+//   swarmflow oauth logout             ——选择器：清除哪个服务
+//   swarmflow oauth status             ——显示所有服务状态
+//   swarmflow oauth login codex        ——直接登录 codex
+//   swarmflow oauth login copilot      ——直接登录 copilot
+//   swarmflow oauth logout codex       ——直接登出 codex
+//   swarmflow oauth logout copilot     ——直接登出 copilot
 //
-// Back-compat: users who previously ran `swarmflow oauth` or
-// `swarmflow oauth login` now see a 2-item picker with one extra keystroke.
+// 兼容：之前运行过 `swarmflow oauth` 或 `swarmflow oauth login` 的用户
+// 现在会看到 2 项选择器，多一次按键。
 // =============================================================================
 
 type OAuthService = "codex" | "copilot";
 type OAuthAction = "login" | "status" | "logout";
 
+/** 判断错误是否由用户取消 prompt 导致。 */
 function isUserCancel(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   return (
     (err as { name?: string }).name === "ExitPromptError" ||
-    (err as { code?: string }).code === "ERR_USE_AFTER_CLOSE"
+    (err as { code?: string }).code === "ERR_USE_AFTER_CANCEL"
   );
 }
 
 // -----------------------------------------------------------------------------
-// Codex (OpenAI ChatGPT) handlers
+// Codex（OpenAI ChatGPT）处理器
 // -----------------------------------------------------------------------------
 
+/** 询问用户选择登录方式（浏览器或设备码）。 */
 async function codexPerformLogin(): Promise<OAuthTokens> {
   const method = await select({
     message: "Login method",
@@ -728,8 +740,9 @@ async function codexPerformLogin(): Promise<OAuthTokens> {
   return deviceCodeLogin();
 }
 
+/** Codex 登录流程：检查已有令牌 → 决定刷新或重新登录。 */
 async function codexLogin(): Promise<void> {
-  // Check if already logged in
+  // 检查是否已登录
   if (hasOAuthTokens()) {
     const token = readOAuthAccessToken()!;
     const expiry = getTokenExpiry(token);
@@ -783,6 +796,7 @@ async function codexLogin(): Promise<void> {
   console.log();
 }
 
+/** 返回 Codex 状态的多行描述。 */
 function codexStatusLines(): string[] {
   const lines: string[] = [];
   lines.push("  OpenAI ChatGPT (Codex)");
@@ -805,9 +819,10 @@ function codexStatusLines(): string[] {
   return lines;
 }
 
+/** 清除 Codex OAuth 令牌。 */
 function codexLogout(): void {
   if (!hasOAuthTokens()) {
-    console.log("  Codex: not logged in 鈥?nothing to clear.");
+    console.log("  Codex: not logged in — nothing to clear.");
     return;
   }
   clearOAuthTokens();
@@ -815,9 +830,10 @@ function codexLogout(): void {
 }
 
 // -----------------------------------------------------------------------------
-// Copilot (GitHub) handlers
+// Copilot（GitHub）处理器
 // -----------------------------------------------------------------------------
 
+/** Copilot 登录：设备码流程 + 预热模型可见性缓存。 */
 async function copilotLogin(): Promise<void> {
   if (hasGitHubTokens()) {
     console.log("  Existing Copilot login found (long-lived token).");
@@ -842,9 +858,7 @@ async function copilotLogin(): Promise<void> {
   const tokens = await copilotDeviceCodeLoginCLI();
   saveGitHubTokens(tokens);
 
-  // Prime the Copilot model-visibility cache so the picker hides Pro+
-  // exclusive models on the next /model open. Best-effort 鈥?a failure here
-  // just means the picker falls back to showing all models optimistically.
+  // 预热 Copilot 模型可见性缓存，使下次 /model 打开时隐藏 Pro+ 独占模型
   try {
     const { refreshCopilotModelsCache } = await import(
       "../providers/copilot-models-cache.js"
@@ -866,6 +880,7 @@ async function copilotLogin(): Promise<void> {
   console.log();
 }
 
+/** 返回 Copilot 状态的多行描述。 */
 function copilotStatusLines(): string[] {
   const lines: string[] = [];
   lines.push("  GitHub Copilot");
@@ -880,14 +895,14 @@ function copilotStatusLines(): string[] {
   return lines;
 }
 
+/** 清除 Copilot OAuth 令牌，并清除每个账户的模型可见性缓存。 */
 function copilotLogout(): void {
   if (!hasGitHubTokens()) {
-    console.log("  Copilot: not logged in 鈥?nothing to clear.");
+    console.log("  Copilot: not logged in — nothing to clear.");
     return;
   }
   clearGitHubTokens();
-  // Also drop the per-account model visibility cache so a later login for a
-  // different account doesn't inherit the previous plan's hidden models.
+  // 同时清除 per-account 模型可见性缓存，避免不同账户登录后继承前一个计划的隐藏模型
   void import("../providers/copilot-models-cache.js").then((m) => {
     try {
       m.clearCopilotModelsCache();
@@ -899,9 +914,10 @@ function copilotLogout(): void {
 }
 
 // -----------------------------------------------------------------------------
-// Service picker helpers
+// 服务选择器辅助函数
 // -----------------------------------------------------------------------------
 
+/** 交互式选择服务（codex / copilot）。 */
 async function pickService(
   message: string,
   options: { codex: boolean; copilot: boolean },
@@ -921,6 +937,7 @@ async function pickService(
   }
 }
 
+/** 打印所有 OAuth 服务状态。 */
 function printStatusAll(): void {
   console.log("  swarmflow OAuth Status");
   console.log();
@@ -931,6 +948,7 @@ function printStatusAll(): void {
   console.log(`  Auth store:   ${authStorePath()}`);
 }
 
+/** 将字符串规范化为 OAuthService。 */
 function normalizeService(raw?: string): OAuthService | null {
   const v = (raw ?? "").trim().toLowerCase();
   if (v === "codex" || v === "openai" || v === "openai-codex" || v === "chatgpt") return "codex";
@@ -939,15 +957,14 @@ function normalizeService(raw?: string): OAuthService | null {
 }
 
 // -----------------------------------------------------------------------------
-// Public entry point
+// 公共入口点
 // -----------------------------------------------------------------------------
 
 /**
- * Entry point for `swarmflow oauth [action] [service]`.
+ * `swarmflow oauth [action] [service]` 的入口点。
  *
- * Both arguments are optional. If action is empty, defaults to `login`.
- * If service is empty, shows an interactive picker (unless `status`, which
- * always displays all services).
+ * 两个参数均可选。action 为空时默认 login。
+ * service 为空时显示交互式选择器（status 除外，status 始终显示所有服务）。
  */
 export async function oauthCommand(
   action?: string,
@@ -957,9 +974,9 @@ export async function oauthCommand(
   const explicitService = normalizeService(service);
 
   console.log();
-  console.log("  鈺斺晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晽");
-  console.log("  鈺?          swarmflow OAuth Login          鈺?);
-  console.log("  鈺氣晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨暆");
+  console.log("  ┌──────────────────────────────────────────────┐");
+  console.log("  │           swarmflow OAuth Login              │");
+  console.log("  └──────────────────────────────────────────────┘");
   console.log();
 
   let act: OAuthAction;
@@ -994,7 +1011,7 @@ export async function oauthCommand(
         copilot: true,
       });
     } else {
-      // logout: only offer services that have tokens stored
+      // logout：仅提供有存储令牌的服务
       const hasCodex = hasOAuthTokens();
       const hasCopilot = hasGitHubTokens();
       if (!hasCodex && !hasCopilot) {

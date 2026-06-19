@@ -1,5 +1,10 @@
-﻿import type { DisplayThemeLayoutTokens } from "../theme/index.js";
+﻿// =============================================================================
+// SwarmFlow GUI — 布局度量工具
+// =============================================================================
 
+import type { DisplayThemeLayoutTokens } from "../theme/index.js";
+
+/** 限制值在 [min, max] 范围内 */
 export function clamp(value: number, min: number, max: number): number {
   if (value < min) return min;
   if (value > max) return max;

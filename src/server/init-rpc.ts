@@ -1,12 +1,12 @@
 ﻿/**
- * RPC method bindings for the init wizard.
+ * 初始化向导的 RPC 方法绑定。
  *
- * When `swarmflow --server` detects no provider configuration, it enters
- * init mode instead of throwing. These RPC methods let a GUI
- * webview drive the init wizard through the same stdio NDJSON channel.
+ * 当 `swarmflow --server` 检测到没有提供者配置时，它会进入 init 模式
+ * 而不是抛出异常。这些 RPC 方法允许 GUI webview 通过同一个 stdio NDJSON
+ * 通道驱动初始化向导。
  *
- * Once `init.finish` is called, the server bootstraps a Session and
- * transitions to normal session-rpc mode.
+ * 一旦调用 `init.finish`，服务器会引导一个 Session 并
+ * 转换到正常的 session-rpc 模式。
  */
 
 import type { RpcServer } from "./rpc-transport.js";
@@ -124,7 +124,7 @@ export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {
 
     service.saveConfiguration({ modelSelection, thinkingLevel, tierConfig });
 
-    // Transition to session mode
+    // 转换到 session 模式
     setImmediate(() => {
       void onInitComplete();
     });
@@ -132,7 +132,7 @@ export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {
     return { ok: true };
   });
 
-  // OAuth flows 鈥?return device code info for the webview to display
+  // OAuth 流程 — 返回 device code 信息供 webview 显示
   server.on("init.startOAuthFlow", async (params) => {
     const p = expectObject(params, "init.startOAuthFlow");
     const providerId = expectString(p, "providerId", "init.startOAuthFlow");
@@ -162,8 +162,8 @@ export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {
 
   return {
     dispose: () => {
-      // RPC handlers are attached to the server; they'll be cleaned up
-      // when the server is closed or when session-rpc replaces them.
+      // RPC 处理器附加在服务器上；当服务器关闭或 session-rpc 替换它们时，
+      // 它们会被清理。
     },
   };
 }

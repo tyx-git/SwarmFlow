@@ -1,8 +1,8 @@
 /**
- * SwarmMonitor — real-time monitoring and observability for the swarm.
+ * SwarmMonitor — swarm 的实时监控和可观测性。
  *
- * Collects events from the coordinator, message bus, and executor;
- * aggregates metrics; provides snapshots for the TUI/GUI.
+ * 从协调器、消息总线和执行器收集事件；
+ * 聚合指标；为 TUI/GUI 提供快照。
  *
  * @packageDocumentation
  */
@@ -10,7 +10,7 @@
 import type { SwarmSnapshot, SwarmMetrics, TaskResult, SwarmMessage, SwarmAgentHandle, TaskDAG } from "./types.js";
 import { AgentLifecycle, MessageType } from "./types.js";
 
-/** A single event in the swarm timeline. */
+/** Swarm 时间线中的单个事件。 */
 export interface TimelineEvent {
   timestamp: number;
   type: "agent_created" | "agent_state_change" | "task_start" | "task_complete" | "task_fail" | "message_sent" | "level_start" | "level_complete" | "execution_complete" | "error";
@@ -19,7 +19,7 @@ export interface TimelineEvent {
   detail?: string;
 }
 
-/** Collector for swarm events and metrics. */
+/** Swarm 事件和指标的收集器。 */
 export class SwarmMonitor {
   private _timeline: TimelineEvent[] = [];
   private _metrics: SwarmMetrics = {
@@ -36,19 +36,19 @@ export class SwarmMonitor {
   private _agentErrors = new Map<string, string[]>();
   private _taskDurations = new Map<string, number>();
 
-  /** Subscribe to live updates. */
+  /** 订阅实时更新。 */
   onUpdate?: (snapshot: SwarmSnapshot) => void;
 
   // ------------------------------------------------------------------
-  // Event recording
+  // 事件 recording
   // ------------------------------------------------------------------
 
-  /** Record that a new DAG was created. */
+  /** 记录新 DAG 已创建。 */
   recordDagCreated(dag: TaskDAG): void {
     this._metrics.tasksPending = dag.nodes.size;
   }
 
-  /** Record that an agent was created. */
+  /** 记录 agent 已创建。 */
   recordAgentCreated(handle: SwarmAgentHandle): void {
     this._timeline.push({
       timestamp: Date.now(),

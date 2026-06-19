@@ -6,12 +6,12 @@ const INTERNET_SETTINGS_KEY =
   "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
 
 /**
- * Read one value from the WinINET Internet Settings registry key.
- * `reg query` prints a line like:
+ * 从 WinINET Internet Settings 注册表项读取一个值。
+ * `reg query` 打印如下一行：
  *     ProxyServer    REG_SZ    127.0.0.1:7890
  *     ProxyEnable    REG_DWORD    0x1
- * Returns the trimmed value, or null if the value is absent / the query
- * fails (key missing, `reg` unavailable, non-zero exit).
+ * 返回修剪后的值，或如果值不存在/查询失败则返回 null
+ *（键缺失、`reg` 不可用、非零退出）。
  */
 function readRegValue(name: string): string | null {
   try {
@@ -30,17 +30,17 @@ function readRegValue(name: string): string | null {
   }
 }
 
-/** Prepend an http:// scheme when the address lacks one. */
+/** 当地址缺少协议时，添加 http:// 前缀。*/
 function withScheme(addr: string): string {
   return /^[a-z][a-z0-9+.-]*:\/\//i.test(addr) ? addr : `http://${addr}`;
 }
 
 /**
- * Parse a WinINET ProxyServer string. Two shapes:
- *   - single:       "127.0.0.1:7890"          鈫?same proxy for all schemes
+ * 解析 WinINET ProxyServer 字符串。两种形状：
+ *   - single:       "127.0.0.1:7890"          → 所有协议使用相同代理
  *   - per-protocol: "http=host:port;https=host:port;socks=host:port"
- * SOCKS/FTP entries are ignored (HTTP_PROXY/HTTPS_PROXY only cover
- * http/https targets).
+ * SOCKS/FTP 条目被忽略（HTTP_PROXY/HTTPS_PROXY 仅覆盖
+ * http/https 目标）。
  */
 function parseProxyServer(raw: string): { http?: string; https?: string } {
   if (!raw.includes("=")) {
@@ -63,10 +63,9 @@ function parseProxyServer(raw: string): { http?: string; https?: string } {
 }
 
 /**
- * Convert a WinINET ProxyOverride string to NO_PROXY form. Semicolon
- * separated; the special token "<local>" means "bypass for local
- * (intranet) hostnames", which we expand to the loopback hosts that
- * curl/Node-style NO_PROXY matching understands.
+ * 将 WinINET ProxyOverride 字符串转换为 NO_PROXY 格式。分号分隔；
+ * 特殊标记 "<local>" 表示 "绕过本地（intranet）主机名"，
+ * 我们将其扩展为 curl/Node 风格 NO_PROXY 匹配理解的回环主机。
  */
 function parseBypass(raw: string | null): string | undefined {
   if (!raw) return undefined;
@@ -78,7 +77,7 @@ function parseBypass(raw: string | null): string | undefined {
   return hosts.length ? hosts.join(",") : undefined;
 }
 
-/** Raw WinINET registry values, as returned by `reg query` (or null). */
+/** 原始 WinINET 注册表值，如 `reg query` 返回的那样（或 null）。*/
 export interface WinInetRawValues {
   autoConfigUrl: string | null;
   proxyEnable: string | null;
@@ -87,12 +86,12 @@ export interface WinInetRawValues {
 }
 
 /**
- * Pure: turn raw WinINET registry values into a SystemProxyConfig.
- * Extracted from the IO so the parsing can be unit-tested off-Windows.
+ * 纯函数：将原始 WinINET 注册表值转换为 SystemProxyConfig。
+ * 从 IO 中提取，以便可以在非 Windows 上对解析进行单元测试。
  */
 export function parseWinInetProxy(v: WinInetRawValues): SystemProxyConfig | null {
   // A PAC script (auto-config) can't be resolved by reading the
-  // registry 鈥?bail rather than guess. Manual env vars still apply.
+  // registry —bail rather than guess. Manual env vars still apply.
   if (v.autoConfigUrl) return null;
 
   // REG_DWORD prints as hex ("0x1"); accept a decimal "1" defensively.

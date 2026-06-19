@@ -1,24 +1,22 @@
 ﻿/**
- * Windows clipboard provider.
+ * Windows 剪贴板 provider。
  *
- * Text:  pipe through `clip.exe` (built into Windows since Vista) with
- *        a UTF-16LE byte-order mark so non-ASCII (CJK, emoji, etc.)
- *        survives the round-trip. clip.exe documents this as its
- *        expected encoding for full Unicode support; raw UTF-8 is
- *        interpreted via the active ANSI code page and mangles CJK.
+ * 文本：通过 `clip.exe`（自 Vista 以来内置于 Windows）传输，
+ *       带有 UTF-16LE 字节顺序标记，以便非 ASCII（CJK、emoji 等）
+ *       存活往返。clip.exe 将其记录为全 Unicode 支持的
+ *       预期编码；原始 UTF-8 通过活动 ANSI 代码页解释，
+ *       会损坏 CJK。
  *
- *        When clip.exe fails (rare 鈥?appears in Nano Server, certain
- *        container setups), fall through to OSC 52 so users running
- *        in Windows Terminal / ConEmu / Cmder still get a working
- *        copy.
+ *       当 clip.exe 失败时（罕见——出现在 Nano Server、
+ *       某些容器设置中），回退到 OSC 52，以便在
+ *       Windows Terminal / ConEmu / Cmder 中运行的用户仍能获得可用的复制。
  *
- * Image: PowerShell `[System.Windows.Forms.Clipboard]::GetImage()`
- *        writes a PNG to a temp file. Slow due to PowerShell startup
- *        (~300 ms) but reliable on stock Windows 10+.
+ * 图片：PowerShell `[System.Windows.Forms.Clipboard]::GetImage()`
+ *       将 PNG 写入临时文件。由于 PowerShell 启动
+ *       （约 300 ms）较慢，但在 stock Windows 10+ 上可靠。
  *
- * Both methods follow the speculative-call contract: when the
- * capability is unavailable or the clipboard contains nothing
- * relevant, return null / false instead of throwing.
+ * 两种方法都遵循推测调用约定：当能力不可用或剪贴板
+ * 不包含相关内容时，返回 null / false 而不是抛出。
  */
 
 import { spawn, execFile } from "node:child_process";
@@ -63,7 +61,7 @@ function buildReadImageScript(outPath: string): string {
   // success or empty string when there's no image.
   //
   // `$null -ne $img` (vs. `$img -ne $null`) matches PSScriptAnalyzer's
-  // recommended order 鈥?safer when the LHS is a collection because
+  // recommended order —safer when the LHS is a collection because
   // PowerShell's `-ne` distributes over arrays.
   const escapedPath = outPath.replace(/'/g, "''");
   return [

@@ -1,6 +1,5 @@
 /**
- * Inline approval card. Renders when the active session has a pending
- * `approval` ask.
+ * 内联审批卡片。当活动会话有待处理的 `approval` 请求时渲染。
  */
 
 import { useEffect, useState } from 'react'

@@ -1,9 +1,9 @@
 /**
- * SwarmCoordinator — the central orchestrator for the swarm system.
+ * SwarmCoordinator —  swarm 系统的中心编排器。
  *
- * Coordinates task decomposition, agent pool management, parallel execution,
- * message passing, and result aggregation. This is the entry point for all
- * swarm operations.
+ * 协调任务分解、agent 池管理、并行执行、
+ * 消息传递和结果聚合。这是所有
+ * swarm 操作的入口点。
  *
  * @packageDocumentation
  */
@@ -20,7 +20,7 @@ import type { SwarmPattern, TaskNode, TaskDAG, ExecutionPlan, SwarmMessage } fro
 import { AgentPool, type AgentPoolConfig } from "./pool.js";
 import { BUILTIN_PATTERNS, type SwarmPattern as SwarmPatternType } from "./patterns.js";
 
-/** Events emitted by the coordinator. */
+/** 协调器发出的事件。*/
 export interface SwarmCoordinatorEvents {
   onAgentLifecycleChange?: (handle: SwarmAgentHandle) => void;
   onTaskComplete?: (result: TaskResult) => void;
@@ -30,22 +30,22 @@ export interface SwarmCoordinatorEvents {
   onError?: (error: Error) => void;
 }
 
-/** Options for creating a SwarmCoordinator. */
+/** 创建 SwarmCoordinator 的选项。*/
 export interface SwarmCoordinatorOptions {
-  /** Agent pool configuration. */
+  /** Agent 池配置。*/
   poolConfig?: Partial<AgentPoolConfig>;
-  /** Available agent templates (name → Agent). */
+  /** 可用 agent 模板（name → Agent）。*/
   templates: Record<string, Agent>;
-  /** Default model configuration for creating new agents. */
+  /** 创建新 agent 的默认模型配置。*/
   defaultModelConfig?: { model: string; config: import("../config/config.js").Config };
-  /** Event callbacks. */
+  /** 事件回调。*/
   events?: SwarmCoordinatorEvents;
 }
 
 /**
- * SwarmCoordinator - the central orchestrator.
+ * SwarmCoordinator - 中央编排器。
  *
- * Usage:
+ * 用法：
  * ```typescript
  * const coordinator = new SwarmCoordinator({ templates, events: { ... } });
  * const result = await coordinator.runPattern("fan-out-fan-in", "Refactor auth module");
@@ -64,34 +64,34 @@ export class SwarmCoordinator {
     this.templates = opts.templates;
     this._events = opts.events ?? {};
 
-    // Wire up pool events
+    // 连接池事件
     this.pool.onLifecycleChange = (handle) => {
       this._events.onAgentLifecycleChange?.(handle);
     };
   }
 
-  /** Current swarm topology. */
+  /** 当前 swarm 拓扑。*/
   get topology(): SwarmTopology {
     return this._topology;
   }
 
   // ------------------------------------------------------------------
-  // Topology
+  // 拓扑
   // ------------------------------------------------------------------
 
   /**
-   * Set the communication topology.
+   * 设置通信拓扑。
    */
   setTopology(topology: SwarmTopology): void {
     this._topology = topology;
   }
 
   // ------------------------------------------------------------------
-  // Agent management
+  // Agent 管理
   // ------------------------------------------------------------------
 
   /**
-   * Create and register a swarm agent from a template.
+   * 从模板创建并注册 swarm agent。
    */
   createAgent(id: string, role: AgentRole, templateName?: string): SwarmAgentHandle | null {
     const templateName_ = templateName ?? this._roleToTemplate(role);
@@ -109,29 +109,29 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Get available patterns.
+   * 获取可用模式。
    */
   listPatterns(): string[] {
     return Object.keys(BUILTIN_PATTERNS);
   }
 
   /**
-   * Get a specific pattern.
+   * 获取特定模式。
    */
   getPattern(name: string): SwarmPatternType | undefined {
     return BUILTIN_PATTERNS[name];
   }
 
   // ------------------------------------------------------------------
-  // Execution
+  // 执行
   // ------------------------------------------------------------------
 
   /**
    * Run a pre-defined orchestration pattern.
    *
-   * @param patternName - Name of the pattern (e.g., "fan-out-fan-in", "pipeline")
-   * @param task - Description of the task to execute
-   * @returns Aggregated execution result
+   * @param patternName - 模式名称 (e.g., "fan-out-fan-in", "pipeline")
+   * @param task - 要执行的任务描述 to execute
+   * @returns 聚合的执行结果
    */
   async runPattern(patternName: string, task: string): Promise<ExecutionResult> {
     const pattern = BUILTIN_PATTERNS[patternName];
@@ -140,7 +140,7 @@ export class SwarmCoordinator {
     }
 
     this._topology = pattern.topology;
-    // Convert pattern stages to a flat task DAG
+    // 转换 pattern stages to a flat task DAG
     const dag = this._patternToDag(pattern, task);
     return this.executeDag(dag);
   }
@@ -148,11 +148,11 @@ export class SwarmCoordinator {
   /**
    * Execute a TaskDAG — the core execution engine.
    *
-   * Processes the DAG level by level: tasks in the same level run in parallel,
-   * dependent levels run sequentially. Results are aggregated and returned.
+   * 逐级别处理 DAG: 同一级别的任务并行运行,
+   * 有依赖的级别顺序运行. 结果被聚合并返回.
    *
-   * @param dag - The task DAG to execute
-   * @returns Aggregated execution result
+   * @param dag - 要执行的 task DAG
+   * @returns 聚合的执行结果
    */
   async executeDag(dag: TaskDAG): Promise<ExecutionResult> {
     this._abortController = new AbortController();
@@ -166,13 +166,13 @@ export class SwarmCoordinator {
       for (const level of plan.levels) {
         if (signal.aborted) break;
 
-        // Execute all tasks in this level in parallel
+        // 并行执行此级别的所有任务
         const levelPromises = level.taskIds.map((taskId) =>
           this._executeTask(taskId, dag, signal),
         );
         const levelResults = await Promise.allSettled(levelPromises);
 
-        // Collect results
+        // 收集结果
         for (let i = 0; i < levelResults.length; i++) {
           const taskId = level.taskIds[i]!;
           const settled = levelResults[i]!;
@@ -222,18 +222,18 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Cancel the current execution.
+   * 取消当前执行。
    */
   cancel(): void {
     this._abortController?.abort();
   }
 
   // ------------------------------------------------------------------
-  // Private helpers
+  // 私有辅助函数
   // ------------------------------------------------------------------
 
   /**
-   * Map role to a default template name.
+   * 将角色映射到默认模板名称。
    */
   private _roleToTemplate(role: AgentRole): string {
     switch (role) {
@@ -247,7 +247,7 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Convert a pattern to a flat TaskDAG.
+   * 将模式转换为扁平的 TaskDAG。
    */
   private _patternToDag(pattern: SwarmPattern, task: string): TaskDAG {
     const nodes = new Map<string, TaskNode>();
@@ -259,7 +259,7 @@ export class SwarmCoordinator {
         const id = `${stage.role}-${stageIdx}-${i}`;
         const deps: string[] = [];
 
-        // Depend on all tasks from the previous stage
+        // 依赖于上一阶段的所有任务
         if (stageIdx > 0) {
           const prevStage = pattern.stages[stageIdx - 1]!;
           for (let j = 0; j < prevStage.count; j++) {
@@ -356,7 +356,7 @@ export class SwarmCoordinator {
 
     const startTime = Date.now();
 
-    // Create or reuse an agent for this task
+    // 创建 or reuse an agent for this task
     const agentId = `${node.role}-exec-${taskId}`;
     let handle = this.pool.getHandle(agentId);
 
@@ -377,7 +377,7 @@ export class SwarmCoordinator {
         ? `${node.description}\n\nInstructions: ${node.instructions}`
         : node.description;
 
-      // Handle scout tasks — these are read-only
+      // 处理 scout tasks — these are read-only
       if (node.role === AgentRole.Scout || node.role === AgentRole.Guard) {
         // Use a stripped-down tool set
         // (In production, this would use the template's tool configuration)
@@ -385,7 +385,7 @@ export class SwarmCoordinator {
 
       this.pool.setLifecycle(agentId, AgentLifecycle.ToolCalling);
 
-      // Execute the agent
+      // 执行 the agent
       const result = await agent.asyncRun(taskPrompt, undefined, undefined, undefined, signal);
 
       this.pool.setLifecycle(agentId, AgentLifecycle.Completed);
@@ -432,7 +432,7 @@ export class SwarmCoordinator {
       summary += `\nFailed tasks: ${failedTaskIds.join(", ")}`;
     }
 
-    // Add output from successful tasks
+    // 添加 output from successful tasks
     for (const [id, result] of results) {
       if (result.success && result.output) {
         summary += `\n\n--- Task: ${id} ---\n${result.output.slice(0, 1000)}`;

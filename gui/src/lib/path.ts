@@ -1,5 +1,5 @@
 /**
- * Path / display helpers shared by transcript, sidebar, status bar, etc.
+ * transcript、sidebar、status bar 等共享的路径/显示辅助函数。
  */
 
 const HOME_RE = /\/Users\/[a-zA-Z0-9._-]+/g
@@ -10,8 +10,8 @@ export function withTilde(s: string): string {
 }
 
 /**
- * Shorten an absolute path against a workspace root. Falls back to `~/...`
- * when no workspace prefix matches.
+ * 根据工作区根目录缩短绝对路径。当没有匹配的工作区前缀时，
+ * 回退到 `~/...`。
  */
 export function relToWorkspace(path: string, workDir: string | null | undefined): string {
   if (!workDir) return withTilde(path)

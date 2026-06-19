@@ -1,13 +1,12 @@
 ﻿/**
- * Platform Abstraction Layer 鈥?provider interfaces.
+ * 平台抽象层 — 提供者接口。
  *
- * Defines every cross-platform capability swarmflow needs, with one
- * implementation per supported OS in sibling subdirectories.
+ * 定义 swarmflow 需要的每个跨平台能力，在同级子目录中
+ * 每个支持的操作系统有一个实现。
  *
- * Business code imports the active provider via `src/platform/index.ts`
- * and never branches on `process.platform` directly. Windows
- * implementations are stubs that throw a clear error until they're
- * filled in.
+ * 业务代码通过 `src/platform/index.ts` 导入活动 provider，
+ * 永远不直接在 `process.platform` 上分支。Windows
+ * 实现是存根，会抛出清晰错误直到被填充。
  */
 
 import type { ChildProcess, SpawnOptions } from "node:child_process";
@@ -18,7 +17,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 /** Identifies the shell flavour driving the `bash` tool.
  *  Business code uses this to select parser, prompt wording, and
- *  spawn arguments 鈥?never raw `process.platform` checks. */
+ *  spawn arguments —never raw `process.platform` checks. */
 export type ShellKind = "bash" | "sh" | "pwsh" | "powershell";
 
 export interface ShellSpawnRequest {
@@ -37,7 +36,7 @@ export interface ShellSpawnRequest {
 }
 
 export interface ShellProvider {
-  /** Shell flavour 鈥?determines prompt wording, parser, and spawn args. */
+  /** Shell flavour —determines prompt wording, parser, and spawn args. */
   readonly kind: ShellKind;
   /** Absolute path to the resolved shell binary. */
   readonly path: string;
@@ -78,7 +77,7 @@ export interface ClipboardProvider {
   /**
    * Write plain text to the system clipboard. Returns true if the
    * primary mechanism succeeded. Implementations may try multiple
-   * tools (e.g. wl-copy 鈫?xclip 鈫?OSC 52) and report success on the
+   * tools (e.g. wl-copy →xclip →OSC 52) and report success on the
    * first that works.
    */
   writeText(text: string): Promise<boolean>;
@@ -121,7 +120,7 @@ export interface BinaryAssetProvider {
 }
 
 // --------------------------------------------------------------------
-// OS capabilities 鈥?coarse-grained yes/no flags about what the host OS
+// OS capabilities —coarse-grained yes/no flags about what the host OS
 // implements. Used by business code to skip operations that don't
 // apply on the current platform (e.g. POSIX chmod on Windows). Keeping
 // these as boolean flags rather than `process.platform` checks lets
@@ -152,7 +151,7 @@ export interface OsCapabilities {
    *    the safety gate);
    *  - external-path permission rules, when prefix-matching a resolved
    *    path against a stored rule (`D:\Data` vs `d:\data\file`).
-   * On Linux the comparison stays case-sensitive 鈥?a file genuinely
+   * On Linux the comparison stays case-sensitive —a file genuinely
    * named `RM` is distinct from `rm`.
    *
    * Note: macOS can be formatted case-sensitive (rare); treating the
@@ -162,8 +161,8 @@ export interface OsCapabilities {
 
   /**
    * True when launching a PATHEXT script shim (`.cmd` / `.bat`, e.g.
-   * `npm` / `npx` / `prettier` on Windows) via a bare exec 鈥?command +
-   * argv, no shell 鈥?fails, so callers that exec a configured command
+   * `npm` / `npx` / `prettier` on Windows) via a bare exec —command +
+   * argv, no shell —fails, so callers that exec a configured command
    * (hooks) must route through a shell. True on Windows; false on POSIX,
    * where every executable on $PATH is exec-able directly.
    *
@@ -184,7 +183,7 @@ export interface OsCapabilities {
    * trivially bypass the danger gate by varying casing.
    *
    * POSIX-shared danger commands (rm, sudo, chmod, ...) stay in
-   * `classify.ts` with case-sensitive matching 鈥?Unix convention is
+   * `classify.ts` with case-sensitive matching —Unix convention is
    * case-sensitive paths, and a file genuinely named `RM` should not
    * collide with `rm`.
    */
@@ -192,7 +191,7 @@ export interface OsCapabilities {
 
   /**
    * Names of platform-specific *catastrophic* (irreversible disk-wipe)
-   * executables 鈥?e.g. Windows `format` / `diskpart`. Empty on POSIX,
+   * executables —e.g. Windows `format` / `diskpart`. Empty on POSIX,
    * where the catastrophic disk tools (mkfs/fdisk/dd/...) are matched
    * directly in `classify.ts`; keeping the Windows ones here rather
    * than in that shared list is deliberate, so `format my-document.tex`
@@ -200,7 +199,7 @@ export interface OsCapabilities {
    *
    * Stored lowercased (same case-insensitivity rationale as
    * `platformSpecificDangerCommands`). The classifier checks this
-   * before the danger set so these escalate to `catastrophic` 鈥?the
+   * before the danger set so these escalate to `catastrophic` —the
    * only class that still forces a prompt in yolo mode.
    */
   readonly platformSpecificCatastrophicCommands: ReadonlySet<string>;
@@ -216,7 +215,7 @@ export interface OsCapabilities {
    * (Cascadia Mono / Consolas) does not contain U+23FA, so the
    * terminal falls through to Segoe UI Symbol / Emoji and renders
    * the same codepoint as a "record button" icon with a square
-   * outline 鈥?visually wrong and inconsistent with the bullet next
+   * outline —visually wrong and inconsistent with the bullet next
    * to it. U+2B24 BLACK LARGE CIRCLE (猬? lives in the geometric
    * shapes block that Cascadia / Consolas ship directly, so on
    * Windows it stays a plain circle.
@@ -237,10 +236,10 @@ export interface OsCapabilities {
 }
 
 // --------------------------------------------------------------------
-// System proxy 鈥?OS-level proxy configuration that Bun's `fetch` does
+// System proxy —OS-level proxy configuration that Bun's `fetch` does
 // NOT read on its own. Bun honours the HTTP_PROXY / HTTPS_PROXY env
 // vars, but on Windows it ignores the WinINET system proxy (Internet
-// Options 鈫?LAN Settings / the setting most VPN & proxy clients toggle).
+// Options →LAN Settings / the setting most VPN & proxy clients toggle).
 // This provider surfaces that config so startup code can normalise it
 // into the env vars, making every outbound fetch route through it.
 // --------------------------------------------------------------------

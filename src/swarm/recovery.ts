@@ -10,7 +10,7 @@
 import { RecoveryStrategy } from "./types.js";
 import type { RecoveryConfig, TaskResult } from "./types.js";
 
-/** Default recovery configs per strategy. */
+/** 每个策略的默认恢复配置。 */
 export const DEFAULT_RECOVERY_CONFIGS: Record<RecoveryStrategy, RecoveryConfig> = {
   [RecoveryStrategy.Retry]: { strategy: RecoveryStrategy.Retry, maxRetries: 3, useFallbackModel: false },
   [RecoveryStrategy.RetryWithBackoff]: { strategy: RecoveryStrategy.RetryWithBackoff, maxRetries: 3, useFallbackModel: false },
@@ -19,30 +19,30 @@ export const DEFAULT_RECOVERY_CONFIGS: Record<RecoveryStrategy, RecoveryConfig> 
   [RecoveryStrategy.Abort]: { strategy: RecoveryStrategy.Abort, maxRetries: 0, useFallbackModel: false },
 };
 
-/** Outcome of a recovery attempt. */
+/** 恢复尝试的结果。 */
 export interface RecoveryOutcome {
-  /** Whether recovery was successful. */
+  /** 恢复是否成功。 */
   recovered: boolean;
-  /** Number of retries attempted. */
+  /** 尝试的重试次数。 */
   retriesAttempted: number;
-  /** Final error if not recovered. */
+  /** 如果未恢复则为最终错误。 */
   finalError?: string;
-  /** Whether a fallback model was used. */
+  /** 是否使用了回退模型。 */
   usedFallback: boolean;
-  /** Total time spent on recovery (ms). */
+  /** 恢复花费的总时间（毫秒）。 */
   recoveryTimeMs: number;
 }
 
-/** Callback type for re-executing a task. */
+/** 重新执行任务的回调类型。 */
 export type RetryFn = () => Promise<TaskResult>;
 
 /**
- * Attempt to recover from a task failure using the specified strategy.
+ * 使用指定策略尝试从任务失败中恢复。
  *
- * @param config - Recovery configuration
- * @param retryFn - Function that re-executes the task
- * @param initialError - The original error message
- * @returns Recovery outcome
+ * @param config - 恢复配置
+ * @param retryFn - 重新执行任务的函数
+ * @param initialError - 原始错误消息
+ * @returns 恢复结果
  */
 export async function attemptRecovery(
   config: RecoveryConfig,
@@ -90,7 +90,7 @@ export async function attemptRecovery(
 }
 
 /**
- * Retry with linear delay between attempts.
+ * 带线性延迟的重试。
  */
 async function retryWithLinear(
   config: RecoveryConfig,
@@ -101,7 +101,7 @@ async function retryWithLinear(
   let lastError = initialError;
 
   for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
-    await sleep(1000 * attempt); // 1s, 2s, 3s...
+    await sleep(1000 * attempt); // 1秒、2秒、3秒...
 
     try {
       const result = await retryFn();
@@ -129,7 +129,7 @@ async function retryWithLinear(
 }
 
 /**
- * Retry with exponential backoff: 1s, 2s, 4s, 8s...
+ * 带指数退避的重试：1秒、2秒、4秒、8秒...
  */
 async function retryWithBackoff(
   config: RecoveryConfig,
@@ -140,7 +140,7 @@ async function retryWithBackoff(
   let lastError = initialError;
 
   for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
-    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30_000); // up to 30s
+    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30_000); // 最多30秒
     await sleep(delay);
 
     try {
@@ -169,7 +169,7 @@ async function retryWithBackoff(
 }
 
 // ------------------------------------------------------------------
-// Utilities
+// 工具函数
 // ------------------------------------------------------------------
 
 function sleep(ms: number): Promise<void> {
@@ -177,42 +177,42 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Classify error to determine the best recovery strategy.
+ * 对错误进行分类以确定最佳恢复策略。
  */
 export function classifyError(error: string): RecoveryStrategy {
   const lower = error.toLowerCase();
 
-  // Rate limiting → retry with backoff
+  // 速率限制 → 带退避重试
   if (lower.includes("rate limit") || lower.includes("too many requests") || lower.includes("429")) {
     return RecoveryStrategy.RetryWithBackoff;
   }
 
-  // Network issues → retry
+  // 网络问题 → 重试
   if (lower.includes("timeout") || lower.includes("network") || lower.includes("econnrefused") || lower.includes("econnreset")) {
     return RecoveryStrategy.RetryWithBackoff;
   }
 
-  // Server errors → retry
+  // 服务器错误 → 重试
   if (lower.includes("500") || lower.includes("502") || lower.includes("503") || lower.includes("internal server")) {
     return RecoveryStrategy.Retry;
   }
 
-  // Context/token limit → partial
+  // Context/token 限制 → 部分
   if (lower.includes("context length") || lower.includes("token limit") || lower.includes("max tokens")) {
     return RecoveryStrategy.Partial;
   }
 
-  // Authentication → abort (user intervention needed)
+  // 认证 → 中止（需要用户干预）
   if (lower.includes("auth") || lower.includes("unauthorized") || lower.includes("forbidden") || lower.includes("401") || lower.includes("403")) {
     return RecoveryStrategy.Abort;
   }
 
-  // Default: retry once, then abort
+  // 默认：重试一次，然后中止
   return RecoveryStrategy.Retry;
 }
 
 /**
- * Create a recovery config appropriate for the given error.
+ * 为给定错误创建合适的恢复配置。
  */
 export function getRecoveryConfig(error: string): RecoveryConfig {
   const strategy = classifyError(error);

@@ -133,7 +133,7 @@ function buildLeafLabel(node: ModelPickerTreeNode): string {
 }
 
 function buildBranchLabel(node: ModelPickerTreeNode): string {
-  // Don't show (current) on branch nodes 鈥?individual model children have their own markers
+  // 分支节点不显示 (current) — 个体模型子节点有自己的标记
   return node.label;
 }
 
@@ -446,12 +446,12 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     });
     const children = buildModelChildren(providerId);
     if (!preset) {
-      // Custom (non-preset) provider 鈥?offer management.
+      // Custom (non-preset) provider —offer management.
       children.push({
         kind: "action",
         id: `${providerId}:__manage__`,
         value: `manage:${providerId}`,
-        label: "鈿?Manage / remove...",
+        label: "Manage / remove...",
         isCurrent: false,
         credentialState: "not_required",
         keyMissing: false,
@@ -511,7 +511,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     });
   }
 
-  // "Add provider..." action at the bottom of the tree
+  // "添加提供者..." 操作在树的底部
   if (includeAddProviderAction) {
     nodes.push({
       kind: "action",
@@ -528,11 +528,11 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
 }
 
 // ------------------------------------------------------------------
-// Credential endpoint tree 鈥?leaves are *endpoints* (where keys live), not
-// models. Shared by the `/key` command and the init wizard. Covers
-// `credential.kind 鈭?{env, managed}` registry providers plus custom providers;
-// excludes OAuth and local. Group providers (Kimi/GLM/Qwen/MiniMax) descend to
-// their sub-providers, each of which is an independent key slot.
+// 凭据端点树 — 叶节点是*端点*（密钥所在位置），不是模型。
+// 由 `/key` 命令和初始化向导共享。覆盖注册表提供者中的
+// `credential.kind: {env, managed}` 以及自定义提供者；
+// 不包括 OAuth 和本地。分组提供者（Kimi/GLM/Qwen/MiniMax）向下
+// 展开到各自的子提供者，每个都是一个独立的密钥槽。
 // ------------------------------------------------------------------
 
 export interface CredentialEndpointTreeContext {
@@ -541,9 +541,9 @@ export interface CredentialEndpointTreeContext {
 
 export interface CredentialEndpointTreeOptions {
   /**
-   * Include OAuth and local-server providers as selectable leaves. The init
-   * wizard sets this (you can pick any provider type as your model); the `/key`
-   * command leaves it off (OAuth uses /codex /copilot; local needs no key).
+   * 包含 OAuth 和本地服务器提供者作为可选叶节点。初始化
+   * 向导设置此项（您可以选择任何提供者类型作为您的模型）；`/key`
+   * 命令保持关闭（OAuth 使用 /codex /copilot；本地不需要密钥）。
    */
   includeOAuthAndLocal?: boolean;
 }
@@ -667,7 +667,7 @@ export function buildCredentialEndpointTree(
     }
   }
 
-  // Custom (non-registry) providers from settings/config.
+  // 来自 settings/config 的自定义（非注册表）提供者
   const settings = loadGlobalSettings();
   const customLabels = new Map<string, string>();
   if (config) {
