@@ -18,7 +18,7 @@ import {
 } from "./types.js";
 import type { SwarmPattern, TaskNode, TaskDAG, ExecutionPlan, SwarmMessage } from "./types.js";
 import { AgentPool, type AgentPoolConfig } from "./pool.js";
-import { BUILTIN_PATTERNS, type SwarmPattern as SwarmPatternType } from "./patterns.js";
+import { BUILTIN_PATTERNS } from "./patterns.js";
 
 /** 协调器发出的事件。*/
 export interface SwarmCoordinatorEvents {
@@ -118,7 +118,7 @@ export class SwarmCoordinator {
   /**
    * 获取特定模式。
    */
-  getPattern(name: string): SwarmPatternType | undefined {
+  getPattern(name: string): SwarmPattern | undefined {
     return BUILTIN_PATTERNS[name];
   }
 
@@ -358,7 +358,7 @@ export class SwarmCoordinator {
 
     // 创建 or reuse an agent for this task
     const agentId = `${node.role}-exec-${taskId}`;
-    let handle = this.pool.getHandle(agentId);
+    let handle = this.pool.getHandle(agentId) ?? null;
 
     if (!handle) {
       handle = this.createAgent(agentId, node.role);

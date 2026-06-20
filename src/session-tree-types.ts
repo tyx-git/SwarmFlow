@@ -66,49 +66,49 @@ export type DeliverMessageResult =
   | { accepted: true }
   | { accepted: false; reason: DeliverMessageRejectionReason };
 
-/** Typed message envelope for inter-session communication. */
+/** 用于会话间通信的类型化消息信封。 */
 export interface MessageEnvelope {
   type: MessageType;
-  sender: string;        // display only —not used for routing
+  sender: string;        // 仅用于显示 — 不用于路由
   content: string;
   timestamp: number;
   /**
-   * Delivery class. `true` (default): waking —an idle recipient schedules an
-   * auto-resume turn to process it. `false`: ride-along —queued in the inbox
-   * and delivered only when something else (user input, a waking message)
-   * starts a turn. User-initiated kills send ride-along notices: the user is
-   * present and steering; the agent must not start acting on its own.
+   * 传递类别。`true`（默认）：唤醒 — 空闲接收者会安排一个
+   * 自动恢复轮次来处理它。`false`：随行 — 排队在收件箱中，
+   * 仅当其他事件（用户输入、唤醒消息）启动轮次时才传递。
+   * 用户发起的终止发送随行通知：用户在场且正在引导；
+   * agent 不得自行开始行动。
    */
   wake?: boolean;
-  /** When true, the TUI entry created from this message is visible to the user. Default: false for system_notice/peer_message. */
+  /** 如果为 true，则由此消息创建的 TUI 条目对用户可见。默认：system_notice/peer_message 为 false。 */
   tuiVisible?: boolean;
-  /** Stable input entry created when the user submitted the message. */
+  /** 用户提交消息时创建的稳定输入条目。 */
   inputId?: string;
-  /** User-visible input index. Present for real user input. */
+  /** 用户可见的输入索引。对于真实的用户输入存在。 */
   inputIndex?: number;
-  /** Context id assigned to the input before delivery to the model. */
+  /** 在传递给模型之前分配给输入的上下文 ID。 */
   contextId?: string;
 }
 
 /**
- * @deprecated Use MessageEnvelope. Kept as alias during migration.
+ * @deprecated 使用 MessageEnvelope。迁移期间保留作为别名。
  */
 export type AgentMessage = MessageEnvelope;
 
-/** Migrate a persisted message (old AgentMessage or new envelope) to MessageEnvelope. */
+/** 将持久化的消息（旧的 AgentMessage 或新的信封）迁移到 MessageEnvelope。 */
 export function migrateMessageEnvelope(raw: Record<string, unknown>): MessageEnvelope {
-  // New format already —pass through
+  // 已经是新格式 — 直接通过
   if (raw.type && typeof raw.type === "string" &&
-      ["user_input", "peer_message", "system_notice"].includes(raw.type as string)) {
+    ["user_input", "peer_message", "system_notice"].includes(raw.type as string)) {
     return raw as unknown as MessageEnvelope;
   }
-  // Old format: { from, to, content, timestamp }
+  // 旧格式：{ from, to, content, timestamp }
   const from = (raw.from as string) ?? "system";
   let type: MessageType = "system_notice";
   if (from === "user") type = "user_input";
   else if (from === "main") type = "user_input";
   else if (from === "system") type = "system_notice";
-  else type = "peer_message"; // agent name
+  else type = "peer_message"; // agent 名称
   return {
     type,
     sender: from,
@@ -117,7 +117,7 @@ export function migrateMessageEnvelope(raw: Record<string, unknown>): MessageEnv
   };
 }
 
-/** Record kept for archived children (Session instance released). */
+/** 为已归档的子会话保留的记录（Session 实例已释放）。 */
 export interface ArchivedChildRecord {
   id: string;
   numericId: number;

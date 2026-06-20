@@ -15,43 +15,43 @@ import { createDAG, validateDAG } from "./task-dag.js";
 // 分解策略
 // ------------------------------------------------------------------
 
-/** Strategy for 任务分解. */
+/** 任务分解策略。 */
 export enum DecompositionStrategy {
-  /** Full analysis upfront — best for well-understood tasks. */
+  /** 预先进行完整分析 — 最适合理解充分的任务。 */
   TopDown = "top-down",
-  /** Generate multiple hypotheses and explore in parallel. */
+  /** 生成多个假设并并行探索。 */
   Speculative = "speculative",
-  /** Start minimal, expand based on results. */
+  /** 从最小化开始，根据结果扩展。 */
   Incremental = "incremental",
 }
 
-/** Options for decomposition. */
+/** 分解选项。 */
 export interface DecomposerOptions {
-  /** Decomposition strategy. */
+  /** 分解策略。 */
   strategy?: DecompositionStrategy;
-  /** Maximum DAG depth (levels). */
+  /** 最大 DAG 深度（层级数）。 */
   maxDepth?: number;
-  /** Maximum number of tasks in the DAG. */
+  /** DAG 中的最大任务数。 */
   maxTasks?: number;
-  /** Context about the project (files, language, framework). */
+  /** 项目上下文（文件、语言、框架）。 */
   projectContext?: ProjectContext;
 }
 
-/** Information about the project context. */
+/** 项目上下文信息。 */
 export interface ProjectContext {
-  /** Root directory. */
+  /** 根目录。 */
   rootDir?: string;
-  /** Detected language(s). */
+  /** 检测到的语言。 */
   languages?: string[];
-  /** Detected framework(s). */
+  /** 检测到的框架。 */
   frameworks?: string[];
-  /** Key file paths. */
+  /** 关键文件路径。 */
   keyFiles?: string[];
-  /** Brief project description. */
+  /** 简要项目描述。 */
   description?: string;
 }
 
-/** Default options. */
+/** 默认选项。 */
 const DEFAULT_OPTIONS: Required<DecomposerOptions> = {
   strategy: DecompositionStrategy.TopDown,
   maxDepth: 3,
@@ -148,21 +148,21 @@ function buildFeatureDag(request: string, options: Required<DecomposerOptions>):
     {
       id: "scout-analyze",
       role: AgentRole.Scout,
-      description: `Analyze the codebase to understand where and how to implement: ${request}`,
+      description: `分析代码库，了解如何以及在何处实现：${request}`,
       dependencies: [],
       priority: 1,
     },
     {
       id: "worker-implement",
       role: AgentRole.Worker,
-      description: `Implement: ${request}`,
+      description: `实现：${request}`,
       dependencies: ["scout-analyze"],
       priority: 1,
     },
     {
       id: "reviewer-review",
       role: AgentRole.Reviewer,
-      description: `Review the implementation of: ${request}`,
+      description: `审查实现：${request}`,
       dependencies: ["worker-implement"],
       priority: 2,
     },
@@ -174,21 +174,21 @@ function buildBugFixDag(request: string, options: Required<DecomposerOptions>): 
     {
       id: "scout-investigate",
       role: AgentRole.Scout,
-      description: `Investigate the root cause of: ${request}`,
+      description: `调查根本原因：${request}`,
       dependencies: [],
       priority: 1,
     },
     {
       id: "worker-fix",
       role: AgentRole.Worker,
-      description: `Fix the bug: ${request}`,
+      description: `修复 bug：${request}`,
       dependencies: ["scout-investigate"],
       priority: 1,
     },
     {
       id: "reviewer-verify",
       role: AgentRole.Reviewer,
-      description: `Verify the fix for: ${request}`,
+      description: `验证修复：${request}`,
       dependencies: ["worker-fix"],
       priority: 2,
     },
@@ -200,35 +200,35 @@ function buildRefactorDag(request: string, options: Required<DecomposerOptions>)
     {
       id: "scout-analyze",
       role: AgentRole.Scout,
-      description: `Analyze the codebase to plan refactoring: ${request}`,
+      description: `分析代码库以规划重构：${request}`,
       dependencies: [],
       priority: 1,
     },
     {
       id: "worker-refactor-1",
       role: AgentRole.Worker,
-      description: `Refactor (part 1/2): ${request}`,
+      description: `重构（第 1/2 部分）：${request}`,
       dependencies: ["scout-analyze"],
       priority: 1,
     },
     {
       id: "worker-refactor-2",
       role: AgentRole.Worker,
-      description: `Refactor (part 2/2): ${request}`,
+      description: `重构（第 2/2 部分）：${request}`,
       dependencies: ["scout-analyze"],
       priority: 1,
     },
     {
       id: "reviewer-review",
       role: AgentRole.Reviewer,
-      description: `Review the refactoring: ${request}`,
+      description: `审查重构：${request}`,
       dependencies: ["worker-refactor-1", "worker-refactor-2"],
       priority: 2,
     },
     {
       id: "guard-verify",
       role: AgentRole.Guard,
-      description: `Verify refactoring doesn't break existing functionality: ${request}`,
+      description: `验证重构不会破坏现有功能：${request}`,
       dependencies: ["reviewer-review"],
       priority: 3,
     },
@@ -240,21 +240,21 @@ function buildExploratoryDag(request: string, options: Required<DecomposerOption
     {
       id: "scout-1",
       role: AgentRole.Scout,
-      description: `Explore area 1/2: ${request}`,
+      description: `探索区域 1/2：${request}`,
       dependencies: [],
       priority: 1,
     },
     {
       id: "scout-2",
       role: AgentRole.Scout,
-      description: `Explore area 2/2: ${request}`,
+      description: `探索区域 2/2：${request}`,
       dependencies: [],
       priority: 1,
     },
     {
       id: "merger-synthesize",
       role: AgentRole.Merger,
-      description: `Synthesize findings from both scouts: ${request}`,
+      description: `综合两个 scout 的发现：${request}`,
       dependencies: ["scout-1", "scout-2"],
       priority: 2,
     },
@@ -266,21 +266,21 @@ function buildSecurityDag(request: string, options: Required<DecomposerOptions>)
     {
       id: "guard-audit",
       role: AgentRole.Guard,
-      description: `Security audit for: ${request}`,
+      description: `安全审计：${request}`,
       dependencies: [],
       priority: 1,
     },
     {
       id: "worker-fix",
       role: AgentRole.Worker,
-      description: `Fix security issues found: ${request}`,
+      description: `修复发现的安全问题：${request}`,
       dependencies: ["guard-audit"],
       priority: 1,
     },
     {
       id: "guard-verify",
       role: AgentRole.Guard,
-      description: `Verify security fixes: ${request}`,
+      description: `验证安全修复：${request}`,
       dependencies: ["worker-fix"],
       priority: 2,
     },
@@ -292,38 +292,38 @@ function buildSecurityDag(request: string, options: Required<DecomposerOptions>)
 // ------------------------------------------------------------------
 
 /**
- * TaskDecomposer — the main 入口点 for 任务分解.
+ * TaskDecomposer — 任务分解的主入口点。
  *
- * Uses pattern recognition (rule-based) to decompose requests.
- * Future: will use LLM-based decomposition for complex cases.
+ * 使用模式识别（基于规则）来分解请求。
+ * 未来：将使用基于 LLM 的分解来处理复杂情况。
  */
 export class TaskDecomposer {
   private _options: Required<DecomposerOptions>;
-  /** Fired when decomposition produces a DAG. */
+  /** 当分解生成 DAG 时触发。 */
   onDecomposition?: (dag: TaskDAG, strategy: DecompositionStrategy) => void;
 
   constructor(options?: DecomposerOptions) {
     this._options = { ...DEFAULT_OPTIONS, ...options };
   }
 
-  /** Current options. */
+  /** 当前选项。 */
   get options(): Required<DecomposerOptions> {
     return { ...this._options };
   }
 
   /**
-   * Decompose a user request into a TaskDAG.
+   * 将用户请求分解为 TaskDAG。
    *
-   * @param request - The user's natural language request
-   * @param context - Optional project context
-   * @returns A validated TaskDAG
+   * @param request - 用户的自然语言请求
+   * @param context - 可选的項目上下文
+   * @returns 经过验证的 TaskDAG
    */
   async decompose(request: string, context?: ProjectContext): Promise<TaskDAG> {
     const mergedContext = { ...this._options.projectContext, ...context };
     const strat = this._options.strategy;
     let nodes: TaskNode[];
 
-    // Pattern matching
+    // 模式匹配
     if (detectSecurity(request)) {
       nodes = buildSecurityDag(request, this._options);
     } else if (detectBugFix(request)) {
@@ -335,26 +335,26 @@ export class TaskDecomposer {
     } else if (detectExploration(request)) {
       nodes = buildExploratoryDag(request, this._options);
     } else {
-      // Default: scout → worker
+      // 默认：scout → worker
       nodes = [
         {
           id: "scout-default",
           role: AgentRole.Scout,
-          description: `Analyze codebase for: ${request}`,
+          description: `分析代码库以处理：${request}`,
           dependencies: [],
           priority: 1,
         },
         {
           id: "worker-default",
           role: AgentRole.Worker,
-          description: `Execute: ${request}`,
+          description: `执行：${request}`,
           dependencies: ["scout-default"],
           priority: 1,
         },
       ];
     }
 
-    // Enforce limits
+    // 强制执行限制
     if (nodes.length > this._options.maxTasks) {
       nodes = nodes.slice(0, this._options.maxTasks);
     }
@@ -363,7 +363,7 @@ export class TaskDecomposer {
     const validation = validateDAG(dag);
 
     if (!validation.valid) {
-      throw new Error(`Invalid DAG generated: ${validation.errors.join("; ")}`);
+      throw new Error(`生成的 DAG 无效：${validation.errors.join("; ")}`);
     }
 
     this.onDecomposition?.(dag, strat);
@@ -371,7 +371,7 @@ export class TaskDecomposer {
   }
 
   /**
-   * Decompose using a specific strategy.
+   * 使用特定策略进行分解。
    */
   async decomposeWithStrategy(
     request: string,
@@ -389,7 +389,7 @@ export class TaskDecomposer {
 }
 
 /**
- * Convenience function for one-shot decomposition.
+ * 一次性分解的便捷函数。
  */
 export async function decomposeRequest(
   request: string,

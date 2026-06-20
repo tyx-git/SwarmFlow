@@ -1,14 +1,13 @@
 /**
- * SwarmFlow — Multi-agent orchestration system.
+ * SwarmFlow — 多智能体编排系统。
  *
- * The swarm module provides the core abstractions for multi-agent
- * coordination: task decomposition, parallel execution, agent communication,
- * and result aggregation.
+ * swarm 模块提供了多智能体协调的核心抽象：任务分解、并行执行、
+ * 智能体通信和结果聚合。
  *
  * @packageDocumentation
  */
 
-// -- Types ---------------------------------------------------------------
+// -- 类型 ---------------------------------------------------------------
 export {
   AgentRole,
   SwarmTopology,
@@ -34,15 +33,15 @@ export type {
   SwarmStage,
 } from "./types.js";
 
-// -- Core orchestrator ---------------------------------------------------
+// -- 核心编排器 -----------------------------------------------------------
 export { SwarmCoordinator } from "./coordinator.js";
 export type { SwarmCoordinatorOptions, SwarmCoordinatorEvents } from "./coordinator.js";
 
-// -- Agent pool ----------------------------------------------------------
+// -- 智能体池 ----------------------------------------------------------
 export { AgentPool } from "./pool.js";
 export type { AgentPoolConfig } from "./pool.js";
 
-// -- Patterns ------------------------------------------------------------
+// -- 模式 ------------------------------------------------------------
 export {
   FAN_OUT_FAN_IN,
   PIPELINE,
@@ -54,7 +53,7 @@ export {
   listPatterns,
 } from "./patterns.js";
 
-// -- Task DAG ------------------------------------------------------------
+// -- 任务 DAG ------------------------------------------------------------
 export {
   createDAG,
   singleTaskDAG,
@@ -69,19 +68,19 @@ export {
 } from "./task-dag.js";
 export type { ValidationResult, TaskDAGOptions } from "./task-dag.js";
 
-// -- Decomposer ----------------------------------------------------------
+// -- 分解器 ----------------------------------------------------------
 export { TaskDecomposer, DecompositionStrategy, decomposeRequest } from "./decomposer.js";
 export type { DecomposerOptions, ProjectContext } from "./decomposer.js";
 
-// -- Scheduler -----------------------------------------------------------
+// -- 调度器 -----------------------------------------------------------
 export { SwarmScheduler, scheduleDAG } from "./scheduler.js";
 export type { SchedulerConfig, Schedule, TaskEstimate } from "./scheduler.js";
 
-// -- Message Bus ---------------------------------------------------------
+// -- 消息总线 ---------------------------------------------------------
 export { MessageBus } from "./message-bus.js";
 export type { MessageHandler, Subscription, MessageBusConfig } from "./message-bus.js";
 
-// -- Handoff -------------------------------------------------------------
+// -- 交接 -------------------------------------------------------------
 export {
   createHandoffContext,
   formatHandoffPrompt,
@@ -89,22 +88,22 @@ export {
 } from "./handoff.js";
 export type { HandoffOptions } from "./handoff.js";
 
-// -- Merger --------------------------------------------------------------
+// -- 合并器 --------------------------------------------------------------
 export { mergeResults, formatExecutionResult } from "./merger.js";
 export type { MergeStrategy, MergeOptions } from "./merger.js";
 
-// -- Context Bridge ------------------------------------------------------
+// -- 上下文桥接器 ------------------------------------------------------
 export { ContextBridge, SharedContext, AgentScratchpad } from "./context-bridge.js";
 export type { Decision, FileRecord, SharedContextEntry } from "./context-bridge.js";
 
-// -- Recovery ------------------------------------------------------------
+// -- 恢复 ------------------------------------------------------------
 export { attemptRecovery, classifyError, getRecoveryConfig, DEFAULT_RECOVERY_CONFIGS } from "./recovery.js";
 export type { RecoveryOutcome, RetryFn } from "./recovery.js";
 
-// -- Executor ------------------------------------------------------------
+// -- 执行器 ------------------------------------------------------------
 export { SwarmExecutor } from "./executor.js";
 export type { ExecutorEvents, SwarmExecutionOptions } from "./executor.js";
 
-// -- Monitor -------------------------------------------------------------
+// -- 监视器 -------------------------------------------------------------
 export { SwarmMonitor, formatSwarmSnapshot } from "./monitor.js";
 export type { TimelineEvent } from "./monitor.js";

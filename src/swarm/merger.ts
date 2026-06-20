@@ -1,12 +1,12 @@
 /**
- * ResultMerger — combines outputs from multiple swarm agents.
+ * ResultMerger — 合并来自多个 swarm 智能体的输出。
  *
- * Provides different merge strategies for different scenarios:
- * - Concatenate: simple text joining (independent work on different files)
- * - Merge: smart merge with conflict detection (same file, different sections)
- * - Vote: multiple solutions, pick the best
- * - Synthesize: create a cohesive summary from diverse inputs
- * - ResolveConflicts: detect and reconcile conflicting changes
+ * 为不同场景提供不同的合并策略：
+ * - Concatenate：简单文本连接（不同文件上的独立工作）
+ * - Merge：带冲突检测的智能合并（同一文件，不同部分）
+ * - Vote：多个解决方案，选择最佳
+ * - Synthesize：从多样化输入中创建连贯的摘要
+ * - ResolveConflicts：检测并协调冲突的更改
  *
  * @packageDocumentation
  */
@@ -14,7 +14,7 @@
 import type { TaskResult, ExecutionResult } from "./types.js";
 
 // ------------------------------------------------------------------
-// 合并 strategies
+// 合并策略
 // ------------------------------------------------------------------
 
 /** 可用的合并策略。 */
@@ -41,7 +41,7 @@ const DEFAULT_OPTIONS: MergeOptions = {
 };
 
 // ------------------------------------------------------------------
-// 合并 functions
+// 合并函数
 // ------------------------------------------------------------------
 
 /**
@@ -100,7 +100,7 @@ function mergeWithConflictDetection(results: TaskResult[], maxLength: number): s
   for (const [file, agents] of fileOps) {
     if (agents.size > 1) {
       conflicts.push(
-        `⚠️ Conflict detected: File "${file}" was modified by multiple agents: ${[...agents.entries()].map(([a, t]) => `${a} (${t})`).join(", ")}`,
+        `⚠️ 检测到冲突：文件 "${file}" 被多个 agent 修改：${[...agents.entries()].map(([a, t]) => `${a} (${t})`).join(", ")}`,
       );
     }
   }
@@ -108,13 +108,13 @@ function mergeWithConflictDetection(results: TaskResult[], maxLength: number): s
   // 构建输出
   const parts: string[] = [];
   if (conflicts.length > 0) {
-    parts.push("## Conflicts Detected\n");
+    parts.push("## 检测到的冲突\n");
     parts.push(...conflicts);
     parts.push("");
     parts.push("---\n");
   }
 
-  parts.push("## Merged Results\n");
+  parts.push("## 合并结果\n");
   for (const r of results) {
     parts.push(`### ${r.taskId} (${r.agentId})`);
     parts.push(r.output);
@@ -149,23 +149,23 @@ function mergeVote(results: TaskResult[], maxLength: number): string {
   // 按分数降序排序
   scored.sort((a, b) => b.score - a.score);
 
-  // Return the top result with a summary of alternatives
+  // 返回最佳结果及备选方案摘要
   const best = scored[0]!.result;
   const alternatives = scored.slice(1);
 
   const parts: string[] = [
-    "## Selected Solution",
-    `**Task:** ${best.taskId}`,
-    `**Score:** ${scored[0]!.score}`,
+    "## 选定的解决方案",
+    `**任务：** ${best.taskId}`,
+    `**得分：** ${scored[0]!.score}`,
     "",
     best.output,
     "",
   ];
 
   if (alternatives.length > 0) {
-    parts.push("---\n## Alternative Solutions Considered\n");
+    parts.push("---\n## 考虑的备选方案\n");
     for (const alt of alternatives) {
-      parts.push(`- **${alt.result.taskId}** (score: ${alt.score}): ${alt.result.output.slice(0, 200)}...`);
+      parts.push(`- **${alt.result.taskId}** (得分：${alt.score})：${alt.result.output.slice(0, 200)}...`);
     }
   }
 
@@ -178,25 +178,25 @@ function mergeVote(results: TaskResult[], maxLength: number): string {
 }
 
 /**
- * Synthesize: create a cohesive summary from diverse inputs.
- * Extracts key information from each result and weaves them together.
+ * Synthesize：从多样化输入中创建连贯的摘要。
+ * 从每个结果中提取关键信息并将其编织在一起。
  */
 function mergeSynthesize(results: TaskResult[], maxLength: number): string {
   const parts: string[] = [
-    "# Synthesis\n",
+    "# 综合摘要\n",
   ];
 
   for (const r of results) {
     const lines = r.output.split("\n").filter((l) => l.trim());
 
-    // Extract title-like lines and key points
+    // 提取标题行和关键点
     const title = lines.find((l) => l.startsWith("#") || l.startsWith("##") || l.startsWith("###"));
     const keyPoints = lines.filter(
       (l) => l.startsWith("-") || l.startsWith("*") || l.match(/^\d+\./),
     );
 
     if (title) {
-      parts.push(`## From ${r.taskId} (${r.agentId})`);
+      parts.push(`## 来自 ${r.taskId} (${r.agentId})`);
     } else {
       parts.push(`## ${r.taskId}`);
     }
@@ -208,12 +208,12 @@ function mergeSynthesize(results: TaskResult[], maxLength: number): string {
       parts.push("");
     }
 
-    // Include the full output (trimmed)
+    // 包含完整输出（裁剪）
     parts.push(r.output.slice(0, 2000));
     parts.push("");
   }
 
-  parts.push("---\n*Synthesized from multiple agent outputs*");
+  parts.push("---\n*综合自多个 agent 的输出*");
 
   let combined = parts.join("\n");
   if (combined.length > maxLength) {
@@ -228,42 +228,42 @@ function mergeSynthesize(results: TaskResult[], maxLength: number): string {
  * 标记冲突供用户解决，并应用无冲突的更改。
  */
 function mergeResolveConflicts(results: TaskResult[], maxLength: number): string {
-  // First, use conflict detection
+  // 首先，使用冲突检测
   const conflictOutput = mergeWithConflictDetection(results, maxLength);
 
   // 添加解决指导
   const parts = [
     conflictOutput,
     "",
-    "## Conflict Resolution",
+    "## 冲突解决",
     "",
-    "### Auto-Resolved",
-    "- Non-conflicting changes applied",
-    "- Outputs from different files/topics merged",
+    "### 自动解决",
+    "- 应用了无冲突的更改",
+    "- 合并了不同文件/主题的输出",
     "",
-    "### Requires User Review",
-    "- Conflicting file modifications need manual reconciliation",
-    "- Check the 'Conflicts Detected' section above",
+    "### 需要用户审查",
+    "- 冲突的文件修改需要手动协调",
+    "- 请检查上面的“检测到的冲突”部分",
     "",
-    "### Recommendations",
-    "- Review conflicting files one by one",
-    "- Accept or reject changes per file",
-    "- Run tests after resolving conflicts",
+    "### 建议",
+    "- 逐个审查冲突文件",
+    "- 每个文件接受或拒绝更改",
+    "- 解决冲突后运行测试",
   ];
 
   return parts.join("\n");
 }
 
 // ------------------------------------------------------------------
-// Main merger API
+// 主要合并 API
 // ------------------------------------------------------------------
 
 /**
- * Merge multiple task results using the specified strategy.
+ * 使用指定策略合并多个任务结果。
  *
- * @param results - Task results to merge
- * @param options - Merge options (strategy, format, maxLength)
- * @returns Merged output string
+ * @param results - 要合并的任务结果
+ * @param options - 合并选项（策略、格式、最大长度）
+ * @returns 合并后的输出字符串
  */
 export function mergeResults(
   results: TaskResult[],
@@ -296,27 +296,27 @@ export function mergeResults(
  */
 export function formatExecutionResult(result: ExecutionResult): string {
   const parts: string[] = [
-    `# Swarm Execution Complete`,
+    `# Swarm 执行完成`,
     ``,
-    `**Status:** ${result.success ? "✅ All tasks succeeded" : "⚠️ Some tasks failed"}`,
-    `**Duration:** ${(result.totalDurationMs / 1000).toFixed(1)}s`,
-    `**Tokens:** ${result.total用法.inputTokens.toLocaleString()} in / ${result.total用法.outputTokens.toLocaleString()} out`,
-    `**Tasks:** ${result.results.size} total, ${result.failedTaskIds.length} failed`,
+    `**状态：** ${result.success ? "✅ 所有任务成功" : "⚠️ 部分任务失败"}`,
+    `**耗时：** ${(result.totalDurationMs / 1000).toFixed(1)}s`,
+    `**Token：** ${result.totalUsage.inputTokens.toLocaleString()} 输入 / ${result.totalUsage.outputTokens.toLocaleString()} 输出`,
+    `**任务：** ${result.results.size} 个总计，${result.failedTaskIds.length} 个失败`,
     ``,
   ];
 
-  // Per-task summary
-  parts.push(`## Task Results\n`);
+  // 每个任务摘要
+  parts.push(`## 任务结果\n`);
   for (const [id, taskResult] of result.results) {
     const icon = taskResult.success ? "✅" : "❌";
     parts.push(`### ${icon} ${id}`);
-    parts.push(`Agent: ${taskResult.agentId} | Duration: ${(taskResult.durationMs / 1000).toFixed(1)}s | Tokens: ${taskResult.usage.inputTokens + taskResult.usage.outputTokens}`);
-    if (taskResult.error) parts.push(`Error: ${taskResult.error}`);
+    parts.push(`Agent：${taskResult.agentId} | 耗时：${(taskResult.durationMs / 1000).toFixed(1)}s | Token：${taskResult.usage.inputTokens + taskResult.usage.outputTokens}`);
+    if (taskResult.error) parts.push(`错误：${taskResult.error}`);
     parts.push(``);
   }
 
-  // Summary text
-  parts.push(`## Summary\n`);
+  // 摘要文本
+  parts.push(`## 摘要\n`);
   parts.push(result.summary);
   parts.push(``);
 

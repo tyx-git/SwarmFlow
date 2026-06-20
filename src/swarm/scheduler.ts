@@ -1,8 +1,8 @@
 /**
- * SwarmScheduler — converts TaskDAGs to executable plans.
+ * SwarmScheduler — 将 TaskDAG 转换为可执行计划。
  *
- * Takes a decomposed TaskDAG and produces a concrete execution plan
- * with level assignments, resource estimates, and timing predictions.
+ * 接收分解后的 TaskDAG，并生成包含层级分配、资源估算
+ * 和时间预测的具体执行计划。
  *
  * @packageDocumentation
  */
@@ -34,7 +34,7 @@ export interface Schedule {
   maxParallelism: number;
 }
 
-/** Default token budgets per role. */
+/** 每个角色的默认 token 预算。 */
 const ROLE_TOKEN_ESTIMATES: Record<AgentRole, { input: number; output: number }> = {
   [AgentRole.Queen]: { input: 4000, output: 2000 },
   [AgentRole.Scout]: { input: 3000, output: 4000 },
@@ -44,7 +44,7 @@ const ROLE_TOKEN_ESTIMATES: Record<AgentRole, { input: number; output: number }>
   [AgentRole.Merger]: { input: 6000, output: 4000 },
 };
 
-/** Default time estimates per role (ms). */
+/** 每个角色的默认时间估算（毫秒）。 */
 const ROLE_TIME_ESTIMATES: Record<AgentRole, number> = {
   [AgentRole.Queen]: 15000,
   [AgentRole.Scout]: 20000,
@@ -62,7 +62,7 @@ export interface SchedulerConfig {
   levelTokenBudget: number;
 }
 
-/** Default scheduler config. */
+/** 默认调度器配置。 */
 const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
   maxConcurrency: 5,
   levelTokenBudget: 100_000,
@@ -96,16 +96,16 @@ export class SwarmScheduler {
    * @throws 如果 DAG 无效
    */
   schedule(dag: TaskDAG): Schedule {
-    // Validate
+    // 验证
     const validation = validateDAG(dag);
     if (!validation.valid) {
-      throw new Error(`Cannot schedule invalid DAG: ${validation.errors.join("; ")}`);
+      throw new Error(`无法调度无效的 DAG：${validation.errors.join("; ")}`);
     }
 
-    // Get execution levels
+    // 获取执行层级
     const levels = getLevels(dag);
 
-    // Build the execution plan
+    // 构建执行计划
     const plan: ExecutionPlan = {
       levels: levels.map((l) => ({
         index: l.index,
@@ -114,7 +114,7 @@ export class SwarmScheduler {
       complexity: Math.min(10, dag.nodes.size),
     };
 
-    // Generate estimates
+    // 生成估算
     const estimates = this._estimateTasks(dag);
     const estimatedWallTimeMs = this._estimateWallTime(levels, dag);
     const estimatedTotalTokens = estimates.reduce(
@@ -144,7 +144,7 @@ export class SwarmScheduler {
   }
 
   // ------------------------------------------------------------------
-  // Private
+  // 私有方法
   // ------------------------------------------------------------------
 
   /**

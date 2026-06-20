@@ -2340,7 +2340,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/summarize", description: "Manually summarize older context", handler: cmdSummarize });
   registry.register({ name: "/summarize_hint", description: "Configure two-tier summarize hints (on/off, trigger levels)", handler: cmdSummarizeHint });
   registry.register({ name: "/shells", description: "View and stop background shells", handler: cmdShells });
-  registry.register({ name: "/model", description: "Switch model", handler: cmdModel, options: modelOptions });
+  registry.register({ name: "/models", description: "Switch model", handler: cmdModel, options: modelOptions });
   registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, pickerTitle: "Manage API key" });
   registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions });
   registry.register({ name: "/quit", description: "Exit the application", handler: cmdQuit, aliases: ["/exit"] });
@@ -2364,6 +2364,10 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/autoupdate", description: "Toggle automatic update checks", handler: cmdAutoUpdate });
   registry.register({ name: "/autocopy", description: "Toggle copy-on-select (auto-copy a text selection)", handler: cmdAutoCopy });
   registry.register({ name: "/review", description: "Review code changes", handler: cmdReview });
+  //TODO: init初始化，plan模式，内置Fable系统提示词，rules设置全局规则或者项目规则.swarmflow/rules/rules.md
+  // registry.register({name: "/init", description: "Explore the project architecture",handler: cmdinit});
+  // registry.register({name: "/plan", description: "Disassemble the target and create a task list.",handler: cmdplan});
+  // registry.register({name: "/rules", description: "Set global rules or project rules",handler: cmdrules});
   return registry;
 }
 
@@ -2410,7 +2414,7 @@ async function cmdCopy(ctx: CommandContext): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /叉
+// Fork
 // ------------------------------------------------------------------
 
 async function cmdFork(ctx: CommandContext): Promise<void> {

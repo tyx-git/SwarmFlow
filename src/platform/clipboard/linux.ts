@@ -18,11 +18,11 @@ import { commandExists, linuxDisplayServer } from "../detect.js";
 import { osc52Clipboard } from "./osc52.js";
 
 interface LinuxClipboardTooling {
-  /** Identifier for diagnostics. */
+  /** 用于诊断的标识符。 */
   id: string;
-  /** Returns command + args to write text via stdin. */
+  /** 返回通过 stdin 写入文本的命令 + 参数。 */
   writeTextCmd: () => { command: string; args: string[] };
-  /** Returns command + args that emit image bytes for the given UTI to stdout, or null when unsupported. */
+  /** 返回将给定 UTI 的图像字节输出到 stdout 的命令 + 参数，不支持时返回 null。 */
   readImageCmd: ((mime: string) => { command: string; args: string[] }) | null;
 }
 
@@ -54,21 +54,18 @@ function xselTooling(): LinuxClipboardTooling | null {
   return {
     id: "linux-x11-xsel",
     writeTextCmd: () => ({ command: "xsel", args: ["--clipboard", "--input"] }),
-    // xsel doesn't support image reads.
+    // xsel 不支持图像读取。
     readImageCmd: null,
   };
 }
 
 /**
- * Ordered list of available clipboard tools. The display server sets
- * *priority*, not *exclusivity*: under Wayland, XWayland is near-
- * universal so xclip/xsel still work against the bridged clipboard and
- * must remain fallbacks when wl-clipboard is absent (the M-2 bug:
- * Wayland session + xclip-but-no-wl-clipboard previously fell straight
- * through to OSC 52). When no display server is detected we build an
- * empty chain so writeText goes straight to the OSC 52 tail and
- * readImage returns null. This realizes the wl-copy →xclip →OSC 52
- * cascade documented in types.ts.
+ * 可用剪贴板工具的有序列表。显示服务器设置的是*优先级*，而不是*排他性*：
+ * 在 Wayland 下，XWayland 几乎是通用的，因此 xclip/xsel 仍可针对桥接剪贴板工作，
+ * 在 wl-clipboard 缺失时必须作为回退（M-2 bug：Wayland 会话 + xclip 但无 wl-clipboard
+ * 此前会直接落到 OSC 52）。当未检测到显示服务器时，我们构建一个空链，因此 writeText
+ * 直接进入 OSC 52 尾部，readImage 返回 null。这实现了 types.ts 中记录的
+ * wl-copy → xclip → OSC 52 级联。
  */
 function pickToolingChain(): LinuxClipboardTooling[] {
   const server = linuxDisplayServer();
@@ -78,8 +75,7 @@ function pickToolingChain(): LinuxClipboardTooling[] {
   const xclip = xclipTooling();
   const xsel = xselTooling();
 
-  // Prefer the active display server's native tool first, keep the
-  // other GUI tools as fallbacks.
+  // 首先优先选用活动显示服务器的原生工具，将其他 GUI 工具保留为回退。
   const ordered = server === "wayland"
     ? [wl, xclip, xsel]
     : [xclip, xsel, wl];
@@ -94,7 +90,7 @@ async function writeViaTooling(t: LinuxClipboardTooling, text: string): Promise<
       const { command, args } = t.writeTextCmd();
       const proc = spawn(command, args, { stdio: ["pipe", "ignore", "ignore"] });
       const timer = setTimeout(() => {
-        try { proc.kill("SIGKILL"); } catch {}
+        try { proc.kill("SIGKILL"); } catch { }
         resolve(false);
       }, 2000);
       proc.on("error", () => { clearTimeout(timer); resolve(false); });
@@ -117,7 +113,7 @@ async function readImageBytes(
       const proc = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"] });
       const chunks: Buffer[] = [];
       const timer = setTimeout(() => {
-        try { proc.kill("SIGKILL"); } catch {}
+        try { proc.kill("SIGKILL"); } catch { }
         resolve(null);
       }, 5000);
       proc.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -143,20 +139,18 @@ const IMAGE_MIME_TYPES: { mime: string; mediaType: ClipboardImageMediaType }[] =
 ];
 
 export const linuxClipboard: ClipboardProvider = {
-  // Reflects the primary mechanism chosen at module load. Note that a
-  // single writeText() call walks the whole tool chain and may fall
-  // through to OSC 52, so the actual mechanism used for an individual
-  // call may differ from this id. Treated as diagnostic context, not a
-  // per-call accuracy guarantee.
+  // 反映模块加载时选择的主要机制。注意单次 writeText() 调用会遍历整个工具链，
+  // 并可能回退到 OSC 52，因此单次调用实际使用的机制可能与此 id 不同。
+  // 将其视为诊断上下文，而非每次调用的精确性保证。
   id: toolingChain[0] ? toolingChain[0].id : "linux-osc52-fallback",
 
   async writeText(text: string): Promise<boolean> {
-    // Walk the chain in priority order; first tool that succeeds wins.
+    // 按优先级顺序遍历链；第一个成功的工具获胜。
     for (const tooling of toolingChain) {
       const ok = await writeViaTooling(tooling, text);
       if (ok) return true;
     }
-    // Tail of the chain: terminal OSC 52.
+    // 链尾：终端 OSC 52。
     return osc52Clipboard.writeText(text);
   },
 

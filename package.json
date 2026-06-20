@@ -1,6 +1,6 @@
 {
   "name": "SwarmFlow",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "author": "tyx-git",
   "updateNotice": "",
   "description": "SwarmFlow — A multi-agent AI coding assistant with swarm orchestration, parallel sub-agents, and adaptive context management",
@@ -78,6 +78,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.13",
     "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20",
     "@types/react": "^19.2.14",
     "@types/turndown": "^5.0.6",
     "typescript": "^5.7.0"

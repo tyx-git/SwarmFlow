@@ -30,26 +30,26 @@ const LOCAL_MAX_REDIRECTS = 10;
 export const WEB_FETCH: ToolDef = {
   name: "web_fetch",
   description:
-    "Fetch content from a URL and return it as readable text. " +
-    "Uses a high-quality remote extractor first, then falls back to local extraction if needed. " +
-    "HTML pages are converted to markdown-like text.",
+    "get content from url and return it as readable text." +
+    "first, use a high-quality remote extractor, and if necessary, fall back to local extraction." +
+    "the HTML page will be converted into text similar to markdown.",
   parameters: {
     type: "object",
     properties: {
       url: {
         type: "string",
-        description: "The URL to fetch (must be http or https)",
+        description: "the URL to get (must be http or https).",
       },
       prompt: {
         type: "string",
         description:
-          "Optional description of what information to look for " +
+          "optional description, indicating what information to look for." +
           "(included as a hint in the output header)",
       },
     },
     required: ["url"],
   },
-  summaryTemplate: "{agent} is fetching {url}",
+  summaryTemplate: "{agent} are fetching {url}",
   tuiPolicy: { partialReveal: { completeArgs: ["url"] } },
 };
 
@@ -131,11 +131,11 @@ function isPrivateIpv6(hostname: string): boolean {
 
 function validateFetchUrl(parsed: URL): string | null {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return `Only http and https URLs are supported. Got: ${parsed.protocol}`;
+    return `only http and https url are supported. get:${parsed.protocol}`;
   }
 
   if (parsed.username || parsed.password) {
-    return "URLs with embedded credentials (user:pass@host) are not allowed.";
+    return "url with embedded credentials (user: pass @ host) is not allowed.";
   }
 
   const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -145,15 +145,15 @@ function validateFetchUrl(parsed: URL): string | null {
     hostname.endsWith(".local") ||
     hostname === "local"
   ) {
-    return `Refusing to fetch local hostname: ${parsed.hostname}`;
+    return `refuse to get local host name:${parsed.hostname}`;
   }
 
   const ipKind = isIP(hostname);
   if (ipKind === 4 && isPrivateIpv4(hostname)) {
-    return `Refusing to fetch private IP address: ${parsed.hostname}`;
+    return `refuse to get a private ip address：${parsed.hostname}`;
   }
   if (ipKind === 6 && isPrivateIpv6(hostname)) {
-    return `Refusing to fetch private IP address: ${parsed.hostname}`;
+    return `refuse to get a private ip address：${parsed.hostname}`;
   }
 
   return null;
@@ -172,29 +172,29 @@ export async function toolWebFetch(
   try {
     parsed = new URL(url);
   } catch {
-    return `ERROR: Invalid URL: ${url}`;
+    return `error: invalid url:${url}`;
   }
 
   const validationError = validateFetchUrl(parsed);
   if (validationError) {
-    return `ERROR: ${validationError}`;
+    return `error：${validationError}`;
   }
 
   const normalizedUrl = parsed.toString();
 
   if (opts.signal?.aborted) {
-    return "ERROR: web_fetch was interrupted.";
+    return "error: web_fetch was interrupted.";
   }
 
   try {
     const jinaOutput = await fetchViaJina(normalizedUrl, prompt, opts.signal);
     if (jinaOutput) return jinaOutput;
   } catch {
-    // Fall through to local extraction.
+    // 回退到本地提取。
   }
 
   if (opts.signal?.aborted) {
-    return "ERROR: web_fetch was interrupted.";
+    return "error: web_fetch was interrupted.";
   }
 
   return fetchLocally(normalizedUrl, prompt, opts.signal);
@@ -221,9 +221,9 @@ async function fetchWithTimeout(
   let externalAborted = false;
   let timedOut = false;
 
-  // If the caller already cancelled, short-circuit.
+  // 如果调用方已经取消，则短路。
   if (externalSignal?.aborted) {
-    throw { kind: "interrupted", message: "web_fetch was interrupted before the request started." } satisfies FetchFailure;
+    throw { kind: "interrupted", message: "web_fetch interrupted before the request started." } satisfies FetchFailure;
   }
 
   const timer = setTimeout(() => {
@@ -245,13 +245,13 @@ async function fetchWithTimeout(
     if (externalAborted) {
       throw {
         kind: "interrupted",
-        message: "web_fetch was interrupted while fetching.",
+        message: "web_fetch was interrupted during the acquisition process.",
       } satisfies FetchFailure;
     }
     if (timedOut || (e instanceof Error && e.name === "AbortError")) {
       throw {
         kind: "timeout",
-        message: `Request timed out after ${FETCH_TIMEOUT_MS / 1000}s.`,
+        message: `the request timed out (more than ${FETCH_TIMEOUT_MS / 1000} seconds.`,
       } satisfies FetchFailure;
     }
     throw e;
@@ -265,13 +265,12 @@ function buildOutput(
   url: string,
   body: string,
 ): string {
-  return `# Content from ${url}\n\n${body}`;
+  return `# # content from ${url}\n\n${body}`;
 }
 
 function normalizeOutput(output: string): string {
-  // Symmetrical head+tail truncation: long pages often have nav at the top
-  // and conclusions / FAQ / next-steps at the bottom —keeping both is
-  // strictly more useful than tail-dropped output.
+  // 对称的头尾截断：长页面通常在顶部有导航，在底部有结论/FAQ/后续步骤
+  // 保留两者比丢弃尾部更有用。
   return truncateMiddle(output.trim(), OUTPUT_MAX_CHARS);
 }
 
@@ -314,7 +313,7 @@ async function fetchViaJina(
     ) {
       return null;
     }
-    return `ERROR: HTTP ${response.status} ${response.statusText} for ${url}`;
+    return `error：HTTP ${response.status} ${response.statusText} for ${url}`;
   }
 
   const body = normalizeOutput(stripJinaMetadata(await response.text()));
@@ -357,7 +356,7 @@ async function fetchLocallyWithRedirects(
     if (validationError) {
       throw {
         kind: "error",
-        message: `Redirect target rejected: ${validationError}`,
+        message: `redirect target denied.：${validationError}`,
       } satisfies FetchFailure;
     }
 
@@ -366,7 +365,7 @@ async function fetchLocallyWithRedirects(
 
   throw {
     kind: "error",
-    message: `Too many redirects (limit ${LOCAL_MAX_REDIRECTS}).`,
+    message: `too many redirects（limit ${LOCAL_MAX_REDIRECTS} ）。`,
   } satisfies FetchFailure;
 }
 
@@ -383,27 +382,27 @@ async function fetchLocally(
     finalUrl = fetched.finalUrl;
   } catch (e) {
     if (isFetchFailure(e)) {
-      if (e.kind === "interrupted") return `ERROR: ${e.message}`;
-      if (e.kind === "timeout") return `ERROR: ${e.message}`;
-      return `ERROR: ${e.message}`;
+      if (e.kind === "interrupted") return `error：${e.message}`;
+      if (e.kind === "timeout") return `error：${e.message}`;
+      return `error：${e.message}`;
     }
-    return `ERROR: Fetch failed: ${e instanceof Error ? e.message : String(e)}`;
+    return `error：fetch false：${e instanceof Error ? e.message : String(e)}`;
   }
 
   if (!response.ok) {
-    return `ERROR: HTTP ${response.status} ${response.statusText} for ${finalUrl}`;
+    return `error：HTTP ${response.status} ${response.statusText} for ${finalUrl}`;
   }
 
   const contentLength = response.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > FETCH_MAX_CONTENT_LENGTH) {
-    return `ERROR: Response too large (${Math.round(parseInt(contentLength, 10) / 1024 / 1024)} MB, limit ${FETCH_MAX_CONTENT_LENGTH / 1024 / 1024} MB).`;
+    return `error：the response is too large（${Math.round(parseInt(contentLength, 10) / 1024 / 1024)} MB，限制 ${FETCH_MAX_CONTENT_LENGTH / 1024 / 1024} MB）。`;
   }
 
   let body: string;
   try {
     body = await response.text();
   } catch (e) {
-    return `ERROR: Failed to read response body: ${e instanceof Error ? e.message : String(e)}`;
+    return `error: failed to read the response body.：${e instanceof Error ? e.message : String(e)}`;
   }
 
   if (body.length > FETCH_MAX_CONTENT_LENGTH) {

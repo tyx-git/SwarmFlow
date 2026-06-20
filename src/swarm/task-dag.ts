@@ -1,8 +1,8 @@
 /**
- * TaskDAG — Directed Acyclic Graph operations for swarm 任务分解.
+ * TaskDAG — 用于 swarm 任务分解的有向无环图操作。
  *
- * Provides utilities for creating, validating, and manipulating task DAGs:
- * cycle detection, topological sort, level assignment, and dependency checks.
+ * 提供了用于创建、验证和操作任务 DAG 的工具：
+ * 环检测、拓扑排序、层级分配和依赖检查。
  *
  * @packageDocumentation
  */
@@ -66,14 +66,14 @@ export function validateDAG(dag: TaskDAG): ValidationResult {
 
   // 检查空 DAG
   if (dag.nodes.size === 0) {
-    return { valid: false, errors: ["DAG is empty"] };
+    return { valid: false, errors: ["DAG 为空"] };
   }
 
   // 检查所有依赖是否存在
   for (const [id, node] of dag.nodes) {
     for (const depId of node.dependencies) {
       if (!dag.nodes.has(depId)) {
-        errors.push(`Task "${id}" depends on unknown task "${depId}"`);
+        errors.push(`任务 "${id}" 依赖于未知任务 "${depId}"`);
       }
     }
   }
@@ -82,14 +82,14 @@ export function validateDAG(dag: TaskDAG): ValidationResult {
   const ids = new Set<string>();
   for (const id of dag.nodes.keys()) {
     if (ids.has(id)) {
-      errors.push(`Duplicate task ID: "${id}"`);
+      errors.push(`重复的任务 ID："${id}"`);
     }
     ids.add(id);
   }
 
-  // Cycle detection using DFS
+  // 使用 DFS 进行环检测
   if (hasCycle(dag)) {
-    errors.push("DAG contains a cycle");
+    errors.push("DAG 包含环");
   }
 
   return { valid: errors.length === 0, errors };
@@ -226,7 +226,7 @@ export function removeNode(dag: TaskDAG, nodeId: string): TaskDAG {
   const newNodes = new Map(dag.nodes);
   newNodes.delete(nodeId);
 
-  // 移除 from dependency lists
+  // 从依赖列表中移除
   for (const [id, node] of newNodes) {
     const newDeps = node.dependencies.filter((d) => d !== nodeId);
     if (newDeps.length !== node.dependencies.length) {

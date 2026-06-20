@@ -1,56 +1,56 @@
 /**
- * GUI integration guide for swarm visualization.
+ * GUI 集成指南 — swarm 可视化。
  *
- * This file documents the interfaces the Electron GUI should implement
- * to visualize swarm state. Actual React components live in gui/.
+ * 本文档记录了 Electron GUI 为实现 swarm 状态可视化应实现的接口。
+ * 实际的 React 组件位于 gui/ 中。
  *
- * ## Swarm Panel React Component
+ * ## Swarm 面板 React 组件
  *
- * The GUI should implement a SwarmPanel component that:
- * 1. Polls SwarmMonitor.getSnapshot() every 500ms
- * 2. Renders agent nodes as colored circles:
- *    - 💭 Thinking (yellow pulse)
- *    - 🔧 Tool-calling (blue spin)
- *    - ✅ Completed (green)
- *    - ❌ Error (red flash)
- * 3. Shows task DAG with completion status
- * 4. Displays:
- *    - Agent topology graph (star/chain/mesh)
- *    - Task progress bars per level
- *    - Token usage chart
- *    - Timeline of recent events
+ * GUI 应实现一个 SwarmPanel 组件，该组件：
+ * 1. 每 500ms 轮询 SwarmMonitor.getSnapshot()
+ * 2. 将智能体节点渲染为彩色圆圈：
+ *    - 💭 思考中（黄色脉冲）
+ *    - 🔧 调用工具（蓝色旋转）
+ *    - ✅ 已完成（绿色）
+ *    - ❌ 错误（红色闪烁）
+ * 3. 显示带有完成状态的任务 DAG
+ * 4. 展示：
+ *    - 智能体拓扑图（星形/链式/网状）
+ *    - 每个层级的任务进度条
+ *    - Token 使用量图表
+ *    - 最近事件的时间线
  *
- * ## Message Flow
+ * ## 消息流
  *
  * GUI <--RPC--> session-rpc.ts <---> SwarmExecutor
  *                    |
  *              SwarmMonitor.getSnapshot()
  *
- * ## Data Shape
+ * ## 数据形状
  *
- * The GUI receives SwarmSnapshot via RPC events.
- * See types.ts → SwarmSnapshot for the full shape.
+ * GUI 通过 RPC 事件接收 SwarmSnapshot。
+ * 完整形状请参见 types.ts → SwarmSnapshot。
  *
- * ## Key CSS Classes (gui/src/styles/)
+ * ## 关键 CSS 类（gui/src/styles/）
  *
- * .swarm-node - Agent node container
- * .swarm-node.thinking - Yellow pulse animation
- * .swarm-node.tool-calling - Blue rotation animation
- * .swarm-edge - Connection line between nodes
- * .swarm-task-progress - Task progress bar
- * .swarm-timeline - Event timeline
- * .swarm-metrics - Metrics display panel
+ * .swarm-node - 智能体节点容器
+ * .swarm-node.thinking - 黄色脉冲动画
+ * .swarm-node.tool-calling - 蓝色旋转动画
+ * .swarm-edge - 节点之间的连接线
+ * .swarm-task-progress - 任务进度条
+ * .swarm-timeline - 事件时间线
+ * .swarm-metrics - 指标显示面板
  *
- * ## RPC Events to Add
+ * ## 待添加的 RPC 事件
  *
- * 1. "swarm.snapshot" → SwarmSnapshot (periodic, 500ms)
+ * 1. "swarm.snapshot" → SwarmSnapshot（周期性，500ms）
  * 2. "swarm.task_start" → { taskId, agentId }
  * 3. "swarm.task_complete" → TaskResult
  * 4. "swarm.task_failed" → { taskId, error }
  * 5. "swarm.error" → { error }
  * 6. "swarm.execution_complete" → ExecutionResult
  *
- * ## Wire-up in session-rpc.ts
+ * ## session-rpc.ts 中的连接
  *
  * const monitor = new SwarmMonitor();
  * setInterval(() => {
@@ -58,4 +58,4 @@
  *   rpc.emit("swarm.snapshot", snapshot);
  * }, 500);
  */
-export {};
+export { };

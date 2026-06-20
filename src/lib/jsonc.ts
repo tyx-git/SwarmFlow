@@ -19,7 +19,7 @@ export function stripJsoncComments(text: string): string {
     /"(?:[^"\\]|\\.)*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
     (match) => {
       if (match.startsWith('"')) return match; // preserve string literals
-      // Replace comment with equivalent whitespace to keep line numbers stable
+      // 用等效的空格替换注释以保持行号稳定
       return match.replace(/[^\n]/g, " ");
     },
   );

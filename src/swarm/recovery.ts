@@ -1,8 +1,8 @@
 /**
- * Recovery strategies for swarm task failures.
+ * swarm 任务失败的恢复策略。
  *
- * Provides retry logic (with backoff), fallback agents,
- * partial result handling, and abort coordination.
+ * 提供重试逻辑（带退避）、回退 agent、
+ * 部分结果处理和终止协调。
  *
  * @packageDocumentation
  */
@@ -73,7 +73,7 @@ export async function attemptRecovery(
       return {
         recovered: false,
         retriesAttempted: 0,
-        finalError: `Partial result used: ${lastError}`,
+        finalError: `使用了部分结果：${lastError}`,
         usedFallback: false,
         recoveryTimeMs: Date.now() - startTime,
       };

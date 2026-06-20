@@ -5,7 +5,7 @@
  */
 
 // ------------------------------------------------------------------
-// Part type
+// Part 类型
 // ------------------------------------------------------------------
 
 type PartType = "prompt" | "context" | "raw";
@@ -17,14 +17,14 @@ interface Part {
 }
 
 // ------------------------------------------------------------------
-// XML attribute escaping (equivalent to Python's quoteattr)
+// XML 属性转义（等同于 Python 的 quoteattr）
 // ------------------------------------------------------------------
 
 function quoteAttr(value: string): string {
   let escaped = value.replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-  // Use double-quotes; escape them inside
+  // 使用双引号；对其内部的引号进行转义
   if (escaped.includes('"')) {
     if (!escaped.includes("'")) {
       return `'${escaped}'`;
@@ -35,7 +35,7 @@ function quoteAttr(value: string): string {
 }
 
 // ------------------------------------------------------------------
-// MessageBlock class
+// MessageBlock 类
 // ------------------------------------------------------------------
 
 export class MessageBlock {
@@ -45,7 +45,7 @@ export class MessageBlock {
     this.parts = parts;
   }
 
-  /** Combine this block with another block or plain string. */
+  /** 将此块与另一个块或纯字符串组合。 */
   add(other: MessageBlock | string): MessageBlock {
     if (typeof other === "string") {
       other = new MessageBlock([{ type: "raw", label: null, content: other }]);
@@ -53,7 +53,7 @@ export class MessageBlock {
     return new MessageBlock([...this.parts, ...other.parts]);
   }
 
-  /** Render all parts into a single string for the model. */
+  /** 将所有部分渲染为用于模型的单个字符串。 */
   render(): string {
     const sections: string[] = [];
 
@@ -78,20 +78,20 @@ export class MessageBlock {
 }
 
 // ------------------------------------------------------------------
-// Factory functions
+// 工厂函数
 // ------------------------------------------------------------------
 
-/** Create an instruction block. */
+/** 创建指令块。 */
 export function prompt(text: string): MessageBlock {
   return new MessageBlock([{ type: "prompt", label: null, content: text }]);
 }
 
-/** Create a context block with an optional label. */
+/** 创建带有可选标签的上下文块。 */
 export function context(content: string, label?: string): MessageBlock {
   return new MessageBlock([{ type: "context", label: label ?? null, content }]);
 }
 
-/** Combine multiple blocks into one. */
+/** 将多个块组合成一个。 */
 export function combine(...blocks: Array<MessageBlock | string>): MessageBlock {
   let result = new MessageBlock();
   for (const b of blocks) {

@@ -47,21 +47,21 @@ export interface RewindPlanConflict {
   reason: "patch_failed" | "untracked" | "file_deleted" | "file_not_readable";
 }
 
-// Bash mutation rewind types
+// Bash 变更回滚类型
 
 export interface BashRewindEntry {
   entryId: string;
   turnIndex: number;
-  /** Index within the BashMutation.entries array (for per-entry revert tracking). */
+  /** BashMutation.entries 数组中的索引（用于逐条还原跟踪）。 */
   bashEntryIndex: number;
-  /** Position in the session log (for chronological ordering with file mutations). */
+  /** 会话日志中的位置（用于与文件变更按时间排序）。 */
   logIndex: number;
   kind: "mkdir" | "cp" | "mv";
   description: string;
   status: "applicable" | "conflict";
   conflictReason?: "dir_not_empty" | "dir_deleted" | "backup_missing" | "source_occupied" | "disk_modified" | "target_deleted";
   conflictDetails?: string[];
-  /** Original BashMutationEntry for execution. */
+  /** 用于执行的原始 BashMutationEntry。 */
   mutation: import("../tools/basic.js").BashMutationEntry;
 }
 
@@ -190,7 +190,7 @@ export interface Session {
   log?: readonly LogEntry[];
   subscribeLog?(listener: () => void): () => void;
   getLogRevision?(): number;
-  /** The ID of the currently active (streaming/executing) log entry, or null. */
+  /** 当前活动（流式/执行中）日志条目的 ID，或 null。 */
   activeLogEntryId?: string | null;
   getChildSessionSnapshots?(): ChildSessionSnapshot[];
   getChildSessionLog?(childId: string): readonly LogEntry[] | null;
@@ -206,16 +206,16 @@ export interface Session {
   notifySkillAvailabilityChanged?(changes: { enabled?: string[]; disabled?: string[] }): void;
   reloadMcp?(options?: { notice?: boolean; reason?: string }): Promise<string>;
   reconnectMcpServer?(serverName: string): Promise<boolean>;
-  /** Turn-lock-wrapped command variants so reload cannot overlap a live turn. */
+  /** 带轮次锁的包装命令变体，以便重新加载不会与活动轮次重叠。 */
   reloadMcpFromCommand?(reason: string): Promise<string>;
   reconnectMcpServerFromCommand?(serverName: string): Promise<boolean>;
   ensureMcpReadyFromCommand?(): Promise<void>;
   skills?: ReadonlyMap<string, unknown>;
   getPlanState?(): PlanCheckpoint[];
   subscribePlan?(listener: () => void): () => void;
-  /** Pending-ask change subscription (own + child-session asks). */
+  /** 待处理询问变更订阅（自身 + 子会话询问）。 */
   subscribeAsk?(listener: () => void): () => void;
-  /** Turn lifecycle subscription; see TurnLifecycleEvent in session.ts. */
+  /** 轮次生命周期订阅；参见 session.ts 中的 TurnLifecycleEvent。 */
   subscribeTurnLifecycle?(
     listener: (event: {
       phase: "started" | "ended";
@@ -250,7 +250,7 @@ export interface ConversationEntry {
   queued?: boolean;
   dim?: boolean;
   meta?: Record<string, unknown>;
-  /** Full untruncated result text for preview/detail entries. */
+  /** 预览/详情条目的完整未截断结果文本。 */
   fullText?: string;
 }
 

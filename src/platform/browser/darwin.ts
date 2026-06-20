@@ -9,13 +9,13 @@ import type { BrowserProvider } from "../types.js";
 
 function safeOpen(arg: string): void {
   try {
-    // spawn detached + unref so we don't block on `open` returning
-    // and don't keep the parent process alive once swarmflow exits.
+    // 使用 spawn detached + unref，这样既不会阻塞 `open` 返回，
+    // 也不会在 swarmflow 退出后使父进程保持存活。
     const child = spawn("open", [arg], { stdio: "ignore", detached: true });
-    child.on("error", () => { /* ignore */ });
+    child.on("error", () => { /* 忽略错误 */ });
     child.unref();
   } catch {
-    // ignore —caller has no recourse anyway
+    // 忽略 —— 调用方无论如何也无法处理
   }
 }
 

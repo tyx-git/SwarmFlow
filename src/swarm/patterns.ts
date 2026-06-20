@@ -1,8 +1,8 @@
 /**
- * Pre-defined swarm orchestration patterns.
+ * 预定义的 swarm 编排模式。
  *
- * Each pattern specifies a topology, agent roles, and execution strategy.
- * Patterns can be composed: e.g., a fan-out of chains.
+ * 每个模式指定了拓扑结构、智能体角色和执行策略。
+ * 模式可以组合：例如，链式模式的扇出。
  *
  * @packageDocumentation
  */
@@ -15,150 +15,150 @@ import type { SwarmPattern } from "./types.js";
 // ------------------------------------------------------------------
 
 /**
- * Fan-out / Fan-in: distribute work to parallel workers, then merge.
+ * 扇出 / 扇入：将工作分发给并行的 worker，然后合并。
  *
- * Best for: large refactors, implementing features across multiple files,
- * exploratory analysis of multiple independent areas.
+ * 最适合：大型重构、跨多个文件实现功能、
+ * 对多个独立区域进行探索性分析。
  */
 export const FAN_OUT_FAN_IN: SwarmPattern = {
   name: "fan-out-fan-in",
-  description: "Distribute work to parallel workers, then merge results",
+  description: "将工作分发给并行的 worker，然后合并结果",
   topology: SwarmTopology.Star,
   stages: [
     {
       role: AgentRole.Scout,
       count: 1,
-      description: "Analyze codebase and plan work partitioning",
+      description: "分析代码库并规划工作分区",
       partitionStrategy: "auto",
     },
     {
       role: AgentRole.Worker,
       count: 3,
-      description: "Execute implementation in parallel partitions",
+      description: "在并行分区中执行实现",
       partitionStrategy: "auto",
     },
     {
       role: AgentRole.Merger,
       count: 1,
-      description: "Merge parallel results and resolve conflicts",
+      description: "合并并行结果并解决冲突",
       mergeStrategy: "resolve_conflicts",
     },
   ],
 };
 
 /**
- * Pipeline / Chain: sequential stages, each feeding into the next.
+ * 流水线 / 链式：顺序阶段，每个阶段馈送给下一个阶段。
  *
- * Best for: code review workflows, build-test-review cycles,
- * multi-stage data processing.
+ * 最适合：代码审查工作流、构建-测试-审查循环、
+ * 多阶段数据处理。
  */
 export const PIPELINE: SwarmPattern = {
   name: "pipeline",
-  description: "Sequential stages in a chain — each feeds into the next",
+  description: "链式顺序阶段 — 每个阶段馈送给下一个阶段",
   topology: SwarmTopology.Chain,
   stages: [
     {
       role: AgentRole.Scout,
       count: 1,
-      description: "Explore codebase and gather context",
+      description: "探索代码库并收集上下文",
     },
     {
       role: AgentRole.Worker,
       count: 1,
-      description: "Implement changes based on scout findings",
+      description: "根据 scout 的发现实现更改",
     },
     {
       role: AgentRole.Reviewer,
       count: 1,
-      description: "Review worker changes for correctness and quality",
+      description: "审查 worker 更改的正确性和质量",
     },
     {
       role: AgentRole.Guard,
       count: 1,
-      description: "Security and safety validation",
+      description: "安全性和安全验证",
       mergeStrategy: "synthesize",
     },
   ],
 };
 
 /**
- * Ensemble: multiple workers independently solve the same problem, vote.
+ * 集成：多个 worker 独立解决同一问题，投票表决。
  *
- * Best for: critical decisions, security reviews, code generation
- * where correctness is paramount.
+ * 最适合：关键决策、安全审查、代码生成
+ * 其中正确性至关重要。
  */
 export const ENSEMBLE: SwarmPattern = {
   name: "ensemble",
-  description: "Multiple agents solve independently, vote on best result",
+  description: "多个 agent 独立解决，投票选出最佳结果",
   topology: SwarmTopology.Star,
   stages: [
     {
       role: AgentRole.Worker,
       count: 3,
-      description: "Each worker independently produces a solution",
+      description: "每个 worker 独立生成一个解决方案",
       partitionStrategy: "manual",
     },
     {
       role: AgentRole.Reviewer,
       count: 1,
-      description: "Review all solutions and recommend the best",
+      description: "审查所有解决方案并推荐最佳方案",
       mergeStrategy: "vote",
     },
   ],
 };
 
 /**
- * Debate: agents with different roles argue pros/cons, then synthesize.
+ * 辩论：不同角色的 agent 辩论利弊，然后综合。
  *
- * Best for: architectural decisions, trade-off analysis,
- * choosing between implementation approaches.
+ * 最适合：架构决策、权衡分析、
+ * 在实现方法之间进行选择。
  */
 export const DEBATE: SwarmPattern = {
   name: "debate",
-  description: "Agents argue different perspectives, then synthesize",
+  description: "Agent 从不同角度辩论，然后综合",
   topology: SwarmTopology.Mesh,
   stages: [
     {
       role: AgentRole.Scout,
       count: 1,
-      description: "Gather facts and context for the decision",
+      description: "收集决策的事实和上下文",
     },
     {
       role: AgentRole.Worker,
       count: 2,
-      description: "Propose approach A and approach B respectively",
+      description: "分别提出方案 A 和方案 B",
       partitionStrategy: "manual",
     },
     {
       role: AgentRole.Reviewer,
       count: 1,
-      description: "Analyze trade-offs and recommend",
+      description: "分析权衡并给出建议",
       mergeStrategy: "synthesize",
     },
   ],
 };
 
 /**
- * Exploratory: multiple scouts investigate different areas in parallel.
+ * 探索性：多个 scout 并行调查不同区域。
  *
- * Best for: onboarding to a new codebase, bug hunting,
- * understanding system architecture.
+ * 最适合：新代码库的上手、bug 搜寻、
+ * 理解系统架构。
  */
 export const EXPLORATORY: SwarmPattern = {
   name: "exploratory",
-  description: "Parallel scouts investigate different areas",
+  description: "并行的 scout 调查不同区域",
   topology: SwarmTopology.Star,
   stages: [
     {
       role: AgentRole.Scout,
       count: 3,
-      description: "Each scout explores a different area in parallel",
+      description: "每个 scout 并行探索一个不同区域",
       partitionStrategy: "auto",
     },
     {
       role: AgentRole.Merger,
       count: 1,
-      description: "Synthesize findings into a cohesive understanding",
+      description: "将发现综合为连贯的理解",
       mergeStrategy: "synthesize",
     },
   ],

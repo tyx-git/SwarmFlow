@@ -20,7 +20,7 @@ import type { TaskDAG, ExecutionResult, TaskResult, SwarmSnapshot, SwarmMetrics 
 import {
   AgentRole,
   AgentLifecycle,
-  Swarm拓扑,
+  SwarmTopology,
   RecoveryStrategy,
 } from "./types.js";
 
@@ -50,7 +50,7 @@ export interface SwarmExecutionOptions {
   /** 并行 worker 数量。 */
   parallelCount?: number;
   /** 拓扑覆盖。 */
-  topology?: Swarm拓扑;
+  topology?: SwarmTopology;
 }
 
 /**
@@ -141,7 +141,7 @@ export class SwarmExecutor {
       return {
         results: new Map(),
         success: false,
-        total用法: { inputTokens: 0, outputTokens: 0 },
+        totalUsage: { inputTokens: 0, outputTokens: 0 },
         totalDurationMs: 0,
         failedTaskIds: [],
         summary: `Execution failed: ${error.message}`,

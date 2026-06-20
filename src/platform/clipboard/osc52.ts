@@ -15,22 +15,18 @@
 import type { ClipboardImage, ClipboardProvider } from "../types.js";
 
 /**
- * Wrap an OSC 52 sequence for a terminal multiplexer so it reaches the
- * outer terminal instead of being swallowed.
+ * 为终端复用器包装 OSC 52 序列，使其到达外部终端而不会被吞没。
  *
- * - tmux: emit the sequence UNCHANGED. tmux's `set-clipboard` (default
- *   `external`/`on` since 3.2) already intercepts an app's OSC 52 and
- *   forwards it to the outer terminal. The `\x1bPtmux; DCS-passthrough
- *   form would instead REQUIRE `allow-passthrough on` —OFF by default
- *   since tmux 3.3 —and be silently dropped otherwise, regressing users
- *   whose copy previously worked via set-clipboard.
- * - screen: wrap as `\x1bP<seq>\x1b\\`. screen has no set-clipboard
- *   forwarding, so the DCS passthrough envelope is the only way out.
- *   (Note: GNU screen truncates very long DCS strings (~768 bytes), so a
- *   large clipboard payload may still be clipped under screen.)
+ * - tmux：原样发出序列。tmux 的 `set-clipboard`（自 3.2 起默认为 `external`/`on`）
+ *   已拦截应用程序的 OSC 52 并将其转发到外部终端。而 `\x1bPtmux; DCS-passthrough`
+ *   形式则需要 `allow-passthrough on`——自 tmux 3.3 起默认关闭——否则会被静默丢弃，
+ *   使之前通过 set-clipboard 正常复制的用户退化。
+ * - screen：包装为 `\x1bP<seq>\x1b\\`。screen 没有 set-clipboard 转发，
+ *   因此 DCS 直通信封是唯一的出口。
+ *   （注意：GNU screen 会截断非常长的 DCS 字符串（约 768 字节），因此在 screen 下
+ *   大型剪贴板负载仍可能被截断。）
  *
- * Detected via `$TMUX` / `$STY` and the `$TERM` prefix. Outside a
- * multiplexer the sequence is returned unchanged.
+ * 通过 `$TMUX` / `$STY` 和 `$TERM` 前缀检测。在复用器外部，序列原样返回。
  */
 function wrapForMultiplexer(seq: string): string {
   const term = process.env["TERM"] ?? "";
@@ -46,17 +42,13 @@ export const osc52Clipboard: ClipboardProvider = {
 
   async writeText(text: string): Promise<boolean> {
     try {
-      // If stderr isn't a TTY the escape sequence can't reach a
-      // terminal —report failure honestly so the caller can fall
-      // through to a stronger path (e.g. the renderer's own OSC 52,
-      // which is gated on real terminal capability detection) instead
-      // of being told the copy succeeded when nothing happened.
+      // 如果 stderr 不是 TTY，转义序列无法到达终端——诚实地报告失败，
+      // 以便调用者可以回退到更强的路径（例如渲染器自身的 OSC 52，
+      // 它基于真实的终端能力检测），而不是在什么都没发生的情况下被告知复制成功。
       if (!process.stderr.isTTY) return false;
-      // Encode payload as base64; OSC 52 is `\x1b]52;c;<base64>\x07`.
-      // `c` selects the system clipboard. We deliberately write to
-      // stderr so the sequence doesn't get mingled with subprocess
-      // stdout in pipelines. Wrap for tmux/screen so the sequence isn't
-      // swallowed by the multiplexer.
+      // 将负载编码为 base64；OSC 52 格式为 `\x1b]52;c;<base64>\x07`。
+      // `c` 选择系统剪贴板。我们故意写入 stderr，以免序列在管道中与子进程 stdout 混合。
+      // 为 tmux/screen 包装，使序列不会被复用器吞没。
       const payload = Buffer.from(text, "utf8").toString("base64");
       process.stderr.write(wrapForMultiplexer(`\x1b]52;c;${payload}\x07`));
       return true;
@@ -66,7 +58,7 @@ export const osc52Clipboard: ClipboardProvider = {
   },
 
   async readImage(): Promise<ClipboardImage | null> {
-    // OSC 52 is write-only in practice.
+    // OSC 52 在实践中是只写的。
     return null;
   },
 };

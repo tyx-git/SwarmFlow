@@ -14,17 +14,13 @@ import path from "node:path";
 import { osCapabilities } from "../platform/index.js";
 
 /**
- * Normalize a filesystem path to forward-slash form so prefix matches
- * work the same way on Windows (where `path.resolve` returns `\`) and
- * on POSIX (where it returns `/`). Idempotent on POSIX. Used by the
- * permission system to compare external-path rules against resolved
- * paths without leaking OS-specific separator handling into callers.
+ * 将文件系统路径规范化为正斜杠形式，使得前缀匹配在 Windows（`path.resolve` 返回 `\`）
+ * 和 POSIX（返回 `/`）上表现一致。在 POSIX 上是幂等的。权限系统使用此函数
+ * 将外部路径规则与解析后的路径进行比较，而不将操作系统特定的分隔符处理泄露给调用者。
  *
- * Note: this does NOT lower-case the path. Windows file systems are
- * usually case-insensitive but `path.resolve` preserves case, so a
- * rule stored for `C:\Users\Foo` will not match `c:\users\foo`. That
- * gap is documented as a known Windows limitation rather than papered
- * over here.
+ * 注意：此函数不会将路径转换为小写。Windows 文件系统通常不区分大小写，
+ * 但 `path.resolve` 保留大小写，因此为 `C:\Users\Foo` 存储的规则不会匹配
+ * `c:\users\foo`。这个差距被记录为已知的 Windows 限制，而不是在这里掩盖。
  */
 export function toPosixPath(p: string): string {
   return p.replace(/\\/g, "/");
@@ -107,7 +103,7 @@ function isWithinBase(baseAbs: string, candidateAbs: string): boolean {
     : [baseAbs, candidateAbs];
   const rel = path.relative(base, candidate);
   if (rel === "") return true;
-  if (path.isAbsolute(rel)) return false; // Windows cross-drive safety
+  if (path.isAbsolute(rel)) return false; // Windows 跨驱动器安全
   return !rel.startsWith("..");
 }
 
@@ -143,11 +139,11 @@ function fail(
 }
 
 /**
- * Resolve and validate a path against a single allowed base directory.
+ * 针对单个允许的基础目录解析并验证路径。
  *
- * Phase 1 behavior:
- * - Paths outside the base are denied
- * - Symlink escapes are denied (future phases may map this to an `ask`)
+ * 第一阶段行为：
+ * - 拒绝基础目录外的路径
+ * - 拒绝符号链接转义（未来阶段可能将此映射为 `ask`）
  */
 export function safePath(opts: SafePathOptions): SafePathResult {
   const requested = String(opts.requestedPath ?? "");

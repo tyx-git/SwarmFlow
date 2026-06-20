@@ -14,13 +14,13 @@ export interface CommandPickerState {
   stack: CommandPickerLevel[];
   note: string;
   noteEditing: boolean;
-  /** When true, Tab opens an inline note input for attaching instructions. */
+  /** 如果为 true，Tab 键会打开内联备注输入框，用于附加指令。 */
   allowNote: boolean;
-  /** When true, the user is typing into a custom-input option's inline text field. */
+  /** 如果为 true，用户正在自定义输入选项的内联文本字段中输入。 */
   customInputMode: boolean;
-  /** Label above the custom input field (from the triggering option's inputLabel). */
+  /** 自定义输入字段上方的标签（来自触发选项的 inputLabel）。 */
   customInputLabel?: string;
-  /** Placeholder inside the custom input field (from the triggering option's inputPlaceholder). */
+  /** 自定义输入字段内部的占位文本（来自触发选项的 inputPlaceholder）。 */
   customInputPlaceholder?: string;
 }
 

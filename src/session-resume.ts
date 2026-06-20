@@ -9,13 +9,13 @@ import type { Session } from "./session.js";
  * 磁盘上的一个 swarmflow 会话。由 `findSessionById` 暴露。
  */
 export interface FoundSession {
-  /** Absolute path to the session directory. */
+  /** 会话目录的绝对路径。 */
   sessionDir: string;
-  /** Absolute path to the project directory containing this session. */
+  /** 包含此会话的项目目录的绝对路径。 */
   projectDir: string;
-  /** Original cwd of the project (from project.json), if available. */
+  /** 项目的原始 cwd（来自 project.json），如果可用。 */
   projectPath: string | undefined;
-  /** Title from meta.json, if available. */
+  /** 来自 meta.json 的标题，如果可用。 */
   title: string | undefined;
 }
 
@@ -50,7 +50,7 @@ export function findSessionById(sessionId: string, homeDir?: string): FoundSessi
         ? projectJson.original_path
         : undefined;
     } catch {
-      // optional
+      // 可选
     }
 
     let title: string | undefined;
@@ -58,7 +58,7 @@ export function findSessionById(sessionId: string, homeDir?: string): FoundSessi
       const meta = JSON.parse(readFileSync(join(sessionDir, "meta.json"), "utf-8"));
       if (typeof meta.title === "string" && meta.title.length > 0) title = meta.title;
     } catch {
-      // optional
+      // 可选
     }
 
     return { sessionDir, projectDir, projectPath, title };
@@ -125,9 +125,7 @@ export function applySessionRestore(
     };
   }
 
-  // Re-attach (defensive: prepareRestoreFromLog may have left store in an
-  // intermediate state under some error paths).
+  // 重新附加（防御性：prepareRestoreFromLog 在某些错误路径下可能使 store 处于中间状态）。
   store.attachToExistingSession(sessionDir);
   return { ok: true, warnings };
 }
-

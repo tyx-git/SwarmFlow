@@ -15,47 +15,45 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 // Shell
 // --------------------------------------------------------------------
 
-/** Identifies the shell flavour driving the `bash` tool.
- *  Business code uses this to select parser, prompt wording, and
- *  spawn arguments —never raw `process.platform` checks. */
+/** 标识驱动 "bash" 工具的 shell 风格。
+ * 业务代码使用它来选择解析器、提示措辞和
+ * 产生参数 — 从不进行原始的 `process.platform` 检查。 */
 export type ShellKind = "bash" | "sh" | "pwsh" | "powershell";
 
 export interface ShellSpawnRequest {
-  /** Command string passed via `-c` (POSIX) or `-Command` (PowerShell). */
+  /** 通过 `-c` (POSIX) 或 `-Command` (PowerShell) 传递的命令字符串。 */
   command: string;
   cwd?: string;
-  /** Whether to spawn the shell as a login shell (POSIX `-lc`). */
+  /** 是否将 shell 生成为登录 shell (POSIX `-lc`)。 */
   loginShell?: boolean;
-  /** Override the env passed to the child. If omitted, uses the
-   *  platform-default allowlist filter of `process.env`. */
+  /** 覆盖传递给子进程的 env。如果省略，则使用
+   * 平台默认的 `process.env` 的 allowlist 筛选器。 */
   env?: NodeJS.ProcessEnv;
-  /** Standard SpawnOptions overrides; usually only `stdio` is set by
-   *  the caller. The provider handles `detached` and process-group
-   *  semantics internally. */
+  /** 标准 SpawnOptions 覆盖；通常只有 `stdio` 由调用者设置。
+   * 提供者处理 `detached` 和进程组内部语义。 */
   stdio?: SpawnOptions["stdio"];
 }
 
 export interface ShellProvider {
-  /** Shell flavour —determines prompt wording, parser, and spawn args. */
+  /** Shell 风格 — 决定提示措辞、解析器和 spawn 参数。 */
   readonly kind: ShellKind;
-  /** Absolute path to the resolved shell binary. */
+  /** 解析后的 shell 二进制文件的绝对路径。 */
   readonly path: string;
 
   /**
-   * Spawn a command string through the platform's shell. Always
-   * returns a ChildProcess whose process tree can be killed via
-   * `killTree`.
+   * 通过平台 shell 产生一个命令字符串。始终返回一个
+   * ChildProcess，其进程树可通过 `killTree` 杀死。
    */
   spawn(request: ShellSpawnRequest): ChildProcess;
 
   /**
-   * Kill the entire descendant tree of a child spawned by `spawn`.
-   * POSIX uses the process-group signal (`process.kill(-pid, sig)`);
-   * Windows uses `taskkill /T /F`.
+   * 杀死由 `spawn` 产生的子进程的整个后代树。
+   * POSIX 使用进程组信号 (`process.kill(-pid, sig)`)；
+   * Windows 使用 `taskkill /T /F`。
    */
   killTree(child: ChildProcess, signal: NodeJS.Signals): void;
 
-  /** Filter `process.env` through the platform-default allowlist. */
+  /** 通过平台默认的 allowlist 过滤 `process.env`。 */
   buildChildEnv(): NodeJS.ProcessEnv;
 }
 
@@ -71,21 +69,19 @@ export interface ClipboardImage {
 }
 
 export interface ClipboardProvider {
-  /** Identifier of the active implementation, for diagnostics. */
+  /** 活动实现的标识符，用于诊断。 */
   readonly id: string;
 
   /**
-   * Write plain text to the system clipboard. Returns true if the
-   * primary mechanism succeeded. Implementations may try multiple
-   * tools (e.g. wl-copy →xclip →OSC 52) and report success on the
-   * first that works.
+   * 将纯文本写入系统剪贴板。如果主要机制成功，返回 true。
+   * 实现可能尝试多种工具（例如 wl-copy → xclip → OSC 52），
+   * 并在第一个成功时报告成功。
    */
   writeText(text: string): Promise<boolean>;
 
   /**
-   * Read an image from the system clipboard. Returns null when the
-   * clipboard contains no image, when the required tool is missing,
-   * or when the platform does not support clipboard image reads.
+   * 从系统剪贴板读取图像。当剪贴板不包含图像、
+   * 缺少所需工具或平台不支持剪贴板图像读取时，返回 null。
    */
   readImage(): Promise<ClipboardImage | null>;
 }
@@ -95,13 +91,13 @@ export interface ClipboardProvider {
 // --------------------------------------------------------------------
 
 export interface BrowserProvider {
-  /** Open an http(s):// URL in the user's default browser. */
+  /** 在用户默认浏览器中打开 http(s):// URL。 */
   openUrl(url: string): void;
 
   /**
-   * Open a local file in the system's default application. On
-   * darwin/linux/win this routes through the same command used for
-   * `openUrl` (`open` / `xdg-open` / `start`).
+   * 在系统默认应用程序中打开本地文件。在
+   * darwin/linux/win 上，此操作路由到与 `openUrl` 相同的命令
+   * （`open` / `xdg-open` / `start`）。
    */
   openFile(path: string): void;
 }
@@ -111,157 +107,116 @@ export interface BrowserProvider {
 // --------------------------------------------------------------------
 
 export interface BinaryAssetProvider {
-  /** e.g. "swarmflow-darwin-arm64.tar.gz". */
+  /** 例如 "swarmflow-darwin-arm64.tar.gz"。 */
   readonly tarballName: string;
-  /** "swarmflow" on POSIX, "swarmflow.exe" on Windows. */
+  /** POSIX 上为 "swarmflow"，Windows 上为 "swarmflow.exe"。 */
   readonly executableName: string;
-  /** Whether `xattr -dr com.apple.quarantine` should run after install. */
+  /** 安装后是否应运行 `xattr -dr com.apple.quarantine`。 */
   readonly needsQuarantineRemoval: boolean;
 }
 
 // --------------------------------------------------------------------
-// OS capabilities —coarse-grained yes/no flags about what the host OS
-// implements. Used by business code to skip operations that don't
-// apply on the current platform (e.g. POSIX chmod on Windows). Keeping
-// these as boolean flags rather than `process.platform` checks lets
-// business code stay platform-agnostic.
+// OS capabilities — 粗粒度的 yes/no 标志，表示主机操作系统实现了什么。
+// 业务代码使用这些标志来跳过不适用于当前平台的操作
+// （例如 Windows 上的 POSIX chmod）。将这些保持为布尔标志，
+// 而不是 `process.platform` 检查，使业务代码保持平台无关。
 // --------------------------------------------------------------------
 
 export interface OsCapabilities {
   /**
-   * True on macOS and Linux, false on Windows. POSIX permission bits
-   * (chmod, the 0o600 / 0o755 model) only have meaningful semantics
-   * on POSIX filesystems. Use this to skip `chmodSync` calls rather
-   * than branching on `process.platform === "win32"`.
+   * macOS 和 Linux 上为 true，Windows 上为 false。POSIX 权限位
+   * （chmod、0o600 / 0o755 模型）只在 POSIX 文件系统上有意义。
+   * 使用此标志跳过 `chmodSync` 调用，而不是在 `process.platform === "win32"` 上分支。
    */
   readonly supportsPosixPermissions: boolean;
 
   /**
-   * True when the host's filesystem (and therefore the shell's $PATH
-   * command resolution) is case-insensitive: default macOS (APFS/HFS+)
-   * and Windows (NTFS / Git Bash over MSYS2). False on Linux, whose
-   * default ext4/btrfs are case-sensitive.
+   * 当主机的文件系统（因此 shell 的 $PATH 命令解析）不区分大小写时为 true：
+   * 默认 macOS（APFS/HFS+）和 Windows（NTFS / MSYS2 上的 Git Bash）。
+   * Linux 上为 false，因为其默认的 ext4/btrfs 区分大小写。
    *
-   * Consumers that compare names/paths the OS resolves
-   * case-insensitively MUST consult this:
-   *  - the bash command classifier, before matching a parsed command
-   *    name against its danger/catastrophic sets (`RM`/`Sudo`/`MKFS`
-   *    resolve to the same binary as the lowercase form, so a
-   *    case-sensitive match would let an uppercase spelling slip past
-   *    the safety gate);
-   *  - external-path permission rules, when prefix-matching a resolved
-   *    path against a stored rule (`D:\Data` vs `d:\data\file`).
-   * On Linux the comparison stays case-sensitive —a file genuinely
-   * named `RM` is distinct from `rm`.
+   * 那些比较操作系统不区分大小写地解析的名称/路径的使用者必须查阅此标志：
+   *  - bash 命令分类器，在将解析的命令名称与其危险/灾难性集合匹配之前
+   *    （`RM`/`Sudo`/`MKFS` 解析为与小写形式相同的二进制文件，因此区分大小写的
+   *    匹配会让大写拼写绕过安全门）；
+   *  - 外部路径权限规则，在将解析的路径与存储的规则进行前缀匹配时
+   *    （`D:\Data` 对 `d:\data\file`）。
+   * 在 Linux 上，比较保持区分大小写 — 一个真正命名为 `RM` 的文件与 `rm` 不同。
    *
-   * Note: macOS can be formatted case-sensitive (rare); treating the
-   * default as case-insensitive is the safe, conservative choice.
+   * 注意：macOS 可以格式化为区分大小写（罕见）；将默认视为不区分大小写
+   * 是安全、保守的选择。
    */
   readonly caseInsensitiveFilesystem: boolean;
 
   /**
-   * True when launching a PATHEXT script shim (`.cmd` / `.bat`, e.g.
-   * `npm` / `npx` / `prettier` on Windows) via a bare exec —command +
-   * argv, no shell —fails, so callers that exec a configured command
-   * (hooks) must route through a shell. True on Windows; false on POSIX,
-   * where every executable on $PATH is exec-able directly.
+   * 当通过裸 exec（命令 + argv，无 shell）启动 PATHEXT 脚本填充程序
+   * （`.cmd` / `.bat`，例如 Windows 上的 `npm` / `npx` / `prettier`）失败时为 true，
+   * 因此执行配置命令（钩子）的调用者必须通过 shell 路由。Windows 上为 true；
+   * POSIX 上为 false，因为 $PATH 上的每个可执行文件都可以直接 exec。
    *
-   * Modern Node even throws (EINVAL, post-CVE-2024-27980) when asked to
-   * spawn a `.bat`/`.cmd` without `shell: true`.
+   * 现代 Node 在要求无 `shell: true` 而产生 `.bat`/`.cmd` 时甚至会抛出（EINVAL，CVE-2024-27980 后）。
    */
   readonly scriptShimsRequireShell: boolean;
 
   /**
-   * Names of dangerous executables that exist primarily on this
-   * platform. Used by the bash command classifier to flag commands
-   * the LLM might invoke through the shell.
+   * 主要存在于该平台上的危险可执行文件名称。
+   * 由 bash 命令分类器用于标记 LLM 可能通过 shell 调用的命令。
    *
-   * Stored lowercased; the classifier MUST compare against
-   * `name.toLowerCase()`. Windows file lookup is case-insensitive,
-   * so `REG QUERY ...` from Git Bash resolves to the same `reg.exe`
-   * as `reg query ...`; a case-sensitive lookup would let the LLM
-   * trivially bypass the danger gate by varying casing.
+   * 以小写形式存储；分类器必须与 `name.toLowerCase()` 比较。
+   * Windows 文件查找不区分大小写，因此来自 Git Bash 的 `REG QUERY ...`
+   * 解析为与 `reg query ...` 相同的 `reg.exe`；区分大小写的查找会让 LLM
+   * 通过改变大小写轻松绕过危险门。
    *
-   * POSIX-shared danger commands (rm, sudo, chmod, ...) stay in
-   * `classify.ts` with case-sensitive matching —Unix convention is
-   * case-sensitive paths, and a file genuinely named `RM` should not
-   * collide with `rm`.
+   * POSIX 共享的危险命令（rm、sudo、chmod、...）保留在 `classify.ts` 中，
+   * 使用区分大小写的匹配 — Unix 约定是区分大小写的路径，并且一个真正
+   * 命名为 `RM` 的文件不应与 `rm` 冲突。
    */
   readonly platformSpecificDangerCommands: ReadonlySet<string>;
 
   /**
-   * Names of platform-specific *catastrophic* (irreversible disk-wipe)
-   * executables —e.g. Windows `format` / `diskpart`. Empty on POSIX,
-   * where the catastrophic disk tools (mkfs/fdisk/dd/...) are matched
-   * directly in `classify.ts`; keeping the Windows ones here rather
-   * than in that shared list is deliberate, so `format my-document.tex`
-   * on a POSIX host is never mis-flagged as a disk wipe.
-   *
-   * Stored lowercased (same case-insensitivity rationale as
-   * `platformSpecificDangerCommands`). The classifier checks this
-   * before the danger set so these escalate to `catastrophic` —the
-   * only class that still forces a prompt in yolo mode.
+   * 唯一一个在 yolo 模式下仍然强制提示的类别。
    */
   readonly platformSpecificCatastrophicCommands: ReadonlySet<string>;
 
-  /**
-   * Glyph used as the left-side indicator on completed tool-call
-   * entries in the TUI.
-   *
-   * Why a per-platform default: macOS/Linux terminals render U+23FA
-   * BLACK CIRCLE FOR RECORD (鈴? as a clean filled circle slightly
-   * larger than a bullet, which reads as a deliberate "this is a
-   * completed action" marker. Windows PowerShell's default font
-   * (Cascadia Mono / Consolas) does not contain U+23FA, so the
-   * terminal falls through to Segoe UI Symbol / Emoji and renders
-   * the same codepoint as a "record button" icon with a square
-   * outline —visually wrong and inconsistent with the bullet next
-   * to it. U+2B24 BLACK LARGE CIRCLE (猬? lives in the geometric
-   * shapes block that Cascadia / Consolas ship directly, so on
-   * Windows it stays a plain circle.
-   */
   readonly toolIndicatorGlyph: string;
 
   /**
-   * Multiplier applied to mouse-wheel delta in the main conversation
-   * scroll viewport. 1 on macOS / Linux (terminals typically deliver
-   * the user's preferred OS-level scroll acceleration already). 3 on
-   * Windows where Windows Terminal / PowerShell deliver a single
-   * tick-per-notch raw delta without OS-side acceleration, making
-   * the default scrolling feel sluggish compared to native macOS
-   * inertia. The value is applied per scroll event by injecting a
-   * ConstantScrollAccel into the conversation ScrollViewport.
+   * 在主对话中应用于鼠标滚轮增量的乘数
+   * 滚动视口。macOS / Linux 上终端通常提供 1
+   * （用户首选的操作系统级滚动加速已经完成）。
+   * Windows 终端 / PowerShell 提供单一
+   * 无操作系统端加速的每刻钟原始增量，使得与原生 macOS 相比，默认滚动感觉迟缓
+   * 惯性：通过注入一个常量滚动加速进入对话滚动视口。
    */
   readonly conversationScrollMultiplier: number;
 }
 
 // --------------------------------------------------------------------
-// System proxy —OS-level proxy configuration that Bun's `fetch` does
-// NOT read on its own. Bun honours the HTTP_PROXY / HTTPS_PROXY env
-// vars, but on Windows it ignores the WinINET system proxy (Internet
-// Options →LAN Settings / the setting most VPN & proxy clients toggle).
-// This provider surfaces that config so startup code can normalise it
-// into the env vars, making every outbound fetch route through it.
+// 系统代理 — Bun 的 `fetch` 执行的操作系统级代理配置
+// Bun 本身不读取。Bun 支持 HTTP_PROXY / HTTPS_PROXY 环境
+// 变量，但在 Windows 上它忽略 WinINET 系统代理（Internet
+// 选项 → 局域网设置 / 大多数 VPN 和代理客户端切换的设置）。
+// 此提供程序呈现该配置，以便启动代码可以将其规范化
+// 到环境变量中，从而通过它路由每个出站 fetch。
 // --------------------------------------------------------------------
 
 export interface SystemProxyConfig {
-  /** Proxy URL for http:// targets, e.g. "http://127.0.0.1:7890". */
+  /** http:// 目标的代理 URL，例如 "http://127.0.0.1:7890"。 */
   httpProxy?: string;
-  /** Proxy URL for https:// targets. */
+  /** https:// 目标的代理 URL。 */
   httpsProxy?: string;
-  /** Comma-separated bypass list in NO_PROXY form, if any. */
+  /** NO_PROXY 格式的逗号分隔的绕过列表（如果有）。 */
   noProxy?: string;
 }
 
 export interface SystemProxyProvider {
-  /** Identifier of the active implementation, for diagnostics. */
+  /** 用于诊断的活动实现的标识符。 */
   readonly id: string;
 
   /**
-   * Read the OS-level proxy configuration. Returns null when no system
-   * proxy is configured, when the platform exposes nothing beyond the
-   * env vars Bun already reads (POSIX), or when the configuration can't
-   * be resolved statically (e.g. a Windows PAC `AutoConfigURL`).
+   * 读取操作系统级代理配置。当没有系统代理配置时返回 null，
+   * 当平台除了 Bun 已读取的环境变量之外没有其他配置时（POSIX），
+   * 或者当配置无法静态解析时（例如 Windows PAC "自动配置"）。
    */
   getSystemProxy(): SystemProxyConfig | null;
 }

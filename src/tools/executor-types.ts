@@ -16,19 +16,18 @@ import type { ToolResult } from "../providers/base.js";
  */
 export interface ToolExecutorContext {
   /**
-   * Abort signal for the current turn. Executors that can meaningfully
-   * cancel mid-flight (currently `bash` and `web_fetch`) should listen
-   * to it; others may ignore it. The tool-loop additionally re-checks
-   * `signal.aborted` after the executor returns, so a tool that cannot
-   * be cancelled will still unblock the loop at its next natural exit.
+   * 当前轮次的中止信号。能够有意义地中途取消的执行器
+   * （目前有 `bash` 和 `web_fetch`）应监听此信号；
+   * 其他执行器可以忽略它。工具循环在执行器返回后还会
+   * 重新检查 `signal.aborted`，因此无法取消的工具
+   * 仍会在其下一次自然退出时解除循环阻塞。
    */
   signal?: AbortSignal;
 }
 
 /**
- * A tool executor receives the arguments dict and an optional runtime
- * context, and returns either a plain string or a ToolResult. May be
- * synchronous or asynchronous.
+ * 工具执行器接收参数字典和可选的运行时上下文，
+ * 并返回纯字符串或 ToolResult。可以是同步或异步的。
  */
 export type ToolExecutor = (
   args: Record<string, unknown>,

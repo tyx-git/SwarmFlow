@@ -1,28 +1,28 @@
 ﻿/**
- * Agent template loader.
+ * Agent 模板加载器。
  *
- * Provides `loadTemplate` / `loadTemplates` for agent templates.
+ * 提供用于 agent 模板的 `loadTemplate` / `loadTemplates`。
  *
- * Template folder layout:
+ * 模板文件夹布局：
  *
  *   prompts/templates/
  *   +-- main/
- *   |   +-- agent.yaml          # required
- *   |   +-- system_prompt.md    # referenced by system_prompt_file
- *   |   +-- tools.md            # referenced by tools_prompt_file
- *   |   +-- knowledge/          # optional -- files appended to system prompt
+ *   |   +-- agent.yaml          # 必需
+ *   |   +-- system_prompt.md    # 由 system_prompt_file 引用
+ *   |   +-- tools.md            # 由 tools_prompt_file 引用
+ *   |   +-- knowledge/          # 可选 — 追加到系统提示的文件
  *   |       +-- style_guide.md
  *
- * Prompt assembly (per template):
+ * 提示组装（每个模板）：
  *
  *   agent.prompt = roleBody + toolPromptContent + knowledge
  *
- *   1. roleBody      —system_prompt_file (required)
- *   2. toolPrompt    —tools_prompt_file (preferred) OR tier-default (fallback)
- *   3. knowledge     —all files under knowledge/ (optional)
+ *   1. roleBody      — system_prompt_file（必需）
+ *   2. toolPrompt    — tools_prompt_file（首选）或 层级默认（回退）
+ *   3. knowledge     — knowledge/ 下的所有文件（可选）
  *
- * Session-level layers (AGENTS.md memory, agent model pins, future hooks)
- * are added separately by `src/prompt-assembler.ts` on top of agent.prompt.
+ * 会话级层（AGENTS.md 内存、agent 模型固定、未来钩子）
+ * 由 `src/prompt-assembler.ts` 在 agent.prompt 之上单独添加。
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -43,19 +43,17 @@ const AGENT_YAML = "agent.yaml";
 const REQUIRED_TEMPLATE_TYPE = "agent";
 const MIN_TEMPLATE_MAX_TOOL_ROUNDS = 100;
 
-
 /**
  * 工具包 — 相关工具的命名组。
  * 用于 agent.yaml 的 `tools` 字段：`tools: [read, shell, util]`
  * 工具包名称和单独工具名称可以自由混合。
  */
 export const TOOL_PACKS: Record<string, string[]> = {
-  read:  ["read_file", "list_dir", "glob", "grep"],
-  edit:  ["write_file", "edit_file"],
+  read: ["read_file", "list_dir", "glob", "grep"],
+  edit: ["write_file", "edit_file"],
   shell: ["bash", "bash_background", "bash_output", "kill_shell"],
-  util:  ["time", "web_search", "web_fetch"],
+  util: ["time", "web_search", "web_fetch"],
 };
-
 
 // ------------------------------------------------------------------
 // 工具层级（swarmflow 风格）
@@ -67,7 +65,7 @@ export type ToolTier = "read_only" | "reversible" | "all";
 export const TOOL_TIER_TOOLS: Record<ToolTier, string[]> = {
   read_only: [...TOOL_PACKS.read, ...TOOL_PACKS.util],
   reversible: [...TOOL_PACKS.read, ...TOOL_PACKS.edit, ...TOOL_PACKS.shell, ...TOOL_PACKS.util],
-  all: "all" as unknown as string[], // sentinel —handled specially
+  all: "all" as unknown as string[], // sentinel — handled specially
 };
 
 /**
@@ -79,7 +77,7 @@ export function resolveToolTier(spec: Record<string, unknown>): ToolTier | null 
   if (raw === undefined) return null;
   if (raw === "read_only" || raw === "reversible" || raw === "all") return raw;
   throw new Error(
-    `Invalid tool_tier '${String(raw)}'. Must be one of: ${Object.keys(TOOL_TIER_TOOLS).join(", ")}`,
+    `无效的 tool_tier '${String(raw)}'。必须是以下之一：${Object.keys(TOOL_TIER_TOOLS).join(", ")}`,
   );
 }
 
@@ -92,8 +90,8 @@ function resolveTierDefaultPrompt(_spec: Record<string, unknown>): string | null
 }
 
 /**
- * Recipe for dynamic system prompt reassembly.
- * Stored on Agent so Session can rebuild the cached prompt on reload.
+ * 用于动态系统提示重新组合的配方。
+ * 存储在 Agent 上，以便 Session 在重新加载时可以重建缓存的提示。
  */
 export interface PromptRecipe {
   templateDir: string;
@@ -106,21 +104,21 @@ export interface PromptRecipe {
 // ------------------------------------------------------------------
 
 /**
- * Load a single agent template from `templateDir`.
+ * 从 `templateDir` 加载单个 agent 模板。
  *
- * @param templateDir  Path to the template folder (must contain `agent.yaml`).
- * @param config       Global Config instance (provides model resolution).
- * @param nameOverride If given, replaces the `name` field from the YAML.
- * @param mcpManager   Optional MCP client manager for MCP tool resolution.
- * @param promptsDirs  Ordered list of `prompts/` directories (user override first, bundled second).
- *                     If omitted or empty, no tool/section prompts are assembled.
- * @returns            Fully constructed Agent, ready to use.
+ * @param templateDir  模板文件夹路径（必须包含 `agent.yaml`）。
+ * @param config       全局 Config 实例（提供模型解析）。
+ * @param nameOverride 如果提供，替换 YAML 中的 `name` 字段。
+ * @param mcpManager   可选的 MCP 客户端管理器，用于 MCP 工具解析。
+ * @param promptsDirs  有序的 `prompts/` 目录列表（用户覆盖优先，捆绑次之）。
+ *                     如果省略或为空，则不组装工具/章节提示。
+ * @returns            完全构造好的 Agent，可直接使用。
  */
 /**
- * Assemble a system prompt from a template recipe.
+ * 从模板配方组装系统提示。
  *
- * This is the core assembly pipeline, extracted so Session can rebuild the
- * cached prompt when templates, AGENTS.md, skills, or config are reloaded.
+ * 这是核心组装管道，被提取出来以便 Session 在模板、AGENTS.md、
+ * 技能或配置重新加载时可以重建缓存的提示。
  */
 /** 连接前的各个提示层级。 */
 export interface PromptLayers {
@@ -133,8 +131,8 @@ export interface PromptLayers {
 }
 
 /**
- * Return the individual prompt layers that assembleSystemPrompt would concatenate.
- * Used by the usage panel to estimate per-section token costs.
+ * 返回 assembleSystemPrompt 将连接的各个提示层级。
+ * 由使用面板用于估算每部分的 token 成本。
  */
 export function getPromptLayers(recipe: PromptRecipe): PromptLayers {
   const { templateDir, spec } = recipe;
@@ -173,10 +171,10 @@ export function getPromptLayers(recipe: PromptRecipe): PromptLayers {
 export function assembleSystemPrompt(recipe: PromptRecipe): string {
   const { templateDir, spec } = recipe;
 
-  // --- 1. Role body (core system prompt) ---
+  // --- 1. 角色主体（核心系统提示） ---
   let systemPrompt = resolveSystemPrompt(spec, templateDir);
 
-  // --- 2. Tool prompt (custom file > tier default) ---
+  // --- 2. 工具提示（自定义文件 > 层级默认） ---
   const toolsPromptFile = spec["tools_prompt_file"] as string | undefined;
   if (toolsPromptFile) {
     const toolsPath = join(templateDir, toolsPromptFile);
@@ -193,7 +191,7 @@ export function assembleSystemPrompt(recipe: PromptRecipe): string {
     }
   }
 
-  // --- 3. Knowledge files (optional directory) ---
+  // --- 3. 知识文件（可选目录） ---
   const knowledgeDir = join(templateDir, "knowledge");
   if (existsSync(knowledgeDir) && statSync(knowledgeDir).isDirectory()) {
     const knowledgeParts: string[] = [];
@@ -227,7 +225,7 @@ export function loadTemplate(
 ): Agent {
   const yamlPath = join(templateDir, AGENT_YAML);
   if (!existsSync(yamlPath)) {
-    throw new Error(`Template config not found: ${yamlPath}`);
+    throw new Error(`找不到模板配置：${yamlPath}`);
   }
 
   const raw = readFileSync(yamlPath, "utf-8");
@@ -259,30 +257,30 @@ export function loadTemplate(
     mcpManager,
   );
 
-  // Store recipe for dynamic reassembly
+  // 存储配方以便动态重新组装
   agent.promptRecipe = recipe;
 
   return agent;
 }
 
 /**
- * Scan template directories and load all templates with layered override.
+ * 扫描模板目录并加载所有模板，支持分层覆盖。
  *
- * Three-layer template loading with layered override:
+ * 三层模板加载，支持分层覆盖：
  *
- * 1. **Bundled** —always loaded from the package.
- * 2. **User-global** (`~/.swarmflow/prompts/templates/`) —adds new templates only;
- *    cannot override bundled templates (their prompt assembly assumes a specific format).
- * 3. **Project-local** (`{project}/.swarmflow/prompts/templates/`) —highest priority;
- *    CAN override both bundled and user-global templates.
+ * 1. **捆绑** — 始终从包中加载。
+ * 2. **用户全局**（`~/.swarmflow/prompts/templates/`）— 仅添加新模板；
+ *    不能覆盖捆绑模板（其提示组装假设特定格式）。
+ * 3. **项目本地**（`{project}/.swarmflow/prompts/templates/`）— 最高优先级；
+ *    可以覆盖捆绑模板和用户全局模板。
  *
- * @param bundledRoot  Bundled templates root (always available from the package).
- * @param config       Global Config instance.
- * @param mcpManager   Optional MCP client manager.
- * @param promptsDirs  Ordered prompts directories (user first, bundled second).
- * @param userRoot     Optional user override templates root (~/.swarmflow/prompts/templates/).
- * @param projectRoot  Optional project-local templates root ({project}/.swarmflow/prompts/templates/).
- * @returns `{ name: agent }` record.
+ * @param bundledRoot  捆绑模板根目录（始终可从包中获取）。
+ * @param config       全局 Config 实例。
+ * @param mcpManager   可选的 MCP 客户端管理器。
+ * @param promptsDirs  有序的 prompts 目录（用户优先，捆绑次之）。
+ * @param userRoot     可选的用户覆盖模板根目录（~/.swarmflow/prompts/templates/）。
+ * @param projectRoot  可选的項目本地模板根目录（{project}/.swarmflow/prompts/templates/）。
+ * @returns `{ name: agent }` 记录。
  */
 export function loadTemplates(
   bundledRoot: string,
@@ -294,7 +292,7 @@ export function loadTemplates(
   fallbackModel?: string,
 ): Record<string, Agent> {
   if (!existsSync(bundledRoot) || !statSync(bundledRoot).isDirectory()) {
-    throw new Error(`Bundled templates root not found: ${bundledRoot}`);
+    throw new Error(`捆绑模板根目录不存在：${bundledRoot}`);
   }
 
   // 第一遍：捆绑模板（基础层）
@@ -311,8 +309,8 @@ export function loadTemplates(
   // 第二遍：用户全局补充（不能覆盖捆绑模板）
   if (userRoot && existsSync(userRoot) && statSync(userRoot).isDirectory()) {
     for (const child of readdirSync(userRoot).sort()) {
-      if (bundledNames.has(child)) continue; // never override bundled templates
-      if (child.startsWith("_")) continue; // _-prefixed dirs are examples, not loaded
+      if (bundledNames.has(child)) continue; // 永远不覆盖捆绑模板
+      if (child.startsWith("_")) continue; // _ 前缀的目录是示例，不加载
       const childPath = join(userRoot, child);
       if (isTemplateDir(childPath)) {
         templateDirs[child] = childPath;
@@ -360,13 +358,13 @@ function isTemplateDir(p: string): boolean {
 }
 
 /**
- * Validate a template directory without loading it.
- * Returns null if valid, or an error message string if invalid.
+ * 验证模板目录而不加载它。
+ * 如果有效则返回 null，如果无效则返回错误消息字符串。
  */
 export function validateTemplate(templateDir: string): string | null {
   const yamlPath = join(templateDir, AGENT_YAML);
   if (!existsSync(yamlPath)) {
-    return `Missing agent.yaml in ${templateDir}`;
+    return `${templateDir} 中缺少 agent.yaml`;
   }
 
   let spec: Record<string, unknown>;
@@ -374,7 +372,7 @@ export function validateTemplate(templateDir: string): string | null {
     const raw = readFileSync(yamlPath, "utf-8");
     spec = (yaml.load(raw) as Record<string, unknown>) ?? {};
   } catch (e) {
-    return `Invalid YAML in agent.yaml: ${e}`;
+    return `agent.yaml 中的 YAML 无效：${e}`;
   }
 
   const typeError = validateTemplateType(spec);
@@ -383,20 +381,20 @@ export function validateTemplate(templateDir: string): string | null {
   }
 
   if (!spec["system_prompt"] && !spec["system_prompt_file"]) {
-    return "agent.yaml must have either 'system_prompt' or 'system_prompt_file'";
+    return "agent.yaml 必须包含 'system_prompt' 或 'system_prompt_file'";
   }
 
   if (typeof spec["system_prompt_file"] === "string") {
     const promptPath = join(templateDir, spec["system_prompt_file"]);
     if (!existsSync(promptPath)) {
-      return `system_prompt_file not found: ${spec["system_prompt_file"]}`;
+      return `system_prompt_file 未找到：${spec["system_prompt_file"]}`;
     }
   }
 
   if (typeof spec["tools_prompt_file"] === "string") {
     const toolsPromptPath = join(templateDir, spec["tools_prompt_file"]);
     if (!existsSync(toolsPromptPath)) {
-      return `tools_prompt_file not found: ${spec["tools_prompt_file"]}`;
+      return `tools_prompt_file 未找到：${spec["tools_prompt_file"]}`;
     }
   }
 
@@ -404,27 +402,27 @@ export function validateTemplate(templateDir: string): string | null {
   if (tierSpec !== undefined) {
     if (typeof tierSpec !== "string" || !(tierSpec in TOOL_TIER_TOOLS)) {
       const valid = Object.keys(TOOL_TIER_TOOLS).join(", ");
-      return `Invalid tool_tier '${String(tierSpec)}'. Must be one of: ${valid}`;
+      return `无效的 tool_tier '${String(tierSpec)}'。必须是以下之一：${valid}`;
     }
   }
 
   const toolsSpec = spec["tools"];
   if (toolsSpec != null && toolsSpec !== "all" && !Array.isArray(toolsSpec)) {
-    return `Invalid tools spec: must be "all", a list of tool/pack names, or omitted`;
+    return `无效的 tools 规格：必须是 "all"、工具/包名称列表或省略`;
   }
   if (Array.isArray(toolsSpec)) {
     for (const entry of toolsSpec) {
       if (typeof entry !== "string") {
-        return `Invalid tools entry: expected string, got ${typeof entry}`;
+        return `无效的 tools 条目：期望字符串，得到 ${typeof entry}`;
       }
       if (!TOOL_PACKS[entry] && !BASIC_TOOLS_MAP[entry]) {
-        return `Unknown tool or pack '${entry}'. Available tools: ${Object.keys(BASIC_TOOLS_MAP).join(", ")}; packs: ${Object.keys(TOOL_PACKS).join(", ")}`;
+        return `未知的工具或包 '${entry}'。可用工具：${Object.keys(BASIC_TOOLS_MAP).join(", ")}；包：${Object.keys(TOOL_PACKS).join(", ")}`;
       }
     }
   }
 
   if (tierSpec === undefined && toolsSpec == null) {
-    return `agent.yaml must specify either 'tool_tier' (preferred) or 'tools'`;
+    return `agent.yaml 必须指定 'tool_tier'（首选）或 'tools'`;
   }
 
   const maxRoundsError = validateTemplateMaxToolRounds(spec);
@@ -436,12 +434,12 @@ export function validateTemplate(templateDir: string): string | null {
 }
 
 // ------------------------------------------------------------------
-// Prompt assembly
+// 提示组装
 // ------------------------------------------------------------------
 
 /**
- * Resolve the prompts/ directory as a sibling of the templates root.
- * Returns the path if found, or undefined if not.
+ * 将 prompts/ 目录解析为模板根目录的兄弟目录。
+ * 如果找到则返回路径，否则返回 undefined。
  */
 export function resolvePromptsDir(templatesRoot: string): string | undefined {
   const candidate = join(dirname(templatesRoot), "prompts");
@@ -488,11 +486,11 @@ function expandToolSpecs(specs: string[]): string[] {
 }
 
 // ------------------------------------------------------------------
-// Internal helpers
+// 内部辅助函数
 // ------------------------------------------------------------------
 
 /**
- * Return the system prompt string from inline text or an external file.
+ * 从内联文本或外部文件返回系统提示字符串。
  */
 function resolveSystemPrompt(
   spec: Record<string, unknown>,
@@ -504,7 +502,7 @@ function resolveSystemPrompt(
   if (typeof spec["system_prompt_file"] === "string") {
     const promptPath = join(templateDir, spec["system_prompt_file"]);
     if (!existsSync(promptPath)) {
-      throw new Error(`system_prompt_file not found: ${promptPath}`);
+      throw new Error(`system_prompt_file 未找到：${promptPath}`);
     }
     return readFileSync(promptPath, "utf-8");
   }
@@ -514,10 +512,10 @@ function resolveSystemPrompt(
 function validateTemplateType(spec: Record<string, unknown>): string | null {
   const type = spec["type"];
   if (typeof type !== "string" || !type.trim()) {
-    return `agent.yaml must set type: ${REQUIRED_TEMPLATE_TYPE}`;
+    return `agent.yaml 必须设置 type: ${REQUIRED_TEMPLATE_TYPE}`;
   }
   if (type !== REQUIRED_TEMPLATE_TYPE) {
-    return `Invalid template type '${type}': expected '${REQUIRED_TEMPLATE_TYPE}'`;
+    return `无效的模板类型 '${type}'：期望 '${REQUIRED_TEMPLATE_TYPE}'`;
   }
   return null;
 }
@@ -525,20 +523,20 @@ function validateTemplateType(spec: Record<string, unknown>): string | null {
 function validateTemplateMaxToolRounds(spec: Record<string, unknown>): string | null {
   const raw = spec["max_tool_rounds"];
   if (typeof raw !== "number" || !Number.isInteger(raw)) {
-    return `agent.yaml must set integer max_tool_rounds >= ${MIN_TEMPLATE_MAX_TOOL_ROUNDS}`;
+    return `agent.yaml 必须设置整数 max_tool_rounds >= ${MIN_TEMPLATE_MAX_TOOL_ROUNDS}`;
   }
   if (raw < MIN_TEMPLATE_MAX_TOOL_ROUNDS) {
-    return `max_tool_rounds must be >= ${MIN_TEMPLATE_MAX_TOOL_ROUNDS} (got ${raw})`;
+    return `max_tool_rounds 必须 >= ${MIN_TEMPLATE_MAX_TOOL_ROUNDS}（得到 ${raw}）`;
   }
   return null;
 }
 
 /**
- * Resolve the `tools` field to a list of ToolDef objects.
+ * 解析 `tools` 字段为 ToolDef 对象列表。
  *
- * - `"all"` => all built-in tools
- * - A list of pack/tool names => expand packs, resolve each from BASIC_TOOLS_MAP
- * - Absent / null => empty list (custom templates get defaults via resolveToolNames)
+ * - `"all"` => 所有内置工具
+ * - 包/工具名称列表 => 展开包，从 BASIC_TOOLS_MAP 解析每个
+ * - 缺失 / null => 空列表（自定义模板通过 resolveToolNames 获取默认值）
  */
 function resolveTools(spec: Record<string, unknown>): ToolDef[] {
   // 主要方式：tool_tier（swarmflow 风格）。无效值抛出异常。
@@ -568,7 +566,7 @@ function resolveTools(spec: Record<string, unknown>): ToolDef[] {
       const tool = BASIC_TOOLS_MAP[name];
       if (!tool) {
         throw new Error(
-          `Unknown tool '${name}'. Available: ${Object.keys(BASIC_TOOLS_MAP).join(", ")}, packs: ${Object.keys(TOOL_PACKS).join(", ")}`,
+          `未知工具 '${name}'。可用：${Object.keys(BASIC_TOOLS_MAP).join(", ")}，包：${Object.keys(TOOL_PACKS).join(", ")}`,
         );
       }
       resolved.push(tool);
@@ -576,11 +574,11 @@ function resolveTools(spec: Record<string, unknown>): ToolDef[] {
     return resolved;
   }
 
-  throw new Error(`Invalid tools spec: ${JSON.stringify(toolsSpec)}`);
+  throw new Error(`无效的 tools 规格：${JSON.stringify(toolsSpec)}`);
 }
 
 /**
- * Resolve the `mcp_tools` field to MCP ToolDef objects.
+ * 解析 `mcp_tools` 字段为 MCP ToolDef 对象。
  */
 function resolveMcpTools(
   spec: Record<string, unknown>,
@@ -601,7 +599,7 @@ function resolveMcpTools(
       const serverTools = mcpManager.getToolsForServer(serverName as string);
       if (serverTools.length === 0) {
         console.warn(
-          `MCP server '${serverName}' has no tools or is not connected`,
+          `MCP 服务器 '${serverName}' 没有工具或未连接`,
         );
       }
       tools.push(...serverTools);
@@ -613,7 +611,7 @@ function resolveMcpTools(
 }
 
 /**
- * Build a fully configured Agent from the parsed YAML spec.
+ * 从解析的 YAML spec 构建完全配置的 Agent。
  */
 function buildAgent(
   spec: Record<string, unknown>,
@@ -635,7 +633,7 @@ function buildAgent(
   const resolvedModel = model ?? config.defaultModel;
   if (!resolvedModel) {
     throw new Error(
-      `No model specified for template '${name}' and no default model in config.`,
+      `模板 '${name}' 未指定模型，且配置中没有默认模型。`,
     );
   }
 
@@ -664,7 +662,7 @@ function buildAgent(
 
   const agent = new Agent(opts);
 
-  // Keep MCP selection intent for runtime lazy wiring in Session._ensureMcp().
+  // 保留 MCP 选择意图，供 Session._ensureMcp() 在运行时延迟连接使用。
   (agent as any)._mcpToolsSpec = spec["mcp_tools"] ?? undefined;
 
   return agent;
