@@ -1,4 +1,5 @@
 node_modules/
+.codegraph/
 dist/
 build/
 dist-releases/
@@ -60,7 +61,7 @@ test/
 external/*
 .history/
 .codegraph/
-plan.md
+**.md
 docs*/ro
 **.png**
 !external/opentui/

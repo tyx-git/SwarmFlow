@@ -1,20 +1,16 @@
 # SwarmFlow
-
 基于多智能体蜂群编排的终端 AI 编程助手。专为长时间任务而研发。
 
 ## 快速开始
-
 ```bash
 swarmflow init   # 选择 Provider、设置 API key
 swarmflow        # 启动会话
 ```
 
 更新：`swarmflow update` 把最新版本暂存到下次启动。`swarmflow update --check` 仅检查不暂存。
-
 ## 核心特性
 
 ### 多智能体蜂群
-
 六种内置 Agent 角色，根据任务类型自动调度：
 
 | 角色 | 职责 |
@@ -29,9 +25,7 @@ swarmflow        # 启动会话
 五种编排模式覆盖常见工作形态：扇出/扇入、流水线、集成、辩论、探索。
 
 ### 上下文管理
-
 三层压缩机制防止上下文溢出，避免激进的全窗口摘要：
-
 | 阈值 | 行为 |
 |------|------|
 | 50% | 一级提示——建议针对性压缩 |
@@ -42,16 +36,13 @@ swarmflow        # 启动会话
 模型本身可通过 `show_context` 与 `summarize_context` 工具检视、压缩特定的上下文分组，保留关键决策、丢弃冗余。
 
 ### 会话控制
-
 - **回退**（`/rewind`）— 回滚到任意 turn；文件编辑与 bash 副作用通过反向 patch 和 mutation 跟踪回退
 - **分支**（`/fork`）— 把当前会话分支到新方向继续探索
 - **恢复** — 所有会话持久化到磁盘；重启后可继续
 - **AGENTS.md 持久记忆** — 项目级笔记跨上下文重置保留
 
 ### Provider 兼容性
-
 按 Claude Code、OpenCode 等主流工具的接口形态设计：
-
 | Provider | 接口 | 思考深度 | 缓存策略 |
 |----------|------|---------|---------|
 | Anthropic | Messages API | adaptive + budget_tokens | `cache_control` 断点 |
@@ -63,15 +54,12 @@ swarmflow        # 启动会话
 DeepSeek 的 Anthropic 兼容端点会自动启用 prefix cache，无需手动标记 `cache_control`。
 
 ### 中途提问
-
 模型可以在执行中途通过 `ask` 工具暂停，向用户提出结构化问题——多选、自定义输入、"继续讨论"。回答记录在会话审计日志中。
 
 ### 后台 Shell
-
 长时间运行的命令（`bash` 带 `background=true`）获得唯一 ID；`bash_output` 与 `kill_shell` 与之交互。Agent 通过 `await_event` 等待完成，不阻塞主循环。
 
 ## 同类产品对比
-
 | 特性 | SwarmFlow | Claude Code | OpenCode | Aider |
 |------|-----------|-------------|----------|-------|
 | 多智能体蜂群 | 内置 | — | — | — |
@@ -106,10 +94,20 @@ DeepSeek 的 Anthropic 兼容端点会自动启用 prefix cache，无需手动�
 
 ## 命令
 
-`/model` 切换模型 · `/key` 管理 API key · `/summarize` 交互式压缩上下文 · `/compact` 全量重置 · `/rewind` 回退 turn + 文件 · `/permission` 设置安全模式 · `/tier` 配置子代理模型档位 · `/session` 恢复历史会话 · `/fork` 分叉会话 · `/skills` 管理技能 · `/mcp` MCP 工具
+`/model` 切换模型
+`/key` 管理 API key
+`/summarize` 交互式压缩上下文
+`/compact` 全量重置
+`/rewind` 回退 turn + 文件
+`/permission` 设置安全模式
+`/tier` 配置子代理模型档位
+`/session` 恢复历史会话
+`/fork` 分叉会话
+`/skills` 管理技能
+`/mcp` MCP 工具
+......
 
 ## 项目结构
-
 ```
 src/
 ├── cli.ts            # 入口
@@ -130,21 +128,18 @@ external/
 ```
 
 ## 构建
-
 ```bash
 bun install         # 安装依赖
 bun run dev         # 运行 TUI
-bun run build       # 构建独立二进制 ps：暂时不完全支持
+bun run build       # 构建独立二进制 
 bun test            # 运行测试
 bun run typecheck   # 类型检查
 ```
 
 ## 平台要求
-
 - macOS（Apple Silicon）· Linux（x86_64、arm64）· Windows（x64、arm64）
 - 无沙箱——shell 与文件工具以当前用户权限运行。使用 `/permission` 管控破坏性操作
 - 第三方编程套餐（Kimi-Code、GLM-Code）使用服务商侧白名单，可能拒绝部分请求
 
 ## 许可证
-
 MIT。TUI 使用 OpenTUI（MIT）。
