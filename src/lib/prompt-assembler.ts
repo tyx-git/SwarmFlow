@@ -15,7 +15,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
 
 // ------------------------------------------------------------------
 // 提示层类型定义
@@ -117,14 +116,6 @@ function buildSessionStartedVar(iso: string | undefined): string {
  */
 export function readAgentsMemory(projectRoot: string): string {
   const parts: string[] = [];
-
-  const globalPath = join(getSwarmflowHomeDir(), "AGENTS.md");
-  if (existsSync(globalPath)) {
-    try {
-      const content = readFileSync(globalPath, "utf-8").trim();
-      if (content) parts.push(`## Global Memory\n\n${content}`);
-    } catch { /* 忽略 */ }
-  }
 
   const projectPath = join(projectRoot, "AGENTS.md");
   if (existsSync(projectPath)) {

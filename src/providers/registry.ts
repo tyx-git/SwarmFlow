@@ -21,6 +21,7 @@ import { KimiAnthropicProvider } from "./kimi-anthropic.js";
 import { DeepSeekAnthropicProvider } from "./deepseek-anthropic.js";
 import { MiniMaxAnthropicProvider } from "./minimax-anthropic.js";
 import { XiaomiAnthropicProvider } from "./xiaomi-anthropic.js";
+import { GeminiGenerateContentProvider } from "./gemini-generate-content.js";
 
 // 已弃用 — 由 *-anthropic.ts 变体取代。仅为回滚而保留可导入性。
 // import { KimiProvider } from "./kimi.js";
@@ -66,9 +67,10 @@ export function createProvider(config: ModelConfig): BaseProvider {
   // 而不是按已知 id。Anthropic 兼容端点使用 Anthropic 类；
   // 其余都按 OpenAI 兼容 chat 处理。
   if (config.baseUrl) {
-    return config.transportProtocol === "anthropic"
-      ? new AnthropicProvider(config)
-      : new OpenAIChatProvider(config);
+    if (config.transportProtocol === "anthropic") return new AnthropicProvider(config);
+    if (config.transportProtocol === "responses") return new OpenAIResponsesProvider(config);
+    if (config.transportProtocol === "gemini") return new GeminiGenerateContentProvider(config);
+    return new OpenAIChatProvider(config);
   }
   const supported = [...PROVIDER_CLASS_BY_ID.keys()].sort().join(", ");
   throw new Error(`Unknown provider '${config.provider}'. Supported: ${supported}`);

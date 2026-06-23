@@ -220,12 +220,6 @@ export class SessionStore {
         mkdirSync(sessionDir, { recursive: true });
         mkdirSync(join(sessionDir, "artifacts"), { recursive: true });
 
-        // 确保全局 AGENTS.md 存在（跳过初始化向导的用户的回退方案）
-        const globalAgentsMd = join(baseDir, "AGENTS.md");
-        if (!existsSync(globalAgentsMd)) {
-          try { writeFileSync(globalAgentsMd, ""); } catch { /* non-critical */ }
-        }
-
         this._activeBaseDir = baseDir;
         this._projectDir = projectDir;
         this._sessionDir = sessionDir;
@@ -605,7 +599,7 @@ export interface LocalProviderConfig {
   /** API 基础 URL */
   baseUrl: string;
   /** 传输协议。默认 "openai-chat" */
-  protocol?: "openai-chat" | "anthropic";
+  protocol?: "openai-chat" | "anthropic" | "openai-responses" | "gemini" | "anthropic-messages" | "openai-chat-completions" | "gemini-generate-content";
   /** 需要认证的端点的 API 密钥。省略时默认为 "local" */
   apiKey?: string;
   /** 选择器中显示的名称 */
@@ -728,7 +722,7 @@ export interface ProviderEntry {
   /** 选择器中显示的名称（自定义提供商） */
   label?: string;
   /** 自定义端点的传输协议。默认 "openai-chat" */
-  protocol?: "openai-chat" | "anthropic";
+  protocol?: "openai-chat" | "anthropic" | "openai-responses" | "gemini" | "anthropic-messages" | "openai-chat-completions" | "gemini-generate-content";
   /** 一个自定义提供商下的多个模型（优先于单个 `model`） */
   models?: CustomModelEntry[];
 }

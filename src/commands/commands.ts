@@ -10,8 +10,9 @@
  *   }
  */
 
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, dirname } from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { SessionStore, LocalProviderConfig, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
@@ -50,7 +51,7 @@ import {
 } from "../providers/credential-flow.js";
 import { resolveSkillContent, type SkillMeta } from "../skills/loader.js";
 import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptions, type ModelPickerTreeContext } from "../models/picker-tree.js";
-import { describeModel, formatCurrentModelScopedLabel, getCurrentModelDescriptor } from "../models/presentation.js";
+import { describeModel, getCurrentModelDescriptor } from "../models/presentation.js";
 import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "../auth/openai-oauth.js";
 import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth.js";
 
@@ -227,6 +228,8 @@ export interface SlashCommand {
   checkboxMode?: boolean;
   /* 在搜索过程中也匹配的备选名称。 */
   aliases?: string[];
+  /* /help分类显示。 */
+  category?: CommandCategory;
   /* 选择器的可选显示标题；仍然提交命令名。 */
   pickerTitle?: string;
 }
@@ -251,6 +254,8 @@ export function isCommandExitSignal(err: unknown): err is CommandExitSignal {
 // CommandRegistry
 // ------------------------------------------------------------------
 
+type CommandCategory = "Session" | "Context" | "Workflow" | "Provider and Model" | "Ecosystem" | "Project Configuration" | "UI";
+
 export class CommandRegistry {
   private _commands = new Map<string, SlashCommand>();
 
@@ -266,13 +271,7 @@ export class CommandRegistry {
 
   /* 按命令的确切名称或别名查找命令。 */
   lookup(name: string): SlashCommand | undefined {
-    const direct = this._commands.get(name);
-    if (direct) return direct;
-    // 退一步：检查别名
-    for (const cmd of this._commands.values()) {
-      if (cmd.aliases?.includes(name)) return cmd;
-    }
-    return undefined;
+    return this._commands.get(name);
   }
 
   /* 返回按名称字母顺序排序的所有注册命令。 */
@@ -299,7 +298,34 @@ export class CommandRegistry {
 // ------------------------------------------------------------------
 
 async function cmdHelp(ctx: CommandContext, _args: string): Promise<void> {
-  ctx.showMessage("__help_panel__");
+  const grouped = new Map<CommandCategory, SlashCommand[]>();
+  for (const command of ctx.commandRegistry.getAll()) {
+    const category = command.category ?? "UI";
+    if (!grouped.has(category)) grouped.set(category, []);
+    grouped.get(category)!.push(command);
+  }
+
+  const order: CommandCategory[] = [
+    "Session",
+    "Context",
+    "Workflow",
+    "Provider and Model",
+    "Ecosystem",
+    "Project Configuration",
+    "UI",
+  ];
+  const lines = ["Slash commands", ""];
+  for (const category of order) {
+    const commands = grouped.get(category);
+    if (!commands?.length) continue;
+    lines.push(category);
+    for (const command of commands.sort((a, b) => a.name.localeCompare(b.name))) {
+      lines.push(`  ${command.name.padEnd(12)} ${command.description}`);
+    }
+    lines.push("");
+  }
+  lines.push("Most commands are interactive. Natural-language arguments are only accepted by /reviewer, /ask, /goal, /fix, /plan, /rules, and /rename.");
+  ctx.showMessage(lines.join("\n"));
 }
 
 async function cmdUsage(ctx: CommandContext, _args: string): Promise<void> {
@@ -547,7 +573,7 @@ async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
       return;
     }
     const lines = ["Sessions", "", ...buildSessionTableRows(sessions)];
-    lines.push("", "Use /session <sessionId> to load a session.");
+    lines.push("", "Run /resume and choose a session from the picker, or run swarmflow --resume <sessionId> from this project.");
     ctx.showMessage(lines.join("\n"));
     return;
   }
@@ -778,8 +804,8 @@ function parseModelArgs(args: string): { target: string } {
   if (inlineKeySyntax || rest.length === 1) {
     throw new Error(
       "Inline API keys in `/model` are no longer supported.\n" +
-      "Use `/model` to select the model and follow the prompt to import or paste a key,\n" +
-      "or run 'swarmflow init' to configure providers.",
+      "Use `/provider` to add or update credentials for common providers, or to register custom endpoints for Anthropic Messages, OpenAI Chat Completions, OpenAI Responses, and Gemini generateContent.\n" +
+      "Run `swarmflow init` only for the first-time configuration wizard.",
     );
   }
   if (rest.length > 0) {
@@ -865,6 +891,7 @@ async function ensureModelSelectionReady(
   target: string,
 ): Promise<ResolvedModelSelection | undefined> {
   const parsedTarget = parseProviderModelTarget(target);
+  const adapter = createCommandPromptAdapter(ctx);
 
   if (parsedTarget?.provider === "openai-codex") {
     const existingToken = readOAuthAccessToken();
@@ -917,8 +944,7 @@ async function ensureModelSelectionReady(
   try {
     return resolveModelSelection(ctx.session, target);
   } catch (err) {
-    const adapter = createCommandPromptAdapter(ctx);
-    if (parsedTarget && isManagedProvider(parsedTarget.provider) && adapter) {
+      if (parsedTarget && isManagedProvider(parsedTarget.provider) && adapter) {
       const result = await ensureManagedProviderCredential(
         parsedTarget.provider,
         adapter,
@@ -1007,6 +1033,14 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
 
   try {
     const { target } = parseModelArgs(trimmed);
+    if (!target) {
+      const current = currentSessionModelDisplayName(session) || "unknown";
+      ctx.showMessage(
+        `Current model: ${current}\n` +
+        "Run /model to select from registered models. Provider and model registration belongs to /provider.",
+      );
+      return;
+    }
     const resolvedSelection = await pickResolvedModelSelection(ctx, {
       initialTarget: target,
       flatMessage: "Select model",
@@ -1111,6 +1145,140 @@ async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
   } catch (e) {
     ctx.showMessage(`Failed to manage API key: ${e instanceof Error ? e.message : String(e)}`);
   }
+}
+
+type ProviderWireProtocol = "anthropic-messages" | "openai-chat-completions" | "openai-responses" | "gemini-generate-content";
+
+type StoredProviderProtocol = NonNullable<ProviderEntry["protocol"]>;
+
+const WIRE_PROTOCOL_CHOICES: Array<{ label: string; value: ProviderWireProtocol; detail: string; stored: StoredProviderProtocol }> = [
+  { label: "Anthropic Messages", value: "anthropic-messages", detail: "/messages", stored: "anthropic" },
+  { label: "OpenAI Chat Completions", value: "openai-chat-completions", detail: "/chat/completions", stored: "openai-chat" },
+  { label: "OpenAI Responses API", value: "openai-responses", detail: "/responses", stored: "openai-responses" },
+  { label: "Gemini generateContent", value: "gemini-generate-content", detail: "models/*:generateContent", stored: "gemini" },
+];
+
+function storedProtocolFromWire(protocol: ProviderWireProtocol): StoredProviderProtocol {
+  return WIRE_PROTOCOL_CHOICES.find((p) => p.value === protocol)?.stored ?? "openai-chat";
+}
+
+function wireProtocolFromStored(protocol: string | undefined): ProviderWireProtocol {
+  switch (protocol) {
+    case "anthropic":
+    case "anthropic-messages":
+      return "anthropic-messages";
+    case "openai-responses":
+    case "responses":
+      return "openai-responses";
+    case "gemini":
+    case "gemini-generate-content":
+      return "gemini-generate-content";
+    case "openai-chat":
+    case "chat":
+    case "openai-chat-completions":
+    default:
+      return "openai-chat-completions";
+  }
+}
+
+function canDiscoverModels(protocol: string): boolean {
+  return wireProtocolFromStored(protocol) === "openai-chat-completions";
+}
+
+function commonProviderOptions(): CommandOption[] {
+  const providerPresetOptions = PROVIDER_PRESETS
+    .filter((preset) => !preset.localServer)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((preset) => ({
+      label: preset.name,
+      value: preset.id,
+      detail: preset.models.length > 0 ? `${preset.models.length} model(s)` : preset.id,
+    }));
+  return providerPresetOptions.length > 0 ? providerPresetOptions : [{ label: "No provider presets found", value: "", disabled: true }];
+}
+
+function providerOptions(ctx: CommandOptionsContext, homeDir?: string): CommandOption[] {
+  const options: CommandOption[] = [
+    {
+      label: "Add custom provider by protocol",
+      value: "__protocol__",
+      children: WIRE_PROTOCOL_CHOICES.map((p) => ({ label: p.label, value: `protocol:${p.value}`, detail: p.detail })),
+    },
+    {
+      label: "Common providers",
+      value: "__presets__",
+      children: commonProviderOptions(),
+    },
+    { label: "Manage API keys", value: "__keys__", children: keyOptions(ctx) },
+  ];
+
+  const settings = loadGlobalSettings(homeDir);
+  const providers = settings.providers ?? {};
+  const customProviders = Object.entries(providers)
+    .filter(([, entry]) => entry?.custom)
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (customProviders.length > 0) {
+    options.push({
+      label: "Manage custom providers",
+      value: "__custom__",
+      children: customProviders.map(([id, entry]) => ({
+        label: entry.label ? `${entry.label} (${id})` : id,
+        value: `manage:${id}`,
+        detail: `${entry.models?.length ?? 0} model(s)`,
+      })),
+    });
+  }
+
+  return options;
+}
+
+async function cmdProvider(ctx: CommandContext, args: string): Promise<void> {
+  if (!ctx.promptCommandPicker) {
+    ctx.showMessage("Provider management is not available in this UI.");
+    return;
+  }
+
+  let action = args.trim();
+  if (!action) {
+    const picked = await ctx.promptCommandPicker(
+      providerOptions({ session: ctx.session, store: ctx.store }, ctx.swarmflowHomeDir),
+      { title: "Providers" },
+    );
+    if (!picked) return;
+    action = picked.value;
+  }
+
+  if (action === "__add_provider__") {
+    await cmdAddCustomProvider(ctx);
+    return;
+  }
+
+  if (action.startsWith("protocol:")) {
+    await cmdAddCustomProvider(ctx, action.slice("protocol:".length) as ProviderWireProtocol);
+    return;
+  }
+
+  if (action.startsWith("preset:")) {
+    await cmdKey(ctx, action.slice("preset:".length));
+    return;
+  }
+
+  if (action.startsWith("manage:")) {
+    await cmdManageCustomProvider(ctx, action.slice("manage:".length));
+    return;
+  }
+
+  if (action === "__keys__") {
+    await cmdKey(ctx, "");
+    return;
+  }
+
+  if (action && !action.startsWith("__")) {
+    await cmdKey(ctx, action);
+    return;
+  }
+
+  ctx.showMessage("Run /provider and choose add, edit, delete, test, API key, or model registration actions from the interactive flow.");
 }
 
 /**
@@ -1285,7 +1453,7 @@ function slugifyProviderId(label: string): string {
  */
 export function normalizeEndpointUrl(raw: string): {
   baseUrl: string;
-  protocol: "openai-chat" | "anthropic" | null;
+  protocol?: StoredProviderProtocol | null;
   changed: boolean;
 } {
   const trimmed = raw.trim().replace(/\/+$/, "");
@@ -1300,12 +1468,21 @@ export function normalizeEndpointUrl(raw: string): {
     const baseUrl = trimmed.replace(/\/chat\/completions$/i, "");
     return { baseUrl, protocol: "openai-chat", changed: baseUrl !== trimmed };
   }
+  if (/\/responses$/i.test(trimmed)) {
+    const baseUrl = trimmed.replace(/\/responses$/i, "");
+    return { baseUrl, protocol: "openai-responses", changed: baseUrl !== trimmed };
+  }
+  if (/\/generateContent$/i.test(trimmed) || /:generateContent$/i.test(trimmed)) {
+    return { baseUrl: trimmed, protocol: "gemini", changed: trimmed !== raw.trim() };
+  }
   return { baseUrl: trimmed, protocol: null, changed: trimmed !== raw.trim() };
 }
 
 /* 自定义端点的最佳可达性探测。 */
 async function testEndpoint(baseUrl: string, apiKey: string | undefined, protocol: string): Promise<{ ok: boolean; detail: string }> {
-  if (protocol === "anthropic") return { ok: true, detail: "skipped (Anthropic endpoints have no /v1/models)" };
+  if (wireProtocolFromStored(protocol) !== "openai-chat-completions") {
+    return { ok: true, detail: "skipped (this protocol does not expose a standard /models endpoint)" };
+  }
   try {
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
     const controller = new AbortController();
@@ -1356,7 +1533,7 @@ async function addModelsInteractive(
 ): Promise<CustomModelEntry[] | null> {
   const { label, baseUrl, protocol, apiKey } = opts;
   let discovered: Array<{ id: string; contextLength?: number }> = [];
-  if (protocol === "openai-chat") {
+  if (canDiscoverModels(protocol)) {
     ctx.showMessage(`Scanning ${baseUrl} for models...`);
     discovered = await fetchModelsFromServer(baseUrl, 6000, apiKey || "local");
   }
@@ -1412,14 +1589,14 @@ function registerCustomModel(config: any, providerId: string, baseUrl: string, p
     api_key: apiKeyRef,
     base_url: baseUrl,
     context_length: m.context_length,
-    transport_protocol: protocol === "anthropic" ? "anthropic" : "chat",
+    transport_protocol: wireProtocolFromStored(protocol) === "anthropic-messages" ? "anthropic" : wireProtocolFromStored(protocol) === "openai-chat-completions" ? "chat" : protocol,
     supports_multimodal: m.multimodal ?? false,
     supports_web_search: false,
     ...(m.max_output_tokens ? { max_tokens: m.max_output_tokens } : {}),
   });
 }
 
-async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
+async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: ProviderWireProtocol): Promise<boolean> {
   if (!ctx.promptSecret || !ctx.promptSelect) {
     ctx.showMessage("Interactive provider setup is not available in this UI.");
     return false;
@@ -1443,19 +1620,22 @@ async function cmdAddCustomProvider(ctx: CommandContext): Promise<boolean> {
   const baseUrl = norm.baseUrl;
   if (norm.changed) ctx.showMessage(`ℹ Using base URL ${baseUrl}`);
 
-  // 3. 协议-当识别时从URL后缀推断，否则询问。
-  let protocol: string | undefined;
-  if (norm.protocol) {
-    protocol = norm.protocol;
-    ctx.showMessage(`ℹ Detected ${norm.protocol === "anthropic" ? "Anthropic" : "OpenAI"}-compatible endpoint — protocol set to "${norm.protocol}".`);
+  // 3. 协议-先显示四个通用接口；当URL后缀可识别时提供默认值。
+  let protocol: StoredProviderProtocol | undefined;
+  if (initialProtocol) {
+    protocol = storedProtocolFromWire(initialProtocol);
+    ctx.showMessage(`ℹ Protocol set to ${initialProtocol}.`);
   } else {
-    protocol = await ctx.promptSelect({
+    const detected = norm.protocol ? wireProtocolFromStored(norm.protocol) : undefined;
+    const picked = await ctx.promptSelect({
       message: `${label} — API protocol`,
-      options: [
-        { label: "OpenAI-compatible  (most endpoints)", value: "openai-chat" },
-        { label: "Anthropic-compatible", value: "anthropic" },
-      ],
+      options: WIRE_PROTOCOL_CHOICES.map((choice) => ({
+        label: `${choice.label}${choice.value === detected ? "  (detected)" : ""}`,
+        value: choice.value,
+      })),
     });
+    if (!picked) return false;
+    protocol = storedProtocolFromWire(picked as ProviderWireProtocol);
   }
   if (!protocol) return false;
 
@@ -1590,51 +1770,27 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
 // /diff -配置内联写入/编辑diff显示
 // ------------------------------------------------------------------
 
-type DiffDisplayMode = NonNullable<SwarmflowSettings["diff_display"]>;
+async function cmdDiff(ctx: CommandContext, _args: string): Promise<void> {
+  const lines = ["Diff", ""];
+  const status = spawnSync("git", ["status", "--short"], { encoding: "utf8", timeout: 5000 });
+  const diff = spawnSync("git", ["diff", "--stat"], { encoding: "utf8", timeout: 5000 });
+  const staged = spawnSync("git", ["diff", "--cached", "--stat"], { encoding: "utf8", timeout: 5000 });
 
-function normalizeDiffDisplayMode(value: unknown): DiffDisplayMode {
-  return value === "full" ? "full" : "compact";
-}
+  lines.push("Git status:");
+  lines.push((status.stdout ?? "").trim() || "  clean");
+  if (status.stderr?.trim()) lines.push(`  ${status.stderr.trim()}`);
+  lines.push("");
+  lines.push("Unstaged diff stat:");
+  lines.push((diff.stdout ?? "").trim() || "  none");
+  lines.push("");
+  lines.push("Staged diff stat:");
+  lines.push((staged.stdout ?? "").trim() || "  none");
+  lines.push("");
 
-function diffDisplayOptions(_ctx: CommandOptionsContext): CommandOption[] {
-  const current = normalizeDiffDisplayMode(loadGlobalSettings().diff_display);
-  const mark = (mode: DiffDisplayMode) => mode === current ? " (current)" : "";
-  return [
-    {
-      label: `Compact${mark("compact")}`,
-      value: "compact",
-      detail: "Short previews",
-    },
-    {
-      label: `Full${mark("full")}`,
-      value: "full",
-      detail: "Expand inline",
-    },
-  ];
-}
-
-async function cmdDiff(ctx: CommandContext, args: string): Promise<void> {
-  const hint = ctx.showHint ?? ctx.showMessage;
-  let choice = args.trim().toLowerCase();
-
-  if (!choice && ctx.promptCommandPicker) {
-    const picked = await ctx.promptCommandPicker(
-      diffDisplayOptions({ session: ctx.session, store: ctx.store }),
-      { title: "Diff Display" },
-    );
-    if (!picked) return;
-    choice = picked.value;
-  }
-
-  if (choice === "compact" || choice === "full") {
-    persistSettingsPatch({ diff_display: choice }, ctx.swarmflowHomeDir);
-    ctx.showMessage(`__diff_display__:${choice}`);
-    hint(`Diff display: ${choice}`);
-    return;
-  }
-
-  const current = normalizeDiffDisplayMode(loadGlobalSettings(ctx.swarmflowHomeDir).diff_display);
-  ctx.showMessage(`Diff display is "${current}".\nUsage: /diff compact | full`);
+  const turnSummaries = collectTurnDiffSummary(ctx);
+  lines.push("Session turn file changes:");
+  lines.push(...(turnSummaries.length > 0 ? turnSummaries.map((line) => `  ${line}`) : ["  none"]));
+  ctx.showMessage(lines.join("\n"));
 }
 
 // ------------------------------------------------------------------
@@ -2230,7 +2386,7 @@ function reviewOptions(_ctx: CommandOptionsContext): CommandOption[] {
 }
 
 function reviewDisplayText(kind: string, detail: string, note: string): string {
-  const parts = ["/review"];
+  const parts = ["/reviewer"];
   switch (kind) {
     case "uncommitted": parts.push("uncommitted changes"); break;
     case "base": parts.push(`against ${detail || "base"}`); break;
@@ -2252,76 +2408,386 @@ function dispatchReview(ctx: CommandContext, kind: string, detail: string, note:
   }
 }
 
-async function cmdReview(ctx: CommandContext, args: string): Promise<void> {
+function getSessionId(ctx: CommandContext): string {
+  const dir = ctx.store?.sessionDir;
+  return dir ? basename(dir) : "current";
+}
+
+function ensureSwarmflowSessionDir(ctx: CommandContext, section: "plan" | "reviewer"): string {
+  const sessionId = getSessionId(ctx);
+  const dir = join(process.cwd(), ".swarmflow", sessionId, section);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeInitialPlanFiles(ctx: CommandContext, goal: string): string {
+  const dir = ensureSwarmflowSessionDir(ctx, "plan");
+  const planPath = join(dir, "plan.md");
+  const processPath = join(dir, "process.md");
+  const findingPath = join(dir, "finding.md");
+
+  if (!existsSync(planPath)) {
+    writeFileSync(planPath, [
+      "# Plan",
+      "",
+      "## Goal",
+      goal || "<session goal>",
+      "",
+      "## Constraints",
+      "- Preserve user-confirmed scope unless explicitly revised.",
+      "",
+      "## Done When",
+      "- <completion criterion>",
+      "",
+      "## Stage 1: Clarify and prepare",
+      "- [ ] Clarify ambiguous requirements.",
+      "- [ ] Confirm done conditions.",
+      "",
+      "## Stage 2: Execute",
+      "- [ ] Implement approved subtasks.",
+      "- [ ] Verify results.",
+      "",
+    ].join("\n"), "utf-8");
+  }
+
+  if (!existsSync(processPath)) {
+    writeFileSync(processPath, `# Process\n\n- Created plan files for session ${getSessionId(ctx)}.\n`, "utf-8");
+  } else {
+    appendFileSync(processPath, `- Re-entered plan mode. Goal: ${goal || "(not specified)"}.\n`, "utf-8");
+  }
+  writeFileSync(findingPath, "# Current Stage Findings\n\n", "utf-8");
+  return dir;
+}
+
+function writeReviewerScaffold(ctx: CommandContext, scope: string): string {
+  const dir = ensureSwarmflowSessionDir(ctx, "reviewer");
+  writeFileSync(join(dir, "report.md"), [
+    "# Reviewer Report",
+    "",
+    "## Scope",
+    scope || "Whole project",
+    "",
+    "## Summary",
+    "Pending reviewer run.",
+    "",
+    "## Findings",
+    "",
+    "| Severity | Evidence | Impact | Recommendation |",
+    "| --- | --- | --- | --- |",
+    "",
+  ].join("\n"), "utf-8");
+
+  writeFileSync(join(dir, "todo.md"), [
+    "# Plan",
+    "",
+    "## Goal",
+    `Fix findings from reviewer scope: ${scope || "Whole project"}`,
+    "",
+    "## Constraints",
+    "- Transfer this todo into /plan before execution.",
+    "",
+    "## Done When",
+    "- Reviewer findings are resolved and verified.",
+    "",
+    "## Stage 1: Review findings",
+    "- [ ] Fill concrete findings from report.md.",
+    "",
+  ].join("\n"), "utf-8");
+  return dir;
+}
+
+function collectTurnDiffSummary(ctx: CommandContext): string[] {
+  const log = Array.isArray(ctx.session.log) ? ctx.session.log : [];
+  const byTurn = new Map<number, { files: Set<string>; additions: number; deletions: number }>();
+  for (const entry of log) {
+    if (entry?.type !== "tool_result" || entry.discarded) continue;
+    const meta = entry.meta as Record<string, unknown> | undefined;
+    const toolMeta = meta?.toolMetadata as Record<string, unknown> | undefined;
+    const fm = toolMeta?.fileMutation as { path?: string; additions?: number; deletions?: number } | undefined;
+    if (!fm?.path) continue;
+    const turn = typeof entry.turnIndex === "number" ? entry.turnIndex : 0;
+    const bucket = byTurn.get(turn) ?? { files: new Set<string>(), additions: 0, deletions: 0 };
+    bucket.files.add(fm.path);
+    bucket.additions += fm.additions ?? 0;
+    bucket.deletions += fm.deletions ?? 0;
+    byTurn.set(turn, bucket);
+  }
+  return [...byTurn.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([turn, data]) => `Turn ${turn}: ${data.files.size} file(s), +${data.additions} -${data.deletions}`);
+}
+
+async function cmdReviewer(ctx: CommandContext, args: string): Promise<void> {
   const trimmed = args.trim();
+  let kind = "custom";
+  let detail = "";
+  let note = trimmed;
 
   if (trimmed) {
-    // 当从命令覆盖选择器（startCommandPicker）分派时，
-    // 该值以参数的形式到达。“未提交”、SHA或分支名称)。
-    // 检测已知的评审目标值并路由它们；其他的都是
-    // 对未提交的更改进行审查的自由形式的用户说明。
     if (trimmed === "uncommitted") {
-      dispatchReview(ctx, "uncommitted", "", "");
-      return;
-    }
-    if (trimmed === "custom") {
-      dispatchReview(ctx, "custom", "", "");
-      return;
-    }
-    if (/^[0-9a-f]{7,40}$/.test(trimmed)) {
-      dispatchReview(ctx, "commit", trimmed, "");
-      return;
-    }
-    // 从向下钻取器中，参数可以是分支名称。使用git进行验证
-    // 假设之前-像“login”或“config”这样的单字指令
-    // 不应被误认为是分支。
-    if (/^[A-Za-z0-9_./-]+$/.test(trimmed) && !trimmed.includes(" ")) {
-      const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
+      kind = "uncommitted";
+      note = "";
+    } else if (trimmed === "custom") {
+      note = "";
+    } else if (/^[0-9a-f]{7,40}$/.test(trimmed)) {
+      kind = "commit";
+      detail = trimmed;
+      note = "";
+    } else if (/^[A-Za-z0-9_./-]+$/.test(trimmed) && !trimmed.includes(" ")) {
       const check = spawnSync("git", ["rev-parse", "--verify", "--quiet", trimmed], {
         timeout: 3000, stdio: "ignore",
       });
       if (check.status === 0) {
-        dispatchReview(ctx, "base", trimmed, "");
-        return;
+        kind = "base";
+        detail = trimmed;
+        note = "";
       }
     }
-    dispatchReview(ctx, "custom", "", trimmed);
-    return;
-  }
-
-  if (!ctx.promptCommandPicker) {
-    ctx.showMessage("Usage: /review [instructions]");
-    return;
-  }
-
-  const picked = await ctx.promptCommandPicker(
-    reviewOptions({ session: ctx.session, store: ctx.store }),
-    { title: "Review", allowNote: true },
-  );
-  if (!picked) return;
-
-  const note = picked.note ?? "";
-  const value = picked.value;
-
-  if (value === "custom") {
-    dispatchReview(ctx, "custom", "", note);
-    return;
-  }
-
-  if (value === "uncommitted") {
-    dispatchReview(ctx, "uncommitted", "", note);
-    return;
-  }
-
-  // 对于下钻子（基本分支或提交），选择器已经
-  // 解析为叶值（分支名称或提交SHA）。
-  // 通过检查它是否看起来像提交SHA来确定哪种类型。
-  const isSha = /^[0-9a-f]{7,40}$/.test(value);
-  if (isSha) {
-    dispatchReview(ctx, "commit", value, note);
   } else {
-    dispatchReview(ctx, "base", value, note);
+    if (!ctx.promptCommandPicker) {
+      kind = "uncommitted";
+    } else {
+      const picked = await ctx.promptCommandPicker(
+        reviewOptions({ session: ctx.session, store: ctx.store }),
+        { title: "Review", allowNote: true },
+      );
+      if (!picked) return;
+      note = picked.note ?? "";
+      const value = picked.value;
+      if (value === "custom") {
+        kind = "custom";
+      } else if (value === "uncommitted") {
+        kind = "uncommitted";
+      } else if (/^[0-9a-f]{7,40}$/.test(value)) {
+        kind = "commit";
+        detail = value;
+      } else {
+        kind = "base";
+        detail = value;
+      }
+    }
   }
+
+  const scope = note || detail || (kind === "uncommitted" ? "uncommitted changes" : "Whole project");
+  const reviewerDir = writeReviewerScaffold(ctx, scope);
+  const target = buildReviewTarget(kind, detail);
+  const content = [
+    buildReviewPrompt(target, note),
+    "",
+    "Reviewer output requirements:",
+    `- Overwrite ${join(reviewerDir, "report.md")} with the final review report.` ,
+    `- Overwrite ${join(reviewerDir, "todo.md")} with the repair todo using /plan Stage + checkbox format.`,
+    "- Do not modify source code while running /reviewer.",
+  ].join("\n");
+  const displayText = reviewDisplayText(kind, detail, note);
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested(displayText, content);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(content);
+  } else {
+    ctx.showMessage(`Reviewer scaffold written to ${reviewerDir}. Agent turn runner is not available in this UI.`);
+  }
+}
+
+async function cmdInit(ctx: CommandContext, _args: string): Promise<void> {
+  const agentsPath = join(process.cwd(), "AGENTS.md");
+  const rulesPath = join(process.cwd(), ".rules");
+  if (existsSync(agentsPath)) {
+    ctx.showMessage("AGENTS.md already exists at the project root. /init will not overwrite it.");
+    return;
+  }
+  const prompt = [
+    "Run initial project exploration for this repository.",
+    "Draft a project-level AGENTS.md at the repository root with coding habits, architecture notes, commands, and constraints.",
+    "Also initialize an empty Markdown .rules file at the repository root if it does not exist.",
+    "Do not create a global AGENTS.md.",
+  ].join("\n");
+  if (!existsSync(rulesPath)) writeFileSync(rulesPath, "", "utf-8");
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested("/init", prompt);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(prompt);
+  } else {
+    if (!existsSync(rulesPath)) writeFileSync(rulesPath, "", "utf-8");
+    ctx.showMessage("No turn runner is available. Created .rules if missing; AGENTS.md draft requires an agent turn.");
+  }
+}
+
+async function cmdPlan(ctx: CommandContext, args: string): Promise<void> {
+  const goal = args.trim();
+  const planDir = writeInitialPlanFiles(ctx, goal);
+  const prompt = [
+    "Enter SwarmFlow plan discussion mode.",
+    "Clarify ambiguous requirements with the user before making edits.",
+    "When ready, write plan.md, process.md, and finding.md under .swarmflow/<session_id>/plan/ using Stage N headings and checkbox subtasks.",
+    "Do not execute the plan until the user gives deterministic approval such as 执行, 开始, approve, 确认, or 按计划执行.",
+    `Plan files directory: ${planDir}.`,
+    goal ? `Initial plan goal: ${goal}` : "Ask the user for the stage goal or requirement.",
+  ].join("\n");
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested(goal ? `/plan ${goal}` : "/plan", prompt);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(prompt);
+  } else {
+    ctx.showMessage("Plan mode requires an agent turn runner in this UI.");
+  }
+}
+
+async function cmdGoal(ctx: CommandContext, args: string): Promise<void> {
+  const goal = args.trim();
+  if (!goal) {
+    ctx.showMessage("No session goal is set by this lightweight command yet. Use /goal <objective and done_when> to ask the agent to establish one.");
+    return;
+  }
+  const prompt = [
+    "Set or update the current session goal.",
+    "Represent it with objective, done_when, constraints, progress, and last_evaluation.",
+    "Use completion conditions to decide when the workflow can stop.",
+    `User goal: ${goal}`,
+  ].join("\n");
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested(`/goal ${goal}`, prompt);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(prompt);
+  } else {
+    ctx.showMessage(`Session goal: ${goal}`);
+  }
+}
+
+async function cmdFix(ctx: CommandContext, args: string): Promise<void> {
+  const bug = args.trim();
+  if (!bug) {
+    ctx.showMessage("Usage: /fix <known existing bug description>");
+    return;
+  }
+  const prompt = [
+    "Run a lightweight fix loop for a known existing bug.",
+    "Do not create plan files unless the work must escalate to /plan.",
+    "Loop: reproduce, locate root cause, fix, verify, and report.",
+    `Bug: ${bug}`,
+  ].join("\n");
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested(`/fix ${bug}`, prompt);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(prompt);
+  } else {
+    ctx.showMessage("/fix requires an agent turn runner in this UI.");
+  }
+}
+
+async function cmdAsk(ctx: CommandContext, args: string): Promise<void> {
+  const question = args.trim();
+  if (!question) {
+    ctx.showMessage("Usage: /ask <side question>");
+    return;
+  }
+  const prompt = [
+    "Answer this as a side question using isolated bypass context.",
+    "Do not alter the current goal, plan, or task flow.",
+    `Question: ${question}`,
+  ].join("\n");
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested(`/ask ${question}`, prompt);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(prompt);
+  } else {
+    ctx.showMessage("/ask requires an agent turn runner in this UI.");
+  }
+}
+
+async function cmdStatus(ctx: CommandContext, _args: string): Promise<void> {
+  const session = ctx.session;
+  const model = currentSessionModelDisplayName(session) || session.currentModelConfigName || "unknown";
+  const provider = session.primaryAgent?.modelConfig?.provider ?? "unknown";
+  const permission = session.permissionMode ?? "reversible";
+  const planState = session.getPlanState?.() ?? [];
+  const mcpStatuses = session.mcpManager?.getServerStatuses?.() ?? [];
+  const skills = session.getAllSkillNames?.() ?? [];
+  const enabledSkills = skills.filter((s: { enabled: boolean }) => s.enabled).length;
+  const lines = [
+    "Session status",
+    "",
+    `Model: ${model}`,
+    `Provider: ${provider}`,
+    `Permission: ${permission}`,
+    `Goal: not persisted yet`,
+    `Plan: ${planState.length} checkpoint(s)`,
+    `MCP: ${mcpStatuses.length} server(s)`,
+    `Skills: ${enabledSkills}/${skills.length} enabled`,
+    `Tokens: last ${session.lastTotalTokens ?? 0}, cache read ${session.lastCacheReadTokens ?? 0}, cumulative input ${session.cumulativeInputTokens ?? 0}, output ${session.cumulativeOutputTokens ?? 0}`,
+  ];
+  ctx.showMessage(lines.join("\n"));
+}
+
+async function cmdClear(ctx: CommandContext, _args: string): Promise<void> {
+  if (ctx.isProcessing?.()) {
+    (ctx.showHint ?? ctx.showMessage)("Wait until the assistant finishes.");
+    return;
+  }
+  ctx.autoSave();
+  ctx.session._resetTransientState?.();
+  ctx.resetUiState();
+  ctx.requestFullRepaint?.();
+  ctx.showMessage("Screen cleared. Conversation state is reset for future turns, while the session record remains on disk.");
+}
+
+async function cmdRules(ctx: CommandContext, args: string): Promise<void> {
+  const rulesPath = join(process.cwd(), ".rules");
+  const rule = args.trim();
+  if (!rule) {
+    if (!existsSync(rulesPath)) {
+      ctx.showMessage("No .rules file at project root. Run /rules <rule description> to create one.");
+      return;
+    }
+    const content = readFileSync(rulesPath, "utf-8").trim();
+    ctx.showMessage(content ? `.rules\n\n${content}` : ".rules is empty.");
+    return;
+  }
+  const existing = existsSync(rulesPath) ? readFileSync(rulesPath, "utf-8") : "";
+  const prefix = existing.trim().length > 0 ? `${existing.trimEnd()}\n` : "";
+  writeFileSync(rulesPath, `${prefix}\n- ${rule}\n`, "utf-8");
+  ctx.showMessage(`Added project rule to .rules: ${rule}`);
+}
+
+async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
+  const log = Array.isArray(ctx.session.log) ? ctx.session.log : [];
+  const active = log.filter((entry: { discarded?: boolean }) => !entry.discarded).length;
+  ctx.showMessage(
+    "Current-session memory/context\n\n" +
+    `Active log entries: ${active}\n` +
+    "Detailed context correction UI is not wired yet; use /clear, /compact, or a natural-language correction in the current conversation.",
+  );
+}
+
+async function cmdEffort(ctx: CommandContext, args: string): Promise<void> {
+  const requested = args.trim().toLowerCase();
+  const model = ctx.session.currentModelName ?? "";
+  const supported = getThinkingLevels(model);
+  const levels = supported.length > 0 ? supported : ["low", "medium", "high", "xhigh", "max"];
+  let level = requested;
+  if (!level && ctx.promptSelect) {
+    const choice = await ctx.promptSelect({
+      message: "Select effort level",
+      options: levels.map((value) => ({
+        label: `${value}${value === ctx.session.thinkingLevel ? " (current)" : ""}${value === "max" ? " — provider-specific" : ""}`,
+        value,
+      })),
+    });
+    if (!choice) return;
+    level = choice;
+  }
+  if (!level) {
+    ctx.showMessage(`Current effort: ${ctx.session.thinkingLevel ?? "none"}`);
+    return;
+  }
+  if (!levels.includes(level)) {
+    ctx.showMessage(`Effort "${level}" is not supported by the current model. Available: ${levels.join(", ")}`);
+    return;
+  }
+  ctx.session.thinkingLevel = level;
+  persistModelSelection(ctx);
+  const note = level === "max" ? " Note: max effort is provider/model-specific." : "";
+  ctx.showMessage(`Effort set to: ${ctx.session.thinkingLevel}.${note}`);
 }
 
 // ------------------------------------------------------------------
@@ -2333,41 +2799,36 @@ async function cmdReview(ctx: CommandContext, args: string): Promise<void> {
  */
 export function buildDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-  registry.register({ name: "/help", description: "Show commands and shortcuts", handler: cmdHelp });
-  registry.register({ name: "/compact", description: "Manually compact the active context", handler: cmdCompact });
-  registry.register({ name: "/new", description: "Start a new session", handler: cmdNew });
-  registry.register({ name: "/session", description: "Resume a previous session", handler: cmdResume, options: resumeOptions, pickerTitle: "Sessions", aliases: ["/resume"] });
-  registry.register({ name: "/summarize", description: "Manually summarize older context", handler: cmdSummarize });
-  registry.register({ name: "/summarize_hint", description: "Configure two-tier summarize hints (on/off, trigger levels)", handler: cmdSummarizeHint });
-  registry.register({ name: "/shells", description: "View and stop background shells", handler: cmdShells });
-  registry.register({ name: "/models", description: "Switch model", handler: cmdModel, options: modelOptions });
-  registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, pickerTitle: "Manage API key" });
-  registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions });
-  registry.register({ name: "/quit", description: "Exit the application", handler: cmdQuit, aliases: ["/exit"] });
-  registry.register({ name: "/skills", description: "Manage installed skills", handler: cmdSkills, options: skillsOptions, checkboxMode: true });
-  registry.register({ name: "/mcp", description: "Manage MCP servers", handler: cmdMcp, options: mcpOptions, pickerTitle: "MCP Servers" });
-  registry.register({ name: "/rename", description: "Rename current session", handler: cmdRename });
-  registry.register({ name: "/codex", description: "OpenAI ChatGPT login", handler: cmdCodex, options: codexOptions });
-  registry.register({ name: "/copilot", description: "GitHub Copilot login", handler: cmdCopilot, options: copilotOptions });
-  registry.register({ name: "/raw", description: "Toggle markdown raw/rendered mode", handler: cmdRaw, aliases: ["/md"] });
-  registry.register({ name: "/agents", description: "Toggle agents panel", handler: cmdAgents });
-  registry.register({ name: "/todos", description: "Toggle todo panel", handler: cmdTodos });
-  registry.register({ name: "/permission", description: "Set permission mode", handler: cmdPermission });
-  registry.register({ name: "/rewind", description: "Rewind to a previous turn", handler: cmdRewind, aliases: ["/undo"] });
-  registry.register({ name: "/hooks", description: "Manage registered hooks", handler: cmdHooks, options: hooksOptions, pickerTitle: "Hooks" });
-  registry.register({ name: "/copy", description: "Copy the agent's most recent text response", handler: cmdCopy });
-  registry.register({ name: "/fork", description: "Fork the current session into a new branch", handler: cmdFork });
-  registry.register({ name: "/theme", description: "Set theme mode (auto / light / dark / default / nord / dracula)", handler: cmdTheme });
-  registry.register({ name: "/diff", description: "Set write/edit diff display (compact / full)", handler: cmdDiff });
-  registry.register({ name: "/usage", description: "Show session token usage", handler: cmdUsage, aliases: ["/context"] });
-  registry.register({ name: "/stat", description: "Show all-time token statistics", handler: cmdStat });
-  registry.register({ name: "/autoupdate", description: "Toggle automatic update checks", handler: cmdAutoUpdate });
-  registry.register({ name: "/autocopy", description: "Toggle copy-on-select (auto-copy a text selection)", handler: cmdAutoCopy });
-  registry.register({ name: "/review", description: "Review code changes", handler: cmdReview });
-  //TODO: init初始化，plan模式，内置Fable系统提示词，rules设置全局规则或者项目规则.swarmflow/rules/rules.md
-  // registry.register({name: "/init", description: "Explore the project architecture",handler: cmdinit});
-  // registry.register({name: "/plan", description: "Disassemble the target and create a task list.",handler: cmdplan});
-  // registry.register({name: "/rules", description: "Set global rules or project rules",handler: cmdrules});
+  registry.register({ name: "/help", description: "Show categorized command help", handler: cmdHelp, category: "Session" });
+  registry.register({ name: "/new", description: "Start a new session", handler: cmdNew, category: "Session" });
+  registry.register({ name: "/resume", description: "Resume a previous session", handler: cmdResume, options: resumeOptions, pickerTitle: "Sessions", category: "Session" });
+  registry.register({ name: "/quit", description: "Exit the application", handler: cmdQuit, category: "Session" });
+  registry.register({ name: "/rename", description: "Rename current session", handler: cmdRename, category: "Session" });
+  registry.register({ name: "/status", description: "Show current session status summary", handler: cmdStatus, category: "Session" });
+
+  registry.register({ name: "/compact", description: "Compact the active context", handler: cmdCompact, category: "Context" });
+  registry.register({ name: "/clear", description: "Clear screen and future model context", handler: cmdClear, category: "Context" });
+  registry.register({ name: "/fork", description: "Fork the current session into a branch", handler: cmdFork, category: "Context" });
+  registry.register({ name: "/ask", description: "Ask an isolated side question", handler: cmdAsk, category: "Context" });
+
+  registry.register({ name: "/init", description: "Explore project and draft AGENTS.md/.rules", handler: cmdInit, category: "Workflow" });
+  registry.register({ name: "/plan", description: "Enter planning discussion mode", handler: cmdPlan, category: "Workflow" });
+  registry.register({ name: "/goal", description: "Set or view current session goal", handler: cmdGoal, category: "Workflow" });
+  registry.register({ name: "/fix", description: "Reproduce, fix, and verify a known bug", handler: cmdFix, category: "Workflow" });
+  registry.register({ name: "/reviewer", description: "Review the project or a natural-language scope", handler: cmdReviewer, options: reviewOptions, pickerTitle: "Reviewer", category: "Workflow" });
+  registry.register({ name: "/diff", description: "View current git and per-turn diffs", handler: cmdDiff, category: "Workflow" });
+
+  registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, pickerTitle: "Providers", category: "Provider and Model" });
+  registry.register({ name: "/model", description: "Select the current session model", handler: cmdModel, options: modelOptions, category: "Provider and Model" });
+  registry.register({ name: "/effort", description: "Set current session and sub-agent effort", handler: cmdEffort, category: "Provider and Model" });
+  registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, category: "Provider and Model" });
+
+  registry.register({ name: "/skills", description: "View and enable/disable skills globally", handler: cmdSkills, options: skillsOptions, checkboxMode: true, category: "Ecosystem" });
+  registry.register({ name: "/mcp", description: "View, enable/disable, and reconnect MCP servers", handler: cmdMcp, options: mcpOptions, pickerTitle: "MCP Servers", category: "Ecosystem" });
+  registry.register({ name: "/hooks", description: "View hook configuration and status", handler: cmdHooks, options: hooksOptions, pickerTitle: "Hooks", category: "Ecosystem" });
+  registry.register({ name: "/memory", description: "Inspect and correct current session context", handler: cmdMemory, category: "Ecosystem" });
+  registry.register({ name: "/rules", description: "View or update project .rules", handler: cmdRules, category: "Project Configuration" });
+  registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, category: "UI" });
   return registry;
 }
 
@@ -2513,7 +2974,7 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
   // 没有持久化到日志。saveLog过滤元数据。短暂的条目)。
   if (typeof session.appendStatusMessage === "function") {
     session.appendStatusMessage(
-      `To continue the original session, enter /session ${origSessionId}`,
+      `To continue the original session, enter /resume ${origSessionId}`,
       "fork_origin",
       true,
     );
@@ -3232,57 +3693,25 @@ function setHookDisabled(sourcePath: string, disabled: boolean): boolean {
   }
 }
 
-function reloadHooksIntoRuntime(session: any): number {
-  try {
-    const { resolveAssetPaths } = require("./config.js") as typeof import("../config/config.js");
-    const { loadHooksMulti } = require("./hooks/index.js") as typeof import("../hooks/index.js");
-    const paths = resolveAssetPaths();
-    const hooks = loadHooksMulti(paths.hookRoots);
-    session.hookRuntime.setHooks(hooks);
-    return hooks.length;
-  } catch {
-    return -1;
-  }
-}
-
 function hooksOptions(_ctx: CommandOptionsContext): CommandOption[] {
   const allHooks = loadAllHooksFromDisk();
-  const opts: CommandOption[] = [
-    { label: "Reload hooks", value: "__reload__" },
-  ];
-
   if (allHooks.length === 0) {
-    opts.push({ label: "No hooks found", value: "", disabled: true });
-    return opts;
+    return [{ label: "No hooks found", value: "", disabled: true }];
   }
 
-  for (const hook of allHooks) {
+  return allHooks.map((hook) => {
     const scope = hook._scope ?? "unknown";
     const matcherParts: string[] = [];
     if (hook.matcher?.toolNames?.length) matcherParts.push(hook.matcher.toolNames.join(","));
     if (hook.matcher?.agentIds?.length) matcherParts.push(hook.matcher.agentIds.join(","));
     const matcherSuffix = matcherParts.length ? ` [${matcherParts.join("; ")}]` : "";
     const disabledTag = hook.disabled ? " (disabled)" : "";
-
-    const children: CommandOption[] = [];
-    if (hook.disabled) {
-      children.push({ label: "Enable", value: `${hook.name}:enable` });
-    } else {
-      children.push({ label: "Disable", value: `${hook.name}:disable` });
-    }
-    if (hook._sourcePath) {
-      children.push({ label: "Show config path", value: `${hook.name}:path` });
-    }
-
-    opts.push({
+    return {
       label: `${hook.name}${disabledTag}`,
       detail: `${scope} · ${hook.event}${matcherSuffix}`,
-      value: hook.name,
-      children,
-    });
-  }
-
-  return opts;
+      value: hook._sourcePath ?? hook.name,
+    };
+  });
 }
 
 async function cmdHooks(ctx: CommandContext, args: string): Promise<void> {
@@ -3306,45 +3735,14 @@ async function cmdHooks(ctx: CommandContext, args: string): Promise<void> {
     action = picked.value;
   }
 
-  if (action === "__reload__") {
-    const count = reloadHooksIntoRuntime(session);
-    hint(count >= 0 ? `Hooks reloaded: ${count} active` : "Failed to reload hooks.");
+  if (action) {
+    hint("/hooks is read-only in the first pass.");
     return;
   }
 
-  const colonIdx = action.indexOf(":");
-  if (colonIdx > 0) {
-    const hookName = action.slice(0, colonIdx);
-    const op = action.slice(colonIdx + 1);
-
-    const allHooks = loadAllHooksFromDisk();
-    const hook = allHooks.find((h) => h.name === hookName);
-    if (!hook) {
-      hint(`Hook "${hookName}" not found.`);
-      return;
-    }
-
-    if (op === "enable" || op === "disable") {
-      const disabled = op === "disable";
-      if (hook._sourcePath && setHookDisabled(hook._sourcePath, disabled)) {
-        reloadHooksIntoRuntime(session);
-        hint(`${hookName}: ${disabled ? "disabled" : "enabled"}`);
-      } else {
-        hint(`Failed to ${op} "${hookName}" — check hook.json`);
-      }
-      return;
-    }
-
-    if (op === "path") {
-      hint(hook._sourcePath ?? "Source path unknown.");
-      return;
-    }
-  }
-
-  // 非交互式环境的回退
   const allHooks = loadAllHooksFromDisk();
   const activeCount = allHooks.filter((h) => !h.disabled).length;
-  hint(allHooks.length === 0
+  ctx.showMessage(allHooks.length === 0
     ? "No hooks registered."
-    : `${allHooks.length} hook(s), ${activeCount} active. Use picker for details.`);
+    : `${allHooks.length} hook(s), ${activeCount} active. Hook management is read-only from /hooks.`);
 }

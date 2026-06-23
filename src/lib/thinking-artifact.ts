@@ -21,7 +21,7 @@
  *   - 否则：省略
  */
 
-export type TransportProtocol = "responses" | "anthropic" | "chat";
+export type TransportProtocol = "responses" | "anthropic" | "chat" | "gemini";
 export type ThinkingEncryption = "openai" | "anthropic" | "none";
 
 /**

@@ -6,7 +6,7 @@
  * 支持 Ctrl+C / ESC 返回上一步。
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import * as readline from "node:readline";
 import { select, input, confirm } from "@inquirer/prompts";
@@ -986,13 +986,9 @@ export async function runInitWizard(): Promise<WizardResult> {
     });
   }
 
-  // 确保用户覆盖目录和全局记忆文件存在
+  // Ensure user override directories exist. Project AGENTS.md is created only by /init.
   mkdirSync(join(homeDir, "prompts", "templates"), { recursive: true });
   mkdirSync(join(homeDir, "skills"), { recursive: true });
-  const globalAgentsMd = join(homeDir, "AGENTS.md");
-  if (!existsSync(globalAgentsMd)) {
-    writeFileSync(globalAgentsMd, "");
-  }
 
   // ------------------------------------------------------------------
   // 摘要

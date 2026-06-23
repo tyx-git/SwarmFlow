@@ -6,7 +6,7 @@
  * 服务器模式 init RPC（用于 GUI）都驱动这个相同的服务。
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
@@ -287,10 +287,6 @@ export class InitService {
 
     mkdirSync(join(this.homeDir, "prompts", "templates"), { recursive: true });
     mkdirSync(join(this.homeDir, "skills"), { recursive: true });
-    const globalAgentsMd = join(this.homeDir, "AGENTS.md");
-    if (!existsSync(globalAgentsMd)) {
-      writeFileSync(globalAgentsMd, "");
-    }
   }
 
   // ── Internal helpers ──

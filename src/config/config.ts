@@ -671,7 +671,13 @@ export class Config {
           api_key: local.apiKey ?? "local",
           base_url: local.baseUrl,
           context_length: m.contextLength,
-          transport_protocol: local.protocol === "anthropic" ? "anthropic" : "chat",
+          transport_protocol: local.protocol === "anthropic" || local.protocol === "anthropic-messages"
+            ? "anthropic"
+            : local.protocol === "openai-responses"
+              ? "responses"
+              : local.protocol === "gemini" || local.protocol === "gemini-generate-content"
+                ? "gemini"
+                : "chat",
           supports_multimodal: m.multimodal ?? false,
           supports_web_search: m.webSearch ?? false,
           ...(m.maxOutputTokens ? { max_tokens: m.maxOutputTokens } : {}),
@@ -750,7 +756,7 @@ export class Config {
       name,
       cfg,
       "transport_protocol",
-      ["responses", "anthropic", "chat"] as const,
+      ["responses", "anthropic", "chat", "gemini"] as const,
     ) ?? resolveTransportProtocol(provider, modelName);
     const thinkingEncryption = optionalConfigEnumField(
       name,
