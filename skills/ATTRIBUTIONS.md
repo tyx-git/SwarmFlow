@@ -26,6 +26,8 @@ verified against PyPI metadata 2026-05-17.
 | xlsx | openpyxl | MIT | no (user-installed) | read/create/edit Excel |
 | xlsx | pandas | BSD-3-Clause | no (optional) | bulk tabular analysis |
 | pptx | python-pptx | MIT | no (user-installed) | create/edit slides |
+| speaker | python-pptx | MIT | no (user-installed) | read PPT structure |
+| speaker | python-docx | MIT | no (optional) | Word speech output |
 | csv-data | pandas | BSD-3-Clause | no (optional; stdlib csv default) | tabular transform/clean |
 
 ## Idea sources (surveyed, not copied)

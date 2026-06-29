@@ -254,7 +254,7 @@ export function isCommandExitSignal(err: unknown): err is CommandExitSignal {
 // CommandRegistry
 // ------------------------------------------------------------------
 
-type CommandCategory = "Session" | "Context" | "Workflow" | "Provider and Model" | "Ecosystem" | "Project Configuration" | "UI";
+type CommandCategory = "Session" | "Context" | "Workflow" | "Document Processing" | "Provider and Model" | "Ecosystem" | "Project Configuration" | "User Custom" | "UI";
 
 export class CommandRegistry {
   private _commands = new Map<string, SlashCommand>();
@@ -309,9 +309,11 @@ async function cmdHelp(ctx: CommandContext, _args: string): Promise<void> {
     "Session",
     "Context",
     "Workflow",
+    "Document Processing",
     "Provider and Model",
     "Ecosystem",
     "Project Configuration",
+    "User Custom",
     "UI",
   ];
   const lines = ["Slash commands", ""];
@@ -3299,6 +3301,7 @@ export function registerSkillCommands(
   registry: CommandRegistry,
   skills: ReadonlyMap<string, SkillMeta>,
 ): void {
+  const DOCUMENT_SKILLS = new Set(["pptx", "xlsx", "docx", "speaker"]);
   const sortedSkills = [...skills.values()].sort((a, b) => a.name.localeCompare(b.name));
   for (const skill of sortedSkills) {
     if (!skill.userInvocable) continue;
@@ -3314,6 +3317,7 @@ export function registerSkillCommands(
     registry.register({
       name: cmdName,
       description: captured.description,
+      category: DOCUMENT_SKILLS.has(captured.name) ? "Document Processing" as CommandCategory : "User Custom" as CommandCategory,
       handler: async (ctx: CommandContext, args: string) => {
         const content = resolveSkillContent(captured, args);
         const tagged = `[SKILL: ${captured.name}]\n\n${content}`;

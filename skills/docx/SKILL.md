@@ -1,8 +1,9 @@
 ---
 name: docx
-description: Create or edit Microsoft Word (.docx) documents — headings, paragraphs, tables, styles, images, find-and-replace, extract text. Use when the user wants to read, generate, or modify a .docx file.
+description: Create or edit Microsoft Word (.docx) documents — headings, paragraphs, tables, styles, images, TOC, headers/footers, find-and-replace, tracked changes. Supports 4 input sources: Word docs, Markdown, plain text, project files. Use when the user wants to read, generate, or modify a .docx file.
 license: original (see skills/ATTRIBUTIONS.md)
 source: original clean-room; uses python-docx (MIT), user-installed
+user-invocable: true
 ---
 
 # Word (.docx)
@@ -19,36 +20,82 @@ python3 -c "import docx" 2>/dev/null || python3 -m pip install python-docx
 `python-docx` (MIT) is not bundled — install on demand, respecting an active
 venv. If install isn't possible, say so; don't pretend.
 
-## Reading / extracting
+## Core Principles
 
-Write a short script that opens the doc and walks `document.paragraphs`,
-`document.tables`, headers/footers. For a quick text dump, iterate paragraphs
-and print `.text`. Report structure (headings, table count) so the user sees
-what's there before editing.
+**Do NOT read user file contents.** When the input is an existing file (docx, md, txt), the agent must NOT read the file contents. File contents are private data. The agent only gathers requirements through interactive Q&A, then generates a Python script to process the file.
 
-## Creating / editing
+**Script storage:** All generated scripts are saved to `.swarmflow/<session_id>/docx/`.
 
-- **Prefer styles over manual formatting**: apply named styles
-  (`Heading 1`, `Title`, `Normal`, a table style) so the document stays
-  consistent and themeable — don't hand-set fonts/sizes everywhere.
-- Build structure explicitly: `add_heading`, `add_paragraph`,
-  `add_table(rows, cols)` then fill cells, `add_picture(path, width=…)`,
-  `add_page_break`.
-- **Find-and-replace** must operate at the *run* level (text is split across
-  runs); replacing `paragraph.text` wholesale destroys formatting. Handle runs
-  carefully or rebuild the paragraph deliberately.
-- For an existing template, open it and fill placeholders rather than rebuilding
-  from scratch.
+**Output location:** Generated files are output to the project root `output/` directory. Create it if it doesn't exist.
 
-## Tracked changes / comments
+## Interactive Requirements Gathering (branch by input type)
 
-`python-docx` has limited support for tracked changes/comments. If the task
-needs real redlining, say what's feasible and what isn't rather than silently
-producing a doc without tracked changes.
+### Input existing file (docx/md/txt)
+
+1. Confirm file path
+2. Ask: "What do you need to do with this file?"
+   - Modify content (text replacement, paragraph rewriting)
+   - Adjust formatting (style unification, font/size)
+   - Add table of contents
+   - Insert images/tables
+   - Add comments/tracked changes
+   - Headers/footers/page numbers
+3. Ask: output filename
+4. Generate script to `.swarmflow/<session_id>/docx/`
+5. Script outputs to `output/`
+
+### Create from scratch
+
+1. Ask: document type (report/thesis/proposal/manual)
+2. Ask: structure needs (TOC/sections/headers/footers/page numbers)
+3. Ask: style preference (formal/academic/business)
+4. Ask: content source (outline/project files/free writing)
+5. Generate script to `.swarmflow/<session_id>/docx/`
+6. Script outputs to `output/`
+
+## Input Sources (4 types)
+
+| Source | Processing method | Use case |
+|--------|------------------|----------|
+| Word (.docx) | Don't read content. Ask user what to do, generate script | Edit/restructure existing document |
+| Markdown | Don't read content. Ask user about conversion needs, generate script | Generate from outline/doc |
+| Plain text | Don't read content. Ask user about formatting needs, generate script | Generate formatted doc from text |
+| Project files | Don't read content. Ask user about needed info, generate script | Generate from project context |
+
+## python-docx API Guide
+
+**Core operations:**
+- `Document()` / `Document("template.docx")`
+- `document.paragraphs`, `document.tables`
+- `add_heading`, `add_paragraph`, `add_table`, `add_picture`, `add_page_break`
+
+**Styles:**
+- Apply named styles: `paragraph.style = "Heading 1"`
+- Don't hand-set fonts/sizes — use styles for consistency
+
+**Find and replace:**
+- Must operate at the *run* level (text is split across runs)
+- Replacing `paragraph.text` wholesale destroys formatting
+
+**Document structure:**
+- TOC: via OOXML injection (python-docx doesn't directly support)
+- Headers/footers: `section.header`, `section.footer`
+- Sections: `document.add_section()`
+- Page numbers: via OOXML field codes
+
+**Rich media:**
+- Images: `add_picture(path, width=Inches(5))`
+- Tables: `add_table(rows, cols)` → fill `cell.text`
+
+**Comments / tracked changes:**
+- python-docx has limited support for tracked changes
+- If the task needs real redlining, say what's feasible and what isn't
 
 ## Discipline
 
-- Write to a new file unless the user explicitly wants in-place; never clobber
-  the source without confirming.
-- After writing, reopen the output and verify the key content/structure exists;
-  report what was produced. `$ARGUMENTS` is the file and/or instruction.
+- Write to a new file unless told to edit in place; never clobber the source
+  without confirming.
+- After writing, reopen and verify key content/structure exists; report what was
+  produced.
+- **Script storage:** `.swarmflow/<session_id>/docx/`
+- **Output location:** project root `output/` (create if missing)

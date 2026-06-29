@@ -62,6 +62,6 @@ external/*
 .history/
 .codegraph/
 **.md
-docs*/ro
+docs/*
 **.png**
 !external/opentui/
