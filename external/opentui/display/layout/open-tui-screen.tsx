@@ -293,11 +293,11 @@ export function OpenTuiScreen({
   const effectiveSidebarWidth = sidebarVisible ? sidebarWidth : 0;
   const pickerContentWidth = terminal.width - effectiveSidebarWidth - 10;
 
-  // Logo disappears once user sends the first message. Shown at every
+  // Logo disappears once any content appears in the conversation (user messages,
+  // status messages like /help output, agent replies, etc.). Shown at every
   // terminal size — the welcome stage is centered and clamped below, so it
   // stays readable on narrow terminals instead of being hidden outright.
-  const hasUserMessage = presentationEntries.some((e) => e.kind === "user");
-  const showLogoInScroll = !hasUserMessage;
+  const showLogoInScroll = presentationEntries.length === 0;
   // Welcome wordmark vertical placement, keyed to ABSOLUTE terminal
   // height (not the conversation viewport). The viewport shrinks when a
   // command/picker panel opens; anchoring to terminal height instead

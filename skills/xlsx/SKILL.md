@@ -1,6 +1,6 @@
 ---
 name: xlsx
-description: Create, edit, analyze, or clean Excel/.xlsx (and .csv/.tsv) spreadsheets — formulas, multiple sheets, charts, formatting, data cleaning, batch processing. Supports 3 input sources: Excel, CSV, TSV. Use when the user wants to read, build, or transform a spreadsheet.
+description: Create/edit/analyze Excel spreadsheets — formulas, charts, formatting, data cleaning. Input: .xlsx, .csv, .tsv.
 license: original (see skills/ATTRIBUTIONS.md)
 source: original clean-room; uses openpyxl (MIT); optional pandas (BSD-3), user-installed
 user-invocable: true

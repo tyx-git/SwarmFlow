@@ -1,6 +1,6 @@
 ---
 name: docx
-description: Create or edit Microsoft Word (.docx) documents — headings, paragraphs, tables, styles, images, TOC, headers/footers, find-and-replace, tracked changes. Supports 4 input sources: Word docs, Markdown, plain text, project files. Use when the user wants to read, generate, or modify a .docx file.
+description: Create/edit Word documents — headings, tables, styles, images, TOC, headers/footers. Input: Word, Markdown, text, project files.
 license: original (see skills/ATTRIBUTIONS.md)
 source: original clean-room; uses python-docx (MIT), user-installed
 user-invocable: true

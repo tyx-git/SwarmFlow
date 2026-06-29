@@ -11,11 +11,10 @@
  */
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join, dirname } from "node:path";
+import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import type { CommandPickerResult } from "../ui/command-picker.js";
-import type { SessionStore, LocalProviderConfig, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
+import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
 import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
 import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
 import { validateSummarizeHintLevels } from "../config/settings.js";
@@ -1051,7 +1050,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
       ctx.showMessage("Model switch cancelled.");
       return;
     }
-    const { selectedConfigName, selectedHint } = resolvedSelection;
+    const { selectedConfigName } = resolvedSelection;
 
     // 适当地切换活动运行时；会话历史记录保持完整。
     session.switchModel(selectedConfigName);
@@ -1066,8 +1065,6 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
     await promptThinkingLevel(ctx);
     persistModelSelection(ctx);
     ctx.autoSave();
-
-    void selectedHint;
   } catch (e) {
     ctx.showMessage(`Failed to switch model: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -1796,10 +1793,6 @@ async function cmdDiff(ctx: CommandContext, _args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /autoupdate -切换自动更新检查
-// ------------------------------------------------------------------
-
-// ------------------------------------------------------------------
 // /主题-选择浅色/深色/自动
 // ------------------------------------------------------------------
 
@@ -2318,7 +2311,6 @@ function buildReviewPrompt(reviewTarget: string, userInstructions: string): stri
 }
 
 function gitCurrentBranch(): string {
-  const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
   const result = spawnSync("git", ["branch", "--show-current"], {
     encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
   });
@@ -2326,7 +2318,6 @@ function gitCurrentBranch(): string {
 }
 
 function gitBranchOptions(): CommandOption[] {
-  const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
   const current = gitCurrentBranch();
   const result = spawnSync("git", ["branch", "-a", "--format=%(refname:short)"], {
     encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
@@ -2352,7 +2343,6 @@ function gitBranchOptions(): CommandOption[] {
 }
 
 function gitCommitOptions(): CommandOption[] {
-  const { spawnSync } = require("node:child_process") as typeof import("node:child_process");
   const result = spawnSync("git", ["log", "--oneline", "-20"], {
     encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"],
   });
@@ -2397,17 +2387,6 @@ function reviewDisplayText(kind: string, detail: string, note: string): string {
   }
   if (note) parts.push(note);
   return parts.join(" ");
-}
-
-function dispatchReview(ctx: CommandContext, kind: string, detail: string, note: string): void {
-  const target = buildReviewTarget(kind, detail);
-  const content = buildReviewPrompt(target, note);
-  const displayText = reviewDisplayText(kind, detail, note);
-  if (ctx.onInjectedTurnRequested) {
-    ctx.onInjectedTurnRequested(displayText, content);
-  } else if (ctx.onTurnRequested) {
-    ctx.onTurnRequested(content);
-  }
 }
 
 function getSessionId(ctx: CommandContext): string {
@@ -2832,48 +2811,6 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/rules", description: "View or update project .rules", handler: cmdRules, category: "Project Configuration" });
   registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, category: "UI" });
   return registry;
-}
-
-// ------------------------------------------------------------------
-// /复制
-// ------------------------------------------------------------------
-
-async function cmdCopy(ctx: CommandContext): Promise<void> {
-  const hint = ctx.showHint ?? ctx.showMessage;
-
-  if (ctx.isProcessing?.()) {
-    hint("Wait until the agent finishes.");
-    return;
-  }
-
-  const log = ctx.session.log as ReadonlyArray<{ type: string; content?: unknown; discarded?: boolean }> | undefined;
-  if (!Array.isArray(log)) {
-    hint("No agent response to copy.");
-    return;
-  }
-
-  let lastText: string | null = null;
-  for (let i = log.length - 1; i >= 0; i--) {
-    const entry = log[i];
-    if (entry?.discarded) continue;
-    if (entry?.type === "assistant_text" && typeof entry.content === "string" && entry.content.length > 0) {
-      lastText = entry.content;
-      break;
-    }
-  }
-
-  if (lastText === null) {
-    hint("No agent response to copy.");
-    return;
-  }
-
-  if (!ctx.copyToClipboard) {
-    hint("Clipboard is not available in this environment.");
-    return;
-  }
-
-  const ok = await ctx.copyToClipboard(lastText);
-  hint(ok ? `Copied agent response (${lastText.length} chars).` : "Copy failed.");
 }
 
 // ------------------------------------------------------------------
@@ -3350,45 +3287,6 @@ export function reRegisterSkillCommands(
 }
 
 // ------------------------------------------------------------------
-// /raw命令-切换原始/渲染模式
-// ------------------------------------------------------------------
-
-async function cmdRaw(ctx: CommandContext): Promise<void> {
-  // TUI拦截此状态消息以切换降价模式。
-  ctx.showMessage("__toggle_markdown_raw__");
-}
-
-// ------------------------------------------------------------------
-// /agents命令-切换代理面板
-// ------------------------------------------------------------------
-
-async function cmdAgents(ctx: CommandContext): Promise<void> {
-  ctx.showMessage("__open_agent_list__");
-}
-
-// ------------------------------------------------------------------
-// /todos命令-切换任务面板
-// ------------------------------------------------------------------
-
-async function cmdTodos(ctx: CommandContext): Promise<void> {
-  ctx.showMessage("__toggle_todo_panel__");
-}
-
-// ------------------------------------------------------------------
-// /sidebar命令-切换侧边栏模式（打开/关闭/自动）
-// ------------------------------------------------------------------
-
-async function cmdSidebar(ctx: CommandContext, args: string): Promise<void> {
-  const mode = args.trim().toLowerCase();
-  if (mode === "open" || mode === "close" || mode === "auto") {
-    ctx.showMessage(`__sidebar_mode__:${mode}`);
-  } else {
-    // 切换：循环自动→开启→关闭→自动
-    ctx.showMessage("__sidebar_toggle__");
-  }
-}
-
-// ------------------------------------------------------------------
 // /permission -设置权限模式
 // ------------------------------------------------------------------
 
@@ -3661,7 +3559,6 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
 function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: string; args?: string[]; disabled?: boolean; _sourcePath?: string; _scope?: string; matcher?: { toolNames?: string[]; agentIds?: string[] }; failClosed?: boolean }> {
   try {
     const { resolveAssetPaths } = require("./config.js") as typeof import("../config/config.js");
-    const { loadHooksMulti } = require("./hooks/index.js") as typeof import("../hooks/index.js");
     const paths = resolveAssetPaths();
     // loadhooksmti按名称进行重复数据删除（项目覆盖全局）
     // 我们希望所有包括禁用，所以我们从磁盘加载raw

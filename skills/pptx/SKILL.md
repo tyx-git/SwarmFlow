@@ -1,6 +1,6 @@
 ---
 name: pptx
-description: Create or edit PowerPoint (.pptx) presentations — slides from an outline or data, titles, bullets, tables, charts, images, speaker notes. Supports 4 input sources: Markdown docs, Word docs, project files, existing .pptx. Use when the user wants to build or modify a slide deck.
+description: Create/edit PowerPoint slides — titles, bullets, tables, charts, images. Input: Markdown, Word, project files, or existing .pptx.
 license: original (see skills/ATTRIBUTIONS.md)
 source: original clean-room; uses python-pptx (MIT), user-installed
 user-invocable: true

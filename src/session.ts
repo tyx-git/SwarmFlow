@@ -31,7 +31,7 @@ import type {
 import { createEphemeralLogState } from "./context/ephemeral-log.js";
 import { isCompactMarker, allocateContextId, stripContextTags, ContextTagStripBuffer } from "./context/context-rendering.js";
 import { estimateEntryTokens, generateShowContext } from "./context/show-context.js";
-import { getThinkingLevels, getHighestThinkingLevel, getModelMaxOutputTokens, type Config, type ModelConfig } from "./config/config.js";
+import { getThinkingLevels, getModelMaxOutputTokens, type Config, type ModelConfig } from "./config/config.js";
 import type { MCPClientManager } from "./clients/mcp-client.js";
 import { ProgressEvent, type ProgressLevel, type ProgressReporter } from "./lib/progress.js";
 import { ToolResult } from "./providers/base.js";
