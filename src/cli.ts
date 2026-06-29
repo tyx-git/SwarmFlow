@@ -31,7 +31,7 @@ import { startBackgroundRegistryRefresh } from "./providers/registry-fetch.js";
 import { checkForUpdates, applyStaged, setUpdateStateGetter, setRelaunchCallback } from "./lifecycle/update-check.js";
 import { VERSION } from "./version.js";
 import { hasAnyManagedCredential } from "./config/managed-provider-credentials.js";
-import { findSessionById } from "./session-resume.js";
+import { findSessionById, findSessionByName, listSessionsForProject } from "./session-resume.js";
 
 /**
  * main() 的依赖注入表面。
@@ -88,9 +88,13 @@ function relaunchCurrentBinary(argv: string[]): void {
 }
 
 /**
- * 在 Commander 解析 argv 之前处理 `swarmflow --resume <id>`。
+ * 在 Commander 解析 argv 之前处理 `swarmflow --resume [id/name]`。
  *
- * 在所有项目中查找该会话；若属于不同 cwd，询问用户是否切换。
+ * 支持三种模式：
+ *   --resume          显示当前项目的会话列表，交互式选择
+ *   --resume <name>   按名称（title/summary）或 UUID 匹配会话
+ *   --resume <uuid>   按 UUID 匹配（兼容原有行为）
+ *
  * 成功后将会话目录存入环境变量，launchTui() 可在引导后调用 applySessionRestore。
  * --resume 及其参数从 argv 中拼接，以免 Commander 看到它们。
  */
@@ -101,16 +105,56 @@ async function maybeHandleResumeFlag(
   const idx = argv.indexOf("--resume");
   if (idx < 0) return;
 
-  const id = argv[idx + 1];
-  if (!id || id.startsWith("--")) {
-    console.error("Error: --resume requires a session ID.");
-    console.error("Usage: swarmflow --resume <sessionId>");
-    process.exit(1);
+  const nextArg = argv[idx + 1];
+  const hasArg = nextArg && !nextArg.startsWith("--");
+
+  // --resume 不带参数：显示当前项目会话列表
+  if (!hasArg) {
+    const { projectDir } = await getCurrentProjectInfo();
+    const sessions = listSessionsForProject(projectDir);
+
+    if (sessions.length === 0) {
+      console.error("No previous sessions in this project.");
+      argv.splice(idx, 1);
+      return;
+    }
+
+    // 显示会话列表
+    console.log("\nSessions:\n");
+    const rows: string[] = [];
+    for (let i = 0; i < sessions.length; i++) {
+      const s = sessions[i];
+      const label = s.title || s.summary.slice(0, 50) || "(untitled)";
+      const age = formatAge(s.lastActiveAt);
+      const num = String(i + 1).padStart(3);
+      rows.push(`  ${num}  ${label.padEnd(40)} ${age}`);
+    }
+    console.log(rows.join("\n"));
+    console.log(`\nUsage: swarmflow --resume <number|name|uuid>`);
+
+    argv.splice(idx, 1);
+    return;
   }
 
-  const found = findSession(id);
+  // --resume <argument>
+  const id = nextArg;
+
+  // 1. 尝试 UUID 匹配（所有项目）
+  let found = findSession(id);
+  if (!found) {
+    // 2. 尝试名称匹配（当前项目）
+    const { projectDir } = await getCurrentProjectInfo();
+    const byName = findSessionByName(id, projectDir);
+    if (byName) {
+      // 构造 FoundSession 结构
+      const { projectPath } = readProjectMeta(projectDir);
+      found = { sessionDir: byName.path, projectDir, projectPath, title: byName.title };
+    }
+  }
+
   if (!found) {
     console.error(`Error: session not found: ${id}`);
+    console.error("Tip: use 'swarmflow --resume' to see available sessions.");
     process.exit(1);
   }
 
@@ -137,6 +181,43 @@ async function maybeHandleResumeFlag(
 
   process.env["SWARMFLOW_RESUME_SESSION_DIR"] = found.sessionDir;
   argv.splice(idx, 2);
+}
+
+/** 获取当前项目的 projectDir 和 projectPath。 */
+async function getCurrentProjectInfo(): Promise<{ projectDir: string; projectPath: string }> {
+  const cwd = process.cwd();
+  const { projectSlug } = await import("./config/persistence.js");
+  const slug = projectSlug(cwd);
+  const { join } = await import("node:path");
+  const projectDir = join(getSwarmflowHomeDir(), "projects", slug);
+  return { projectDir, projectPath: cwd };
+}
+
+/** 从 project.json 读取 projectPath。 */
+function readProjectMeta(projectDir: string): { projectPath: string | undefined } {
+  try {
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const raw = JSON.parse(readFileSync(join(projectDir, "project.json"), "utf-8"));
+    return { projectPath: typeof raw.original_path === "string" ? raw.original_path : undefined };
+  } catch {
+    return { projectPath: undefined };
+  }
+}
+
+/** 格式化时间为 "X mins ago" 风格。 */
+function formatAge(isoString: string | undefined): string {
+  if (!isoString) return "unknown";
+  const ms = Date.parse(isoString);
+  if (!Number.isFinite(ms)) return "unknown";
+  const delta = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (delta < 60) return delta <= 1 ? "just now" : `${delta}s ago`;
+  const mins = Math.floor(delta / 60);
+  if (mins < 60) return mins === 1 ? "1 min ago" : `${mins} mins ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
 }
 
 /**

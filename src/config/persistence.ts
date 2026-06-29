@@ -50,7 +50,7 @@ const MODEL_SELECTION_FILE = "model-selection.json";
 // ------------------------------------------------------------------
 
 /** 生成项目路径的 slug 格式：<name>_<sha256前6位> */
-function projectSlug(projectPath: string): string {
+export function projectSlug(projectPath: string): string {
   const name = basename(projectPath) || "root";
   const h = createHash("sha256").update(projectPath).digest("hex").slice(0, 6);
   return `${name}_${h}`;

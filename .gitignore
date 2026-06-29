@@ -65,3 +65,4 @@ external/*
 docs/*
 **.png**
 !external/opentui/
+.swarmflow/

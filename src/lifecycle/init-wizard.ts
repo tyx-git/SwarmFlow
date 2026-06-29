@@ -990,6 +990,9 @@ export async function runInitWizard(): Promise<WizardResult> {
   mkdirSync(join(homeDir, "prompts", "templates"), { recursive: true });
   mkdirSync(join(homeDir, "skills"), { recursive: true });
 
+  // Create workspace .swarmflow directory placeholder for session artifacts.
+  mkdirSync(join(process.cwd(), ".swarmflow"), { recursive: true });
+
   // ------------------------------------------------------------------
   // 摘要
   // ------------------------------------------------------------------

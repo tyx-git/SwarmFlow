@@ -287,6 +287,9 @@ export class InitService {
 
     mkdirSync(join(this.homeDir, "prompts", "templates"), { recursive: true });
     mkdirSync(join(this.homeDir, "skills"), { recursive: true });
+
+    // Create workspace .swarmflow directory placeholder for session artifacts.
+    mkdirSync(join(process.cwd(), ".swarmflow"), { recursive: true });
   }
 
   // ── Internal helpers ──

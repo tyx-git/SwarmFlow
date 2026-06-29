@@ -19,7 +19,7 @@ import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
 import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
 import { validateSummarizeHintLevels } from "../config/settings.js";
 import { VERSION } from "../version.js";
-import { applySessionRestore, findSessionById } from "../session-resume.js";
+import { applySessionRestore, findSessionById, findSessionByName } from "../session-resume.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
 import {
@@ -183,7 +183,7 @@ export interface CommandOption {
   labelParts?: Array<{ text: string; color?: SemanticColor }>;
   /* 选择时作为命令参数提交的值。 */
   value: string;
-  /* 在标签旁边显示右对齐的细节文本（例如，“+42 -18”）。 */
+  /* 在标签旁边显示右对齐的细节文本（例如，"+42 -18"）。 */
   detail?: string;
   /* 详细文本中主要图标的语义颜色。 */
   detailColor?: SemanticColor;
@@ -195,9 +195,9 @@ export interface CommandOption {
   checked?: boolean;
   /* 当为true时，Enter打开一个内联文本输入，而不是立即提交。 */
   customInput?: boolean;
-  /* 标签显示在上面的内联文本输入（默认：“您的指示：”）。 */
+  /* 标签显示在上面的内联文本输入（默认："您的指示："）。 */
   inputLabel?: string;
-  /* 内嵌文本输入中的占位符（默认：“键入您的指令”）。 */
+  /* 内嵌文本输入中的占位符（默认："键入您的指令"）。 */
   inputPlaceholder?: string;
 }
 
@@ -211,7 +211,7 @@ export interface CommandOptionsContext {
  * A single slash command.
  */
 export interface SlashCommand {
-  /* 命令名，例如：“会话”。 */
+  /* 命令名，例如："会话"。 */
   name: string;
   /* /help输出中显示的简短描述。 */
   description: string;
@@ -540,7 +540,7 @@ async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void
     }
   }
 
-  // 内嵌快捷路径：on | off | “<level1> <level2>”。
+  // 内嵌快捷路径：on | off | "<level1> <level2>"。
   if (input === "on" || input === "off") {
     applyEnabled(input === "on");
     return;
@@ -574,22 +574,30 @@ async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
       return;
     }
     const lines = ["Sessions", "", ...buildSessionTableRows(sessions)];
-    lines.push("", "Run /resume and choose a session from the picker, or run swarmflow --resume <sessionId> from this project.");
+    lines.push("", "Run /resume and choose a session from the picker, or run swarmflow --resume <number|name|uuid> from this project.");
     ctx.showMessage(lines.join("\n"));
     return;
   }
 
   // 解析当前项目中请求的会话。数字索引
   // （1-based）作为选择器的快捷方式；否则按UUID匹配
-  // （它等于目录basename）。
+  // （它等于目录basename）；最后按名称（title/summary）匹配。
   const numericIdx = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) - 1 : Number.NaN;
-  const target = Number.isInteger(numericIdx)
+  let target = Number.isInteger(numericIdx)
     ? sessions[numericIdx]
     : sessions.find((s) => s.sessionId === trimmed || basename(s.path) === trimmed);
 
+  // UUID/索引未匹配时，尝试按名称查找
+  if (!target && store.projectDir) {
+    const byName = findSessionByName(trimmed, store.projectDir);
+    if (byName) {
+      target = sessions.find((s) => s.sessionId === byName.sessionId);
+    }
+  }
+
   if (!target) {
     // 在这个项目中没有-检查它是否生活在其他地方，以便我们可以给出一个
-    // 可操作的提示，而不是简单的“未找到”。
+    // 可操作的提示，而不是简单的"未找到"。
     const elsewhere = findSessionById(trimmed);
     if (elsewhere && elsewhere.projectPath) {
       ctx.showMessage(
@@ -763,7 +771,7 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
   const levels = getThinkingLevels(model);
   if (levels.length === 0) return undefined;
 
-  // 如果只有一个关卡(例如：“on”表示具有不可配置思维的模型)，
+  // 如果只有一个关卡(例如："on"表示具有不可配置思维的模型)，
   // 自动应用，无需提示。
   if (levels.length === 1) {
     session.thinkingLevel = levels[0];
@@ -1423,7 +1431,7 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
 }
 
 // ------------------------------------------------------------------
-// “添加自定义提供商…”-任意多页向导
+// "添加自定义提供商…"-任意多页向导
 // OpenAI / anthropic兼容端点与一个或多个模型。
 // ------------------------------------------------------------------
 
@@ -2150,7 +2158,7 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // 处理“清除”-删除所有层
+  // 处理"清除"-删除所有层
   if (trimmed === "clear") {
     persistSettingsPatch({ model_tiers: {} }, ctx.swarmflowHomeDir);
     // 更新运行时配置
@@ -2215,8 +2223,8 @@ async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
   }
 
   // 确定所选模型的思维水平。所需时的模型
-  // 支持思维;“没有”。Picker提供符合等级的关卡
-  // 只有（原生的“off”/“none”过滤掉了）。取消将中止保存。
+  // 支持思维;"没有"。Picker提供符合等级的关卡
+  // 只有（原生的"off"/"none"过滤掉了）。取消将中止保存。
   let thinkingLevel: string;
 
   if (getThinkingLevels(resolvedModelId).length === 0) {
@@ -3429,7 +3437,7 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
 
   const raw = args.trim();
   if (raw) {
-    // 直接参数：“/rewind 3”（仅限对话）或“/rewind 3:files”（来自picker）
+    // 直接参数："/rewind 3"（仅限对话）或"/rewind 3:files"（来自picker）
     const colonIdx = raw.indexOf(":");
     if (colonIdx >= 0) {
       turnIndex = parseInt(raw.slice(0, colonIdx), 10);
@@ -3468,7 +3476,7 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  // 对于“文件”和“两者”模式，我们需要先计划
+  // 对于"文件"和"两者"模式，我们需要先计划
   if (!session.planRewind || !session.rewindFiles || !session.rewindBoth) {
     ctx.showMessage("File rewind is not supported in this session.");
     return;
@@ -3528,7 +3536,7 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
     const bashPart = formatBashResult(result);
     ctx.showMessage([filePart, bashPart].filter(Boolean).join("\n"));
   } else {
-    // 模式=== “both”
+    // 模式=== "both"
     const result = await session.rewindBoth(turnIndex, plan);
     if (result.error) {
       ctx.showMessage(`Rewind failed: ${result.error}`);

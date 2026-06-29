@@ -19,6 +19,20 @@ export interface FoundSession {
   title: string | undefined;
 }
 
+/** 用于名称匹配的会话信息。 */
+export interface SessionInfo {
+  sessionId: string;
+  path: string;
+  created: string;
+  lastActiveAt: string;
+  summary: string;
+  title?: string;
+  turns: number;
+}
+
+/** 会话 UUID 格式正则。 */
+const LOOKS_LIKE_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * 在 swarmflow 主目录的所有项目中按 UUID 查找会话。
  * 如果没有项目包含此名称的目录，则返回 null。
@@ -63,6 +77,100 @@ export function findSessionById(sessionId: string, homeDir?: string): FoundSessi
 
     return { sessionDir, projectDir, projectPath, title };
   }
+  return null;
+}
+
+/**
+ * 列出指定项目目录中的所有会话，按最后活跃时间降序排列。
+ * 不依赖 SessionStore 实例。
+ */
+export function listSessionsForProject(projectDir: string): SessionInfo[] {
+  if (!existsSync(projectDir)) return [];
+
+  const sessions: SessionInfo[] = [];
+  const entries = readdirSync(projectDir).sort().reverse();
+
+  for (const name of entries) {
+    if (!LOOKS_LIKE_SESSION_ID.test(name)) continue;
+    const d = join(projectDir, name);
+    try {
+      if (!statSync(d).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+
+    // 优先使用 meta.json 进行快速列表
+    const metaFile = join(d, "meta.json");
+    if (existsSync(metaFile)) {
+      try {
+        const raw = JSON.parse(readFileSync(metaFile, "utf-8"));
+        const created = (raw.created_at as string) ?? "";
+        const lastActiveAt = (raw.last_active_at as string) ?? created;
+        const summary = (raw.summary as string) ?? "";
+        const title = typeof raw.title === "string" && raw.title.length > 0 ? raw.title : undefined;
+        const turns = (raw.turn_count as number) ?? 0;
+        if (turns === 0) continue;
+        if (raw.archived) continue;
+        sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns });
+        continue;
+      } catch {
+        // Fall through to log.json
+      }
+    }
+
+    // 回退到 log.json
+    const logFile = join(d, "log.json");
+    if (!existsSync(logFile)) continue;
+    try {
+      const raw = JSON.parse(readFileSync(logFile, "utf-8"));
+      const created = (raw["created_at"] as string) ?? "";
+      const lastActiveAt = (raw["updated_at"] as string) ?? created;
+      const summary = (raw["summary"] as string) ?? "";
+      const title = typeof raw["title"] === "string" && raw["title"].length > 0 ? raw["title"] : undefined;
+      const turns = (raw["turn_count"] as number) ?? 0;
+      if (turns === 0) continue;
+      if (raw.archived) continue;
+      sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns });
+    } catch {
+      continue;
+    }
+  }
+
+  sessions.sort((a, b) => {
+    if (!a.lastActiveAt && !b.lastActiveAt) return 0;
+    if (!a.lastActiveAt) return 1;
+    if (!b.lastActiveAt) return -1;
+    return b.lastActiveAt.localeCompare(a.lastActiveAt);
+  });
+
+  return sessions;
+}
+
+/**
+ * 按名称（title/summary）在指定项目目录中查找会话。
+ * 匹配优先级：title 精确匹配 → title 包含 → summary 包含。
+ */
+export function findSessionByName(
+  name: string,
+  projectDir: string,
+): { sessionId: string; path: string; title?: string } | null {
+  const sessions = listSessionsForProject(projectDir);
+  if (sessions.length === 0) return null;
+
+  const lower = name.toLowerCase();
+
+  // 1. title 精确匹配
+  const exact = sessions.find((s) => s.title?.toLowerCase() === lower);
+  if (exact) return { sessionId: exact.sessionId, path: exact.path, title: exact.title };
+
+  // 2. title 包含匹配
+  const titleContains = sessions.find((s) => s.title?.toLowerCase().includes(lower));
+  if (titleContains) return { sessionId: titleContains.sessionId, path: titleContains.path, title: titleContains.title };
+
+  // 3. summary 包含匹配
+  const summaryContains = sessions.find((s) => s.summary.toLowerCase().includes(lower));
+  if (summaryContains) return { sessionId: summaryContains.sessionId, path: summaryContains.path, title: summaryContains.title };
+
   return null;
 }
 
