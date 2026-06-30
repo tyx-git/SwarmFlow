@@ -8,7 +8,7 @@ description: Explains 's configuration system, settings.json, local project sett
 ## Directory Structure
 
 ```
-~/.fermi/                              # Global config
+~/.swarmflow/                              # Global config
 ├── settings.json                      # User-editable settings (JSONC, supports comments)
 ├── .env                               # API keys (override mode: wins over shell env)
 ├── state/                             # System-managed (do not edit)
@@ -20,7 +20,7 @@ description: Explains 's configuration system, settings.json, local project sett
 ├── projects/                          # Per-project session storage
 │   └── <name>_<sha256[:6]>/           #   Per-project directory
 │       ├── project.json               #     Project metadata
-│       ├── .fermi/                     #     Project-store layer
+│       ├── .swarmflow/                     #     Project-store layer
 │       │   ├── settings.json          #       Project-store settings
 │       │   ├── skills/                #       Project-store skills
 │       │   └── hooks/                 #       Project-store hooks
@@ -31,7 +31,7 @@ description: Explains 's configuration system, settings.json, local project sett
 │           └── archive/               #       Archived context windows
 └── AGENTS.md                          # Global persistent memory
 
-{PROJECT}/.fermi/                      # Workspace layer (user creates manually)
+{PROJECT}/.swarmflow/                      # Workspace layer (user creates manually)
 ├── settings.json                      # Local overrides (can be committed to git)
 ├── skills/                            # Workspace skills
 ├── hooks/                             # Workspace hooks
@@ -41,9 +41,9 @@ description: Explains 's configuration system, settings.json, local project sett
 
 ### Extension Layer Priority (highest first)
 
-1. **Workspace** --- `{cwd}/.fermi/`
-2. **Project-store** --- `~/.fermi/projects/<slug>/.fermi/`
-3. **Global** --- `~/.fermi/`
+1. **Workspace** --- `{cwd}/.swarmflow/`
+2. **Project-store** --- `~/.swarmflow/projects/<slug>/.swarmflow/`
+3. **Global** --- `~/.swarmflow/`
 4. **Bundled** --- shipped with  binary
 
 Skills, hooks, and templates are discovered from all layers in priority order.
@@ -85,7 +85,7 @@ The single user-editable config file. Supports `//` and `/* */` comments (JSONC)
       "label": "My LLM",
       "base_url": "https://api.example.com/v1",
       "protocol": "openai-chat",               // "openai-chat" (default) or "anthropic"
-      "api_key": "${CUSTOM_MY_LLM_KEY}", // env var ref; stored in ~/.fermi/.env
+      "api_key": "${CUSTOM_MY_LLM_KEY}", // env var ref; stored in ~/.swarmflow/.env
       "models": [
         {
           "id": "my-model-70b",
@@ -151,10 +151,10 @@ The single user-editable config file. Supports `//` and `/* */` comments (JSONC)
 
 ## API Keys
 
-API keys are stored in `~/.fermi/.env` (created by `fermi init` or the `/model` credential flow). This file uses `KEY=VALUE` format and is loaded with **override semantics** --- values in `.env` always win over shell environment variables.
+API keys are stored in `~/.swarmflow/.env` (created by `swarmflow init` or the `/model` credential flow). This file uses `KEY=VALUE` format and is loaded with **override semantics** --- values in `.env` always win over shell environment variables.
 
 ```bash
-# ~/.fermi/.env
+# ~/.swarmflow/.env
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 ```
@@ -174,14 +174,14 @@ The `api_key_env` value can also be a `${VAR}` reference, which is resolved at r
 | Type | How credentials work |
 |------|---------------------|
 | Standard (`anthropic`, `openai`, `openrouter`) | `api_key_env` references a shell/dotenv variable |
-| OAuth (`openai-codex`, `copilot`) | Login via `fermi oauth` or `/codex` / `/copilot` commands; tokens stored internally |
-| Managed (`kimi*`, `qwen*`, `glm*`, `deepseek`, `minimax*`, `xiaomi`) | Key stored in -managed env slot in `~/.fermi/.env`; external env vars auto-detected as import candidates during setup |
+| OAuth (`openai-codex`, `copilot`) | Login via `swarmflow oauth` or `/codex` / `/copilot` commands; tokens stored internally |
+| Managed (`kimi*`, `qwen*`, `glm*`, `deepseek`, `minimax*`, `xiaomi`) | Key stored in -managed env slot in `~/.swarmflow/.env`; external env vars auto-detected as import candidates during setup |
 | Local (`ollama`, `omlx`, `lmstudio`) | No key needed (default "local"); optional `api_key` for authenticated endpoints |
-| Custom | API key stored in `~/.fermi/.env` as `CUSTOM_<ID>_KEY`; referenced via `${...}` in settings |
+| Custom | API key stored in `~/.swarmflow/.env` as `CUSTOM_<ID>_KEY`; referenced via `${...}` in settings |
 
 ## Project-Local Settings
 
-Create `{PROJECT}/.fermi/settings.json` to override global settings for a specific project. Only include the fields you want to override:
+Create `{PROJECT}/.swarmflow/settings.json` to override global settings for a specific project. Only include the fields you want to override:
 
 ```jsonc
 {
@@ -201,7 +201,7 @@ Create `{PROJECT}/.fermi/settings.json` to override global settings for a specif
 | Arrays (`disabled_skills`) | Local replaces global |
 | `providers`, `diff_display`, `auto_update` | **Global only**, local value ignored |
 
-There are two local layers: the **project-store** layer (`~/.fermi/projects/<slug>/.fermi/settings.json`, system-managed) and the **workspace** layer (`{cwd}/.fermi/settings.json`, user-authored). When both exist, workspace wins on conflict (same merge rules).
+There are two local layers: the **project-store** layer (`~/.swarmflow/projects/<slug>/.swarmflow/settings.json`, system-managed) and the **workspace** layer (`{cwd}/.swarmflow/settings.json`, user-authored). When both exist, workspace wins on conflict (same merge rules).
 
 ## Model Selection
 
@@ -278,20 +278,20 @@ After editing MCP config (or SKILL.md files, or AGENTS.md), call the `reload` to
 
 ## First-Time Setup
 
-Run `fermi init` to:
+Run `swarmflow init` to:
 1. Select your main model (hierarchical picker; credential setup is triggered inline when you pick a model from an unconfigured provider)
 2. Choose a thinking level for the selected model
 3. Optionally configure sub-agent model tiers (high / medium / low)
 4. Optionally configure a web search API key (Serper, Tavily, Exa, or Brave Search)
 
-The wizard saves to `~/.fermi/settings.json` and `~/.fermi/state/model-selection.json`. It also creates `~/.fermi/agent_templates/`, `~/.fermi/skills/`, and `~/.fermi/AGENTS.md` if they do not exist.
+The wizard saves to `~/.swarmflow/settings.json` and `~/.swarmflow/state/model-selection.json`. It also creates `~/.swarmflow/agent_templates/`, `~/.swarmflow/skills/`, and `~/.swarmflow/AGENTS.md` if they do not exist.
 
 ## CLI Override
 
 The `-c` flag applies per-process settings overrides that are never persisted:
 
 ```bash
-fermi -c context_budget_percent=50
+swarmflow -c context_budget_percent=50
 ```
 
 Currently only `context_budget_percent` is supported as a `-c` override.

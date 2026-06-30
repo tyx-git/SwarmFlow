@@ -96,7 +96,7 @@ export async function resolveThemeMode(
 
   // 5. fallback
   process.stderr.write(
-    "fermi: terminal theme not detected (no OSC response, no COLORFGBG hint). " +
+    "swarmflow: terminal theme not detected (no OSC response, no COLORFGBG hint). " +
     "Falling back to dark. Set THEME=light or run /theme to pick.\n",
   );
   return { mode: "dark", pref, source: "fallback" };

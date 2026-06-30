@@ -119,7 +119,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
 
   if (!hasProviders) {
     throw new Error(
-      "No providers configured. Run `fermi init` first, then retry the OpenTUI prototype.",
+      "No providers configured. Run `swarmflow init` first, then retry the OpenTUI prototype.",
     );
   }
 

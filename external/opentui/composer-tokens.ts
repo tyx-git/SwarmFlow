@@ -22,7 +22,7 @@ export interface ComposerTokenVisuals {
 }
 
 const COMPOSER_TOKEN_TYPE = "composer-token";
-const COMPOSER_EXTMARK_PATCHED = Symbol("fermi.composer-extmarks-patched");
+const COMPOSER_EXTMARK_PATCHED = Symbol("swarmflow.composer-extmarks-patched");
 
 export function createComposerTokenVisuals(colors: {
   accent: ColorInput;

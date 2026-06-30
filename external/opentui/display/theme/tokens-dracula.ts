@@ -79,7 +79,7 @@ export const DRACULA_TOKENS: DisplayThemeTokens = {
       variable: "#f8f8f2",
       headingPrimary: "#bd93f9",
       headingSecondary: "#ff79c6",
-      raw: "#50fa7b",
+      raw: "#8be9fd",
     },
     hljs: {
       "hljs-keyword": "#ff79c6",

@@ -32,12 +32,12 @@ export function setUseShikiHighlighter(value: boolean): void {
   useShikiHighlighter = value;
 }
 
-const PATCH_FLAG = Symbol.for("fermi.opentui.markdown.patch.v5");
-const INNER_TEXT = Symbol.for("fermi.codeblock.text");
-const LABEL_REF = Symbol.for("fermi.codeblock.label");
-const COPY_REF = Symbol.for("fermi.codeblock.copy");
-const CODE_CONTENT = Symbol.for("fermi.codeblock.rawcontent");
-const COALESCED_MARGIN_TOP = Symbol.for("fermi.opentui.markdown.coalesced.marginTop");
+const PATCH_FLAG = Symbol.for("swarmflow.opentui.markdown.patch.v5");
+const INNER_TEXT = Symbol.for("swarmflow.codeblock.text");
+const LABEL_REF = Symbol.for("swarmflow.codeblock.label");
+const COPY_REF = Symbol.for("swarmflow.codeblock.copy");
+const CODE_CONTENT = Symbol.for("swarmflow.codeblock.rawcontent");
+const COALESCED_MARGIN_TOP = Symbol.for("swarmflow.opentui.markdown.coalesced.marginTop");
 const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/;
 const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/;
 const ANY_MARKDOWN_BLOCK_BREAK_RE = /(?:\r?\n){2,}/;

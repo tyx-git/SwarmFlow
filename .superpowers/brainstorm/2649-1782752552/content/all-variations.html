@@ -1,0 +1,251 @@
+<h2>Style A Variations — Full Preview</h2>
+<p class="subtitle">5 variations of the Box Frame design. Click to select.</p>
+
+<div class="cards" style="grid-template-columns: 1fr;">
+
+<!-- Variation 1: Minimal Lines -->
+<div class="card" data-choice="a1" onclick="toggleSelect(this)">
+  <div class="card-image" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1b26; color: #c0caf5;">
+    <div style="color: #7aa2f7; font-weight: bold; margin-bottom: 8px;">─── Session History ───</div>
+    <div style="color: #565f89; margin-bottom: 12px;">myproject_a1b2c3</div>
+
+    <div style="padding: 4px 0; border-bottom: 1px solid #24283b; display: flex;">
+      <span style="color: #7aa2f7;">▸</span>
+      <span style="flex: 1; color: #f0f6fc; font-weight: bold;">Fix login bug</span>
+      <span style="color: #9ece6a;">2m ago</span>
+    </div>
+    <div style="padding: 4px 0; border-bottom: 1px solid #24283b; display: flex;">
+      <span style="color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Add dark mode</span>
+      <span style="color: #e0af68;">1h ago</span>
+    </div>
+    <div style="padding: 4px 0; border-bottom: 1px solid #24283b; display: flex;">
+      <span style="color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Refactor auth</span>
+      <span style="color: #e0af68;">3d ago</span>
+    </div>
+    <div style="padding: 4px 0; border-bottom: 1px solid #24283b; display: flex;">
+      <span style="color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Update README</span>
+      <span style="color: #f7768e;">1w ago</span>
+    </div>
+    <div style="padding: 4px 0; display: flex;">
+      <span style="color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Setup CI</span>
+      <span style="color: #f7768e;">2w ago</span>
+    </div>
+
+    <div style="margin-top: 12px; color: #565f89; font-size: 11px;">↑↓ Navigate · Enter Resume · Esc Cancel</div>
+  </div>
+  <div class="card-body">
+    <h3>Variation 1: Minimal Lines</h3>
+    <p>Thin horizontal dividers between entries. No background fills. Pure text with only time color-coded. Clean and uncluttered.</p>
+  </div>
+</div>
+
+<!-- Variation 2: Rich Info -->
+<div class="card" data-choice="a2" onclick="toggleSelect(this)">
+  <div class="card-image" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1b26; color: #c0caf5;">
+    <div style="color: #bb9af7; font-weight: bold; margin-bottom: 12px; font-size: 14px;">✦ Session History</div>
+
+    <div style="padding: 8px 12px; background: #24283b; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #7aa2f7;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="color: #f0f6fc; font-weight: bold;">Fix login bug</span>
+        <span style="color: #9ece6a; font-size: 11px; background: #9ece6a22; padding: 2px 8px; border-radius: 10px;">2m ago</span>
+      </div>
+      <div style="color: #565f89; font-size: 11px; margin-top: 4px;">12 turns · Last: "Fix the authentication error..."</div>
+    </div>
+
+    <div style="padding: 8px 12px; margin-bottom: 8px; display: flex;">
+      <span style="color: transparent; margin-right: 10px;">▸</span>
+      <div style="flex: 1;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #c0caf5;">Add dark mode</span>
+          <span style="color: #e0af68; font-size: 11px;">1h ago</span>
+        </div>
+        <div style="color: #565f89; font-size: 11px; margin-top: 4px;">8 turns · Last: "Implement theme toggle..."</div>
+      </div>
+    </div>
+
+    <div style="padding: 8px 12px; margin-bottom: 8px; display: flex;">
+      <span style="color: transparent; margin-right: 10px;">▸</span>
+      <div style="flex: 1;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #c0caf5;">Refactor auth module</span>
+          <span style="color: #e0af68; font-size: 11px;">3d ago</span>
+        </div>
+        <div style="color: #565f89; font-size: 11px; margin-top: 4px;">5 turns · Last: "Move to JWT tokens..."</div>
+      </div>
+    </div>
+
+    <div style="padding: 8px 12px; margin-bottom: 8px; display: flex;">
+      <span style="color: transparent; margin-right: 10px;">▸</span>
+      <div style="flex: 1;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #c0caf5;">Update README docs</span>
+          <span style="color: #f7768e; font-size: 11px;">1w ago</span>
+        </div>
+        <div style="color: #565f89; font-size: 11px; margin-top: 4px;">3 turns · Last: "Add API examples..."</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 12px; color: #565f89; font-size: 11px;">↑↓ Navigate · Enter Resume · Esc Cancel</div>
+  </div>
+  <div class="card-body">
+    <h3>Variation 2: Rich Info</h3>
+    <p>Two-line entries showing title + last message preview. Turn count badge. Rounded time pill. Most informative option.</p>
+  </div>
+</div>
+
+<!-- Variation 3: Compact Grid -->
+<div class="card" data-choice="a3" onclick="toggleSelect(this)">
+  <div class="card-image" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1b26; color: #c0caf5;">
+    <div style="color: #bb9af7; font-weight: bold; margin-bottom: 12px; font-size: 14px;">✦ Session History</div>
+
+    <div style="display: flex; color: #565f89; font-size: 11px; padding: 4px 12px; border-bottom: 1px solid #3b4261; margin-bottom: 4px;">
+      <span style="width: 24px;">#</span>
+      <span style="flex: 1;">SESSION</span>
+      <span style="width: 50px; text-align: right;">TURNS</span>
+      <span style="width: 70px; text-align: right;">ACTIVE</span>
+    </div>
+
+    <div style="display: flex; padding: 4px 12px; background: #24283b; border-radius: 4px; margin-bottom: 2px; border-left: 3px solid #7aa2f7;">
+      <span style="width: 24px; color: #7aa2f7;">▸</span>
+      <span style="flex: 1; color: #f0f6fc; font-weight: bold;">Fix login bug</span>
+      <span style="width: 50px; text-align: right; color: #565f89;">12</span>
+      <span style="width: 70px; text-align: right; color: #9ece6a;">2m</span>
+    </div>
+    <div style="display: flex; padding: 4px 12px; margin-bottom: 2px;">
+      <span style="width: 24px; color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Add dark mode</span>
+      <span style="width: 50px; text-align: right; color: #565f89;">8</span>
+      <span style="width: 70px; text-align: right; color: #e0af68;">1h</span>
+    </div>
+    <div style="display: flex; padding: 4px 12px; margin-bottom: 2px;">
+      <span style="width: 24px; color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Refactor auth</span>
+      <span style="width: 50px; text-align: right; color: #565f89;">5</span>
+      <span style="width: 70px; text-align: right; color: #e0af68;">3d</span>
+    </div>
+    <div style="display: flex; padding: 4px 12px; margin-bottom: 2px;">
+      <span style="width: 24px; color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Update README</span>
+      <span style="width: 50px; text-align: right; color: #565f89;">3</span>
+      <span style="width: 70px; text-align: right; color: #f7768e;">1w</span>
+    </div>
+    <div style="display: flex; padding: 4px 12px; margin-bottom: 2px;">
+      <span style="width: 24px; color: transparent;">▸</span>
+      <span style="flex: 1; color: #c0caf5;">Setup CI</span>
+      <span style="width: 50px; text-align: right; color: #565f89;">15</span>
+      <span style="width: 70px; text-align: right; color: #f7768e;">2w</span>
+    </div>
+
+    <div style="margin-top: 12px; color: #565f89; font-size: 11px;">↑↓ Navigate · Enter Resume · Esc Cancel</div>
+  </div>
+  <div class="card-body">
+    <h3>Variation 3: Compact Grid</h3>
+    <p>Table with aligned columns. Header row. Compact time abbreviations (2m, 1h, 3d). Maximum information density.</p>
+  </div>
+</div>
+
+<!-- Variation 4: Card Stack -->
+<div class="card" data-choice="a4" onclick="toggleSelect(this)">
+  <div class="card-image" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1b26; color: #c0caf5;">
+    <div style="color: #bb9af7; font-weight: bold; margin-bottom: 12px; font-size: 14px;">✦ Session History</div>
+
+    <div style="border: 1px solid #7aa2f7; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; background: #24283b;">
+      <div style="color: #f0f6fc; font-weight: bold; font-size: 14px;">Fix login bug</div>
+      <div style="color: #565f89; font-size: 11px; margin-top: 4px;">12 turns · Active 2 minutes ago</div>
+    </div>
+
+    <div style="border: 1px solid #3b4261; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;">
+      <div style="color: #c0caf5;">Add dark mode</div>
+      <div style="color: #565f89; font-size: 11px; margin-top: 4px;">8 turns · Active 1 hour ago</div>
+    </div>
+
+    <div style="border: 1px solid #3b4261; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;">
+      <div style="color: #c0caf5;">Refactor auth module</div>
+      <div style="color: #565f89; font-size: 11px; margin-top: 4px;">5 turns · Active 3 days ago</div>
+    </div>
+
+    <div style="border: 1px solid #3b4261; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;">
+      <div style="color: #c0caf5;">Update README docs</div>
+      <div style="color: #565f89; font-size: 11px; margin-top: 4px;">3 turns · Active 1 week ago</div>
+    </div>
+
+    <div style="margin-top: 12px; color: #565f89; font-size: 11px;">↑↓ Navigate · Enter Resume · Esc Cancel</div>
+  </div>
+  <div class="card-body">
+    <h3>Variation 4: Card Stack</h3>
+    <p>Each session as a bordered card. Selected card has accent border. Spacious padding. Modern look.</p>
+  </div>
+</div>
+
+<!-- Variation 5: Timeline -->
+<div class="card" data-choice="a5" onclick="toggleSelect(this)">
+  <div class="card-image" style="padding: 16px; font-family: monospace; font-size: 13px; line-height: 1.7; background: #1a1b26; color: #c0caf5;">
+    <div style="color: #bb9af7; font-weight: bold; margin-bottom: 16px; font-size: 14px;">✦ Session History</div>
+
+    <div style="display: flex;">
+      <div style="display: flex; flex-direction: column; align-items: center; margin-right: 16px;">
+        <div style="width: 12px; height: 12px; border-radius: 50%; background: #7aa2f7; z-index: 1;"></div>
+        <div style="width: 2px; flex: 1; background: #3b4261;"></div>
+      </div>
+      <div style="padding-bottom: 20px;">
+        <div style="color: #f0f6fc; font-weight: bold;">Fix login bug</div>
+        <div style="color: #565f89; font-size: 11px;">12 turns · 2 minutes ago</div>
+      </div>
+    </div>
+
+    <div style="display: flex;">
+      <div style="display: flex; flex-direction: column; align-items: center; margin-right: 16px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #e0af68; z-index: 1;"></div>
+        <div style="width: 2px; flex: 1; background: #3b4261;"></div>
+      </div>
+      <div style="padding-bottom: 20px;">
+        <div style="color: #c0caf5;">Add dark mode</div>
+        <div style="color: #565f89; font-size: 11px;">8 turns · 1 hour ago</div>
+      </div>
+    </div>
+
+    <div style="display: flex;">
+      <div style="display: flex; flex-direction: column; align-items: center; margin-right: 16px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #e0af68; z-index: 1;"></div>
+        <div style="width: 2px; flex: 1; background: #3b4261;"></div>
+      </div>
+      <div style="padding-bottom: 20px;">
+        <div style="color: #c0caf5;">Refactor auth module</div>
+        <div style="color: #565f89; font-size: 11px;">5 turns · 3 days ago</div>
+      </div>
+    </div>
+
+    <div style="display: flex;">
+      <div style="display: flex; flex-direction: column; align-items: center; margin-right: 16px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #f7768e; z-index: 1;"></div>
+        <div style="width: 2px; flex: 1; background: #3b4261;"></div>
+      </div>
+      <div style="padding-bottom: 20px;">
+        <div style="color: #c0caf5;">Update README docs</div>
+        <div style="color: #565f89; font-size: 11px;">3 turns · 1 week ago</div>
+      </div>
+    </div>
+
+    <div style="display: flex;">
+      <div style="display: flex; flex-direction: column; align-items: center; margin-right: 16px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #f7768e; z-index: 1;"></div>
+      </div>
+      <div>
+        <div style="color: #c0caf5;">Setup CI pipeline</div>
+        <div style="color: #565f89; font-size: 11px;">15 turns · 2 weeks ago</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px; color: #565f89; font-size: 11px;">↑↓ Navigate · Enter Resume · Esc Cancel</div>
+  </div>
+  <div class="card-body">
+    <h3>Variation 5: Timeline</h3>
+    <p>Vertical timeline with colored dots. Grouped by time periods. Visual connection between sessions. Unique look.</p>
+  </div>
+</div>
+
+</div>

@@ -31,7 +31,7 @@ import { startBackgroundRegistryRefresh } from "./providers/registry-fetch.js";
 import { checkForUpdates, applyStaged, setUpdateStateGetter, setRelaunchCallback } from "./lifecycle/update-check.js";
 import { VERSION } from "./version.js";
 import { hasAnyManagedCredential } from "./config/managed-provider-credentials.js";
-import { findSessionById, findSessionByName, listSessionsForProject } from "./session-resume.js";
+import { findSessionById, findSessionByName, listSessionsForProject, formatSize } from "./session-resume.js";
 
 /**
  * main() 的依赖注入表面。
@@ -108,7 +108,7 @@ async function maybeHandleResumeFlag(
   const nextArg = argv[idx + 1];
   const hasArg = nextArg && !nextArg.startsWith("--");
 
-  // --resume 不带参数：显示当前项目会话列表
+  // --resume 不带参数：交互式选择当前项目会话
   if (!hasArg) {
     const { projectDir } = await getCurrentProjectInfo();
     const sessions = listSessionsForProject(projectDir);
@@ -119,19 +119,19 @@ async function maybeHandleResumeFlag(
       return;
     }
 
-    // 显示会话列表
-    console.log("\nSessions:\n");
-    const rows: string[] = [];
-    for (let i = 0; i < sessions.length; i++) {
-      const s = sessions[i];
-      const label = s.title || s.summary.slice(0, 50) || "(untitled)";
-      const age = formatAge(s.lastActiveAt);
-      const num = String(i + 1).padStart(3);
-      rows.push(`  ${num}  ${label.padEnd(40)} ${age}`);
-    }
-    console.log(rows.join("\n"));
-    console.log(`\nUsage: swarmflow --resume <number|name|uuid>`);
+    // 清空终端
+    process.stdout.write("\x1Bc");
 
+    // Design A: Separator Lines
+    const selected = await interactiveSessionSelect(sessions);
+    if (selected < 0) {
+      // 用户按了 Esc 或 Ctrl+C
+      argv.splice(idx, 1);
+      return;
+    }
+
+    const chosen = sessions[selected];
+    process.env["SWARMFLOW_RESUME_SESSION_DIR"] = chosen.path;
     argv.splice(idx, 1);
     return;
   }
@@ -218,6 +218,148 @@ function formatAge(isoString: string | undefined): string {
   if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
   const days = Math.floor(hours / 24);
   return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+/** 格式化会话选择项。 */
+function formatSessionChoice(s: { title?: string; summary: string; lastActiveAt: string; turns: number }): string {
+  const label = s.title || s.summary.slice(0, 50) || "(untitled)";
+  const age = formatAge(s.lastActiveAt);
+  return `${label}  \x1B[90m${s.turns} turns \xb7 ${age}\x1B[0m`;
+}
+
+/**
+ * 交互式会话选择器 — 使用 readline 实现完全控制的 UI。
+ * Design A: Separator Lines 风格。
+ * 返回选中的索引，Esc/Ctrl+C 返回 -1。
+ */
+async function interactiveSessionSelect(
+  sessions: Array<{ title?: string; summary: string; lastActiveAt: string; turns: number; path: string }>,
+): Promise<number> {
+  const { stdin, stdout } = process;
+
+  const maxShow = Math.min(sessions.length, 5);
+  let selected = 0;
+
+  // 隐藏光标
+  stdout.write("\x1B[?25l");
+
+  const render = () => {
+    // 清空屏幕
+    stdout.write("\x1B[2J\x1B[H");
+
+    const cols = stdout.columns || 80;
+    const margin = 4; // 左右边距
+    const lineLen = cols - margin * 2;
+
+    const line = (i: number) => {
+      const s = sessions[i];
+      const label = s.title || s.summary.slice(0, 40) || "(untitled)";
+      const age = formatAge(s.lastActiveAt);
+      const size = formatSize(s.sizeBytes);
+      const subtitle = `${age} · ${size} · ${s.turns} turns`;
+
+      if (i === selected) {
+        // 选中行：> 指示器 + 粗体
+        return [
+          `${" ".repeat(margin)}\x1B[38;2;122;162;247m>\x1B[0m \x1B[1;37m${label}\x1B[0m`,
+          `${" ".repeat(margin + 3)}\x1B[90m${subtitle}\x1B[0m`,
+        ].join("\n");
+      } else {
+        return [
+          `${" ".repeat(margin)}  \x1B[37m${label}\x1B[0m`,
+          `${" ".repeat(margin + 3)}\x1B[90m${subtitle}\x1B[0m`,
+        ].join("\n");
+      }
+    };
+
+    // 标题：居中 + 大字体
+    const titleText = "[ Recent Sessions ]";
+    const titlePad = Math.max(0, Math.floor((cols - titleText.length) / 2));
+
+    stdout.write("\n");
+    stdout.write(`${" ".repeat(margin)}\x1B[90m${"━".repeat(lineLen)}\x1B[0m\n`);
+    stdout.write(`${" ".repeat(titlePad)}\x1B[1;38;2;187;154;247m${titleText}\x1B[0m\n`);
+    stdout.write(`${" ".repeat(margin)}\x1B[90m${"━".repeat(lineLen)}\x1B[0m\n`);
+    stdout.write("\n");
+
+    for (let i = 0; i < maxShow; i++) {
+      stdout.write(line(i) + "\n");
+      if (i < maxShow - 1) stdout.write("\n");
+    }
+
+    stdout.write("\n");
+    stdout.write(`${" ".repeat(margin)}\x1B[90m↑↓ Navigate · Enter Resume · Esc Cancel\x1B[0m\n`);
+  };
+
+  render();
+
+  return new Promise<number>((resolve) => {
+    let resolved = false;
+
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
+      stdin.removeListener("data", onData);
+      if (stdin.isRaw) stdin.setRawMode(false);
+      stdout.write("\x1B[?25h"); // 显示光标
+    };
+
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf-8");
+
+    // 缓冲区用于检测 Esc 序列
+    let escBuffer = "";
+    let escTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const onData = (key: string) => {
+      if (resolved) return;
+
+      // 处理 Esc 序列（箭头键等）
+      if (key.startsWith("\x1B")) {
+        escBuffer += key;
+        if (escTimer) clearTimeout(escTimer);
+
+        // 检查是否是完整的箭头键序列
+        if (escBuffer === "\x1B[A") {
+          selected = (selected - 1 + maxShow) % maxShow;
+          render();
+          escBuffer = "";
+          return;
+        } else if (escBuffer === "\x1B[B") {
+          selected = (selected + 1) % maxShow;
+          render();
+          escBuffer = "";
+          return;
+        }
+
+        // 等待更多字符
+        escTimer = setTimeout(() => {
+          // 超时：不是箭头键，检查是否是单独的 Esc
+          if (escBuffer === "\x1B") {
+            cleanup();
+            resolve(-1);
+          }
+          escBuffer = "";
+        }, 30);
+        return;
+      }
+
+      // 非 Esc 字符
+      if (escTimer) clearTimeout(escTimer);
+      escBuffer = "";
+
+      if (key === "\r" || key === "\n") {
+        cleanup();
+        resolve(selected);
+      } else if (key === "\x03") {
+        cleanup();
+        resolve(-1);
+      }
+    };
+
+    stdin.on("data", onData);
+  });
 }
 
 /**

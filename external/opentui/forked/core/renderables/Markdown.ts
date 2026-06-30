@@ -238,7 +238,7 @@ interface ResolvedTableRenderableOptions {
 const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/
 const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/
 const ANY_MARKDOWN_BLOCK_BREAK_RE = /(?:\r?\n){2,}/
-const COALESCED_MARGIN_TOP = Symbol.for("fermi.opentui.markdown.coalesced.marginTop")
+const COALESCED_MARGIN_TOP = Symbol.for("swarmflow.opentui.markdown.coalesced.marginTop")
 
 type CoalescedLayoutToken = MarkedToken & {
   [COALESCED_MARGIN_TOP]?: number

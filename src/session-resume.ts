@@ -28,10 +28,38 @@ export interface SessionInfo {
   summary: string;
   title?: string;
   turns: number;
+  /** 会话目录大小（字节） */
+  sizeBytes: number;
 }
 
 /** 会话 UUID 格式正则。 */
 const LOOKS_LIKE_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 计算目录大小（递归） */
+function dirSize(dir: string): number {
+  let total = 0;
+  try {
+    for (const entry of readdirSync(dir)) {
+      const p = join(dir, entry);
+      try {
+        const s = statSync(p);
+        if (s.isDirectory()) {
+          total += dirSize(p);
+        } else {
+          total += s.size;
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* skip */ }
+  return total;
+}
+
+/** 格式化字节大小为人类可读格式 */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 /**
  * 在 swarmflow 主目录的所有项目中按 UUID 查找会话。
@@ -111,7 +139,8 @@ export function listSessionsForProject(projectDir: string): SessionInfo[] {
         const turns = (raw.turn_count as number) ?? 0;
         if (turns === 0) continue;
         if (raw.archived) continue;
-        sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns });
+        const sizeBytes = dirSize(d);
+        sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns, sizeBytes });
         continue;
       } catch {
         // Fall through to log.json
@@ -130,7 +159,8 @@ export function listSessionsForProject(projectDir: string): SessionInfo[] {
       const turns = (raw["turn_count"] as number) ?? 0;
       if (turns === 0) continue;
       if (raw.archived) continue;
-      sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns });
+      const sizeBytes = dirSize(d);
+      sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns, sizeBytes });
     } catch {
       continue;
     }
