@@ -115,6 +115,15 @@ export async function launchTui(): Promise<void> {
     process.stderr.write(`swarmflow: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(2);
   }
+
+  // 检测是否为 resume 模式 — 动画已在 cli.ts 中启动，此处只负责清理
+  const resumeDir = process.env["SWARMFLOW_RESUME_SESSION_DIR"];
+  const resumeAnimCleanup: (() => void) | null = (process as any).__resumeAnimCleanup ?? null;
+
+  if (resumeDir) {
+    delete process.env["SWARMFLOW_RESUME_SESSION_DIR"];
+  }
+
   if (isOpenTuiDiagEnabled()) {
     resetOpenTuiDiagLog({
       cwd: process.cwd(),
@@ -124,15 +133,19 @@ export async function launchTui(): Promise<void> {
       markdownPatchDisabled: isMarkdownPatchDisabled(),
     });
   }
+
+  // bootstrap 期间 spinner 持续旋转（async，不阻塞事件循环）
   let runtime = await bootstrapOpenTuiRuntime(args);
 
-  // If `swarmflow --resume <id>` set this in cli.ts, restore the session log
-  // into the freshly bootstrapped runtime before the TUI renders.
-  const resumeDir = process.env["SWARMFLOW_RESUME_SESSION_DIR"];
+  // 恢复会话日志
   if (resumeDir) {
     delete process.env["SWARMFLOW_RESUME_SESSION_DIR"];
     const { applySessionRestore } = await import("../../src/session-resume.js");
     const result = applySessionRestore(runtime.session, runtime.store, resumeDir);
+
+    // 恢复完成，停止动画并清屏
+    resumeAnimCleanup?.();
+
     if (!result.ok && result.error) {
       console.error(result.error);
       process.exit(1);

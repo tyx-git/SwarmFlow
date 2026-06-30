@@ -88,6 +88,47 @@ function relaunchCurrentBinary(argv: string[]): void {
 }
 
 /**
+ * 启动居中过渡动画 — 用户按下回车后立即调用。
+ * 返回清理函数，launchTui() 在 TUI 启动前调用它。
+ */
+function startResumeAnimation(): void {
+  const termWidth = process.stdout.columns || 80;
+  const termHeight = process.stdout.rows || 24;
+  const paddingTop = Math.max(1, Math.floor((termHeight / 2) - 1));
+
+  const spinFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let spinIdx = 0;
+  const label = "recalling session...";
+
+  function renderFrame(): string {
+    const lines: string[] = [];
+    for (let i = 0; i < paddingTop; i++) lines.push("");
+    const spinChar = spinFrames[spinIdx % spinFrames.length];
+    const text = `${spinChar}  ${label}`;
+    const pad = Math.max(0, Math.floor((termWidth - text.length) / 2));
+    lines.push(`${" ".padEnd(pad)}\x1B[90m${spinChar}\x1B[0m  \x1B[36m${label}\x1B[0m`);
+    return lines.join("\n");
+  }
+
+  process.stdout.write("\x1B[?25l");
+  process.stdout.write("\x1B[2J\x1B[H");
+  process.stdout.write(renderFrame());
+
+  const animInterval = setInterval(() => {
+    spinIdx = (spinIdx + 1) % spinFrames.length;
+    process.stdout.write(`\x1B[${paddingTop + 1};1H\x1B[2K`);
+    process.stdout.write(renderFrame());
+  }, 100);
+
+  (process as any).__resumeAnimCleanup = () => {
+    clearInterval(animInterval);
+    process.stdout.write("\x1B[?25h");
+    process.stdout.write("\x1B[2J\x1B[H");
+    delete (process as any).__resumeAnimCleanup;
+  };
+}
+
+/**
  * 在 Commander 解析 argv 之前处理 `swarmflow --resume [id/name]`。
  *
  * 支持三种模式：
@@ -132,6 +173,10 @@ async function maybeHandleResumeFlag(
 
     const chosen = sessions[selected];
     process.env["SWARMFLOW_RESUME_SESSION_DIR"] = chosen.path;
+
+    // 立即启动过渡动画 — 用户按下回车后第一件事
+    startResumeAnimation();
+
     argv.splice(idx, 1);
     return;
   }
@@ -180,6 +225,10 @@ async function maybeHandleResumeFlag(
   }
 
   process.env["SWARMFLOW_RESUME_SESSION_DIR"] = found.sessionDir;
+
+  // 立即启动过渡动画
+  startResumeAnimation();
+
   argv.splice(idx, 2);
 }
 
@@ -233,7 +282,7 @@ function formatSessionChoice(s: { title?: string; summary: string; lastActiveAt:
  * 返回选中的索引，Esc/Ctrl+C 返回 -1。
  */
 async function interactiveSessionSelect(
-  sessions: Array<{ title?: string; summary: string; lastActiveAt: string; turns: number; path: string }>,
+  sessions: Array<{ title?: string; summary: string; lastActiveAt: string; turns: number; path: string; sizeBytes: number }>,
 ): Promise<number> {
   const { stdin, stdout } = process;
 

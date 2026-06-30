@@ -1883,6 +1883,8 @@ export function OpenTuiApp({
         session.appendErrorMessage?.(`Unknown command: ${cmdName}`, "command");
         return;
       }
+      // 显式显示命令文本到主界面
+      session.appendStatusMessage?.(input);
       try {
         await command.handler(buildCommandContext(), args);
       } catch (err) {

@@ -12,6 +12,7 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
@@ -53,6 +54,7 @@ import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptio
 import { describeModel, getCurrentModelDescriptor } from "../models/presentation.js";
 import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "../auth/openai-oauth.js";
 import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth.js";
+import { launchThemePicker, launchDesignHelper } from "../browser/index.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -1808,6 +1810,14 @@ function themeModeOptions(_ctx: CommandOptionsContext): CommandOption[] {
   const current = loadGlobalSettings().theme_mode ?? "auto";
   const mark = (v: string) => (v === current ? " (current)" : "");
   return [
+    {
+      label: `Custom${mark("custom")}`,
+      labelParts: [
+        { text: `Custom${mark("custom")}` },
+        { text: "  browser-based color picker (beta)", color: "muted" },
+      ],
+      value: "custom",
+    },
     { label: `Auto (follow terminal)${mark("auto")}`, value: "auto" },
     { label: `Light${mark("light")}`, value: "light" },
     { label: `Dark${mark("dark")}`, value: "dark" },
@@ -1821,12 +1831,68 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
   const hint = ctx.showHint ?? ctx.showMessage;
   let choice = args.trim().toLowerCase();
 
+  // 触发 CommandExecute hook
+  const hookRuntime = ctx.session?.hookRuntime;
+  if (hookRuntime) {
+    const hookResult = await hookRuntime.evaluate("CommandExecute", {
+      event: "CommandExecute",
+      timestamp: Date.now(),
+      sessionId: ctx.store?.sessionDir ? basename(ctx.store.sessionDir) : undefined,
+      commandName: "/theme",
+      commandArgs: choice,
+    });
+    if (hookResult.decision === "deny") {
+      ctx.showMessage(hookResult.denyReason ?? "Command denied by hook.");
+      return;
+    }
+  }
+
   if (!choice && ctx.promptCommandPicker) {
     const picked = await ctx.promptCommandPicker(
       themeModeOptions({ session: ctx.session, store: ctx.store }),
     );
     if (!picked) return;
     choice = picked.value;
+  }
+
+  if (choice === "custom") {
+    // 为 custom 选择单独触发 hook
+    const hookRt = ctx.session?.hookRuntime;
+    if (hookRt) {
+      const customHookResult = await hookRt.evaluate("CommandExecute", {
+        event: "CommandExecute",
+        timestamp: Date.now(),
+        sessionId: ctx.store?.sessionDir ? basename(ctx.store.sessionDir) : undefined,
+        commandName: "/theme",
+        commandArgs: "custom",
+      });
+      if (customHookResult.decision === "deny") {
+        ctx.showMessage(customHookResult.denyReason ?? "Custom theme denied by hook.");
+        return;
+      }
+    }
+
+    // 询问用户是否使用测试版功能
+    if (ctx.promptCommandPicker) {
+      ctx.showMessage("Custom theme opens a browser-based color picker (beta). Continue?");
+      const picked = await ctx.promptCommandPicker([
+        { label: "Yes — open browser color picker", value: "yes" },
+        { label: "No — cancel", value: "no" },
+      ]);
+      if (!picked || picked.value !== "yes") return;
+    }
+
+    hint("Opening browser-based theme picker (beta)...");
+    try {
+      await launchThemePicker({
+        sessionId: getSessionId(ctx),
+        homeDir: ctx.swarmflowHomeDir ?? join(homedir(), ".swarmflow"),
+        cwd: process.cwd(),
+      });
+    } catch (e) {
+      hint(`Failed to open theme picker: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return;
   }
 
   if (choice === "auto" || choice === "light" || choice === "dark" || choice === "default" || choice === "nord" || choice === "dracula") {
@@ -1838,7 +1904,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
   }
 
   const current = loadGlobalSettings().theme_mode ?? "auto";
-  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme auto | light | dark | default | nord | dracula`);
+  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme custom | auto | light | dark | default | nord | dracula`);
 }
 
 // ------------------------------------------------------------------
@@ -2604,7 +2670,47 @@ async function cmdInit(ctx: CommandContext, _args: string): Promise<void> {
 
 async function cmdPlan(ctx: CommandContext, args: string): Promise<void> {
   const goal = args.trim();
+
+  // 触发 CommandExecute hook
+  const hookRuntime = ctx.session?.hookRuntime;
+  let hookAdditionalContext: string | undefined;
+  if (hookRuntime) {
+    const hookResult = await hookRuntime.evaluate("CommandExecute", {
+      event: "CommandExecute",
+      timestamp: Date.now(),
+      sessionId: ctx.store?.sessionDir ? basename(ctx.store.sessionDir) : undefined,
+      commandName: "/plan",
+      commandArgs: goal,
+    });
+    if (hookResult.decision === "deny") {
+      ctx.showMessage(hookResult.denyReason ?? "Command denied by hook.");
+      return;
+    }
+    hookAdditionalContext = hookResult.additionalContext;
+  }
+
   const planDir = writeInitialPlanFiles(ctx, goal);
+
+  // Hook 通过 additionalContext 触发浏览器设计助手
+  if (hookAdditionalContext && ctx.promptCommandPicker) {
+    ctx.showMessage(hookAdditionalContext);
+    const picked = await ctx.promptCommandPicker([
+      { label: "Yes — open browser design assistant", value: "yes" },
+      { label: "No — skip", value: "no" },
+    ]);
+    if (picked && picked.value === "yes") {
+      try {
+        await launchDesignHelper({
+          sessionId: getSessionId(ctx),
+          goal,
+          cwd: process.cwd(),
+        });
+      } catch (e) {
+        ctx.showMessage(`Failed to open design assistant: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+
   const prompt = [
     "Enter SwarmFlow plan discussion mode.",
     "Clarify ambiguous requirements with the user before making edits.",

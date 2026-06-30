@@ -7,7 +7,8 @@
  * 支持的事件：
  *   SessionStart, SessionEnd, UserPromptSubmit,
  *   PreToolUse, PostToolUse, PostToolUseFailure,
- *   SubagentStart, SubagentStop, Stop
+ *   SubagentStart, SubagentStop, Stop,
+ *   CommandExecute
  *
  * Hook 命令接收事件负载作为 stdin 上的 JSON，并返回
  * stdout 上的 JSON 对象，包含可选的 decision/updatedInput/additionalContext。
@@ -26,17 +27,18 @@ export type HookEvent =
   | "PostToolUseFailure"
   | "SubagentStart"
   | "SubagentStop"
-  | "Stop";
+  | "Stop"
+  | "CommandExecute";
 
 /** 支持钩子输出中 `decision` 字段的事件。 */
-export const DECISION_EVENTS = new Set<HookEvent>(["UserPromptSubmit", "PreToolUse"]);
+export const DECISION_EVENTS = new Set<HookEvent>(["UserPromptSubmit", "PreToolUse", "CommandExecute"]);
 
 /** 支持 `failClosed`（钩子失败 = 拒绝）的事件。 */
-export const FAIL_CLOSED_EVENTS = new Set<HookEvent>(["SessionStart", "UserPromptSubmit", "PreToolUse"]);
+export const FAIL_CLOSED_EVENTS = new Set<HookEvent>(["SessionStart", "UserPromptSubmit", "PreToolUse", "CommandExecute"]);
 
 /** 支持钩子输出中 `additionalContext` 的事件。 */
 export const CONTEXT_EVENTS = new Set<HookEvent>([
-  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "CommandExecute",
 ]);
 
 /** 支持钩子输出中 `updatedInput` 的事件。 */
@@ -70,6 +72,8 @@ export interface HookManifest {
 export interface HookMatcher {
   toolNames?: string[];
   agentIds?: string[];
+  /** 匹配特定命令名（如 "/plan", "/theme"）。 */
+  commandNames?: string[];
 }
 
 // ------------------------------------------------------------------
@@ -90,6 +94,9 @@ export interface HookPayload {
   /** Agent 字段（SubagentStart / SubagentStop）。 */
   agentId?: string;
   agentTemplate?: string;
+  /** 命令字段（CommandExecute）。 */
+  commandName?: string;
+  commandArgs?: string;
 }
 
 // ------------------------------------------------------------------
@@ -97,7 +104,7 @@ export interface HookPayload {
 // ------------------------------------------------------------------
 
 export interface HookOutput {
-  /** "allow" 或 "deny" — 仅用于 UserPromptSubmit 和 PreToolUse。 */
+  /** "allow" 或 "deny" — 仅用于 UserPromptSubmit、PreToolUse 和 CommandExecute。 */
   decision?: "allow" | "deny";
   /** 替换工具参数 — 仅用于 PreToolUse。 */
   updatedInput?: Record<string, unknown>;

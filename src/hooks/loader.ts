@@ -15,6 +15,7 @@ const VALID_EVENTS = new Set<string>([
   "SessionStart", "SessionEnd", "UserPromptSubmit",
   "PreToolUse", "PostToolUse", "PostToolUseFailure",
   "SubagentStart", "SubagentStop", "Stop",
+  "CommandExecute",
 ]);
 
 /**
@@ -122,6 +123,9 @@ function parseMatcher(raw: unknown): HookManifest["matcher"] {
   }
   if (Array.isArray(obj["agentIds"])) {
     matcher.agentIds = (obj["agentIds"] as unknown[]).map(String);
+  }
+  if (Array.isArray(obj["commandNames"])) {
+    matcher.commandNames = (obj["commandNames"] as unknown[]).map(String);
   }
 
   return Object.keys(matcher).length > 0 ? matcher : undefined;

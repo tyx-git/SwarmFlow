@@ -179,6 +179,12 @@ export class HookRuntime {
         if (!hook.matcher.agentIds.includes(payload.agentId)) return false;
       }
 
+      // 命令名称匹配 — 如果钩子需要 commandNames 但事件没有，则跳过
+      if (hook.matcher.commandNames) {
+        if (!payload.commandName) return false;
+        if (!hook.matcher.commandNames.includes(payload.commandName)) return false;
+      }
+
       return true;
     });
   }
@@ -189,6 +195,7 @@ export class HookRuntime {
         this._sessionContext.push(context);
         break;
       case "UserPromptSubmit":
+      case "CommandExecute":
         this._turnContext.push(context);
         break;
       case "PreToolUse":

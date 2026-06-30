@@ -497,6 +497,9 @@ export function OpenTuiScreen({
                 onEntryClick={onEntryClick}
                 onAgentClick={onAgentClick}
               />
+              {/* Overlays (pickers, panels) render inside the scroll area
+                  so they appear right after the last transcript entry */}
+              {overlaysBlock}
             </ScrollViewport>
           </box>
 
@@ -538,18 +541,14 @@ export function OpenTuiScreen({
       {/* End content row */}
 
       {/*
-        Fixed footer — single mount point for input + overlays so they survive
-        tab switches and don't fight over `inputRef`. Lifted out of the main
-        scrollbox so it stays visible while the user is scrolling through
-        history (previously it scrolled off the bottom edge with stickyScroll
-        broken).
+        Fixed footer — input area stays visible while scrolling.
+        Lifted out of the main scrollbox so it stays at the bottom.
       */}
       <box height={1} />
       {pendingMessages}
       {pendingMessages ? <box height={1} /> : null}
       {statusPanel}
       {inputAreaElement}
-      {overlaysBlock}
 
       <ToastStack terminalWidth={terminal.width}>
         {updateToast && onUpdateRestart && onUpdateDismiss ? (

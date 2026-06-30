@@ -3,6 +3,24 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
+// Windows 上目录可能被占用，重试删除
+function rmSyncWithRetry(dir: string, retries = 3, delayMs = 500): void {
+  for (let i = 0; i < retries; i++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (e: any) {
+      if (e?.code === "EACCES" && i < retries - 1) {
+        // Windows: 目录可能被占用，等待后重试
+        const start = Date.now();
+        while (Date.now() - start < delayMs) {}
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 // 为当前平台构建单文件二进制。CI 在每个矩阵槽位运行一次
 // (darwin-arm64 / linux-{x64,arm64} / win32-{x64,arm64})，
 // 每个 runner 产生自己的 tarball。
@@ -87,7 +105,7 @@ async function run(cmd: string[]): Promise<void> {
   }
 }
 
-rmSync(buildDir, { recursive: true, force: true });
+rmSyncWithRetry(buildDir);
 mkdirSync(buildDir, { recursive: true });
 
 await run([
