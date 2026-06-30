@@ -42,9 +42,9 @@ function suggestionFrom(m: RawModelEntry): ModelSpecSuggestion {
   if (ro?.type === "effort" && Array.isArray(ro.values) && ro.values.length) {
     thinkingLevels = ro.values;
   } else if (ro?.type === "toggle") {
-    thinkingLevels = ["off", "on"];
+    thinkingLevels = ["off", "low", "medium", "high"];
   } else if (m.reasoning) {
-    thinkingLevels = ["on"];
+    thinkingLevels = ["low", "medium", "high"];
   }
   return {
     contextLength: m.limit?.context,

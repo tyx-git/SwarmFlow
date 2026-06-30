@@ -3059,9 +3059,10 @@ export function OpenTuiApp({
   const thinkingLevel = session.thinkingLevel ?? "";
   const thinkingSuffix = (() => {
     if (!thinkingLevel || thinkingLevel === "none") return "";        // not a thinking model
-    if (thinkingLevel === "off") return "(Thinking Off)";             // explicitly disabled
-    if (thinkingLevel === "on" || thinkingLevel === "default") return "(Thinking On)"; // on but no granular level
-    return `(${thinkingLevel})`;                                      // low/medium/high/xhigh/max
+    if (thinkingLevel === "off") return "Thinking off";               // explicitly disabled
+    if (thinkingLevel === "xhigh") return "Thinking xhigh *";        // xhigh: OpenAI only
+    if (thinkingLevel === "max") return "Thinking max *";             // max: DeepSeek, Anthropic, GLM
+    return `Thinking ${thinkingLevel}`;                               // low/medium/high
   })();
   // Agent counts for indicator — all 3 states
   const runningAgentCount = childSessions.filter((s) => s.lifecycle === "running" || s.lifecycle === "blocked").length;

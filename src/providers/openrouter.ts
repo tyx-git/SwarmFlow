@@ -84,7 +84,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
     const level = options?.thinkingLevel;
 
     // 显式禁用 reasoning
-    if (level === "off" || level === "none") {
+    if (level === "off") {
       const extraBody = (kwargs["extra_body"] as Record<string, unknown>) || {};
       extraBody["reasoning"] = { effort: "none" };
       kwargs["extra_body"] = extraBody;
@@ -99,9 +99,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
       reasoningConfig["max_tokens"] = this._config.thinkingBudget;
     } else {
       // 将思考级别映射为 effort
-      const effort = (level && level !== "default")
-        ? (EFFORT_MAP[level] ?? "high")
-        : "high";
+      const effort = level ? (EFFORT_MAP[level] ?? "high") : "high";
       reasoningConfig["effort"] = effort;
     }
 

@@ -3150,8 +3150,8 @@ export class Session {
     const highest = levels.length > 0 ? levels[levels.length - 1] : undefined;
     // Non-thinking model —no thinking level to set
     if (!highest) return "none";
-    // No preference or legacy "default" —use highest
-    if (!preferredLevel || preferredLevel === "default") return highest;
+    // No preference —use highest
+    if (!preferredLevel) return highest;
     // Preferred level valid for this model —use it
     if (levels.includes(preferredLevel)) return preferredLevel;
     // Preferred level not available on this model —use highest

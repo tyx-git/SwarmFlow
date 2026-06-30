@@ -765,7 +765,7 @@ async function stageThinkingLevel(ctx: WizardCtx): Promise<"next" | Back> {
   const levels = getThinkingLevels(modelId);
   if (levels.length === 0) { ctx.thinkingLevel = undefined; return "next"; }
   const choices: SelectStepChoice[] = [];
-  if (!levels.includes("off") && !levels.includes("none")) choices.push({ name: "off", value: "off" });
+  if (!levels.includes("off")) choices.push({ name: "off", value: "off" });
   for (const level of levels) choices.push({ name: level, value: level });
   const sel = await selectStep({ message: "Main model: Thinking level", choices });
   if (sel === BACK) return BACK;
@@ -807,14 +807,14 @@ async function collectTiers(
         continue;
       }
 
-      // 符合层级条件的级别不包括原生的 "off"/"none" — 子代理层级始终启用思考。
+      // 符合层级条件的级别不包括原生的 "off" — 子代理层级始终启用思考。
       let thinkingLevel: string;
       if (getThinkingLevels(picked.modelId).length === 0) {
         thinkingLevel = "none";
       } else {
         const eligible = getTierEligibleThinkingLevels(picked.modelId);
         if (eligible.length === 0) {
-          console.log(`    Model has no eligible thinking levels (only off/none). Skipping ${tierName} tier.\n`);
+          console.log(`    Model has no eligible thinking levels (only off). Skipping ${tierName} tier.\n`);
           continue;
         }
         const lvl = await selectStep({
@@ -966,7 +966,7 @@ export async function runInitWizard(): Promise<WizardResult> {
     // 如果从向导初始选择自动填充它，`/model` 切换就永远无法跨重启保留。
     // 初始选择会在下面持久化到 model-selection.json — 这才是自动记忆。
     // `default_model` 保持 opt-in：只有用户手动添加时才存在。
-    thinking_level: thinkingLevel && thinkingLevel !== "off" && thinkingLevel !== "none"
+    thinking_level: thinkingLevel && thinkingLevel !== "off"
       ? thinkingLevel
       : undefined,
     providers: Object.keys(providers).length > 0 ? providers : undefined,
@@ -1005,7 +1005,7 @@ export async function runInitWizard(): Promise<WizardResult> {
   if (modelSelection) {
     console.log(`  Default model: ${describeWizardModelSelection(modelSelection)}`);
   }
-  if (thinkingLevel && thinkingLevel !== "off" && thinkingLevel !== "none") {
+  if (thinkingLevel && thinkingLevel !== "off") {
     console.log(`  Thinking level: ${thinkingLevel}`);
   }
   if (tierConfig) {

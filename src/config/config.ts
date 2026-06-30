@@ -167,14 +167,14 @@ export function getThinkingLevels(model: string): string[] {
 }
 
 /**
- * 子代理层级可用的思维链级别：过滤掉 "off" / "none" 的原生级别。
+ * 子代理层级可用的思维链级别：过滤掉 "off" 的原生级别。
  *
- * 子代理层级必须始终启用思维链——"off" / "none" 违背了为层级提供
- * 独立配置的目的。主代理流程仍可通过 getThinkingLevels 选择 "off" / "none"
+ * 子代理层级必须始终启用思维链——"off" 违背了为层级提供
+ * 独立配置的目的。主代理流程仍可通过 getThinkingLevels 选择 "off"
  * （用户覆盖在那里的优先级最高）。
  */
 export function getTierEligibleThinkingLevels(model: string): string[] {
-  return getThinkingLevels(model).filter((l) => l !== "off" && l !== "none");
+  return getThinkingLevels(model).filter((l) => l !== "off");
 }
 
 /** 返回模型最高（最后一个）思维链级别，非思维链模型返回 undefined */

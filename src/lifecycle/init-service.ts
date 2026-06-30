@@ -266,7 +266,7 @@ export class InitService {
 
     const settings: SwarmflowSettings = {
       thinking_level:
-        opts.thinkingLevel && opts.thinkingLevel !== "off" && opts.thinkingLevel !== "none"
+        opts.thinkingLevel && opts.thinkingLevel !== "off"
           ? opts.thinkingLevel
           : undefined,
       providers: Object.keys(providers).length > 0 ? providers : undefined,

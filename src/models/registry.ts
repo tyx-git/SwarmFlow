@@ -75,9 +75,9 @@ export function modelSpecIds(spec: ModelSpec): string[] {
   return [spec.id, ...(spec.aliases ?? [])];
 }
 
-/** 思考模型 = 至少有一个非 off/none 级别。 */
+/** 思考模型 = 至少有一个非 off 级别。 */
 export function isThinkingSpec(spec: ModelSpec): boolean {
-  return spec.thinkingLevels.some((l) => l !== "off" && l !== "none");
+  return spec.thinkingLevels.some((l) => l !== "off");
 }
 
 /**

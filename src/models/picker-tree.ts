@@ -165,32 +165,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   const currentProvider = String(session.primaryAgent?.modelConfig?.provider ?? "");
   const currentModel = String(session.primaryAgent?.modelConfig?.model ?? "");
 
-  const byProvider = new Map<string, Map<string, { modelId: string }>>();
-  const providerOrder: string[] = [];
-
-  const addModel = (providerId: string, selectionKey: string, modelId: string) => {
-    if (!providerId || !selectionKey || !modelId) return;
-    if (allowedProviderIds && !allowedProviderIds.has(providerId)) return;
-    if (!byProvider.has(providerId)) {
-      byProvider.set(providerId, new Map());
-      providerOrder.push(providerId);
-    }
-    const providerMap = byProvider.get(providerId)!;
-    if (!providerMap.has(selectionKey)) {
-      providerMap.set(selectionKey, { modelId });
-    }
-  };
-
-  for (const preset of PROVIDER_PRESETS) {
-    for (const model of preset.models) {
-      addModel(preset.id, model.key, model.id);
-    }
-  }
-
-  for (const entry of entries) {
-    addModel(entry.provider, entry.model, entry.model);
-  }
-
+  // ── Build providerHasKey FIRST (before adding models) ──
   const providerHasKey = new Map<string, boolean>();
   for (const entry of entries) {
     if (entry.hasResolvedApiKey) {
@@ -215,6 +190,36 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   }
   if (currentProvider && session.primaryAgent?.modelConfig?.apiKey) {
     providerHasKey.set(currentProvider, true);
+  }
+
+  // ── Populate models: only from providers that have keys ──
+  const byProvider = new Map<string, Map<string, { modelId: string }>>();
+  const providerOrder: string[] = [];
+
+  const addModel = (providerId: string, selectionKey: string, modelId: string) => {
+    if (!providerId || !selectionKey || !modelId) return;
+    if (allowedProviderIds && !allowedProviderIds.has(providerId)) return;
+    if (!byProvider.has(providerId)) {
+      byProvider.set(providerId, new Map());
+      providerOrder.push(providerId);
+    }
+    const providerMap = byProvider.get(providerId)!;
+    if (!providerMap.has(selectionKey)) {
+      providerMap.set(selectionKey, { modelId });
+    }
+  };
+
+  // Preset models: only for providers with configured keys
+  for (const preset of PROVIDER_PRESETS) {
+    if (!providerHasKey.get(preset.id)) continue;
+    for (const model of preset.models) {
+      addModel(preset.id, model.key, model.id);
+    }
+  }
+
+  // Config entries: always add (custom providers are always "configured")
+  for (const entry of entries) {
+    addModel(entry.provider, entry.model, entry.model);
   }
 
   const presetById = new Map(PROVIDER_PRESETS.map((preset) => [preset.id, preset] as const));
@@ -474,40 +479,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
       brandLabel: descriptor.brandLabel,
       providerId,
       children,
-    });
-  }
-
-  for (const preset of PROVIDER_PRESETS) {
-    if (!preset.localServer || processed.has(preset.id)) continue;
-    if (allowedProviderIds && !allowedProviderIds.has(preset.id)) continue;
-    const descriptor = describeModel({
-      providerId: preset.id,
-      selectionKey: preset.id,
-      modelId: preset.id,
-    });
-    nodes.push({
-      kind: "provider",
-      id: preset.id,
-      value: preset.id,
-      label: descriptor.providerLabel,
-      isCurrent: false,
-      credentialState: "not_required",
-      keyMissing: false,
-      brandKey: descriptor.brandKey,
-      brandLabel: descriptor.brandLabel,
-      providerId: preset.id,
-      children: includeLocalDiscoverActions ? [{
-        kind: "action",
-        id: `${preset.id}:__discover__`,
-        value: `${preset.id}:__discover__`,
-        label: "Discover models...",
-        isCurrent: false,
-        credentialState: "not_required",
-        keyMissing: false,
-        brandKey: descriptor.brandKey,
-        brandLabel: descriptor.brandLabel,
-        providerId: preset.id,
-      }] : [],
     });
   }
 

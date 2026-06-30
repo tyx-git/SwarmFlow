@@ -64,7 +64,7 @@
       "providerClass": "copilot",
       "wire": { "transportProtocol": "by-family", "thinkingEncryption": "by-family", "sealedSchema": "by-family" },
       "models": [
-        { "id": "claude-opus-4.8", "spec": "claude-opus-4.8", "config": { "supports_web_search": false } },
+        { "id": "claude-opus-4.8", "spec": "claude-opus-4-8", "config": { "supports_web_search": false } },
         { "id": "claude-opus-4.7", "spec": "claude-opus-4-7", "config": { "supports_web_search": false } },
         { "id": "claude-sonnet-4.6", "spec": "claude-sonnet-4-6", "config": { "supports_web_search": false } },
         { "spec": "gpt-5.3-codex", "config": { "store": false, "supports_web_search": false } },

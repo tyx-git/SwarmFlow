@@ -769,16 +769,7 @@ function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: strin
  */
 async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefined> {
   const session = ctx.session;
-  const model = session.currentModelName ?? "";
-  const levels = getThinkingLevels(model);
-  if (levels.length === 0) return undefined;
-
-  // 如果只有一个关卡(例如："on"表示具有不可配置思维的模型)，
-  // 自动应用，无需提示。
-  if (levels.length === 1) {
-    session.thinkingLevel = levels[0];
-    return levels[0];
-  }
+  const levels = ["low", "medium", "high", "xhigh", "max"];
 
   if (!ctx.promptSelect) {
     // 非交互式环境-保持当前/默认的思维水平。
@@ -786,10 +777,13 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
   }
 
   const current = session.thinkingLevel ?? "";
-  const options = levels.map((level) => ({
-    label: current === level ? `${level}  (current)` : level,
-    value: level,
-  }));
+  const options = levels.map((level) => {
+    let label = level;
+    if (current === level) label += "  (current)";
+    if (level === "xhigh") label += "  — OpenAI only";
+    if (level === "max") label += "  — DeepSeek, Anthropic, GLM";
+    return { label, value: level };
+  });
 
   const choice = await ctx.promptSelect({
     message: "Select thinking level",
@@ -2856,17 +2850,18 @@ async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
 
 async function cmdEffort(ctx: CommandContext, args: string): Promise<void> {
   const requested = args.trim().toLowerCase();
-  const model = ctx.session.currentModelName ?? "";
-  const supported = getThinkingLevels(model);
-  const levels = supported.length > 0 ? supported : ["low", "medium", "high", "xhigh", "max"];
+  const levels = ["low", "medium", "high", "xhigh", "max"];
   let level = requested;
   if (!level && ctx.promptSelect) {
     const choice = await ctx.promptSelect({
       message: "Select effort level",
-      options: levels.map((value) => ({
-        label: `${value}${value === ctx.session.thinkingLevel ? " (current)" : ""}${value === "max" ? " — provider-specific" : ""}`,
-        value,
-      })),
+      options: levels.map((value) => {
+        let label = value;
+        if (value === ctx.session.thinkingLevel) label += " (current)";
+        if (value === "xhigh") label += " — OpenAI only";
+        if (value === "max") label += " — DeepSeek, Anthropic, GLM";
+        return { label, value };
+      }),
     });
     if (!choice) return;
     level = choice;
@@ -2876,13 +2871,17 @@ async function cmdEffort(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
   if (!levels.includes(level)) {
-    ctx.showMessage(`Effort "${level}" is not supported by the current model. Available: ${levels.join(", ")}`);
+    ctx.showMessage(`Effort "${level}" is not valid. Available: ${levels.join(", ")}`);
     return;
   }
   ctx.session.thinkingLevel = level;
   persistModelSelection(ctx);
-  const note = level === "max" ? " Note: max effort is provider/model-specific." : "";
-  ctx.showMessage(`Effort set to: ${ctx.session.thinkingLevel}.${note}`);
+  const notes: Record<string, string> = {
+    xhigh: "Note: xhigh only supported by OpenAI models.",
+    max: "Note: max only supported by DeepSeek, Anthropic, GLM models.",
+  };
+  const note = notes[level] ? ` ${notes[level]}` : "";
+  ctx.showMessage(`Effort set to: ${level}.${note}`);
 }
 
 // ------------------------------------------------------------------
