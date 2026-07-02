@@ -30,6 +30,7 @@ import {
 
 function identifyPrimaryAgent(
   agents: Record<string, Agent>,
+  config: Config,
   name = "main",
 ): Agent {
   const agent = agents[name];
@@ -40,7 +41,34 @@ function identifyPrimaryAgent(
     return agents[names[0]!];
   }
 
-  throw new Error("No agent templates found.");
+  // No templates loaded (first run, no providers configured).
+  // Create a minimal placeholder agent with a stub modelConfig.
+  // User will configure via /provider + /model.
+  const stub = new Agent({
+    name: "main",
+    modelConfig: {
+      name: "__pending__",
+      provider: "__pending__",
+      model: "",
+      apiKey: "",
+      baseUrl: "https://placeholder.invalid",
+      temperature: 0.7,
+      maxTokens: 8192,
+      contextLength: 128000,
+      supportsThinking: false,
+      supportsMultimodal: false,
+      supportsWebSearch: false,
+      thinkingBudget: 0,
+      transportProtocol: "chat",
+      thinkingEncryption: "none",
+      sealedSchema: null,
+      extra: {},
+    },
+    role: "You are a helpful assistant.",
+    tools: [],
+    description: "Default (configure a provider and model to start)",
+  });
+  return stub;
 }
 
 function formatOAuthRefreshError(err: unknown): string {
@@ -110,18 +138,8 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   let settings = mergeSettings(globalSettings, localSettings);
   settings = mergeSettings(settings, parseSettingsOverrides(opts?.configOverrides ?? []));
 
-  // Check if any providers are configured
+  // Check if any providers are configured (non-blocking; empty Config is valid on first run)
   const { providerEnvVars, localProviders, mcpServers } = settingsToConfigInputs(settings);
-  const hasProviders =
-    Object.keys(providerEnvVars).length > 0
-    || Object.keys(localProviders).length > 0
-    || hasAnyManagedCredential();
-
-  if (!hasProviders) {
-    throw new Error(
-      "No providers configured. Run `swarmflow init` first, then retry the OpenTUI prototype.",
-    );
-  }
 
   // ── Build Config ──
   const paths = resolveAssetPaths({
@@ -181,7 +199,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     paths.projectTemplatesPath ?? undefined,
     templateFallbackModel,
   );
-  const primary = identifyPrimaryAgent(agents);
+  const primary = identifyPrimaryAgent(agents, config);
 
   // ── Skills (four-layer: bundled > global > project > workspace) ──
   const bundledSkills = join(bundledDir, "skills");

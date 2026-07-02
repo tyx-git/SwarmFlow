@@ -335,15 +335,19 @@ export function loadTemplates(
 
   const agents: Record<string, Agent> = {};
   for (const name of Object.keys(templateDirs).sort()) {
-    const agent = loadTemplate(
-      templateDirs[name],
-      config,
-      undefined,
-      mcpManager,
-      resolvedPromptsDirs,
-      fallbackModel,
-    );
-    agents[agent.name] = agent;
+    try {
+      const agent = loadTemplate(
+        templateDirs[name],
+        config,
+        undefined,
+        mcpManager,
+        resolvedPromptsDirs,
+        fallbackModel,
+      );
+      agents[agent.name] = agent;
+    } catch {
+      // Skip templates that can't load (e.g. no model available on first run)
+    }
   }
 
   return agents;

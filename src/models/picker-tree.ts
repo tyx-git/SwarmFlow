@@ -450,21 +450,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
       modelId: currentProvider === providerId ? currentModel : providerId,
     });
     const children = buildModelChildren(providerId);
-    if (!preset) {
-      // Custom (non-preset) provider —offer management.
-      children.push({
-        kind: "action",
-        id: `${providerId}:__manage__`,
-        value: `manage:${providerId}`,
-        label: "Manage / remove...",
-        isCurrent: false,
-        credentialState: "not_required",
-        keyMissing: false,
-        brandKey: descriptor.brandKey,
-        brandLabel: descriptor.brandLabel,
-        providerId,
-      });
-    }
     nodes.push({
       kind: "provider",
       id: providerId,
@@ -479,19 +464,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
       brandLabel: descriptor.brandLabel,
       providerId,
       children,
-    });
-  }
-
-  // "添加提供者..." 操作在树的底部
-  if (includeAddProviderAction) {
-    nodes.push({
-      kind: "action",
-      id: "__add_provider__",
-      value: "__add_provider__",
-      label: "Add custom provider...",
-      isCurrent: false,
-      credentialState: "not_required",
-      keyMissing: false,
     });
   }
 

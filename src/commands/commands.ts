@@ -990,18 +990,6 @@ async function pickResolvedModelSelection(
       if (!target) return undefined;
     }
 
-    if (target === "__add_provider__") {
-      await cmdAddCustomProvider(ctx);
-      target = "";
-      continue;
-    }
-
-    if (target.startsWith("manage:")) {
-      await cmdManageCustomProvider(ctx, target.slice("manage:".length));
-      target = "";
-      continue;
-    }
-
     if (target.endsWith(":__discover__")) {
       await cmdModelLocalDiscover(ctx, target.split(":")[0]);
       target = "";
@@ -1217,14 +1205,13 @@ function providerOptions(ctx: CommandOptionsContext, homeDir?: string): CommandO
 
   const settings = loadGlobalSettings(homeDir);
   const providers = settings.providers ?? {};
-  const customProviders = Object.entries(providers)
-    .filter(([, entry]) => entry?.custom)
+  const allProviders = Object.entries(providers)
     .sort(([a], [b]) => a.localeCompare(b));
-  if (customProviders.length > 0) {
+  if (allProviders.length > 0) {
     options.push({
-      label: "Manage custom providers",
+      label: "Manage providers",
       value: "__custom__",
-      children: customProviders.map(([id, entry]) => ({
+      children: allProviders.map(([id, entry]) => ({
         label: entry.label ? `${entry.label} (${id})` : id,
         value: `manage:${id}`,
         detail: `${entry.models?.length ?? 0} model(s)`,
@@ -1676,7 +1663,7 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
   const config = ctx.session.config;
   const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
   const entry = settings.providers?.[providerId];
-  if (!entry?.custom) { ctx.showMessage(`"${providerId}" is not a custom provider.`); return; }
+  if (!entry) { ctx.showMessage(`Provider "${providerId}" not found.`); return; }
   const label = entry.label ?? providerId;
   const models = entry.models ?? [];
 
@@ -1758,14 +1745,14 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
 
   if (action === "del") {
     const confirm = await ctx.promptSelect({
-      message: `Delete custom provider "${label}" and its ${models.length} model(s)?`,
+      message: `Delete provider "${label}" and its ${models.length} model(s)?`,
       options: [{ label: "Yes, delete", value: "yes" }, { label: "No, keep it", value: "no" }],
     });
     if (confirm !== "yes") return;
     const next = { ...settings.providers }; delete next[providerId];
     saveProviders(next);
     for (const m of models) config.removeModel?.(`${providerId}:${m.id}`);
-    ctx.showMessage(`Deleted custom provider "${label}".`);
+    ctx.showMessage(`Deleted provider "${label}".`);
   }
 }
 

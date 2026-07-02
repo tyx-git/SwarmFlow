@@ -433,53 +433,31 @@ function normalizeLegacyVersionAlias(argv: string[]): void {
   }
 }
 
-/** 检查是否已配置至少一个 Provider。 */
-function hasConfiguredProviders(
-  settings: ReturnType<typeof loadGlobalSettings>,
-  hasManagedCredential: typeof hasAnyManagedCredential = hasAnyManagedCredential,
-): boolean {
-  const { providerEnvVars, localProviders } = settingsToConfigInputs(settings);
-  return (
-    Object.keys(providerEnvVars).length > 0
-    || Object.keys(localProviders).length > 0
-    || hasManagedCredential()
-  );
-}
-
 /**
- * 确保已配置 Provider。
- * 若未配置且用户未提供凭证，启动初始化向导。
+ * 确保初始化向导已运行（首次启动）。
+ * 向导只配置联网搜索和主题；供应商通过 /provider 配置。
  */
 async function ensureProvidersConfigured(
   homeDir: string,
   deps: Pick<MainDeps, "loadGlobalSettings" | "runInitWizard" | "hasAnyManagedCredential">,
 ): Promise<ReturnType<typeof loadGlobalSettings>> {
   const loadSettings = deps.loadGlobalSettings ?? loadGlobalSettings;
-  const hasManagedCredential = deps.hasAnyManagedCredential ?? hasAnyManagedCredential;
-  let globalSettings = loadSettings(homeDir);
-  if (hasConfiguredProviders(globalSettings, hasManagedCredential)) return globalSettings;
+  const globalSettings = loadSettings(homeDir);
 
-  console.log("No providers configured. Starting setup wizard...\n");
+  // 如果已有设置文件（向导已运行过），直接返回
+  if (globalSettings && Object.keys(globalSettings).length > 0) {
+    return globalSettings;
+  }
+
+  // 首次运行 → 启动向导（联网搜索 + 主题）
   try {
     const runInitWizard = deps.runInitWizard ?? (await import("./lifecycle/init-wizard.js")).runInitWizard;
     await runInitWizard();
   } catch {
-    console.error(
-      "Error: no providers configured.\n" +
-      "  Run 'swarmflow init' to set up providers.",
-    );
-    process.exit(1);
+    // 向导被取消或出错，继续进入主界面
   }
 
-  globalSettings = loadSettings(homeDir);
-  if (!hasConfiguredProviders(globalSettings, hasManagedCredential)) {
-    console.error(
-      "Error: no providers configured.\n" +
-      "  Run 'swarmflow init' to set up providers.",
-    );
-    process.exit(1);
-  }
-  return globalSettings;
+  return loadSettings(homeDir);
 }
 
 /** 若配置了 Copilot 但未登录，显示警告。 */
