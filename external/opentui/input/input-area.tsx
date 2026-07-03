@@ -257,40 +257,33 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
         </box>
       </box>
 
-      {/* Input box with round border.
-          paddingRight reserves one cell for the cursor's "next position"
-          past the last character — without it, long lines push the cursor
-          onto the right border before the textarea wraps. */}
-      <box
-        flexDirection="row"
-        width="100%"
-        flexShrink={0}
-        border={true}
-        borderStyle="rounded"
-        borderColor={colors.dim}
-        paddingRight={1}
-      >
-        <text fg="#d4d4d4" attributes={ATTRS_BOLD} content="❯ " flexShrink={0} />
-        <textarea
-          ref={(node: any) => {
-            (inputRef as any).current = node;
-          }}
-          placeholder={placeholder}
-          focused={focused}
-          textColor={selectedChildId ? colors.muted : colors.text}
-          focusedTextColor={selectedChildId ? colors.muted : colors.text}
-          placeholderColor={colors.muted}
-          cursorStyle={{ style: "line", blinking: true }}
-          cursorColor="#ffffff"
-          flexGrow={1}
-          maxHeight={maxInputLines}
-          minHeight={1}
-          syntaxStyle={composerTokenVisuals.syntaxStyle}
-          keyBindings={[...keyBindings]}
-          onSubmit={onSubmit}
-          wrapMode="word"
-          scrollMargin={0}
-        />
+      {/* Input area: two horizontal lines with ❯ prompt */}
+      <box width="100%" flexShrink={0}>
+        <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
+        <box flexDirection="row" width="100%">
+          <text fg="#d4d4d4" attributes={ATTRS_BOLD} content="❯ " flexShrink={0} />
+          <textarea
+            ref={(node: any) => {
+              (inputRef as any).current = node;
+            }}
+            placeholder={placeholder}
+            focused={focused}
+            textColor={selectedChildId ? colors.muted : colors.text}
+            focusedTextColor={selectedChildId ? colors.muted : colors.text}
+            placeholderColor={colors.muted}
+            cursorStyle={{ style: "line", blinking: true }}
+            cursorColor="#ffffff"
+            flexGrow={1}
+            maxHeight={maxInputLines}
+            minHeight={1}
+            syntaxStyle={composerTokenVisuals.syntaxStyle}
+            keyBindings={[...keyBindings]}
+            onSubmit={onSubmit}
+            wrapMode="word"
+            scrollMargin={0}
+          />
+        </box>
+        <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
       </box>
 
       {/* Bottom row: permission/hint (left, mutually exclusive) + usage + context (right) */}

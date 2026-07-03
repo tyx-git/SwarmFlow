@@ -86,7 +86,7 @@ function OverlayOptionRow({
 }: OverlayOptionRowProps): React.ReactNode {
   const isSelected = selected && !disabled;
   const fg = disabled ? theme.colors.muted : isSelected ? theme.colors.accent : theme.colors.dim;
-  const prefix = isSelected ? "> " : "  ";
+  const prefix = isSelected ? "❯ " : "  ";
 
   // Rich label: render as inline colored segments, no detail column
   if (labelParts && labelParts.length > 0) {
