@@ -48,7 +48,7 @@ export function getActiveTranscriptSource(
   return {
     sourceKey: "root",
     logRevision: session.getLogRevision?.() ?? 0,
-    log: session.log ?? [],
+    log: (typeof session.getDisplayLog === "function" ? session.getDisplayLog() : session.log) ?? [],
   };
 }
 

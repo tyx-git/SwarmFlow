@@ -367,7 +367,6 @@ export function OpenTuiApp({
   const [activeShellDetail, setActiveShellDetail] = useState<ShellDetailUi | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const presentationEntries = usePresentationEntries({ session, selectedChildId, childSessions, processing });
-  const [clearDisplay, setClearDisplay] = useState(false);
   const turnElapsed = useTurnTimer(phase);
   const planCheckpoints = usePlan(session);
   const [agentsPanelOpen, setAgentsPanelOpen] = useState(false);
@@ -1790,7 +1789,6 @@ export function OpenTuiApp({
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;
-    setClearDisplay(false);
     const cmdToken = input.startsWith("/") ? input.split(/\s/)[0] : "";
     const isUiOnlyCommand = Boolean(cmdToken && UI_ONLY_COMMANDS.has(cmdToken));
     const isSessionConfigCommand = Boolean(cmdToken && SESSION_CONFIG_COMMANDS.has(cmdToken));
@@ -3147,7 +3145,7 @@ export function OpenTuiApp({
   }, [statPanel, session]);
   const effectiveCacheReadTokens = childSnapshot ? childSnapshot.cacheReadTokens : cacheReadTokens;
   const effectiveProcessing = childSnapshot ? childSnapshot.running : processing;
-  const effectiveEntries = clearDisplay ? [] : presentationEntries;
+  const effectiveEntries = presentationEntries;
   // One-line usage indicator shown in the input area's bottom row (left of
   // context). null when not logged in / unsupported provider / fetch pending.
   const usageText = formatUsageLine(usageSnapshot);

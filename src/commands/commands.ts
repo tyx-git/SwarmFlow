@@ -2801,6 +2801,7 @@ async function cmdClear(ctx: CommandContext, _args: string): Promise<void> {
     return;
   }
   ctx.autoSave();
+  ctx.session.setDisplayCutoff?.();
   ctx.session._resetTransientState?.();
   ctx.resetUiState();
   ctx.requestFullRepaint?.();

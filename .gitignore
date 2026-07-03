@@ -66,3 +66,4 @@ docs/*
 **.png**
 !external/opentui/
 .swarmflow/
+.superpowers/

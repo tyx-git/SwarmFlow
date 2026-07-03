@@ -1893,6 +1893,27 @@ export class Session {
     return this._log;
   }
 
+  /** Display cutoff index — entries before this index are hidden from UI but preserved for model context. */
+  private _displayCutoff = 0;
+
+  /** Read-only snapshot of the log filtered by display cutoff. */
+  getDisplayLog(): readonly LogEntry[] {
+    return this._displayCutoff > 0
+      ? this._log.slice(this._displayCutoff)
+      : this._log;
+  }
+
+  /** Set display cutoff to current log length (used by /clear). */
+  setDisplayCutoff(): void {
+    this._displayCutoff = this._log.length;
+    this._logStore.bumpRevision();
+  }
+
+  /** Reset display cutoff to 0 (show all entries). */
+  resetDisplayCutoff(): void {
+    this._displayCutoff = 0;
+  }
+
   getLogRevision(): number {
     return this._logStore.revision;
   }
@@ -2441,6 +2462,7 @@ export class Session {
     // 8. Re-init conversation LAST (fresh session state, storage may still be lazy)
     // _initConversation also resets _log and _idAllocator
     this._initConversation();
+    this._displayCutoff = 0;
   }
 
   private _buildToolExecutors(): Record<string, ToolExecutor> {

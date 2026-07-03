@@ -188,6 +188,10 @@ export interface Session {
   deliverMessage?(source: "user" | "system", content: string): DeliverMessageResult | void;
   restoreQueuedUserInput?(): string | null;
   log?: readonly LogEntry[];
+  /** Log filtered by display cutoff — hides entries before /clear. */
+  getDisplayLog?(): readonly LogEntry[];
+  /** Set display cutoff to current log length (hide all current entries from UI). */
+  setDisplayCutoff?(): void;
   subscribeLog?(listener: () => void): () => void;
   getLogRevision?(): number;
   /** 当前活动（流式/执行中）日志条目的 ID，或 null。 */
