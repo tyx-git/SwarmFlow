@@ -146,6 +146,7 @@ import {
   createCompactContext,
   createSummary,
   createStatus,
+  createUserInputDisplay,
   createError as createErrorEntry,
   createTokenUpdate,
   createAskRequest,
@@ -3345,6 +3346,17 @@ export class Session {
       (entry.meta as Record<string, unknown>)["ephemeral"] = true;
     }
     this._appendEntry(entry, true);
+  }
+
+  /**
+   * 在主界面记录一条用户输入样式条目（背景色 userWash），不进入 LLM 轮次。
+   * 用于 /memory、/theme brief 等斜杠命令：显示给用户看，但不发给模型。
+   */
+  appendUserInputDisplay(text: string): void {
+    this._appendEntry(
+      createUserInputDisplay(this._nextLogId("user_message"), this._turnCount, text),
+      true,
+    );
   }
 
   appendErrorMessage(text: string, errorType?: string): void {

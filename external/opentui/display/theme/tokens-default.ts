@@ -29,6 +29,11 @@ export const DEFAULT_TOKENS: DisplayThemeTokens = {
     errorStatus: "#f38ba8",
     diffAdditionBg: "#1e3326",
     diffDeletionBg: "#331e26",
+    thinkingText: "#6c7086",
+    toolArg: "#7a8098",
+    toolResultBody: "#5a6078",
+    toolBar: "#66635c",
+    userPrompt: "#cba6f7",
   },
   spacing: {
     screenPaddingX: 0,

@@ -44,23 +44,6 @@ export const PRESETS: ColorPreset[] = [
     },
   },
   {
-    name: "Nord",
-    colors: {
-      text: "#d8dee9",
-      dim: "#616e88",
-      muted: "#4c566a",
-      accent: "#88c0d0",
-      accentDim: "#5e81ac",
-      border: "#3b4252",
-      userBg: "#3b4252",
-      orange: "#d08770",
-      red: "#bf616a",
-      yellow: "#ebcb8b",
-      green: "#a3be8c",
-      cyan: "#8fbcbb",
-    },
-  },
-  {
     name: "Catppuccin",
     colors: {
       text: "#cdd6f4",

@@ -16,13 +16,7 @@ import { InlineResult } from "./inline-result.js";
 import { FileModifyBody } from "./file-modify-body.js";
 import type { DisplayTheme } from "../../display/theme/index.js";
 
-const BAR_COLOR = "#66635c";
-
 const TOOL_STREAM_MAX_LINES = 10;
-
-// Tool call arg / result body two-tier dim palette (matches AgentRows done state).
-const ARG_COLOR = "#7a8098";    // L=54 — brighter: tool args, path, suffix, event timeout
-const RESULT_COLOR = "#5a6078"; // L=41 — darker:  tool result body content
 const PATH_TOOL_NAMES = new Set(["Read", "Edit", "Write", "List"]);
 
 function openFile(filePath: string): void {
@@ -129,7 +123,9 @@ function ToolOperationEntryInner(
   const toolNameColor = theme.presentation.toolNameColor;
   const toolNameRgba = React.useMemo(() => RGBA.fromHex(toolNameColor), [toolNameColor]);
   const displayName = entry.toolDisplayName ?? "Tool";
-  const barColor = BAR_COLOR;
+  const argColor = colors.toolArg;
+  const resultColor = colors.toolResultBody;
+  const barColor = colors.toolBar;
   const shimmer = useShimmer(displayName, toolNameRgba, active, ATTRS_BOLD);
   const interrupted = entry.toolInterrupted === true;
 
@@ -192,22 +188,22 @@ function ToolOperationEntryInner(
           <text fg={toolNameColor} attributes={ATTRS_BOLD} content={displayName} flexShrink={0} />
         )}
         {suffix ? (
-          <text fg={ARG_COLOR} content={` ${suffix}`} flexShrink={0} />
+          <text fg={argColor} content={` ${suffix}`} flexShrink={0} />
         ) : null}
         <text content="  " flexShrink={0} />
         {isAwaitEvent && active ? (
-          <text fg={ARG_COLOR} content={`${awaitElapsed}s  Timeout: ${toolText} (Send a message to interrupt)`} flexShrink={0} />
+          <text fg={argColor} content={`${awaitElapsed}s  Timeout: ${toolText} (Send a message to interrupt)`} flexShrink={0} />
         ) : entry.toolAgentName && !active ? (
           <ClickableAgentName
             text={entry.toolAgentName}
-            baseColor={ARG_COLOR}
+            baseColor={argColor}
             hoverBg={colors.border}
             onClick={() => onAgentClick?.(entry.toolAgentName!)}
           />
         ) : PATH_TOOL_NAMES.has(displayName) && toolText && !active ? (
-          <ClickablePath text={toolText} baseColor={ARG_COLOR} hoverBg={colors.border} />
+          <ClickablePath text={toolText} baseColor={argColor} hoverBg={colors.border} />
         ) : (
-          <text fg={ARG_COLOR} content={toolText} wrapMode="char" flexGrow={1} flexShrink={1} />
+          <text fg={argColor} content={toolText} wrapMode="char" flexGrow={1} flexShrink={1} />
         )}
       </box>
       {hasBody ? (
@@ -238,7 +234,7 @@ function ToolOperationEntryInner(
                   return (
                     <box key={section.key} flexDirection="column" width="100%" paddingBottom={1}>
                       <text fg={colors.dim} content={`${section.label}${section.complete ? "" : " (streaming)"}`} />
-                      <text fg={RESULT_COLOR} content={preview.text} wrapMode="char" />
+                      <text fg={resultColor} content={preview.text} wrapMode="char" />
                       {preview.truncated ? (
                         <text fg={colors.dim} content="(... more lines, click to open)" />
                       ) : null}

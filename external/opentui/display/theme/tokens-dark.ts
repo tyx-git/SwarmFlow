@@ -27,6 +27,11 @@ export const DARK_TOKENS: DisplayThemeTokens = {
     errorStatus: "#f05030",
     diffAdditionBg: "#285438",
     diffDeletionBg: "#6a3232",
+    thinkingText: "#636a76",
+    toolArg: "#7a8098",
+    toolResultBody: "#5a6078",
+    toolBar: "#66635c",
+    userPrompt: "#8ab4f8",
   },
   spacing: {
     screenPaddingX: 0,

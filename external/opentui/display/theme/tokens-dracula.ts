@@ -27,6 +27,11 @@ export const DRACULA_TOKENS: DisplayThemeTokens = {
     errorStatus: "#ff5555",
     diffAdditionBg: "#1a3326",
     diffDeletionBg: "#331a1a",
+    thinkingText: "#6272a4",
+    toolArg: "#6272a4",
+    toolResultBody: "#44475a",
+    toolBar: "#6272a4",
+    userPrompt: "#bd93f9",
   },
   spacing: {
     screenPaddingX: 0,

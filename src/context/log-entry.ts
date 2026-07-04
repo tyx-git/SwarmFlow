@@ -700,6 +700,28 @@ export function createStatus(
   });
 }
 
+/**
+ * 创建仅用于主界面显示的用户输入条目（如 /memory、/theme brief 等斜杠命令）
+ *
+ * type: "user_message" 走 transformUser → UserEntry → 背景色 userWash
+ * apiRole: null 走 log-projection 的 filter → 不发送给 LLM
+ * meta.displayOnly: true 标记为非真实用户输入
+ */
+export function createUserInputDisplay(
+  id: string,
+  turnIndex: number,
+  display: string,
+): LogEntry {
+  return baseEntry(id, "user_message", turnIndex, {
+    tuiVisible: true,
+    displayKind: "user",
+    display,
+    apiRole: null,
+    content: null,
+    meta: { displayOnly: true },
+  });
+}
+
 /** 创建错误条目 */
 export function createError(
   id: string,

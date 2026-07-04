@@ -204,6 +204,7 @@ export interface Session {
   resetForNewSession?(newStore?: any): void;
   appendStatusMessage?(text: string, statusType?: string): void;
   appendErrorMessage?(text: string, errorType?: string): void;
+  appendUserInputDisplay?(text: string): void;
   getAllSkillNames?(): { name: string; description: string; enabled: boolean }[];
   setSkillEnabled?(name: string, enabled: boolean): void;
   reloadSkills?(): { added: string[]; removed: string[]; total: number };

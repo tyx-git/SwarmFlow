@@ -1,6 +1,6 @@
 import type { SyntaxStyle } from "@opentui/core";
 
-export type ThemeMode = "dark" | "light" | "default" | "nord" | "dracula";
+export type ThemeMode = "dark" | "light" | "default" | "dracula" | "brief";
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends readonly (infer U)[]
@@ -34,6 +34,16 @@ export interface DisplayThemeColorTokens {
   errorStatus: string;
   diffAdditionBg: string;
   diffDeletionBg: string;
+  /** Thinking entry label and body text color. */
+  thinkingText: string;
+  /** Tool argument/suffix/path text color. */
+  toolArg: string;
+  /** Tool result body text color. */
+  toolResultBody: string;
+  /** Tool body border and connector color. */
+  toolBar: string;
+  /** User input prompt marker color (❯ at the front of user input). */
+  userPrompt: string;
 }
 
 export interface DisplayThemeSpacingTokens {

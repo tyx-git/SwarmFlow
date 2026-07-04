@@ -154,8 +154,8 @@ function buildReplaceDescriptors(
   colors: ConversationPalette,
 ): LineDescriptor[] {
   const dimFg = RGBA.fromHex(colors.dim);
-  const redFg = RGBA.fromHex(colors.red);
-  const greenFg = RGBA.fromHex(colors.green);
+  const redFg = RGBA.fromHex(colors.text);
+  const greenFg = RGBA.fromHex(colors.text);
   const language = data.language;
 
   // Compute global line number column width across all hunks
@@ -274,7 +274,7 @@ function buildAppendDescriptors(
   colors: ConversationPalette,
 ): LineDescriptor[] {
   const dimFg = RGBA.fromHex(colors.dim);
-  const greenFg = RGBA.fromHex(colors.green);
+  const greenFg = RGBA.fromHex(colors.text);
   const language = data.language;
 
   if (data.hunks.length === 0) return [];

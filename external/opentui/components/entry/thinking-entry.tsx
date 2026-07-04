@@ -12,9 +12,6 @@ interface ThinkingEntryProps {
   colors: ConversationPalette;
 }
 
-const LABEL_COLOR = "#7a8098";
-const LABEL_RGBA = RGBA.fromHex(LABEL_COLOR);
-const BODY_COLOR = "#5a6078";
 const ATTRS_ITALIC = createTextAttributes({ italic: true });
 
 const LABEL_TEXT = "Thinking";
@@ -27,6 +24,9 @@ function ThinkingEntryInner(
   const fullText = entry.thinkingFullText ?? "";
   const hasBody = fullText.trim().length > 0;
   const lines = fullText.split("\n");
+
+  const labelColor = colors.thinkingText;
+  const labelRgba = React.useMemo(() => RGBA.fromHex(labelColor), [labelColor]);
 
   // Auto-expand while streaming, auto-collapse when done
   const [manualToggle, setManualToggle] = useState<boolean | null>(null);
@@ -43,7 +43,7 @@ function ThinkingEntryInner(
   const expanded = manualToggle !== null ? manualToggle : active;
   const toggle = () => setManualToggle((prev) => !(prev !== null ? prev : active));
 
-  const shimmer = useShimmer(LABEL_TEXT, LABEL_RGBA, active, ATTRS_ITALIC);
+  const shimmer = useShimmer(LABEL_TEXT, labelRgba, active, ATTRS_ITALIC);
   const chevron = expanded ? "▼ " : "▶ ";
 
   return (
@@ -54,12 +54,12 @@ function ThinkingEntryInner(
         cursor="pointer"
         onMouseDown={(e: any) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
       >
-        <text fg={LABEL_COLOR} content={chevron} flexShrink={0} />
+        <text fg={labelColor} content={chevron} flexShrink={0} />
         {active ? (
           <text content={shimmer} flexShrink={0} />
         ) : (
           <text
-            fg={LABEL_COLOR}
+            fg={labelColor}
             attributes={ATTRS_ITALIC}
             content={LABEL_TEXT}
             flexShrink={0}
@@ -73,7 +73,7 @@ function ThinkingEntryInner(
           {lines.map((line, idx) => (
             <text
               key={idx}
-              fg={BODY_COLOR}
+              fg={labelColor}
               attributes={ATTRS_ITALIC}
               content={line}
               wrapMode="char"

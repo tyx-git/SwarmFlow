@@ -6,7 +6,7 @@ export type ThemeModePref = "auto" | ThemeMode;
 export function parseThemeModePref(value: string | undefined | null): ThemeModePref | null {
   if (!value) return null;
   const v = value.trim().toLowerCase();
-  if (v === "auto" || v === "light" || v === "dark" || v === "default" || v === "nord" || v === "dracula") return v;
+  if (v === "auto" || v === "light" || v === "dark" || v === "default" || v === "dracula" || v === "brief") return v;
   return null;
 }
 

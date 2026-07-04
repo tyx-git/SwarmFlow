@@ -327,7 +327,7 @@ export function OpenTuiApp({
   useEffect(() => {
     if (themeModePref !== "auto") return;
     const handler = (mode: ThemeMode | null) => {
-      if (mode === "light" || mode === "dark" || mode === "default" || mode === "nord" || mode === "dracula") setThemeMode(mode);
+      if (mode === "light" || mode === "dark" || mode === "default" || mode === "dracula" || mode === "brief") setThemeMode(mode);
       // Re-query the terminal palette on every mode flip — the new theme
       // almost certainly changed foreground too. The renderer caches the
       // palette across calls (see Renderer.getPalette), so invalidate the
@@ -1583,7 +1583,7 @@ export function OpenTuiApp({
         if (message.startsWith("__theme_mode__:")) {
           const value = message.slice("__theme_mode__:".length) as "auto" | ThemeMode;
           setThemeModePref(value);
-          if (value === "light" || value === "dark" || value === "default" || value === "nord" || value === "dracula") {
+          if (value === "light" || value === "dark" || value === "default" || value === "dracula" || value === "brief") {
             setThemeMode(value);
           } else if (value === "auto") {
             // Snap to whatever the renderer already knows; the live-follow
@@ -1881,8 +1881,8 @@ export function OpenTuiApp({
         session.appendErrorMessage?.(`Unknown command: ${cmdName}`, "command");
         return;
       }
-      // 显式显示命令文本到主界面
-      session.appendStatusMessage?.(input);
+      // 显式显示命令文本到主界面，渲染为用户输入样式（背景色 userWash）
+      session.appendUserInputDisplay?.(input);
       try {
         await command.handler(buildCommandContext(), args);
       } catch (err) {

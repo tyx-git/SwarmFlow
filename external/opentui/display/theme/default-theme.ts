@@ -10,8 +10,8 @@ import type {
 import { DARK_TOKENS } from "./tokens-dark.js";
 import { LIGHT_TOKENS } from "./tokens-light.js";
 import { DEFAULT_TOKENS } from "./tokens-default.js";
-import { NORD_TOKENS } from "./tokens-nord.js";
 import { DRACULA_TOKENS } from "./tokens-dracula.js";
+import { BRIEF_TOKENS } from "./tokens-brief.js";
 
 function mergeNested<T extends object>(base: T, overrides?: DeepPartial<T>): T {
   if (!overrides) return { ...base };
@@ -125,7 +125,7 @@ function buildMarkdownStyle(colors: DisplayThemeColorTokens, tokens: DisplayThem
  * resolve the mode first (THEME env, settings, terminal OSC, picker).
  */
 export function createDisplayTheme(mode: ThemeMode, overrides?: DeepPartial<DisplayThemeTokens>): DisplayTheme {
-  const base = mode === "light" ? LIGHT_TOKENS : mode === "default" ? DEFAULT_TOKENS : mode === "nord" ? NORD_TOKENS : mode === "dracula" ? DRACULA_TOKENS : DARK_TOKENS;
+  const base = mode === "light" ? LIGHT_TOKENS : mode === "default" ? DEFAULT_TOKENS : mode === "dracula" ? DRACULA_TOKENS : mode === "brief" ? BRIEF_TOKENS : DARK_TOKENS;
   const tokens = mergeNested(base, overrides);
   return {
     mode,

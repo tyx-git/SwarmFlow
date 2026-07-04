@@ -35,6 +35,11 @@ export const LIGHT_TOKENS: DisplayThemeTokens = {
     errorStatus: "#cf222e",
     diffAdditionBg: "#dafbe1",
     diffDeletionBg: "#ffebe9",
+    thinkingText: "#656d76",
+    toolArg: "#656d76",
+    toolResultBody: "#585b70",
+    toolBar: "#9ca0b0",
+    userPrompt: "#0969da",
   },
   // spacing / layout are mode-agnostic; clone from dark.
   spacing: DARK_TOKENS.spacing,

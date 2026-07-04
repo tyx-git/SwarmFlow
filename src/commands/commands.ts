@@ -1803,8 +1803,8 @@ function themeModeOptions(_ctx: CommandOptionsContext): CommandOption[] {
     { label: `Light${mark("light")}`, value: "light" },
     { label: `Dark${mark("dark")}`, value: "dark" },
     { label: `Default (Catppuccin)${mark("default")}`, value: "default" },
-    { label: `Nord${mark("nord")}`, value: "nord" },
     { label: `Dracula${mark("dracula")}`, value: "dracula" },
+    { label: `Brief${mark("brief")}`, value: "brief" },
   ];
 }
 
@@ -1876,7 +1876,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  if (choice === "auto" || choice === "light" || choice === "dark" || choice === "default" || choice === "nord" || choice === "dracula") {
+  if (choice === "auto" || choice === "light" || choice === "dark" || choice === "default" || choice === "dracula" || choice === "brief") {
     persistSettingsPatch({ theme_mode: choice }, ctx.swarmflowHomeDir);
     // 魔术消息- TUI拦截和更新React状态而不重启。
     ctx.showMessage(`__theme_mode__:${choice}`);
@@ -1885,7 +1885,7 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
   }
 
   const current = loadGlobalSettings().theme_mode ?? "auto";
-  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme custom | auto | light | dark | default | nord | dracula`);
+  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme custom | auto | light | dark | default | nord | dracula | brief`);
 }
 
 // ------------------------------------------------------------------

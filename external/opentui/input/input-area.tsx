@@ -87,7 +87,7 @@ function getPhaseSpinnerConfig(phase: ActivityPhase): { frames: readonly string[
 
 function getPhaseColor(phase: ActivityPhase, colors: ConversationPalette): string {
   if (phase === "Asking") return colors.dim;
-  return "#56B6C2";
+  return colors.workingStatus;
 }
 
 /**
@@ -261,7 +261,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
       <box width="100%" flexShrink={0}>
         <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
         <box flexDirection="row" width="100%">
-          <text fg="#d4d4d4" attributes={ATTRS_BOLD} content="❯ " flexShrink={0} />
+          <text fg={colors.dim} attributes={ATTRS_BOLD} content="❯ " flexShrink={0} />
           <textarea
             ref={(node: any) => {
               (inputRef as any).current = node;

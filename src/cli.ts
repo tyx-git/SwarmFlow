@@ -327,7 +327,7 @@ async function interactiveSessionSelect(
 
     stdout.write("\n");
     stdout.write(`${" ".repeat(margin)}\x1B[90m${"━".repeat(lineLen)}\x1B[0m\n`);
-    stdout.write(`${" ".repeat(titlePad)}\x1B[1;38;2;187;154;247m${titleText}\x1B[0m\n`);
+    stdout.write(`${" ".repeat(titlePad)}\x1B[1;38;2;255;255;255m${titleText}\x1B[0m\n`);
     stdout.write(`${" ".repeat(margin)}\x1B[90m${"━".repeat(lineLen)}\x1B[0m\n`);
     stdout.write("\n");
 

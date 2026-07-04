@@ -155,7 +155,7 @@ async function stageWebSearch(): Promise<"next" | Back> {
 const THEME_OPTIONS = [
   { name: "Default (dark)", value: "default" },
   { name: "Dracula", value: "dracula" },
-  { name: "Nord", value: "nord" },
+  { name: "Brief", value: "brief" },
   { name: "Light", value: "light" },
   { name: "Auto (follow system)", value: "auto" },
 ];
