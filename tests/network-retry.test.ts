@@ -1,10 +1,10 @@
-import { describe, it, expect, mock, spyOn } from "bun:test";
+import { describe, it, expect, vi } from "vitest";
 import {
   isRetryableNetworkError,
   computeRetryDelay,
   retrySleep,
   MAX_NETWORK_RETRIES,
-} from "../src/network-retry.js";
+} from "../src/lib/network-retry.js";
 
 // ------------------------------------------------------------------
 // isRetryableNetworkError

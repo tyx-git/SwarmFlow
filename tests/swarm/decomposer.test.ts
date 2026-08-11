@@ -2,7 +2,7 @@
  * Tests for the TaskDecomposer.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { TaskDecomposer } from "../../src/swarm/decomposer.js";
 import { validateDAG } from "../../src/swarm/task-dag.js";
 import { AgentRole } from "../../src/swarm/types.js";

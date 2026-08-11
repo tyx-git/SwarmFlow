@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import {
   _resetModelsDevCache,
   buildModelsDevIndex,
   fetchModelSpecSuggestion,
-} from "../src/models-dev-lookup.js";
+} from "../src/models/dev-lookup.js";
 
 const origFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = origFetch; _resetModelsDevCache(); });

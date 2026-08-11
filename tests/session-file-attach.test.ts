@@ -2,14 +2,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import { Session } from "../src/session.js";
 import { executeTool } from "../src/tools/basic.js";
 
 // All four document formats below are real minimal files run through the real
-// converters. No mock.module here: bun test loads every test file's top level
+// converters. No module mock here: the test runner loads every test file's top level
 // before running, so a module mock would leak into other test files
 // (tests/document-projection.test.ts exercises the real unpdf).
 function makeMinimalPdf(lines: string[]): string {

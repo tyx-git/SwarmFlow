@@ -143,7 +143,7 @@ function detectSecurity(request: string): boolean {
 // 基于模板的 DAG 构建器
 // ------------------------------------------------------------------
 
-function buildFeatureDag(request: string, options: Required<DecomposerOptions>): TaskNode[] {
+function buildFeatureDag(request: string): TaskNode[] {
   return [
     {
       id: "scout-analyze",
@@ -169,7 +169,7 @@ function buildFeatureDag(request: string, options: Required<DecomposerOptions>):
   ];
 }
 
-function buildBugFixDag(request: string, options: Required<DecomposerOptions>): TaskNode[] {
+function buildBugFixDag(request: string): TaskNode[] {
   return [
     {
       id: "scout-investigate",
@@ -195,7 +195,7 @@ function buildBugFixDag(request: string, options: Required<DecomposerOptions>): 
   ];
 }
 
-function buildRefactorDag(request: string, options: Required<DecomposerOptions>): TaskNode[] {
+function buildRefactorDag(request: string): TaskNode[] {
   return [
     {
       id: "scout-analyze",
@@ -235,7 +235,7 @@ function buildRefactorDag(request: string, options: Required<DecomposerOptions>)
   ];
 }
 
-function buildExploratoryDag(request: string, options: Required<DecomposerOptions>): TaskNode[] {
+function buildExploratoryDag(request: string): TaskNode[] {
   return [
     {
       id: "scout-1",
@@ -261,7 +261,7 @@ function buildExploratoryDag(request: string, options: Required<DecomposerOption
   ];
 }
 
-function buildSecurityDag(request: string, options: Required<DecomposerOptions>): TaskNode[] {
+function buildSecurityDag(request: string): TaskNode[] {
   return [
     {
       id: "guard-audit",
@@ -319,21 +319,22 @@ export class TaskDecomposer {
    * @returns 经过验证的 TaskDAG
    */
   async decompose(request: string, context?: ProjectContext): Promise<TaskDAG> {
-    const mergedContext = { ...this._options.projectContext, ...context };
+    // The deterministic strategy does not consume project context yet.
+    void context;
     const strat = this._options.strategy;
     let nodes: TaskNode[];
 
     // 模式匹配
-    if (detectSecurity(request)) {
-      nodes = buildSecurityDag(request, this._options);
+    if (detectRefactor(request)) {
+      nodes = buildRefactorDag(request);
     } else if (detectBugFix(request)) {
-      nodes = buildBugFixDag(request, this._options);
-    } else if (detectRefactor(request)) {
-      nodes = buildRefactorDag(request, this._options);
+      nodes = buildBugFixDag(request);
     } else if (detectFeatureRequest(request)) {
-      nodes = buildFeatureDag(request, this._options);
+      nodes = buildFeatureDag(request);
     } else if (detectExploration(request)) {
-      nodes = buildExploratoryDag(request, this._options);
+      nodes = buildExploratoryDag(request);
+    } else if (detectSecurity(request)) {
+      nodes = buildSecurityDag(request);
     } else {
       // 默认：scout → worker
       nodes = [

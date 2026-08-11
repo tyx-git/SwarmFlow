@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   createThinkingArtifact,
@@ -12,7 +12,7 @@ import {
   SEALED_SCHEMA_OPENAI_RESPONSES,
   SEALED_SCHEMA_OPENROUTER_CHAT,
   selectThinkingTransmission,
-} from "../src/thinking-artifact.js";
+} from "../src/lib/thinking-artifact.js";
 
 describe("thinking artifact selection", () => {
   it("sends sealed only when both encryption family and sealed schema match", () => {

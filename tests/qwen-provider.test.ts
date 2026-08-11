@@ -1,6 +1,6 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { QwenProvider } from "../src/providers/qwen.js";
 import type { ToolDef } from "../src/providers/base.js";
 
@@ -106,7 +106,7 @@ describe("QwenProvider thinking params", () => {
 describe("QwenProvider request shaping", () => {
   it("translates native web search to enable_search", async () => {
     const provider = new QwenProvider(modelConfig());
-    const create = mock(async (params: Record<string, unknown>) => ({
+    const create = vi.fn(async (params: Record<string, unknown>) => ({
       choices: [{ message: { content: "ok" } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 },
       _params: params,
@@ -138,7 +138,7 @@ describe("QwenProvider request shaping", () => {
 
   it("keeps ordinary function tools while adding Qwen thinking flags", async () => {
     const provider = new QwenProvider(modelConfig({ supportsWebSearch: false }));
-    const create = mock(async (params: Record<string, unknown>) => ({
+    const create = vi.fn(async (params: Record<string, unknown>) => ({
       choices: [{ message: { content: "ok" } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 },
       _params: params,

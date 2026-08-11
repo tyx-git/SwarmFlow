@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import type { TaskNode, TaskDAG, ExecutionPlan, ExecutionLevel } from "./types.js";
+import type { TaskDAG, ExecutionPlan } from "./types.js";
 import { AgentRole } from "./types.js";
 import { getLevels, validateDAG } from "./task-dag.js";
 

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { rewindOptions } from "../src/commands.js";
+import { describe, expect, it } from "vitest";
+import { rewindOptions } from "../src/commands/commands.js";
 import { acceptCommandPickerSelection, createCommandPicker } from "../src/ui/command-picker.js";
 
 describe("rewind command picker", () => {

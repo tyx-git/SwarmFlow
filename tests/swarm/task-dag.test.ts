@@ -2,7 +2,7 @@
  * Tests for TaskDAG operations.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { createDAG, validateDAG, hasCycle, getLevels, topologicalSort, addNode, removeNode, serializeDAG } from "../../src/swarm/task-dag.js";
 import { AgentRole } from "../../src/swarm/types.js";
 

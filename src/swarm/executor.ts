@@ -8,21 +8,14 @@
  * @packageDocumentation
  */
 
-import { Agent } from "../agents/agent.js";
 import { SwarmCoordinator, type SwarmCoordinatorOptions } from "./coordinator.js";
 import { MessageBus } from "./message-bus.js";
 import { ContextBridge } from "./context-bridge.js";
-import { attemptRecovery, getRecoveryConfig } from "./recovery.js";
-import { mergeResults, formatExecutionResult } from "./merger.js";
+import { mergeResults } from "./merger.js";
 import { TaskDecomposer } from "./decomposer.js";
 import { SwarmScheduler, type Schedule } from "./scheduler.js";
 import type { TaskDAG, ExecutionResult, TaskResult, SwarmSnapshot, SwarmMetrics } from "./types.js";
-import {
-  AgentRole,
-  AgentLifecycle,
-  SwarmTopology,
-  RecoveryStrategy,
-} from "./types.js";
+import { AgentLifecycle, SwarmTopology } from "./types.js";
 
 /** SwarmExecutor 发出的事件。 */
 export interface ExecutorEvents {
@@ -69,10 +62,8 @@ export class SwarmExecutor {
   readonly decomposer: TaskDecomposer;
   readonly scheduler: SwarmScheduler;
   private _events: ExecutorEvents;
-  private _templates: Record<string, Agent>;
 
   constructor(opts: SwarmCoordinatorOptions) {
-    this._templates = opts.templates;
     this._events = opts.events ?? {};
     this.messageBus = new MessageBus();
     this.contextBridge = new ContextBridge();
@@ -182,7 +173,7 @@ export class SwarmExecutor {
 
     return {
       agents,
-      topology: this.coordinator["_topology"] as SwarmTopology,
+      topology: this.coordinator.topology,
       completedResults: [],
       metrics,
       timestamp: now,
@@ -202,10 +193,11 @@ export class SwarmExecutor {
 
     // Pattern was specified
     if (opts.pattern) {
-      const result = await this.coordinator.runPattern(opts.pattern, opts.task);
-      // The coordinator returns an ExecutionResult, but we need a DAG.
-      // For now, use the decomposer with the pattern info.
-      return this.decomposer.decompose(opts.task);
+      const dag = this.coordinator.buildPatternDag(opts.pattern, opts.task);
+      if (!dag) {
+        throw new Error(`Unknown pattern: ${opts.pattern}`);
+      }
+      return dag;
     }
 
     // Default: decompose the task

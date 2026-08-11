@@ -1,14 +1,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
-import { describe, expect, it, mock, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { countTokens as gptCountTokens, encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
 
 import { Session } from "../src/session.js";
-import { SessionStore } from "../src/persistence.js";
-import { createLogSessionMeta, loadLog, saveLog } from "../src/persistence.js";
-import { projectToApiMessages, projectToTuiEntries } from "../src/log-projection.js";
+import { SessionStore } from "../src/config/persistence.js";
+import { createLogSessionMeta, loadLog, saveLog } from "../src/config/persistence.js";
+import { projectToApiMessages, projectToTuiEntries } from "../src/context/log-projection.js";
 import {
   LogIdAllocator,
   createAssistantText,
@@ -21,7 +21,7 @@ import {
   createTokenUpdate,
   createToolCall,
   createUserMessage,
-} from "../src/log-entry.js";
+} from "../src/context/log-entry.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -158,7 +158,7 @@ describe("session storage lifecycle", () => {
 
       expect(store.sessionDir).toBeUndefined();
       expect(systemContent).toContain(`ROOT=${projectRoot}`);
-      expect(systemContent).toContain("/artifacts");
+      expect(systemContent).toContain(`${sep}artifacts`);
       expect(systemContent).not.toContain("{PROJECT_ROOT}");
       expect(systemContent).not.toContain("{SESSION_ARTIFACTS}");
       expect(systemContent).toContain(store.projectDir);
@@ -213,7 +213,7 @@ describe("session storage lifecycle", () => {
       const resetSystemContent = getSystemPromptContent(session);
       expect(store.sessionDir).toBeUndefined();
       expect(resetSystemContent).toContain(`ROOT=${projectRoot}`);
-      expect(resetSystemContent).toContain("/artifacts");
+      expect(resetSystemContent).toContain(`${sep}artifacts`);
       expect(resetSystemContent).not.toContain("{SESSION_ARTIFACTS}");
       expect(countOccurrences(resetSystemContent, `ROOT=${projectRoot}`)).toBe(1);
 
@@ -268,7 +268,7 @@ describe("session storage lifecycle", () => {
       const store = new SessionStore({ baseDir, projectPath: projectRoot });
       const session = makeSession(projectRoot, store) as any;
 
-      session._saveChildSession = mock();
+      session._saveChildSession = vi.fn();
       session._childSessions.set("reviewer-crm-dashboard", {
         id: "reviewer-crm-dashboard",
         numericId: 1,
@@ -890,7 +890,7 @@ describe("session storage lifecycle", () => {
       const session = makeSession(projectRoot, store);
       const workingAbort = new AbortController();
       const finishedAbort = new AbortController();
-      const killShell = mock();
+      const killShell = vi.fn();
       let woke = false;
 
       (session as any)._inbox = [
@@ -905,7 +905,7 @@ describe("session storage lifecycle", () => {
         lifecycle: "running",
         status: "working",
         phase: "thinking",
-        session: { _recordSessionEvent: mock() },
+        session: { _recordSessionEvent: vi.fn() },
         sessionDir: "",
         artifactsDir: "",
         resultText: "",
@@ -932,7 +932,7 @@ describe("session storage lifecycle", () => {
         lifecycle: "archived",
         status: "completed",
         phase: "idle",
-        session: { _recordSessionEvent: mock() },
+        session: { _recordSessionEvent: vi.fn() },
         sessionDir: "",
         artifactsDir: "",
         resultText: "ready but undelivered",
@@ -1045,14 +1045,14 @@ describe("session storage lifecycle", () => {
       ));
 
       const controller = new AbortController();
-      const executor = mock(async (_args: Record<string, unknown>, ctx?: { signal?: AbortSignal }) => {
+      const executor = vi.fn(async (_args: Record<string, unknown>, ctx?: { signal?: AbortSignal }) => {
         expect(ctx?.signal).toBeInstanceOf(AbortSignal);
         controller.abort();
         return "SHOULD_NOT_BE_WRITTEN";
       });
       (session as any)._toolExecutors = { bash: executor };
-      (session as any)._beforeToolExecute = mock(async () => undefined);
-      (session as any)._runTurnActivationLoop = mock(async () => {
+      (session as any)._beforeToolExecute = vi.fn(async () => undefined);
+      (session as any)._runTurnActivationLoop = vi.fn(async () => {
         throw new Error("activation loop should not run after interrupted drain");
       });
 
@@ -1116,11 +1116,11 @@ describe("session storage lifecycle", () => {
         },
         options: ["Allow once", "Deny"],
       };
-      (session as any)._beforeToolExecute = mock(async () => ({ kind: "ask", ask }));
+      (session as any)._beforeToolExecute = vi.fn(async () => ({ kind: "ask", ask }));
       (session as any)._toolExecutors = {
-        edit_file: mock(async () => "should not execute while asking"),
+        edit_file: vi.fn(async () => "should not execute while asking"),
       };
-      (session as any)._runTurnActivationLoop = mock(async () => {
+      (session as any)._runTurnActivationLoop = vi.fn(async () => {
         throw new Error("activation loop should not run while suspended");
       });
 

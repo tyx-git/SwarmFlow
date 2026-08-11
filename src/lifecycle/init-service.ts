@@ -37,7 +37,7 @@ import {
   labelModelPickerNode,
   type ModelPickerTreeNode,
 } from "../models/picker-tree.js";
-import { createModelTierEntry, parseProviderModelTarget } from "../models/selection.js";
+import { parseProviderModelTarget } from "../models/selection.js";
 import { describeModel } from "../models/presentation.js";
 
 // ------------------------------------------------------------------
@@ -149,7 +149,7 @@ export class InitService {
   }
 
   async configureLocalProvider(
-    providerId: string,
+    _providerId: string,
     baseUrl: string,
     apiKey?: string,
   ): Promise<{

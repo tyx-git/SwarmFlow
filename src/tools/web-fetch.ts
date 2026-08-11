@@ -131,11 +131,11 @@ function isPrivateIpv6(hostname: string): boolean {
 
 function validateFetchUrl(parsed: URL): string | null {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return `only http and https url are supported. get:${parsed.protocol}`;
+    return `Only http and https URLs are supported. Got: ${parsed.protocol}`;
   }
 
   if (parsed.username || parsed.password) {
-    return "url with embedded credentials (user: pass @ host) is not allowed.";
+    return "URLs with embedded credentials are not allowed.";
   }
 
   const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -145,15 +145,15 @@ function validateFetchUrl(parsed: URL): string | null {
     hostname.endsWith(".local") ||
     hostname === "local"
   ) {
-    return `refuse to get local host name:${parsed.hostname}`;
+    return `Refusing to fetch local hostname: ${parsed.hostname}`;
   }
 
   const ipKind = isIP(hostname);
   if (ipKind === 4 && isPrivateIpv4(hostname)) {
-    return `refuse to get a private ip address：${parsed.hostname}`;
+    return `Refusing to fetch private IP address: ${parsed.hostname}`;
   }
   if (ipKind === 6 && isPrivateIpv6(hostname)) {
-    return `refuse to get a private ip address：${parsed.hostname}`;
+    return `Refusing to fetch private IP address: ${parsed.hostname}`;
   }
 
   return null;
@@ -165,19 +165,19 @@ function validateFetchUrl(parsed: URL): string | null {
 
 export async function toolWebFetch(
   url: string,
-  prompt?: string,
+  _prompt?: string,
   opts: { signal?: AbortSignal } = {},
 ): Promise<string> {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return `error: invalid url:${url}`;
+    return `ERROR: Invalid URL: ${url}`;
   }
 
   const validationError = validateFetchUrl(parsed);
   if (validationError) {
-    return `error：${validationError}`;
+    return `ERROR: ${validationError}`;
   }
 
   const normalizedUrl = parsed.toString();
@@ -187,17 +187,17 @@ export async function toolWebFetch(
   }
 
   try {
-    const jinaOutput = await fetchViaJina(normalizedUrl, prompt, opts.signal);
+    const jinaOutput = await fetchViaJina(normalizedUrl, opts.signal);
     if (jinaOutput) return jinaOutput;
   } catch {
     // 回退到本地提取。
   }
 
   if (opts.signal?.aborted) {
-    return "error: web_fetch was interrupted.";
+    return "ERROR: web_fetch was interrupted.";
   }
 
-  return fetchLocally(normalizedUrl, prompt, opts.signal);
+  return fetchLocally(normalizedUrl, opts.signal);
 }
 
 /**
@@ -265,7 +265,7 @@ function buildOutput(
   url: string,
   body: string,
 ): string {
-  return `# # content from ${url}\n\n${body}`;
+  return `# Content from ${url}\n\n${body}`;
 }
 
 function normalizeOutput(output: string): string {
@@ -292,7 +292,6 @@ function stripJinaMetadata(text: string): string {
 
 async function fetchViaJina(
   url: string,
-  prompt?: string,
   externalSignal?: AbortSignal,
 ): Promise<string | null> {
   const response = await fetchWithTimeout(JINA_READER_PREFIX + url, {
@@ -313,7 +312,7 @@ async function fetchViaJina(
     ) {
       return null;
     }
-    return `error：HTTP ${response.status} ${response.statusText} for ${url}`;
+    return `ERROR: HTTP ${response.status} ${response.statusText} for ${url}`;
   }
 
   const body = normalizeOutput(stripJinaMetadata(await response.text()));
@@ -356,7 +355,7 @@ async function fetchLocallyWithRedirects(
     if (validationError) {
       throw {
         kind: "error",
-        message: `redirect target denied.：${validationError}`,
+        message: `Redirect target rejected: ${validationError}`,
       } satisfies FetchFailure;
     }
 
@@ -371,7 +370,6 @@ async function fetchLocallyWithRedirects(
 
 async function fetchLocally(
   url: string,
-  prompt?: string,
   externalSignal?: AbortSignal,
 ): Promise<string> {
   let response: Response;
@@ -382,27 +380,27 @@ async function fetchLocally(
     finalUrl = fetched.finalUrl;
   } catch (e) {
     if (isFetchFailure(e)) {
-      if (e.kind === "interrupted") return `error：${e.message}`;
-      if (e.kind === "timeout") return `error：${e.message}`;
-      return `error：${e.message}`;
+      if (e.kind === "interrupted") return `ERROR: ${e.message}`;
+      if (e.kind === "timeout") return `ERROR: ${e.message}`;
+      return `ERROR: ${e.message}`;
     }
-    return `error：fetch false：${e instanceof Error ? e.message : String(e)}`;
+    return `ERROR: Fetch failed: ${e instanceof Error ? e.message : String(e)}`;
   }
 
   if (!response.ok) {
-    return `error：HTTP ${response.status} ${response.statusText} for ${finalUrl}`;
+    return `ERROR: HTTP ${response.status} ${response.statusText} for ${finalUrl}`;
   }
 
   const contentLength = response.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > FETCH_MAX_CONTENT_LENGTH) {
-    return `error：the response is too large（${Math.round(parseInt(contentLength, 10) / 1024 / 1024)} MB，限制 ${FETCH_MAX_CONTENT_LENGTH / 1024 / 1024} MB）。`;
+    return `ERROR: Response is too large (${Math.round(parseInt(contentLength, 10) / 1024 / 1024)} MB; limit ${FETCH_MAX_CONTENT_LENGTH / 1024 / 1024} MB).`;
   }
 
   let body: string;
   try {
     body = await response.text();
   } catch (e) {
-    return `error: failed to read the response body.：${e instanceof Error ? e.message : String(e)}`;
+    return `ERROR: Failed to read the response body: ${e instanceof Error ? e.message : String(e)}`;
   }
 
   if (body.length > FETCH_MAX_CONTENT_LENGTH) {

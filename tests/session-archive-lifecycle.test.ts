@@ -9,13 +9,13 @@
  * must come back from the on-disk archive.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { createCompactMarker, type LogEntry } from "../src/log-entry.js";
-import { projectToApiMessages, projectToTuiEntries } from "../src/log-projection.js";
-import { archiveWindow } from "../src/persistence.js";
+import { createCompactMarker, type LogEntry } from "../src/context/log-entry.js";
+import { projectToApiMessages, projectToTuiEntries } from "../src/context/log-projection.js";
+import { archiveWindow } from "../src/config/persistence.js";
 import { makeScriptedSession } from "./helpers/session-harness.js";
 
 function turnRange(log: readonly LogEntry[], turnIndex: number): { start: number; end: number } {

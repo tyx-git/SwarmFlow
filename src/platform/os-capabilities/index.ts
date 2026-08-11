@@ -18,7 +18,7 @@ const POSIX_SHARED: Omit<OsCapabilities, "caseInsensitiveFilesystem"> = {
   platformSpecificCatastrophicCommands: new Set(),
   // POSIX 直接执行每个 $PATH 条目 — shims 不需要 shell。
   scriptShimsRequireShell: false,
-  toolIndicatorGlyph: "●", // ● 录制黑色圆圈
+  toolIndicatorGlyph: "⏺", // U+23FA，POSIX 终端中的录制指示器
   conversationScrollMultiplier: 1,
 };
 
@@ -60,7 +60,7 @@ const WIN32_CAPS: OsCapabilities = {
   platformSpecificCatastrophicCommands: WIN32_CATASTROPHIC_COMMANDS,
   // `.cmd`/`.bat` shims（npm/npx/prettier）需要 shell 来启动。
   scriptShimsRequireShell: true,
-  toolIndicatorGlyph: "●", // ● 黑色大圆圈 — 见 OsCapabilities JSDoc
+  toolIndicatorGlyph: "⬤", // U+2B24，避免 PowerShell 的 glyph 回退
   // Windows Terminal / PowerShell 直接传递原始滚轮刻度，
   // 没有 OS 级加速。3× 使感知到的滚动速度
   // 更接近 macOS 默认值，这是大多数用户比较的标准。

@@ -14,7 +14,7 @@
  * Workspace 规则是只读的 — 只有用户可以创建/编辑它们。
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
@@ -281,7 +281,6 @@ export class PermissionRuleStore {
     const data: PermissionRuleFile = { version: 1, rules };
     const tmpPath = filePath + ".tmp." + process.pid;
     writeFileSync(tmpPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
-    const { renameSync } = require("node:fs") as typeof import("node:fs");
     renameSync(tmpPath, filePath);
   }
 

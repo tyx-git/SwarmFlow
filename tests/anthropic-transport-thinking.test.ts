@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { KimiAnthropicProvider } from "../src/providers/kimi-anthropic.js";
 
 function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {

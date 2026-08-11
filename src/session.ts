@@ -13,10 +13,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { join, dirname, resolve, relative, isAbsolute } from "node:path";
-// child_process —now only used by BackgroundShellManager
-import * as yaml from "js-yaml";
+import { join, resolve, relative, isAbsolute } from "node:path";
+import { getLogger, initLogger } from "./lib/logger.js";
 
 import { assembleSystemPrompt, getPromptLayers } from "./templates/loader.js";
 
@@ -28,30 +26,12 @@ import type {
   ToolPreflightDecision,
   ResolveToolCallVisibilityCallback,
 } from "./agents/tool-loop.js";
-import { createEphemeralLogState } from "./context/ephemeral-log.js";
-import { isCompactMarker, allocateContextId, stripContextTags, ContextTagStripBuffer } from "./context/context-rendering.js";
+import { allocateContextId, stripContextTags, ContextTagStripBuffer } from "./context/context-rendering.js";
 import { estimateEntryTokens, generateShowContext } from "./context/show-context.js";
-import { getThinkingLevels, getModelMaxOutputTokens, type Config, type ModelConfig } from "./config/config.js";
+import { getThinkingLevels, type Config, type ModelConfig } from "./config/config.js";
 import type { MCPClientManager } from "./clients/mcp-client.js";
-import { ProgressEvent, type ProgressLevel, type ProgressReporter } from "./lib/progress.js";
+import { type ProgressLevel, type ProgressReporter } from "./lib/progress.js";
 import { ToolResult } from "./providers/base.js";
-import type { ToolDef } from "./providers/base.js";
-import {
-  SPAWN_TOOL,
-
-  KILL_AGENT_TOOL,
-  CHECK_STATUS_TOOL,
-  AWAIT_EVENT_TOOL,
-  SHOW_CONTEXT_TOOL,
-  SUMMARIZE_CONTEXT_TOOL,
-  ASK_TOOL,
-} from "./tools/comm.js";
-import {
-  BASH_BACKGROUND_TOOL,
-  BASH_OUTPUT_TOOL,
-  KILL_SHELL_TOOL,
-  executeTool,
-} from "./tools/basic.js";
 import type { FileMutation } from "./tools/basic.js";
 import type { RewindPlan, RewindApplyResult } from "./ui/contracts.js";
 import { RewindEngine } from "./session/rewind-engine.js";
@@ -97,11 +77,10 @@ import {
   buildSkillToolDef,
   registerMcpTools,
   ToolGate,
-  type GateAdvisor,
 } from "./lib/tool-runtime.js";
 import { BackgroundShellManager, type BackgroundShellSnapshot, type BackgroundShellDetail } from "./lib/background-shell-manager.js";
 import { PermissionAdvisor, PermissionRuleStore, initBashParser, type PermissionMode, type PermissionRule, type ApprovalOffer } from "./permissions/index.js";
-import { HookRuntime, type HookEvent, type HookPayload } from "./hooks/index.js";
+import { HookRuntime, type HookPayload } from "./hooks/index.js";
 import type { HookManifest } from "./hooks/types.js";
 import { assembleFullSystemPrompt, readAgentsMemory } from "./lib/prompt-assembler.js";
 import { shell } from "./platform/index.js";
@@ -111,7 +90,6 @@ import {
   argOptionalPath,
   argRequiredString,
   argRequiredStringArray,
-  toolArgError,
 } from "./tools/arg-helpers.js";
 import {
   AskPendingError,
@@ -122,7 +100,6 @@ import {
   toPendingAskUi,
   type AgentQuestion,
   type AgentQuestionItem,
-  type AgentQuestionAnswer,
   type AgentQuestionDecision,
   type ApprovalRequest,
   type AskAuditRecord,
@@ -139,12 +116,9 @@ import {
   createUserMessage as createUserMessageEntry,
   createAssistantText,
   createReasoning,
-  createToolCall,
   createToolResult as createToolResultEntry,
-  createNoReply,
   createCompactMarker,
   createCompactContext,
-  createSummary,
   createStatus,
   createUserInputDisplay,
   createError as createErrorEntry,
@@ -446,10 +420,6 @@ export class Session {
     return this._contextManager.thresholds;
   }
 
-  private get _contextBudgetPercent(): number {
-    return this._contextManager.budgetPercent;
-  }
-
   private get _hintState(): "none" | "level1_sent" | "level2_sent" {
     return this._contextManager.hintState;
   }
@@ -501,7 +471,6 @@ export class Session {
   // Session capabilities / routing
   private _capabilities: SessionCapabilities = ROOT_SESSION_CAPABILITIES;
   private _turnOutputTarget?: (text: string) => void;
-  private _deferQueuedMessageInjectionOnTurnExit = false;
   private _selfPhase: ChildSessionPhase = "idle";
   private _lifetimeToolCallCount = 0;
   private _lastToolCallSummary = "";
@@ -565,7 +534,7 @@ export class Session {
   private _usedContextIds = new Set<string>();
 
   // Last time we ran a sync GC at idle (ms epoch). Used to throttle the
-  // turn-end Bun.gc(true) call so back-to-back work boundaries don't burn
+  // optional exposed GC call so back-to-back work boundaries don't burn
   // CPU on repeated full-heap collections.
   private _lastIdleGcAt = 0;
 
@@ -788,7 +757,6 @@ export class Session {
     capabilities?: SessionCapabilities;
     onTurnOutput?: (text: string) => void;
     toolExecutorOverrides?: Record<string, ToolExecutor>;
-    deferQueuedMessageInjectionOnTurnExit?: boolean;
     /** Stable key for OpenAI prompt cache routing affinity. Auto-generated if omitted. */
     promptCacheKey?: string;
     /** Permission mode for this session. Default: "reversible". */
@@ -798,6 +766,13 @@ export class Session {
     /** Pre-loaded hook manifests. Each session keeps its own runtime; hooks are copied in. */
     hooks?: readonly HookManifest[];
   }) {
+    initLogger();
+    const log = getLogger("session");
+    log.info("Session:construct", {
+      agent: opts.primaryAgent?.name ?? "unknown",
+      hasMcp: Boolean(opts.mcpManager),
+      hasSkills: (opts.skills?.size ?? 0) > 0,
+    });
     this.primaryAgent = opts.primaryAgent;
     // Default thinking level: highest available for this model (or "none" for non-thinking).
     // Resolves once at construction so the field is consistent before any setter call.
@@ -816,8 +791,6 @@ export class Session {
     this._capabilities = opts.capabilities ?? ROOT_SESSION_CAPABILITIES;
     this._turnOutputTarget = opts.onTurnOutput;
     this._toolExecutorOverrides = opts.toolExecutorOverrides ?? {};
-    this._deferQueuedMessageInjectionOnTurnExit = opts.deferQueuedMessageInjectionOnTurnExit ?? false;
-
     this._contextManager = new ContextManager({
       getModelConfig: () => this.primaryAgent.modelConfig,
       getBudgetCalcMode: () =>
@@ -1013,7 +986,7 @@ export class Session {
   }
 
   /**
-   * Run a synchronous Bun.gc at work boundaries to keep saw-tooth heap
+   * Run an optional synchronous GC at work boundaries to keep saw-tooth heap
    * growth in check during long sessions. Throttled to once per 10s so
    * rapid interrupt/restart cycles don't pile up GC pauses, and only on
    * "completed" status —interrupted/error paths may be followed by an
@@ -1021,14 +994,16 @@ export class Session {
    */
   private _maybeRunIdleGc(): void {
     if (this._lastTurnEndStatus !== "completed") return;
-    if (typeof (globalThis as { Bun?: { gc?: (sync: boolean) => void } }).Bun?.gc !== "function") return;
+    const gc = (globalThis as { gc?: () => void }).gc;
+    if (typeof gc !== "function") return;
     const now = Date.now();
     if (now - this._lastIdleGcAt < 10_000) return;
     this._lastIdleGcAt = now;
     try {
-      (globalThis as { Bun: { gc: (sync: boolean) => void } }).Bun.gc(true);
-    } catch {
-      // GC is best-effort; never let a failure surface to the user.
+      gc();
+      getLogger("session").debug("idleGc:ran");
+    } catch (err) {
+      getLogger("session").warn("idleGc:failed", { err: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -1464,10 +1439,6 @@ export class Session {
     return this._recordInputReceived(inputKind, display, content);
   }
 
-  private _hasTrackedShells(): boolean {
-    return this._shellManager.hasTrackedShells();
-  }
-
   private _hasRunningShells(): boolean {
     return this._shellManager.hasRunningShells();
   }
@@ -1588,14 +1559,6 @@ export class Session {
       }
     }
     return messages.length;
-  }
-
-  private _makeAbortPromise(signal: AbortSignal | null | undefined): Promise<"aborted"> | null {
-    if (!signal) return null;
-    if (signal.aborted) return Promise.resolve("aborted");
-    return new Promise<"aborted">((resolve) => {
-      signal.addEventListener("abort", () => resolve("aborted"), { once: true });
-    });
   }
 
   private _installCurrentTurnSignal(signal?: AbortSignal): {
@@ -2225,7 +2188,7 @@ export class Session {
   prepareRestoreFromLog(
     meta: LogSessionMeta,
     entries: LogEntry[],
-    idAllocator: LogIdAllocator,
+    _idAllocator: LogIdAllocator,
   ): PreparedSessionRestore {
     if ((meta.childSessions?.length ?? 0) > 0 && !this._sessionArtifactsOverride && !this._getArtifactsDirIfAvailable()) {
       throw new Error(
@@ -4556,10 +4519,15 @@ export class Session {
   }
 
   async turn(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
+    const turnLog = getLogger("session.turn");
+    turnLog.info("turn:enter", { len: userInput.length, hasSignal: Boolean(options?.signal) });
     return this._withTurnLock(async () => {
       try {
-        return await this._turnInner(userInput, options);
+        const result = await this._turnInner(userInput, options);
+        turnLog.info("turn:exit:ok");
+        return result;
       } catch (err) {
+        turnLog.error("turn:exit:err", { err: err instanceof Error ? err.message : String(err) });
         // Catch-all for failures _turnInner's own catch doesn't reach
         // (storage/MCP/attachments/before-turn compact). Idempotent against
         // the inner layers via the per-lock once-flags.
@@ -4928,23 +4896,6 @@ export class Session {
 
   private _completeMissingToolResultsFromLog(fromIdx: number): void {
     completeMissingToolResultsInLog(this._logSurgeryView(), fromIdx);
-  }
-
-  private _getLastSendableRole(): string | null {
-    const messages = projectToApiMessages(this._log, {
-      systemPrompt: this._getSystemPrompt(),
-      resolveImageRef: (refPath) => this._resolveImageRef(refPath),
-      requiresAlternatingRoles: (this.primaryAgent as any)._provider?.requiresAlternatingRoles,
-    });
-    if (messages.length === 0) return null;
-    const role = messages[messages.length - 1]["role"];
-    return typeof role === "string" ? role : null;
-  }
-
-  private _isUserSideProtocolRole(role: string | null): boolean {
-    if (!role) return true;
-    if (role === "assistant") return false;
-    return true;
   }
 
   // ==================================================================
@@ -5400,9 +5351,6 @@ export class Session {
   // ==================================================================
 
   // Arg-validation helpers —delegates to standalone functions in tools/arg-helpers.ts
-  private _toolArgError(toolName: string, message: string): ToolResult {
-    return toolArgError(toolName, message);
-  }
   private _argOptionalString(toolName: string, args: Record<string, unknown>, key: string): string | undefined | ToolResult {
     return argOptionalString(toolName, args, key);
   }
@@ -6202,7 +6150,8 @@ export class Session {
     }
   }
 
-  private _instantiateChildSession(
+  /** @internal Kept as a stable test/runtime hook around ChildSessionManager. */
+  _instantiateChildSession(
     taskId: string,
     templateLabel: string,
     mode: ChildSessionMode,
@@ -6430,7 +6379,6 @@ export class Session {
           capabilities: CHILD_SESSION_CAPABILITIES,
           onTurnOutput: o.onTurnOutput,
           toolExecutorOverrides: {},
-          deferQueuedMessageInjectionOnTurnExit: true,
           promptCacheKey: o.promptCacheKey,
           permissionMode: this.permissionMode,
           progress: this._progress,

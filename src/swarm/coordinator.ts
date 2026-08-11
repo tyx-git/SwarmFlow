@@ -14,7 +14,6 @@ import {
   AgentRole,
   AgentLifecycle,
   SwarmTopology,
-  RecoveryStrategy,
 } from "./types.js";
 import type { SwarmPattern, TaskNode, TaskDAG, ExecutionPlan, SwarmMessage } from "./types.js";
 import { AgentPool, type AgentPoolConfig } from "./pool.js";
@@ -56,7 +55,6 @@ export class SwarmCoordinator {
   readonly templates: Record<string, Agent>;
   private _events: SwarmCoordinatorEvents;
   private _topology: SwarmTopology = SwarmTopology.Star;
-  private _activeExecution: Promise<ExecutionResult> | null = null;
   private _abortController: AbortController | null = null;
 
   constructor(opts: SwarmCoordinatorOptions) {
@@ -122,6 +120,14 @@ export class SwarmCoordinator {
     return BUILTIN_PATTERNS[name];
   }
 
+  /** Build a task DAG from a named pattern without starting execution. */
+  buildPatternDag(patternName: string, task: string): TaskDAG | null {
+    const pattern = BUILTIN_PATTERNS[patternName];
+    if (!pattern) return null;
+    this.setTopology(pattern.topology);
+    return this._patternToDag(pattern, task);
+  }
+
   // ------------------------------------------------------------------
   // 执行
   // ------------------------------------------------------------------
@@ -134,14 +140,12 @@ export class SwarmCoordinator {
    * @returns 聚合的执行结果
    */
   async runPattern(patternName: string, task: string): Promise<ExecutionResult> {
-    const pattern = BUILTIN_PATTERNS[patternName];
-    if (!pattern) {
+    const dag = this.buildPatternDag(patternName, task);
+    if (!dag) {
       return this._errorResult(`Unknown pattern: ${patternName}`);
     }
 
-    this._topology = pattern.topology;
     // 转换 pattern stages to a flat task DAG
-    const dag = this._patternToDag(pattern, task);
     return this.executeDag(dag);
   }
 
@@ -251,7 +255,6 @@ export class SwarmCoordinator {
    */
   private _patternToDag(pattern: SwarmPattern, task: string): TaskDAG {
     const nodes = new Map<string, TaskNode>();
-    let nodeIndex = 0;
 
     for (let stageIdx = 0; stageIdx < pattern.stages.length; stageIdx++) {
       const stage = pattern.stages[stageIdx]!;
@@ -279,7 +282,6 @@ export class SwarmCoordinator {
             ? `Merge strategy: ${stage.mergeStrategy}`
             : undefined,
         });
-        nodeIndex++;
       }
     }
 
@@ -295,9 +297,7 @@ export class SwarmCoordinator {
    * Build an execution plan from a DAG (topological sort).
    */
   private _buildPlan(dag: TaskDAG): ExecutionPlan {
-    const visited = new Set<string>();
     const levels: Array<{ index: number; taskIds: string[] }> = [];
-    let currentLevel = 0;
 
     // Track which level each task belongs to
     const taskLevels = new Map<string, number>();
@@ -378,11 +378,6 @@ export class SwarmCoordinator {
         : node.description;
 
       // 处理 scout tasks — these are read-only
-      if (node.role === AgentRole.Scout || node.role === AgentRole.Guard) {
-        // Use a stripped-down tool set
-        // (In production, this would use the template's tool configuration)
-      }
-
       this.pool.setLifecycle(agentId, AgentLifecycle.ToolCalling);
 
       // 执行 the agent

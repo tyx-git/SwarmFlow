@@ -2,7 +2,7 @@
  * Tests for log projection functions (TUI + API).
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import {
   createSystemPrompt,
   createTurnStart,
@@ -26,8 +26,8 @@ import {
   createSubAgentToolCall,
   createSubAgentEnd,
   type LogEntry,
-} from "../src/log-entry.js";
-import { projectToTuiEntries, projectToApiMessages } from "../src/log-projection.js";
+} from "../src/context/log-entry.js";
+import { projectToTuiEntries, projectToApiMessages } from "../src/context/log-projection.js";
 
 // ------------------------------------------------------------------
 // Helpers

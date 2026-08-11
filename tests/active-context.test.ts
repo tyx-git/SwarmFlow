@@ -1,13 +1,13 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { buildActiveContextView } from "../src/active-context.js";
+import { buildActiveContextView } from "../src/context/active-context.js";
 import {
   createAssistantText,
   createInputReceived,
   createSummary,
   createUserMessage,
   type LogEntry,
-} from "../src/log-entry.js";
+} from "../src/context/log-entry.js";
 
 describe("buildActiveContextView", () => {
   it("inserts summaries where their covered context originally appeared", () => {

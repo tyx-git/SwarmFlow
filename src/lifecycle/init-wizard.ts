@@ -90,13 +90,6 @@ async function inputStep(opts: { message: string; default?: string }): Promise<s
   return withEscBack((signal) => input({ message: opts.message, default: opts.default }, { signal }));
 }
 
-async function confirmStep(opts: { message: string; default?: boolean }): Promise<boolean | Back> {
-  return withEscBack((signal) => {
-    const { confirm } = require("@inquirer/prompts");
-    return confirm({ message: opts.message, default: opts.default }, { signal });
-  });
-}
-
 // ------------------------------------------------------------------
 // 联网搜索配置
 // ------------------------------------------------------------------
@@ -198,12 +191,12 @@ async function stageCustomProvider(homeDir: string): Promise<"next" | Back> {
   if (want === "skip") return "next";
 
   // 1. Display name
-  const label = (await inputStep({ message: "Provider display name (e.g. My LLM)" })) as string;
+  const label = await inputStep({ message: "Provider display name (e.g. My LLM)" });
   if (label === BACK) return BACK;
   if (!label.trim()) return "next";
 
   // 2. Endpoint URL
-  const rawUrl = (await inputStep({ message: `${label.trim()} — endpoint URL (e.g. https://api.example.com/v1/chat/completions)` })) as string;
+  const rawUrl = await inputStep({ message: `${label.trim()} — endpoint URL (e.g. https://api.example.com/v1/chat/completions)` });
   if (rawUrl === BACK) return BACK;
   if (!rawUrl.trim()) return "next";
 
@@ -215,16 +208,16 @@ async function stageCustomProvider(homeDir: string): Promise<"next" | Back> {
   if (protocol === BACK) return BACK;
 
   // 4. API key (optional)
-  const apiKey = (await inputStep({ message: `${label.trim()} — API key (Enter to skip if none required)` })) as string;
+  const apiKey = await inputStep({ message: `${label.trim()} — API key (Enter to skip if none required)` });
   if (apiKey === BACK) return BACK;
 
   // 5. Model id
-  const modelId = (await inputStep({ message: `${label.trim()} — model ID (e.g. gpt-4o)` })) as string;
+  const modelId = await inputStep({ message: `${label.trim()} — model ID (e.g. gpt-4o)` });
   if (modelId === BACK) return BACK;
   if (!modelId.trim()) return "next";
 
   // 6. Context length
-  const ctxLenStr = (await inputStep({ message: `${label.trim()} — context length (tokens, e.g. 128000)`, default: "128000" })) as string;
+  const ctxLenStr = await inputStep({ message: `${label.trim()} — context length (tokens, e.g. 128000)`, default: "128000" });
   if (ctxLenStr === BACK) return BACK;
   const ctxLen = parseInt(ctxLenStr, 10) || 128000;
 
@@ -238,12 +231,10 @@ async function stageCustomProvider(homeDir: string): Promise<"next" | Back> {
     models: [{ id: modelId.trim(), context_length: ctxLen }],
   };
 
-  let apiKeyRef = "local";
   if (apiKey.trim()) {
     const envVar = customProviderEnvVar(baseId);
     setDotenvKey(envVar, apiKey.trim(), homeDir);
     entry.api_key = `\${${envVar}}`;
-    apiKeyRef = `\${${envVar}}`;
   }
 
   const settings = loadGlobalSettings(homeDir);

@@ -1,9 +1,9 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import {
   isCompactMarker,
   injectContextIdTag,
   mergeConsecutiveSameRole,
-} from "../src/context-rendering.js";
+} from "../src/context/context-rendering.js";
 
 // ------------------------------------------------------------------
 // isCompactMarker

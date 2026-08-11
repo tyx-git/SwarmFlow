@@ -1,8 +1,8 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * 生成用于签名远程模型 registry 的 Ed25519 密钥对。
  *
- *   bun run scripts/gen-registry-key.ts [private-key-output.pem]
+ *   node --import tsx scripts/gen-registry-key.ts [private-key-output.pem]
  *
  * 写入私钥（保持私密，绝不提交——存放在 CI secret 中）并
  * 打印公钥以粘贴到 src/registry-fetch.ts REGISTRY_PUBLIC_KEY_PEM。

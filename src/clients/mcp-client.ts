@@ -207,7 +207,6 @@ export class MCPClientManager {
   private _serverTools = new Map<string, string[]>();
   private _serverState = new Map<string, McpServerState>();
   private _serverError = new Map<string, string>();
-  private _connected = false;
 
   constructor(serverConfigs: MCPServerConfig[]) {
     this._configs = serverConfigs;
@@ -229,7 +228,6 @@ export class MCPClientManager {
     }
 
     if (!this._configs.length) {
-      this._connected = true;
       return;
     }
 
@@ -246,7 +244,6 @@ export class MCPClientManager {
         console.error(`Failed to connect to MCP server '${cfg.name}':`, err);
       }
     }
-    this._connected = this._clients.size === this._configs.length;
   }
 
   /** 连接单个 MCP 服务器并发现其工具。 */
@@ -524,8 +521,6 @@ export class MCPClientManager {
     // 3. 更新内部配置引用
     this._configs = newConfigs;
     this._configByName = newByName;
-    this._connected = this._clients.size > 0;
-
     return { added, removed, changed };
   }
 
@@ -570,7 +565,6 @@ export class MCPClientManager {
     this._toolServer.clear();
     this._toolOriginal.clear();
     this._serverTools.clear();
-    this._connected = false;
   }
 }
 

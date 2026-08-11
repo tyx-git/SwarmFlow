@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { toolWebFetch } from "../src/tools/web-fetch.js";
 
@@ -6,11 +6,11 @@ describe("toolWebFetch", () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    mock.restore();
+    vi.restoreAllMocks();
   });
 
   it("uses Jina Reader output when available", async () => {
-    const fetchMock = mock(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe("https://r.jina.ai/https://example.com/");
       return new Response("Title: Example Domain\n\nMarkdown Content:\nHello from Jina", {
         status: 200,
@@ -29,7 +29,7 @@ describe("toolWebFetch", () => {
   });
 
   it("falls back to local extraction when Jina is rate limited", async () => {
-    const fetchMock = mock(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "https://r.jina.ai/https://example.com/") {
         return new Response("Too Many Requests", { status: 429, statusText: "Too Many Requests" });
@@ -67,7 +67,7 @@ describe("toolWebFetch", () => {
   });
 
   it("rejects local hosts before any network request", async () => {
-    const fetchMock = mock(async () => {
+    const fetchMock = vi.fn(async () => {
       throw new Error("fetch should not be called");
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -79,7 +79,7 @@ describe("toolWebFetch", () => {
   });
 
   it("rejects redirects to private IP addresses", async () => {
-    const fetchMock = mock(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "https://r.jina.ai/https://example.com/") {
         return new Response("Too Many Requests", { status: 429, statusText: "Too Many Requests" });

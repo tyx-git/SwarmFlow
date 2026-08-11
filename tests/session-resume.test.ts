@@ -1,10 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { findSessionById } from "../src/session-resume.js";
-import { randomSessionId } from "../src/persistence.js";
+import { randomSessionId } from "../src/config/persistence.js";
 
 describe("findSessionById", () => {
   it("returns null when the home dir has no projects/", () => {

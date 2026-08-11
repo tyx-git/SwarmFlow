@@ -1,5 +1,5 @@
-import { describe, it, expect } from "bun:test";
-import { DEFAULT_THRESHOLDS, computeHysteresisThresholds, validateSummarizeHintLevels } from "../src/settings.js";
+import { describe, it, expect } from "vitest";
+import { DEFAULT_THRESHOLDS, computeHysteresisThresholds, validateSummarizeHintLevels } from "../src/config/settings.js";
 
 describe("settings module", () => {
   it("exposes the default context thresholds", () => {

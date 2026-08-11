@@ -1,8 +1,8 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
-import { buildDefaultRegistry, type CommandContext } from "../src/commands.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildDefaultRegistry, type CommandContext } from "../src/commands/commands.js";
 
 const MODEL_TEST_ENV_VARS = [
   "OPENAI_API_KEY",
@@ -47,10 +47,10 @@ function makeContext(
 ): CommandContext {
   return {
     session,
-    showMessage: mock(),
+    showMessage: vi.fn(),
     swarmflowHomeDir,
-    autoSave: mock(),
-    resetUiState: mock(),
+    autoSave: vi.fn(),
+    resetUiState: vi.fn(),
     commandRegistry: registry,
   };
 }
@@ -230,7 +230,7 @@ describe("/model command", () => {
     const cmd = registry.lookup("/model");
     expect(cmd).toBeTruthy();
 
-    const switchModel = mock();
+    const switchModel = vi.fn();
     const session = {
       config: {
         modelNames: ["my-claude"],
@@ -245,7 +245,7 @@ describe("/model command", () => {
         ]),
       },
       switchModel,
-      resetForNewSession: mock(),
+      resetForNewSession: vi.fn(),
       primaryAgent: {
         modelConfig: {
           provider: "anthropic",
@@ -258,7 +258,7 @@ describe("/model command", () => {
     const ctx = makeContext(registry, session);
     await cmd!.handler(ctx, "openai:gpt-5.4");
 
-    const rendered = (ctx.showMessage as ReturnType<typeof mock>).mock.calls[0]?.[0] as string;
+    const rendered = (ctx.showMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(rendered).toContain("Missing API key for provider 'openai'");
     expect(switchModel).not.toHaveBeenCalled();
   });
@@ -274,11 +274,11 @@ describe("/model command", () => {
       const cmd = registry.lookup("/model");
       expect(cmd).toBeTruthy();
 
-      const upsertModelRaw = mock();
-      const switchModel = mock();
-      const resetForNewSession = mock();
-      const promptSelect = mock(async () => "import:GLM_CODE_API_KEY");
-      const promptSecret = mock();
+      const upsertModelRaw = vi.fn();
+      const switchModel = vi.fn();
+      const resetForNewSession = vi.fn();
+      const promptSelect = vi.fn(async () => "import:GLM_CODE_API_KEY");
+      const promptSecret = vi.fn();
       const session = {
         config: {
           modelNames: [],
@@ -341,9 +341,9 @@ describe("/model command", () => {
     const cmd = registry.lookup("/model");
     expect(cmd).toBeTruthy();
 
-    const upsertModelRaw = mock();
-    const switchModel = mock();
-    const resetForNewSession = mock();
+    const upsertModelRaw = vi.fn();
+    const switchModel = vi.fn();
+    const resetForNewSession = vi.fn();
     const session = {
       config: {
         modelNames: [],
@@ -375,7 +375,7 @@ describe("/model command", () => {
     const ctx = makeContext(registry, session);
     await cmd!.handler(ctx, "openai:gpt-5.2-codex key=sk-inline");
 
-    const rendered = (ctx.showMessage as ReturnType<typeof mock>).mock.calls[0]?.[0] as string;
+    const rendered = (ctx.showMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
     expect(rendered).toContain("Inline API keys in `/model` are no longer supported.");
     expect(upsertModelRaw).not.toHaveBeenCalled();
     expect(switchModel).not.toHaveBeenCalled();
@@ -404,14 +404,14 @@ describe("/model command", () => {
     }, null, 2));
 
     try {
-      const switchModel = mock();
-      const resetForNewSession = mock();
+      const switchModel = vi.fn();
+      const resetForNewSession = vi.fn();
 
       const session = {
         config: {
           modelNames: [],
           listModelEntries: () => [],
-          upsertModelRaw: mock(),
+          upsertModelRaw: vi.fn(),
         },
         switchModel: (name: string) => {
           switchModel(name);
@@ -423,7 +423,7 @@ describe("/model command", () => {
             apiKey: "glm-test-key",
           };
         },
-        setPersistedModelSelection: mock(),
+        setPersistedModelSelection: vi.fn(),
         getGlobalPreferences: () => ({
           version: 1,
           modelConfigName: "runtime-glm-code-glm-5",
@@ -447,7 +447,7 @@ describe("/model command", () => {
       const ctx = {
         ...makeContext(registry, session, swarmflowHome),
         store: {
-          clearSession: mock(),
+          clearSession: vi.fn(),
         },
       };
 
@@ -487,9 +487,9 @@ describe("/model command", () => {
     const cmd = registry.lookup("/model");
     expect(cmd).toBeTruthy();
 
-    const upsertModelRaw = mock();
-    const switchModel = mock();
-    const resetForNewSession = mock();
+    const upsertModelRaw = vi.fn();
+    const switchModel = vi.fn();
+    const resetForNewSession = vi.fn();
     const session = {
       config: {
         modelNames: [],
@@ -540,9 +540,9 @@ describe("/model command", () => {
     const cmd = registry.lookup("/model");
     expect(cmd).toBeTruthy();
 
-    const upsertModelRaw = mock();
-    const switchModel = mock();
-    const resetForNewSession = mock();
+    const upsertModelRaw = vi.fn();
+    const switchModel = vi.fn();
+    const resetForNewSession = vi.fn();
     const session = {
       config: {
         modelNames: ["my-openai"],
@@ -600,9 +600,9 @@ describe("/model command", () => {
     const cmd = registry.lookup("/model");
     expect(cmd).toBeTruthy();
 
-    const upsertModelRaw = mock();
-    const switchModel = mock();
-    const resetForNewSession = mock();
+    const upsertModelRaw = vi.fn();
+    const switchModel = vi.fn();
+    const resetForNewSession = vi.fn();
     const session = {
       config: {
         modelNames: [],

@@ -2,7 +2,7 @@
  * Tests for log-native persistence (v2): saveLog, loadLog, validateAndRepairLog, archive.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -16,7 +16,7 @@ import {
   restoreArchiveToEntries,
   createLogSessionMeta,
   type LogSessionMeta,
-} from "../src/persistence.js";
+} from "../src/config/persistence.js";
 import {
   createSystemPrompt,
   createUserMessage,
@@ -29,7 +29,7 @@ import {
   createAskRequest,
   createAskResolution,
   type LogEntry,
-} from "../src/log-entry.js";
+} from "../src/context/log-entry.js";
 
 // ------------------------------------------------------------------
 // Helpers

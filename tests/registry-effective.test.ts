@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   compareVersions,
@@ -6,7 +6,7 @@ import {
   loadRemoteRegistry,
   selectEffectiveRegistry,
   type RawRegistryBundle,
-} from "../src/registry-effective.js";
+} from "../src/providers/registry-effective.js";
 
 const model = (over: Record<string, unknown>) => ({
   displayName: "X",

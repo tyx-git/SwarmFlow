@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { makeAnthropicSSERepairFetch } from "../src/providers/anthropic-sse-repair.js";
@@ -133,7 +133,7 @@ describe("makeAnthropicSSERepairFetch", () => {
       await stream.finalMessage();
     } catch (e) {
       threw = true;
-      expect(String((e as Error).message)).toContain("Unexpected EOF");
+      expect(String((e as Error).message)).toMatch(/Unexpected (EOF|end of JSON input)/i);
     }
     expect(threw).toBe(true);
   });

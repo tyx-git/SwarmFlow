@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,8 +9,8 @@ import {
   readCacheMeta,
   shouldRefetch,
   verifyDetachedEd25519,
-} from "../src/registry-fetch.js";
-import { selectEffectiveRegistry } from "../src/registry-effective.js";
+} from "../src/providers/registry-fetch.js";
+import { selectEffectiveRegistry } from "../src/providers/registry-effective.js";
 
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const PUB = publicKey.export({ type: "spki", format: "pem" }) as string;

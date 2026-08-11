@@ -1,12 +1,10 @@
-import { describe, expect, it, mock, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { AnthropicProvider } from "../src/providers/anthropic.js";
 import { OpenAIChatProvider } from "../src/providers/openai-chat.js";
 import { OpenAIResponsesProvider } from "../src/providers/openai-responses.js";
-import { KimiProvider } from "../src/providers/kimi.js";
 import { GLMProvider } from "../src/providers/glm.js";
-import { MiniMaxProvider } from "../src/providers/minimax.js";
 
 /**
  * Test: Send conversations with malformed tool_calls (containing _incompleteArguments field)
@@ -62,8 +60,8 @@ describe("Provider malformed tool_call handling", () => {
         modelConfig({ provider: "openai-chat", model: "gpt-4" }),
       );
 
-      const sendMessageSpy = spyOn(provider as any, "sendMessage");
-      const mockCreate = mock(async () => ({
+      const sendMessageSpy = vi.spyOn(provider as any, "sendMessage");
+      const mockCreate = vi.fn(async () => ({
         choices: [{ message: { content: "response", tool_calls: [] } }],
         usage: { prompt_tokens: 10, completion_tokens: 5 },
       }));
@@ -102,7 +100,7 @@ describe("Provider malformed tool_call handling", () => {
         modelConfig({ provider: "anthropic", model: "claude-3-5-sonnet" }),
       );
 
-      const mockCreate = mock(async () => ({
+      const mockCreate = vi.fn(async () => ({
         content: [{ type: "text", text: "response" }],
         usage: { input_tokens: 10, output_tokens: 5 },
       }));
@@ -136,47 +134,6 @@ describe("Provider malformed tool_call handling", () => {
     });
   });
 
-  describe("Kimi (OpenAI-compatible, JSON stringified)", () => {
-    it("converts tool_calls to OpenAI format with JSON stringified arguments", async () => {
-      const provider = new KimiProvider(
-        modelConfig({
-          provider: "kimi",
-          model: "kimi-k2.5",
-          baseUrl: "https://api.moonshot.ai/v1",
-        }),
-      );
-
-      const mockCreate = mock(async () => ({
-        choices: [{ message: { content: "response", tool_calls: [] } }],
-        usage: { prompt_tokens: 10, completion_tokens: 5 },
-      }));
-
-      (provider as any)._client = {
-        chat: { completions: { create: mockCreate } },
-      };
-
-      await provider.sendMessage([malformedToolCallMessage() as any]);
-
-      expect(mockCreate).toHaveBeenCalled();
-      const callArgs = mockCreate.mock.calls[0][0];
-      const messages = callArgs.messages as Record<string, unknown>[];
-      const assistantMsg = messages.find(
-        (m) => m["role"] === "assistant",
-      ) as Record<string, unknown> | undefined;
-
-      if (assistantMsg && assistantMsg["tool_calls"]) {
-        const toolCall = (assistantMsg["tool_calls"] as Record<string, unknown>[])[0];
-        const argumentsStr = toolCall["function"]["arguments"] as string;
-
-        expect(typeof argumentsStr).toBe("string");
-        const parsed = JSON.parse(argumentsStr);
-        expect(parsed._incompleteArguments).toBe(
-          "This field should not be here",
-        );
-      }
-    });
-  });
-
   describe("GLM (OpenAI-compatible, JSON stringified)", () => {
     it("converts tool_calls to OpenAI format with JSON stringified arguments", async () => {
       const provider = new GLMProvider(
@@ -187,48 +144,7 @@ describe("Provider malformed tool_call handling", () => {
         }),
       );
 
-      const mockCreate = mock(async () => ({
-        choices: [{ message: { content: "response", tool_calls: [] } }],
-        usage: { prompt_tokens: 10, completion_tokens: 5 },
-      }));
-
-      (provider as any)._client = {
-        chat: { completions: { create: mockCreate } },
-      };
-
-      await provider.sendMessage([malformedToolCallMessage() as any]);
-
-      expect(mockCreate).toHaveBeenCalled();
-      const callArgs = mockCreate.mock.calls[0][0];
-      const messages = callArgs.messages as Record<string, unknown>[];
-      const assistantMsg = messages.find(
-        (m) => m["role"] === "assistant",
-      ) as Record<string, unknown> | undefined;
-
-      if (assistantMsg && assistantMsg["tool_calls"]) {
-        const toolCall = (assistantMsg["tool_calls"] as Record<string, unknown>[])[0];
-        const argumentsStr = toolCall["function"]["arguments"] as string;
-
-        expect(typeof argumentsStr).toBe("string");
-        const parsed = JSON.parse(argumentsStr);
-        expect(parsed._incompleteArguments).toBe(
-          "This field should not be here",
-        );
-      }
-    });
-  });
-
-  describe("MiniMax (OpenAI-compatible, JSON stringified)", () => {
-    it("converts tool_calls to OpenAI format with JSON stringified arguments", async () => {
-      const provider = new MiniMaxProvider(
-        modelConfig({
-          provider: "minimax",
-          model: "minimax-01",
-          baseUrl: "https://api.minimax.io/v1",
-        }),
-      );
-
-      const mockCreate = mock(async () => ({
+      const mockCreate = vi.fn(async () => ({
         choices: [{ message: { content: "response", tool_calls: [] } }],
         usage: { prompt_tokens: 10, completion_tokens: 5 },
       }));
@@ -268,7 +184,7 @@ describe("Provider malformed tool_call handling", () => {
         }),
       );
 
-      const mockCreate = mock(async () => ({
+      const mockCreate = vi.fn(async () => ({
         output: [
           {
             type: "message",
@@ -331,24 +247,10 @@ describe("Provider malformed tool_call handling", () => {
             },
           },
         },
-        "Kimi (kimi, kimi-cn, kimi-code)": {
-          argumentFormat: "JSON.stringify(arguments object)",
-          toolCallType: "function",
-          baseUrl: "https://api.moonshot.ai/v1",
-          example:
-            "Same as OpenAI Chat format (inherits from OpenAIChatProvider)",
-        },
         "GLM (glm, glm-intl, glm-code)": {
           argumentFormat: "JSON.stringify(arguments object)",
           toolCallType: "function",
           baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-          example:
-            "Same as OpenAI Chat format (inherits from OpenAIChatProvider)",
-        },
-        "MiniMax (minimax, minimax-cn)": {
-          argumentFormat: "JSON.stringify(arguments object)",
-          toolCallType: "function",
-          baseUrl: "https://api.minimax.io/v1",
           example:
             "Same as OpenAI Chat format (inherits from OpenAIChatProvider)",
         },

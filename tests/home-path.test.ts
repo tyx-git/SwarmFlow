@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { loadDotenv } from "../src/dotenv.js";
-import { getSwarmflowHomeDir } from "../src/home-path.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { loadDotenv } from "../src/lifecycle/dotenv.js";
+import { getSwarmflowHomeDir } from "../src/lib/home-path.js";
 
 describe("fixed SwarmFlow home directory", () => {
   let tempHome: string;

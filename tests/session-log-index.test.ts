@@ -4,9 +4,9 @@
  * truncation, and id reuse after truncation.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import type { LogEntry } from "../src/log-entry.js";
+import type { LogEntry } from "../src/context/log-entry.js";
 import { SessionLog } from "../src/session/session-log.js";
 
 let seed = 0x2f6e2b1;

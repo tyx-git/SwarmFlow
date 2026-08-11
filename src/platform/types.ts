@@ -192,8 +192,8 @@ export interface OsCapabilities {
 }
 
 // --------------------------------------------------------------------
-// 系统代理 — Bun 的 `fetch` 执行的操作系统级代理配置
-// Bun 本身不读取。Bun 支持 HTTP_PROXY / HTTPS_PROXY 环境
+// 系统代理 — Node 的 `fetch` 不会自动读取系统级代理配置。
+// HTTP_PROXY / HTTPS_PROXY 环境
 // 变量，但在 Windows 上它忽略 WinINET 系统代理（Internet
 // 选项 → 局域网设置 / 大多数 VPN 和代理客户端切换的设置）。
 // 此提供程序呈现该配置，以便启动代码可以将其规范化
@@ -215,7 +215,7 @@ export interface SystemProxyProvider {
 
   /**
    * 读取操作系统级代理配置。当没有系统代理配置时返回 null，
-   * 当平台除了 Bun 已读取的环境变量之外没有其他配置时（POSIX），
+   * 当平台没有额外的系统代理配置时（POSIX），
    * 或者当配置无法静态解析时（例如 Windows PAC "自动配置"）。
    */
   getSystemProxy(): SystemProxyConfig | null;

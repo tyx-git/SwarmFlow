@@ -12,8 +12,6 @@ import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";
 import {
   findProviderPreset,
-  findProviderPresetModel,
-  PROVIDER_PRESETS,
 } from "../providers/presets.js";
 import {
   MANAGED_PROVIDER_CREDENTIAL_SPECS,
@@ -545,17 +543,8 @@ function makeProjectSlug(projectPath: string): string {
 
 /** 返回已安装包的根目录（dist/ 的父目录） */
 export function getBundledAssetsDir(): string {
-  const thisFile = fileURLToPath(import.meta.url);
-  // Bun --compile 将内置资源挂载到虚拟文件系统路径：
-  // POSIX 上为 `/$bunfs/root/...`，Windows 上为 `B:\~BUN\root\...`。
-  // 检测到任一形式时，实际磁盘资源位于二进制文件旁边。
-  if (thisFile.includes("$bunfs") || /^B:[\\/]~BUN/i.test(thisFile)) {
-    return dirname(process.execPath);
-  }
-
-  // 开发模式下此文件位于 src/config/ 下。旧版 tsc 构建会编译到 dist/config.js。
-  // 两种布局都将内置资源保持在项目根目录。
-  return join(dirname(thisFile), "..", "..");
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  return join(moduleDir, "..", "..");
 }
 
 // ------------------------------------------------------------------

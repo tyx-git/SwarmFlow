@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { Config } from "../src/config.js";
+import { Config } from "../src/config/config.js";
 
 describe("Config model validation", () => {
   function makeConfigWithRaw(name: string, raw: Record<string, unknown>): Config {

@@ -10,6 +10,8 @@
  *（Electron 主进程）通信。
  */
 
+import { getLogger } from "../lib/logger.js";
+
 export interface RpcRequest {
   readonly id: number;
   readonly method: string;
@@ -62,6 +64,10 @@ export function createRpcServer(
   const handlers = new Map<string, RpcHandler>();
   let buffer = "";
   let closed = false;
+  let lineCount = 0;
+
+  // 诊断日志：通过 SWARMFLOW_LOG=1 启用；用于排查 RPC 边界 panic。
+  const log = getLogger("rpc");
 
   const writeFrame = (frame: unknown): void => {
     if (closed) return;
@@ -74,10 +80,12 @@ export function createRpcServer(
 
   const handleLine = async (line: string): Promise<void> => {
     if (line.length === 0) return;
+    lineCount += 1;
     let frame: RpcRequest;
     try {
       frame = JSON.parse(line) as RpcRequest;
-    } catch {
+    } catch (err) {
+      log?.warn("rpc:parse-error", { lineCount, err: String(err) });
       writeFrame({
         id: 0,
         error: { code: RPC_ERROR.PARSE, message: `parse error: ${line.slice(0, 200)}` },
@@ -85,6 +93,7 @@ export function createRpcServer(
       return;
     }
     if (typeof frame.id !== "number" || typeof frame.method !== "string") {
+      log?.warn("rpc:invalid-request", { lineCount });
       writeFrame({
         id: typeof frame.id === "number" ? frame.id : 0,
         error: { code: RPC_ERROR.INVALID_REQUEST, message: "missing id or method" },
@@ -93,16 +102,19 @@ export function createRpcServer(
     }
     const handler = handlers.get(frame.method);
     if (!handler) {
+      log?.warn("rpc:method-not-found", { method: frame.method });
       writeFrame({
         id: frame.id,
         error: { code: RPC_ERROR.METHOD_NOT_FOUND, message: `unknown method: ${frame.method}` },
       } satisfies RpcResponseErr);
       return;
     }
+    log?.debug("rpc:invoke", { method: frame.method, id: frame.id });
     try {
       const result = await handler(frame.params);
       writeFrame({ id: frame.id, result: result ?? null } satisfies RpcResponseOk);
     } catch (err) {
+      log?.error("rpc:handler-threw", { method: frame.method, id: frame.id, err: err instanceof Error ? err.message : String(err) });
       const message = err instanceof Error ? err.message : String(err);
       writeFrame({
         id: frame.id,
@@ -127,6 +139,7 @@ export function createRpcServer(
 
   input.on("end", () => {
     closed = true;
+    log?.info("rpc:closed", { lineCount });
   });
 
   return {

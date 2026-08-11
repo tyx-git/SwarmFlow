@@ -1,5 +1,5 @@
-import { describe, expect, it } from "bun:test";
-import { normalizeEndpointUrl } from "../src/commands.js";
+import { describe, expect, it } from "vitest";
+import { normalizeEndpointUrl } from "../src/commands/commands.js";
 
 describe("normalizeEndpointUrl", () => {
   it("strips /chat/completions and infers openai-chat, keeping /v1", () => {

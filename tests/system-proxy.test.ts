@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import { parseWinInetProxy } from "../src/platform/system-proxy/win32.js";
-import { applySystemProxyToEnv } from "../src/system-proxy.js";
+import { posixSystemProxy } from "../src/platform/system-proxy/posix.js";
+import { applySystemProxyToEnv } from "../src/lib/system-proxy.js";
 
 describe("parseWinInetProxy", () => {
   const base = {
@@ -74,7 +75,7 @@ describe("parseWinInetProxy", () => {
 describe("applySystemProxyToEnv", () => {
   it("does not overwrite an explicit HTTPS_PROXY env var", () => {
     const env = { HTTPS_PROXY: "http://explicit:1" } as NodeJS.ProcessEnv;
-    applySystemProxyToEnv(env);
+    applySystemProxyToEnv(env, posixSystemProxy);
     expect(env["HTTPS_PROXY"]).toBe("http://explicit:1");
   });
 
@@ -82,7 +83,7 @@ describe("applySystemProxyToEnv", () => {
     // The active provider on the test host (macOS/Linux) is the posix
     // noop, so nothing should be written into an empty env.
     const env = {} as NodeJS.ProcessEnv;
-    applySystemProxyToEnv(env);
+    applySystemProxyToEnv(env, posixSystemProxy);
     expect(env["HTTPS_PROXY"]).toBeUndefined();
     expect(env["HTTP_PROXY"]).toBeUndefined();
   });

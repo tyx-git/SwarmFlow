@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   createAssistantText,
@@ -10,8 +10,8 @@ import {
   createToolResult,
   createUserMessage,
   type LogEntry,
-} from "../src/log-entry.js";
-import { execSummarizeContextOnLog, truncateSummarizeContextContent } from "../src/summarize-context.js";
+} from "../src/context/log-entry.js";
+import { execSummarizeContextOnLog, truncateSummarizeContextContent } from "../src/context/summarize-context.js";
 
 function allocIds(prefix: string): () => string {
   let i = 0;
@@ -63,7 +63,7 @@ describe("execSummarizeContextOnLog", () => {
     const meta = result.newEntries[0].meta as Record<string, unknown>;
     expect(meta["summaryDepth"]).toBe(1);
     expect(meta["summaryOrigin"]).toBe("manual");
-    expect(result.newEntries[0].display).toStartWith("[Summarized context");
+    expect(result.newEntries[0].display).toMatch(/^\[Summarized context/);
   });
 
   it("rejects manual summarize calls that shrink the selected range", () => {

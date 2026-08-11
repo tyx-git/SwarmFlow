@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -9,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { binaryAssetForPlatform } from "../src/platform/binary-asset/index.js";
 import { currentPlatform } from "../src/platform/detect.js";
@@ -20,7 +21,7 @@ import {
   compareVersionOrder,
   getReleaseType,
   runUpdate,
-} from "../src/update-check.js";
+} from "../src/lifecycle/update-check.js";
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -37,11 +38,10 @@ function buildReleaseTarball(entries: Record<string, string>): Uint8Array {
       writeFileSync(fullPath, contents);
     }
 
-    const result = Bun.spawnSync(["tar", "-czf", tarPath, "-C", tempDir, "."], {
-      stdout: "pipe",
-      stderr: "pipe",
+    const result = spawnSync("tar", ["-czf", tarPath, "-C", tempDir, "."], {
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    expect(result.exitCode).toBe(0);
+    expect(result.status).toBe(0);
     return new Uint8Array(readFileSync(tarPath));
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -152,7 +152,7 @@ describe("applyStaged", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.restoreAllMocks();
     rmSync(tempHome, { recursive: true, force: true });
     rmSync(tempInstallDir, { recursive: true, force: true });
   });
@@ -250,7 +250,7 @@ describe("checkForUpdates", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.restoreAllMocks();
     if (originalFetch) {
       globalThis.fetch = originalFetch;
     } else {
@@ -264,7 +264,7 @@ describe("checkForUpdates", () => {
     // produce a synchronous "available"/"idle" verdict. The check always
     // starts in "checking" and resolves from the network.
     let resolveFetch!: (value: unknown) => void;
-    globalThis.fetch = mock(async () => await new Promise((resolve) => {
+    globalThis.fetch = vi.fn(async () => await new Promise((resolve) => {
       resolveFetch = resolve;
     })) as unknown as typeof fetch;
 
@@ -291,7 +291,7 @@ describe("checkForUpdates", () => {
     }>((resolve) => {
       resolveFetch = resolve;
     });
-    globalThis.fetch = mock(async () => await pendingFetch) as typeof fetch;
+    globalThis.fetch = vi.fn(async () => await pendingFetch) as typeof fetch;
 
     const getState = checkForUpdates("0.1.0", tempSwarmflowHome);
     expect(getState().phase).toBe("checking");
@@ -322,7 +322,7 @@ describe("runUpdate", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.restoreAllMocks();
     Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
     if (originalFetch) {
       globalThis.fetch = originalFetch;
@@ -345,7 +345,7 @@ describe("runUpdate", () => {
       "skills/tool.txt": "new-skill",
     });
     const checksum = createHash("sha256").update(tarballBytes).digest("hex");
-    const fetchMock = mock(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/releases/latest")) {
         return {
@@ -381,7 +381,7 @@ describe("runUpdate", () => {
     });
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const logSpy = spyOn(console, "log").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       await runUpdate("0.1.0", tempSwarmflowHome);
     } finally {

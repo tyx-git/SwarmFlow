@@ -1,6 +1,6 @@
-// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`provider registry characterization (Phase 2 baseline) freezes PROVIDER_PRESETS structure 1`] = `
+exports[`provider registry characterization (Phase 2 baseline) > freezes PROVIDER_PRESETS structure 1`] = `
 [
   {
     "envVar": "ANTHROPIC_API_KEY",
@@ -818,7 +818,7 @@ exports[`provider registry characterization (Phase 2 baseline) freezes PROVIDER_
 ]
 `;
 
-exports[`provider registry characterization (Phase 2 baseline) freezes managed-credential specs (order-independent by providerId) 1`] = `
+exports[`provider registry characterization (Phase 2 baseline) > freezes managed-credential specs (order-independent by providerId) 1`] = `
 {
   "deepseek": {
     "externalEnvVars": [

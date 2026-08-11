@@ -14,6 +14,9 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, wr
 import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
 import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
@@ -299,36 +302,9 @@ export class CommandRegistry {
 // ------------------------------------------------------------------
 
 async function cmdHelp(ctx: CommandContext, _args: string): Promise<void> {
-  const grouped = new Map<CommandCategory, SlashCommand[]>();
-  for (const command of ctx.commandRegistry.getAll()) {
-    const category = command.category ?? "UI";
-    if (!grouped.has(category)) grouped.set(category, []);
-    grouped.get(category)!.push(command);
-  }
-
-  const order: CommandCategory[] = [
-    "Session",
-    "Context",
-    "Workflow",
-    "Document Processing",
-    "Provider and Model",
-    "Ecosystem",
-    "Project Configuration",
-    "User Custom",
-    "UI",
-  ];
-  const lines = ["Slash commands", ""];
-  for (const category of order) {
-    const commands = grouped.get(category);
-    if (!commands?.length) continue;
-    lines.push(category);
-    for (const command of commands.sort((a, b) => a.name.localeCompare(b.name))) {
-      lines.push(`  ${command.name.padEnd(12)} ${command.description}`);
-    }
-    lines.push("");
-  }
-  lines.push("Most commands are interactive. Natural-language arguments are only accepted by /reviewer, /ask, /goal, /fix, /plan, /rules, and /rename.");
-  ctx.showMessage(lines.join("\n"));
+  // The TUI owns the help overlay and builds it from the same registry. A
+  // sentinel keeps command execution independent from the renderer.
+  ctx.showMessage("__help_panel__");
 }
 
 async function cmdUsage(ctx: CommandContext, _args: string): Promise<void> {
@@ -771,6 +747,10 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
   const session = ctx.session;
   const levels = ["low", "medium", "high", "xhigh", "max"];
 
+  if (session.primaryAgent?.modelConfig?.supportsThinking !== true) {
+    return undefined;
+  }
+
   if (!ctx.promptSelect) {
     // 非交互式环境-保持当前/默认的思维水平。
     return undefined;
@@ -847,14 +827,6 @@ export function resolveModelSelection(
  */
 function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
   return modelOptionsWithTree(ctx);
-}
-
-/**
- * Flatten the hierarchical model picker tree to leaf-only options.
- * Used when the UI doesn't support drill-down children.
- */
-function flatModelOptions(ctx: CommandOptionsContext): CommandOption[] {
-  return flatModelOptionsWithTree(ctx);
 }
 
 type ModelPickerOverrides = Omit<ModelPickerTreeContext, "session">;
@@ -1761,26 +1733,26 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
 // ------------------------------------------------------------------
 
 async function cmdDiff(ctx: CommandContext, _args: string): Promise<void> {
-  const lines = ["Diff", ""];
-  const status = spawnSync("git", ["status", "--short"], { encoding: "utf8", timeout: 5000 });
-  const diff = spawnSync("git", ["diff", "--stat"], { encoding: "utf8", timeout: 5000 });
-  const staged = spawnSync("git", ["diff", "--cached", "--stat"], { encoding: "utf8", timeout: 5000 });
+  let choice = _args.trim().toLowerCase();
+  if (!choice && ctx.promptCommandPicker) {
+    const picked = await ctx.promptCommandPicker([
+      { label: "Compact", value: "compact" },
+      { label: "Full", value: "full" },
+    ]);
+    const value = picked as unknown;
+    choice = typeof value === "string"
+      ? value
+      : (value as { value?: string } | undefined)?.value ?? "";
+  }
 
-  lines.push("Git status:");
-  lines.push((status.stdout ?? "").trim() || "  clean");
-  if (status.stderr?.trim()) lines.push(`  ${status.stderr.trim()}`);
-  lines.push("");
-  lines.push("Unstaged diff stat:");
-  lines.push((diff.stdout ?? "").trim() || "  none");
-  lines.push("");
-  lines.push("Staged diff stat:");
-  lines.push((staged.stdout ?? "").trim() || "  none");
-  lines.push("");
+  if (choice !== "compact" && choice !== "full") {
+    ctx.showMessage("Diff display is currently compact. Use /diff compact or /diff full.");
+    return;
+  }
 
-  const turnSummaries = collectTurnDiffSummary(ctx);
-  lines.push("Session turn file changes:");
-  lines.push(...(turnSummaries.length > 0 ? turnSummaries.map((line) => `  ${line}`) : ["  none"]));
-  ctx.showMessage(lines.join("\n"));
+  persistSettingsPatch({ diff_display: choice }, ctx.swarmflowHomeDir);
+  ctx.showMessage(`__diff_display__:${choice}`);
+  (ctx.showHint ?? ctx.showMessage)(`Diff display: ${choice}`);
 }
 
 // ------------------------------------------------------------------
@@ -2532,27 +2504,6 @@ function writeReviewerScaffold(ctx: CommandContext, scope: string): string {
   return dir;
 }
 
-function collectTurnDiffSummary(ctx: CommandContext): string[] {
-  const log = Array.isArray(ctx.session.log) ? ctx.session.log : [];
-  const byTurn = new Map<number, { files: Set<string>; additions: number; deletions: number }>();
-  for (const entry of log) {
-    if (entry?.type !== "tool_result" || entry.discarded) continue;
-    const meta = entry.meta as Record<string, unknown> | undefined;
-    const toolMeta = meta?.toolMetadata as Record<string, unknown> | undefined;
-    const fm = toolMeta?.fileMutation as { path?: string; additions?: number; deletions?: number } | undefined;
-    if (!fm?.path) continue;
-    const turn = typeof entry.turnIndex === "number" ? entry.turnIndex : 0;
-    const bucket = byTurn.get(turn) ?? { files: new Set<string>(), additions: 0, deletions: 0 };
-    bucket.files.add(fm.path);
-    bucket.additions += fm.additions ?? 0;
-    bucket.deletions += fm.deletions ?? 0;
-    byTurn.set(turn, bucket);
-  }
-  return [...byTurn.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([turn, data]) => `Turn ${turn}: ${data.files.size} file(s), +${data.additions} -${data.deletions}`);
-}
-
 async function cmdReviewer(ctx: CommandContext, args: string): Promise<void> {
   const trimmed = args.trim();
   let kind = "custom";
@@ -2882,15 +2833,22 @@ async function cmdEffort(ctx: CommandContext, args: string): Promise<void> {
 export function buildDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
   registry.register({ name: "/help", description: "Show categorized command help", handler: cmdHelp, category: "Session" });
+  registry.register({ name: "/usage", description: "Show provider usage", handler: cmdUsage, category: "Session" });
+  registry.register({ name: "/stat", description: "Show session statistics", handler: cmdStat, category: "Session" });
   registry.register({ name: "/new", description: "Start a new session", handler: cmdNew, category: "Session" });
   registry.register({ name: "/resume", description: "Resume a previous session", handler: cmdResume, options: resumeOptions, pickerTitle: "Sessions", category: "Session" });
+  registry.register({ name: "/session", description: "Resume a previous session (alias)", handler: cmdResume, options: resumeOptions, pickerTitle: "Sessions", category: "Session" });
   registry.register({ name: "/quit", description: "Exit the application", handler: cmdQuit, category: "Session" });
+  registry.register({ name: "/exit", description: "Exit the application (alias)", handler: cmdQuit, category: "Session" });
   registry.register({ name: "/rename", description: "Rename current session", handler: cmdRename, category: "Session" });
   registry.register({ name: "/status", description: "Show current session status summary", handler: cmdStatus, category: "Session" });
 
+  registry.register({ name: "/summarize", description: "Summarize selected context", handler: cmdSummarize, category: "Context" });
+  registry.register({ name: "/summarize_hint", description: "Configure summarization hints", handler: cmdSummarizeHint, category: "Context" });
   registry.register({ name: "/compact", description: "Compact the active context", handler: cmdCompact, category: "Context" });
   registry.register({ name: "/clear", description: "Clear screen and future model context", handler: cmdClear, category: "Context" });
   registry.register({ name: "/fork", description: "Fork the current session into a branch", handler: cmdFork, category: "Context" });
+  registry.register({ name: "/shells", description: "Show tracked background shells", handler: cmdShells, category: "Context" });
   registry.register({ name: "/ask", description: "Ask an isolated side question", handler: cmdAsk, category: "Context" });
 
   registry.register({ name: "/init", description: "Explore project and draft AGENTS.md/.rules", handler: cmdInit, category: "Workflow" });
@@ -2901,9 +2859,13 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/diff", description: "View current git and per-turn diffs", handler: cmdDiff, category: "Workflow" });
 
   registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, pickerTitle: "Providers", category: "Provider and Model" });
+  registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, pickerTitle: "API keys", category: "Provider and Model" });
   registry.register({ name: "/model", description: "Select the current session model", handler: cmdModel, options: modelOptions, category: "Provider and Model" });
   registry.register({ name: "/effort", description: "Set current session and sub-agent effort", handler: cmdEffort, category: "Provider and Model" });
+  registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions, category: "Provider and Model" });
   registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, category: "Provider and Model" });
+  registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, category: "Provider and Model" });
+  registry.register({ name: "/copilot", description: "Manage GitHub Copilot login", handler: cmdCopilot, options: copilotOptions, category: "Provider and Model" });
 
   registry.register({ name: "/skills", description: "View and enable/disable skills globally", handler: cmdSkills, options: skillsOptions, checkboxMode: true, category: "Ecosystem" });
   registry.register({ name: "/mcp", description: "View, enable/disable, and reconnect MCP servers", handler: cmdMcp, options: mcpOptions, pickerTitle: "MCP Servers", category: "Ecosystem" });
@@ -2911,6 +2873,9 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/memory", description: "Inspect and correct current session context", handler: cmdMemory, category: "Ecosystem" });
   registry.register({ name: "/rules", description: "View or update project .rules", handler: cmdRules, category: "Project Configuration" });
   registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, category: "UI" });
+  registry.register({ name: "/autoupdate", description: "Configure automatic update checks", handler: cmdAutoUpdate, options: autoUpdateOptions, category: "Project Configuration" });
+  registry.register({ name: "/autocopy", description: "Configure copy-on-select", handler: cmdAutoCopy, options: autoCopyOptions, category: "UI" });
+  registry.register({ name: "/rewind", description: "Rewind conversation and file changes", handler: cmdRewind, options: rewindOptions, pickerTitle: "Rewind", category: "Context" });
   return registry;
 }
 
@@ -3579,7 +3544,6 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
   const hasFiles = plan.applicable.length + plan.warnings.length > 0;
   const hasConflicts = plan.conflicts.length > 0;
   const hasBash = plan.bashEntries.length > 0;
-  const hasBashConflicts = plan.bashEntries.some((e: { status: string }) => e.status === "conflict");
 
   if (!hasFiles && !hasConflicts && !hasBash) {
     if (mode === "both") {
@@ -3676,22 +3640,6 @@ function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: s
     return [...byName.values()];
   } catch {
     return [];
-  }
-}
-
-function setHookDisabled(sourcePath: string, disabled: boolean): boolean {
-  if (!existsSync(sourcePath)) return false;
-  try {
-    const raw = JSON.parse(readFileSync(sourcePath, "utf-8"));
-    if (disabled) {
-      raw["disabled"] = true;
-    } else {
-      delete raw["disabled"];
-    }
-    writeFileSync(sourcePath, JSON.stringify(raw, null, 2) + "\n");
-    return true;
-  } catch {
-    return false;
   }
 }
 

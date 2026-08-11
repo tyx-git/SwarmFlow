@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { main, type MainDeps } from "../src/cli.js";
-import type { ApplyStagedResult } from "../src/update-check.js";
+import type { ApplyStagedResult } from "../src/lifecycle/update-check.js";
 import { VERSION } from "../src/version.js";
 
 let tempHome = "";
@@ -214,7 +215,7 @@ describe("CLI startup", () => {
       auto_update: false,
     });
     hasGitHubTokens = false;
-    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     try {
       await main(["node", "swarmflow"], startupDeps({
@@ -242,15 +243,14 @@ describe("CLI startup", () => {
 
   it("keeps -v, -V, and --version working at the compiled entry", () => {
     for (const flag of ["-v", "-V", "--version"]) {
-      const result = Bun.spawnSync(["bun", "opentui-src/main.tsx", flag], {
+      const result = spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", flag], {
         cwd: process.cwd(),
-        stdout: "pipe",
-        stderr: "pipe",
+        encoding: "utf8",
       });
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.toString()).toBe(`${VERSION}\n`);
-      expect(result.stderr.toString()).toBe("");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe(`${VERSION}\n`);
+      expect(result.stderr).toBe("");
     }
-  });
+  }, 30_000);
 });

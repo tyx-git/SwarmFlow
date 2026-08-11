@@ -1,7 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { PROVIDER_PRESETS } from "../src/provider-presets.js";
-import { MANAGED_PROVIDER_CREDENTIAL_SPECS } from "../src/managed-provider-credentials.js";
+import { PROVIDER_PRESETS } from "../src/providers/presets.js";
+import { MANAGED_PROVIDER_CREDENTIAL_SPECS } from "../src/config/managed-provider-credentials.js";
 
 /**
  * Phase 2 characterization — locks the provider-side structures NOT already
@@ -18,7 +18,7 @@ describe("provider registry characterization (Phase 2 baseline)", () => {
   it("freezes managed-credential specs (order-independent by providerId)", () => {
     // Order is functionally irrelevant (all access is by-id lookup); the
     // meaningful invariant is same providers → same env vars. Snapshot the
-    // by-id object so Bun's alphabetical key serialization is order-stable.
+    // by-id object so alphabetical key serialization is order-stable.
     const byId = Object.fromEntries(
       MANAGED_PROVIDER_CREDENTIAL_SPECS.map((s) => [s.providerId, s]),
     );

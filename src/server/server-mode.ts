@@ -17,6 +17,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { getLogger, initLogger } from "../lib/logger.js";
 import { createRpcServer } from "./rpc-transport.js";
 import { buildMeta, registerSessionRpc } from "./session-rpc.js";
 import { registerInitRpc } from "./init-rpc.js";
@@ -62,6 +63,10 @@ function identifyPrimaryAgent(agents: Record<string, Agent>, name = "main"): Age
  * 引导失败时抛出异常。
  */
 export async function runServerMode(opts: ServerModeOptions): Promise<void> {
+  initLogger();
+  const log = getLogger("server");
+  log.info("runServerMode:enter", { workDir: opts.workDir, hasSessionId: Boolean(opts.sessionId) });
+
   const homeDir = getSwarmflowHomeDir();
   loadDotenv(homeDir);
 

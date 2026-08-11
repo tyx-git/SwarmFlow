@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { AnthropicProvider } from "../src/providers/anthropic.js";
 import { OpenAIResponsesProvider } from "../src/providers/openai-responses.js";
 

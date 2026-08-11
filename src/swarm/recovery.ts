@@ -51,7 +51,6 @@ export async function attemptRecovery(
 ): Promise<RecoveryOutcome> {
   const startTime = Date.now();
   let lastError = initialError;
-  let usedFallback = false;
 
   switch (config.strategy) {
     case RecoveryStrategy.Retry:
@@ -61,7 +60,6 @@ export async function attemptRecovery(
       return retryWithBackoff(config, retryFn, lastError, startTime);
 
     case RecoveryStrategy.Fallback:
-      usedFallback = true;
       return retryWithLinear(
         { ...config, maxRetries: 1 },
         retryFn,

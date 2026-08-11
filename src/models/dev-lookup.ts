@@ -8,7 +8,7 @@
  *（24h TTL），因此重复查找是即时的。
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
@@ -42,7 +42,7 @@ function suggestionFrom(m: RawModelEntry): ModelSpecSuggestion {
   if (ro?.type === "effort" && Array.isArray(ro.values) && ro.values.length) {
     thinkingLevels = ro.values;
   } else if (ro?.type === "toggle") {
-    thinkingLevels = ["off", "low", "medium", "high"];
+    thinkingLevels = ["off", "on"];
   } else if (m.reasoning) {
     thinkingLevels = ["low", "medium", "high"];
   }

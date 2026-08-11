@@ -312,7 +312,7 @@ export class OpenAIChatProvider extends BaseProvider {
   // 思考参数
   // ------------------------------------------------------------------
 
-  protected _applyThinkingParams(kwargs: Record<string, unknown>, options?: SendMessageOptions): void {
+  protected _applyThinkingParams(kwargs: Record<string, unknown>, _options?: SendMessageOptions): void {
     if (!this._config.supportsThinking) return;
     kwargs["reasoning_effort"] = "high";
     // o 系列不支持 temperature；使用 max_completion_tokens

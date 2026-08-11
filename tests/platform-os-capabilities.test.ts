@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { selectOsCapabilities } from "../src/platform/os-capabilities/index.js";
 
@@ -6,7 +6,7 @@ import { selectOsCapabilities } from "../src/platform/os-capabilities/index.js";
  * `selectOsCapabilities()` reads `process.platform` through
  * `currentPlatform()`. The tests below temporarily override
  * `process.platform` so all three branches are exercised on any host
- * — `bun test` runs only on macOS here but the dispatcher must hold
+ * — the test runner runs only on macOS here but the dispatcher must hold
  * up on every platform CI eventually runs on.
  */
 function withPlatform<T>(value: NodeJS.Platform, fn: () => T): T {

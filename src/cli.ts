@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 /**
  * SwarmFlow CLI 入口点。
@@ -12,11 +12,13 @@
  *   swarmflow --server              # 服务模式（Electron GUI 派生）
  */
 
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
+
+import { initLogger, getLogger } from "./lib/logger.js";
 
 import {
   fixStorage,
@@ -73,13 +75,12 @@ const VALUE_FLAGS = new Set([
 ]);
 
 /**
- * 用当前二进制重新启动自身（用于更新后的热重启）。
- * 保留原 argv，去掉 bun 路径前缀或 node 路径前缀。
+ * 用当前 Node 进程重新启动自身（用于更新后的热重启）。
+ * 保留 Node 启动参数，避免 tsx 开发入口重启时丢失 loader。
  */
-function relaunchCurrentBinary(argv: string[]): void {
-  const relaunchArgs = argv.length > 0 && argv[0] === process.execPath
-    ? argv.slice(1)
-    : argv.slice(2);
+function relaunchCurrentProcess(argv: string[]): void {
+  const entrypoint = argv[1] ?? process.argv[1];
+  const relaunchArgs = [...process.execArgv, entrypoint, ...argv.slice(2)];
   const result = spawnSync(process.execPath, relaunchArgs, {
     stdio: "inherit",
     env: process.env,
@@ -237,7 +238,6 @@ async function getCurrentProjectInfo(): Promise<{ projectDir: string; projectPat
   const cwd = process.cwd();
   const { projectSlug } = await import("./config/persistence.js");
   const slug = projectSlug(cwd);
-  const { join } = await import("node:path");
   const projectDir = join(getSwarmflowHomeDir(), "projects", slug);
   return { projectDir, projectPath: cwd };
 }
@@ -245,8 +245,6 @@ async function getCurrentProjectInfo(): Promise<{ projectDir: string; projectPat
 /** 从 project.json 读取 projectPath。 */
 function readProjectMeta(projectDir: string): { projectPath: string | undefined } {
   try {
-    const { readFileSync } = require("node:fs");
-    const { join } = require("node:path");
     const raw = JSON.parse(readFileSync(join(projectDir, "project.json"), "utf-8"));
     return { projectPath: typeof raw.original_path === "string" ? raw.original_path : undefined };
   } catch {
@@ -270,12 +268,6 @@ function formatAge(isoString: string | undefined): string {
 }
 
 /** 格式化会话选择项。 */
-function formatSessionChoice(s: { title?: string; summary: string; lastActiveAt: string; turns: number }): string {
-  const label = s.title || s.summary.slice(0, 50) || "(untitled)";
-  const age = formatAge(s.lastActiveAt);
-  return `${label}  \x1B[90m${s.turns} turns \xb7 ${age}\x1B[0m`;
-}
-
 /**
  * 交互式会话选择器 — 使用 readline 实现完全控制的 UI。
  * Design A: Separator Lines 风格。
@@ -444,8 +436,11 @@ async function ensureProvidersConfigured(
   const loadSettings = deps.loadGlobalSettings ?? loadGlobalSettings;
   const globalSettings = loadSettings(homeDir);
 
-  // 如果已有设置文件（向导已运行过），直接返回
-  if (globalSettings && Object.keys(globalSettings).length > 0) {
+  const hasConfiguredProvider = Object.keys(globalSettings.providers ?? {}).length > 0;
+  const hasManagedCredential = (deps.hasAnyManagedCredential ?? hasAnyManagedCredential)();
+
+  // UI-only settings such as auto_update do not prove that initialization ran.
+  if (hasConfiguredProvider || hasManagedCredential) {
     return globalSettings;
   }
 
@@ -481,8 +476,21 @@ async function warnIfCopilotCredentialsMissing(
  * 使用动态路径避免 external/opentui 进入 src/ 的 rootDir 类型检查范围。
  */
 async function launchTuiFromDefaultEntry(): Promise<void> {
-  const opentuiEntry = "../external/opentui/main.js";
-  const mod = (await import(opentuiEntry)) as { launchTui: () => Promise<void> };
+  // Development runs the TypeScript entry directly; compiled distributions
+  // contain the JavaScript entry. Resolve the available form at runtime so
+  // Node does not try to load a source tree's missing `.js` file.
+  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const candidates = [
+    join(projectRoot, "external", "opentui", "main.js"),
+    join(projectRoot, "external", "opentui", "main.tsx"),
+  ];
+  const entry = candidates.find((candidate) => existsSync(candidate));
+  if (!entry) {
+    throw new Error(
+      "OpenTUI entry not found. Run with --server or install the full UI distribution.",
+    );
+  }
+  const mod = (await import(pathToFileURL(entry).href)) as { launchTui: () => Promise<void> };
   await mod.launchTui();
 }
 
@@ -504,6 +512,12 @@ async function launchTuiFromDefaultEntry(): Promise<void> {
  *   8. 启动 TUI
  */
 export async function main(argv: string[] = process.argv, deps: MainDeps = {}): Promise<void> {
+  // 尽早初始化诊断日志，捕获后续每一帧的状态。
+  // 通过 SWARMFLOW_LOG=1 启用；进程 panic 时也会写一行。
+  initLogger();
+  const log = getLogger("cli");
+  log.info("main:enter", { argv: argv.slice(0, 8) });
+
   normalizeLegacyVersionAlias(argv);
 
   const homeDir = deps.homeDir ?? getSwarmflowHomeDir();
@@ -515,6 +529,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   // ─── 服务模式短路 ───
   // GUI（Electron 主进程）以此参数派生进程。
   if (argv.includes("--server")) {
+    log.info("server:short-circuit", { workDirFlag: argv.includes("--work-dir") });
     const args = argv.slice(2);
     const getFlag = (name: string): string | undefined => {
       const idx = args.indexOf(name);
@@ -651,7 +666,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   (deps.loadDotenv ?? loadDotenv)(homeDir);
 
   // 将 OS 系统代理规范化为 HTTP(S)_PROXY。
-  // Bun 的 fetch 读取这些环境变量但忽略 Windows 系统代理；
+  // Node 的 fetch 不会自动读取 Windows 系统代理；
   // 没有这一行，无代理环境变量设置的用户会在阻塞主机上挂起。
   // 在 dotenv 之后运行，明确的 .env 代理优先。
   applySystemProxyToEnv();
@@ -677,7 +692,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       return;
     }
     if (!deps.applyStaged) {
-      relaunchCurrentBinary(argv);
+      relaunchCurrentProcess(argv);
       return;
     }
   }
@@ -696,7 +711,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     if (deps.relaunchAfterUpdate) {
       deps.relaunchAfterUpdate(argv);
     } else {
-      relaunchCurrentBinary(argv);
+      relaunchCurrentProcess(argv);
     }
   });
 

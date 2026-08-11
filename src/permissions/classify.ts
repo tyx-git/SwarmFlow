@@ -138,7 +138,7 @@ function isDangerCommand(name: string): boolean {
 /** Bash 强能力命令集合 */
 const BASH_POTENT_COMMANDS = new Set([
   "touch", "ln",
-  "npm", "npx", "pnpm", "yarn", "bun",
+  "npm", "npx", "pnpm", "yarn",
   "pip", "pip3", "uv",
   "cargo", "go",
   "python", "python3", "node", "deno",
@@ -318,16 +318,6 @@ const GIT_DANGER_SUBCOMMANDS = new Set([
   "push", "rebase",
 ]);
 
-/** Git 强制标志 */
-const GIT_FORCE_FLAGS = new Set([
-  "--force", "-f", "--force-with-lease", "--hard", "--no-preserve-root",
-]);
-
-/** Git 删除标志 */
-const GIT_DELETE_FLAGS = new Set([
-  "-D", "-d", "--delete",
-]);
-
 /** 权限类别排序 */
 const CLASS_ORDER: Record<PermissionClass, number> = {
   read: 0,
@@ -348,7 +338,7 @@ const CLASS_ORDER: Record<PermissionClass, number> = {
  */
 export function classifyTool(
   toolName: string,
-  toolArgs: Record<string, unknown>,
+  _toolArgs: Record<string, unknown>,
 ): InvocationAssessment {
   if (toolName.startsWith("mcp__")) {
     return { permissionClass: "write_potent", toolName, canMemoize: true };

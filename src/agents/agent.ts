@@ -14,10 +14,8 @@
 import type { Config, ModelConfig } from "../config/config.js";
 import type { MessageBlock } from "../primitives/context.js";
 import type { BaseProvider, ToolDef } from "../providers/base.js";
-import { ToolResult } from "../providers/base.js";
 import { createProvider } from "../providers/registry.js";
 import { executeTool } from "../tools/basic.js";
-import type { LogEntry } from "../context/log-entry.js";
 import { createEphemeralLogState } from "../context/ephemeral-log.js";
 import {
   asyncRunToolLoop,

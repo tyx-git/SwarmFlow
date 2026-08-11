@@ -14,7 +14,7 @@ import path from "node:path";
 import { toPosixPath } from "../security/path.js";
 import type { GateAdvisor, GateDecision } from "../lib/tool-runtime.js";
 import type { ToolPreflightContext } from "../agents/tool-loop.js";
-import { classifyTool, classifyToolAsync } from "./classify.js";
+import { classifyToolAsync } from "./classify.js";
 import { PermissionRuleStore } from "./rules.js";
 import type { ShellKind } from "../platform/types.js";
 import type {
@@ -163,7 +163,7 @@ export class PermissionAdvisor implements GateAdvisor {
   private _checkExternalPath(
     ctx: ToolPreflightContext,
     assessment: InvocationAssessment,
-    mode: PermissionMode,
+    _mode: PermissionMode,
   ): GateDecision | null {
     const args = ctx.toolArgs as Record<string, unknown>;
     const rawPath = typeof args["path"] === "string" ? args["path"] : null;

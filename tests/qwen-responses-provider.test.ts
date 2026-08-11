@@ -1,6 +1,6 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import type { ToolDef } from "../src/providers/base.js";
 import { createProvider } from "../src/providers/registry.js";
 import { QwenResponsesProvider } from "../src/providers/qwen-responses.js";
@@ -52,7 +52,7 @@ describe("QwenResponsesProvider request shaping", () => {
 
   it("maps SwarmFlow web_search to Qwen Responses built-in web_search", async () => {
     const provider = new QwenResponsesProvider(modelConfig());
-    const create = mock(async (params: Record<string, unknown>) => ({
+    const create = vi.fn(async (params: Record<string, unknown>) => ({
       output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
       usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } },
       _params: params,
@@ -85,7 +85,7 @@ describe("QwenResponsesProvider request shaping", () => {
       output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
       usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } },
     };
-    const create = mock(async (params: Record<string, unknown>) => {
+    const create = vi.fn(async (params: Record<string, unknown>) => {
       if (params["stream"]) {
         return streamOf([{ type: "response.completed", response: finalResponse }]);
       }
@@ -134,7 +134,7 @@ describe("QwenResponsesProvider request shaping", () => {
       output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
       usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } },
     };
-    const create = mock(async (params: Record<string, unknown>) => {
+    const create = vi.fn(async (params: Record<string, unknown>) => {
       if (params["stream"]) {
         return streamOf([{ type: "response.completed", response: finalResponse }]);
       }
@@ -191,7 +191,7 @@ describe("QwenResponsesProvider request shaping", () => {
       ],
       usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } },
     };
-    const create = mock(async () =>
+    const create = vi.fn(async () =>
       streamOf([
         {
           type: "response.output_item.done",
@@ -237,7 +237,7 @@ describe("QwenResponsesProvider request shaping", () => {
 
   it("extracts Qwen web_search_call sources as citations", async () => {
     const provider = new QwenResponsesProvider(modelConfig({ supportsThinking: false }));
-    const create = mock(async () => ({
+    const create = vi.fn(async () => ({
       output: [
         {
           type: "web_search_call",
@@ -279,7 +279,7 @@ describe("QwenResponsesProvider request shaping", () => {
 
   it("keeps streamed Qwen web_search_call sources when the final response omits them", async () => {
     const provider = new QwenResponsesProvider(modelConfig());
-    const create = mock(async () =>
+    const create = vi.fn(async () =>
       streamOf([
         {
           type: "response.output_item.done",

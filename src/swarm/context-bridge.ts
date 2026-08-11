@@ -8,7 +8,6 @@
  * @packageDocumentation
  */
 
-import type { TaskResult } from "./types.js";
 
 // ------------------------------------------------------------------
 // 共享上下文

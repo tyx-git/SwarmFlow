@@ -1,16 +1,47 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import type { BackgroundShellManager } from "../src/background-shell-manager.js";
-import { SessionStore } from "../src/persistence.js";
+import type { BackgroundShellManager } from "../src/lib/background-shell-manager.js";
+import { SessionStore } from "../src/config/persistence.js";
+import { shell } from "../src/platform/index.js";
 import { Session } from "../src/session.js";
 import { ToolResult } from "../src/providers/base.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
+}
+
+const isPowerShell = shell.kind === "pwsh" || shell.kind === "powershell";
+const backgroundTestTimeout = isPowerShell ? 30_000 : 10_000;
+
+function printCommand(text: string): string {
+  const escaped = text.replace(/'/g, "''");
+  return isPowerShell ? `Write-Output '${escaped}'` : `printf '${escaped}\\n'`;
+}
+
+function sleepCommand(seconds: number): string {
+  return isPowerShell
+    ? `Start-Sleep -Milliseconds ${Math.round(seconds * 1000)}`
+    : `sleep ${seconds}`;
+}
+
+function successfulCommand(): string {
+  return isPowerShell ? "exit 0" : "true";
+}
+
+function burstCommand(): string {
+  return isPowerShell
+    ? "1..120 | ForEach-Object { 'line-' + $_.ToString('000') }"
+    : "i=1; while [ $i -le 120 ]; do printf 'line-%03d\\n' \"$i\"; i=$((i+1)); done";
+}
+
+function childProcessCommand(): string {
+  return isPowerShell
+    ? "Write-Output 'started'; Start-Process -FilePath node -ArgumentList @('-e', 'setTimeout(() => {}, 600000)') -NoNewWindow -Wait"
+    : "sh -c 'sleep 600' & echo started; wait";
 }
 
 /**
@@ -23,7 +54,7 @@ function makeTempDir(prefix: string): string {
 async function waitForShellExit(
   sm: BackgroundShellManager,
   id: string,
-  maxMs = 3_000,
+  maxMs = isPowerShell ? 10_000 : 3_000,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
@@ -67,7 +98,7 @@ describe("background shell tools", () => {
     try {
       const started = (session as any)._shellManager.execBashBackground({
         id: "demo",
-        command: "printf 'hello\\n'; sleep 0.2; printf 'done\\n'",
+        command: `${printCommand("hello")}; ${sleepCommand(0.2)}; ${printCommand("done")}`,
       }) as ToolResult;
       expect(started.content).toContain("Started background shell 'demo'");
 
@@ -86,7 +117,7 @@ describe("background shell tools", () => {
       await session.close();
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, backgroundTestTimeout);
 
   // ── Lifecycle regression tests (2026-05) ───────────────────────────
   // Before these fixes, killing a shell that spawned its own descendants
@@ -100,7 +131,10 @@ describe("background shell tools", () => {
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager;
-      sm.execBashBackground({ id: "loop", command: "while true; do sleep 1; done" });
+      const command = isPowerShell
+        ? "while ($true) { Start-Sleep -Seconds 1 }"
+        : "while true; do sleep 1; done";
+      sm.execBashBackground({ id: "loop", command });
 
       // Active entry should be "running" right after spawn.
       expect(sm.buildShellReport()).toContain("Running:");
@@ -133,7 +167,7 @@ describe("background shell tools", () => {
       // would never fire because the grandchild holds the stdio pipes.
       sm.execBashBackground({
         id: "treekill",
-        command: "sh -c 'sleep 600' & echo started; wait",
+        command: childProcessCommand(),
       });
       // Give the inner sh time to fork.
       await new Promise((r) => setTimeout(r, 200));
@@ -157,13 +191,13 @@ describe("background shell tools", () => {
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager;
-      sm.execBashBackground({ id: "dev-server", command: "printf 'v1\\n'" });
+      sm.execBashBackground({ id: "dev-server", command: printCommand("v1") });
       await waitForShellExit(sm, "dev-server");
 
       // Reuse the same id — must succeed and report the archived prior log.
       const restarted = sm.execBashBackground({
         id: "dev-server",
-        command: "printf 'v2\\n'",
+        command: printCommand("v2"),
       }) as ToolResult;
       expect(restarted.content).toContain("Started background shell 'dev-server'");
       expect(restarted.content).toContain("previous log (id was reused):");
@@ -181,14 +215,14 @@ describe("background shell tools", () => {
       await session.close();
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, backgroundTestTimeout);
 
   it("bash_background still rejects reuse when the prior shell is running", async () => {
     const root = makeTempDir("swarmflow-shell-reuse-block-");
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager;
-      sm.execBashBackground({ id: "long", command: "sleep 30" });
+      sm.execBashBackground({ id: "long", command: sleepCommand(30) });
       const conflict = sm.execBashBackground({
         id: "long",
         command: "echo other",
@@ -219,16 +253,16 @@ describe("background shell tools", () => {
 
       // 1 archive for `tabX1`, created earliest so it would be the oldest
       // candidate if the broken pattern were used during a later tab.1 prune.
-      sm.execBashBackground({ id: "tabX1", command: "true" });
+      sm.execBashBackground({ id: "tabX1", command: successfulCommand() });
       await waitForShellExit(sm, "tabX1");
-      sm.execBashBackground({ id: "tabX1", command: "true" });
+      sm.execBashBackground({ id: "tabX1", command: successfulCommand() });
       await waitForShellExit(sm, "tabX1");
 
       // Restart `tab.1` enough times that the prune step inside
       // _archiveDeadShellLog actually fires. SHELL_ARCHIVE_KEEP_LAST is 8;
       // 11 restarts give 10 tab.1 archives and force at least one prune.
       for (let i = 0; i < 11; i++) {
-        sm.execBashBackground({ id: "tab.1", command: "true" });
+        sm.execBashBackground({ id: "tab.1", command: successfulCommand() });
         await waitForShellExit(sm, "tab.1");
       }
 
@@ -249,7 +283,7 @@ describe("background shell tools", () => {
       await session.close();
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, backgroundTestTimeout);
 
   it("prunes archived shell logs to the LRU cap (SHELL_ARCHIVE_KEEP_LAST)", async () => {
     const root = makeTempDir("swarmflow-shell-archive-lru-");
@@ -260,7 +294,7 @@ describe("background shell tools", () => {
       // 12 times; after the last restart there should be at most 8
       // dev-server.<ts>.log files plus the current dev-server.log.
       for (let i = 0; i < 12; i++) {
-        sm.execBashBackground({ id: "dev-server", command: `printf 'iter${i}\\n'` });
+        sm.execBashBackground({ id: "dev-server", command: printCommand(`iter${i}`) });
         await waitForShellExit(sm, "dev-server");
       }
 
@@ -276,14 +310,14 @@ describe("background shell tools", () => {
       await session.close();
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, backgroundTestTimeout);
 
   it("bash_output uses a TERMINATED header for dead shells", async () => {
     const root = makeTempDir("swarmflow-shell-banner-");
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager;
-      sm.execBashBackground({ id: "short", command: "printf 'done\\n'" });
+      sm.execBashBackground({ id: "short", command: printCommand("done") });
       await waitForShellExit(sm, "short");
 
       const out = sm.execBashOutput({ id: "short" }) as ToolResult;
@@ -301,7 +335,7 @@ describe("background shell tools", () => {
     const root = makeTempDir("swarmflow-shell-trunc-root-");
     const session = makeSession(root);
     try {
-      const command = "i=1; while [ $i -le 120 ]; do printf 'line-%03d\\n' \"$i\"; i=$((i+1)); done";
+      const command = burstCommand();
       (session as any)._shellManager.execBashBackground({ id: "burst", command });
       await (session as any)._execAwaitEvent({ seconds: 15 });
 
@@ -322,7 +356,7 @@ describe("background shell tools", () => {
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager as BackgroundShellManager;
-      sm.execBashBackground({ id: "snappy", command: "printf 'tail-line\\n'" });
+      sm.execBashBackground({ id: "snappy", command: printCommand("tail-line") });
       await waitForShellExit(sm, "snappy");
 
       const snapshots = session.getBackgroundShellSnapshots();
@@ -348,13 +382,13 @@ describe("background shell tools", () => {
 
       expect(await sm.killShell("ghost")).toMatchObject({ performed: false });
 
-      sm.execBashBackground({ id: "quick", command: "true" });
+      sm.execBashBackground({ id: "quick", command: successfulCommand() });
       await waitForShellExit(sm, "quick");
       const dead = await sm.killShell("quick");
       expect(dead.performed).toBe(false);
       expect(dead.message).toContain("already");
 
-      sm.execBashBackground({ id: "long", command: "sleep 30" });
+      sm.execBashBackground({ id: "long", command: sleepCommand(30) });
       const killed = await sm.killShell("long");
       expect(killed.performed).toBe(true);
       expect(killed.message).toContain("killed");
@@ -369,7 +403,7 @@ describe("background shell tools", () => {
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager as BackgroundShellManager;
-      sm.execBashBackground({ id: "devish", command: "sleep 30" });
+      sm.execBashBackground({ id: "devish", command: sleepCommand(30) });
 
       const message = await session.stopBackgroundShell("devish");
       expect(message).toContain("killed");
@@ -401,7 +435,7 @@ describe("background shell tools", () => {
       const { executeTool } = await import("../src/tools/basic.js");
 
       const result = await executeTool("bash", {
-        command: "printf 'early\\n'; sleep 2; printf 'late\\n'",
+        command: `${printCommand("early")}; ${sleepCommand(2)}; ${printCommand("late")}`,
         timeout: 1,
         cwd: root,
       }, {
@@ -434,7 +468,7 @@ describe("background shell tools", () => {
     }
   });
 
-  it("forceKillAll escalates to SIGKILL for trees that ignore SIGTERM", async () => {
+  it.skipIf(isPowerShell)("forceKillAll escalates to SIGKILL for trees that ignore SIGTERM", async () => {
     const root = makeTempDir("swarmflow-shell-root-");
     const session = makeSession(root);
     try {
@@ -454,7 +488,7 @@ describe("background shell tools", () => {
 
       const armedDeadline = Date.now() + 3_000;
       while (Date.now() < armedDeadline) {
-        if (existsSync(entry.logPath) && (await Bun.file(entry.logPath).text()).includes("armed")) break;
+        if (existsSync(entry.logPath) && readFileSync(entry.logPath, "utf8").includes("armed")) break;
         await new Promise((r) => setTimeout(r, 10));
       }
 

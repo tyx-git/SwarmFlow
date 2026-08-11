@@ -11,7 +11,7 @@ import fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it, mock, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
 import { executeTool } from "../src/tools/basic.js";
 
@@ -154,7 +154,7 @@ describe("Phase 5 file write safety", () => {
       releaseFirstRename = resolve;
     });
 
-    const spy = spyOn(fsPromises, "rename").mockImplementation(async (...args: Parameters<typeof fsPromises.rename>) => {
+    const spy = vi.spyOn(fsPromises, "rename").mockImplementation(async (...args: Parameters<typeof fsPromises.rename>) => {
       renameCallCount += 1;
       if (renameCallCount === 1) {
         firstRenameEnteredResolve();

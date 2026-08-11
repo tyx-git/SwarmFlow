@@ -1,6 +1,6 @@
-import { describe, expect, it, mock, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { OpenRouterProvider } from "../src/providers/openrouter.js";
 
 function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {
@@ -251,7 +251,7 @@ describe("OpenRouter _convertMessages reasoning_details round-trip", () => {
 describe("OpenRouter web search integration", () => {
   it("injects the web plugin when native web search is enabled", async () => {
     const provider = new OpenRouterProvider(modelConfig({ supportsWebSearch: true }));
-    const create = mock(async () => ({
+    const create = vi.fn(async () => ({
       choices: [{ message: { content: "ok" } }],
       usage: { prompt_tokens: 1, completion_tokens: 1 },
     }));
@@ -283,7 +283,7 @@ describe("OpenRouter web search integration", () => {
       supportsWebSearch: true,
       extra: { plugins: [{ id: "existing" }] },
     }));
-    const create = mock(async () => ({
+    const create = vi.fn(async () => ({
       choices: [{ message: { content: "ok" } }],
       usage: { prompt_tokens: 1, completion_tokens: 1 },
     }));

@@ -28,7 +28,7 @@ import { loadRemoteRegistry, remoteCacheDir, type RawRegistryBundle } from "../p
 
 /**
  * 用于验证远程注册表的内置 Ed25519 公钥（SPKI PEM）。
- * 替换为 `bun run scripts/gen-registry-key.ts` 的输出。为空 =
+ * 替换为 `node --import tsx scripts/gen-registry-key.ts` 的输出。为空 =
  * 验证失败关闭（永不信任远程）。
  */
 export const REGISTRY_PUBLIC_KEY_PEM = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEApdQv3GlgMKD7y7DDdejGK3sxDMWHCJFvOO/PvaqitKY=\n-----END PUBLIC KEY-----\n";

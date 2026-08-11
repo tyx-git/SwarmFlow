@@ -271,7 +271,6 @@ export function getAncestors(dag: TaskDAG, taskId: string): string[] {
  */
 export function getDescendants(dag: TaskDAG, taskId: string): string[] {
   const descendants: string[] = [];
-  const visited = new Set<string>();
 
   for (const [id, node] of dag.nodes) {
     if (id === taskId) continue;

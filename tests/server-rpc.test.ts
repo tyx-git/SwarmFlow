@@ -7,10 +7,10 @@
  * receives.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { projectToTuiEntries } from "../src/log-projection.js";
-import type { LogEntry } from "../src/log-entry.js";
+import { projectToTuiEntries } from "../src/context/log-projection.js";
+import type { LogEntry } from "../src/context/log-entry.js";
 import type { RpcHandler, RpcServer } from "../src/server/rpc-transport.js";
 import {
   PROTOCOL_CAPABILITIES,

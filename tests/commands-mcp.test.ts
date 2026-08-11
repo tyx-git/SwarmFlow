@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, mock } from "bun:test";
-import { buildDefaultRegistry, type CommandContext } from "../src/commands.js";
-import { registerMcpTools } from "../src/tool-runtime.js";
+import { describe, expect, it, vi } from "vitest";
+import { buildDefaultRegistry, type CommandContext } from "../src/commands/commands.js";
+import { registerMcpTools } from "../src/lib/tool-runtime.js";
 
 function makeContext(
   registry: ReturnType<typeof buildDefaultRegistry>,
@@ -12,9 +12,9 @@ function makeContext(
 ): CommandContext {
   return {
     session,
-    showMessage: mock(),
-    autoSave: mock(),
-    resetUiState: mock(),
+    showMessage: vi.fn(),
+    autoSave: vi.fn(),
+    resetUiState: vi.fn(),
     commandRegistry: registry,
     ...overrides,
   };
@@ -40,7 +40,7 @@ describe("/mcp command", () => {
         }),
       );
 
-      const ensureMcpReady = mock(async () => {});
+      const ensureMcpReady = vi.fn(async () => {});
       const session = {
         ensureMcpReady,
         mcpManager: {
@@ -59,7 +59,7 @@ describe("/mcp command", () => {
       await cmd!.handler(ctx, "");
 
       expect(ensureMcpReady).toHaveBeenCalledTimes(1);
-      const rendered = (ctx.showMessage as ReturnType<typeof mock>).mock.calls[0]?.[0] as string;
+      const rendered = (ctx.showMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
       expect(rendered).toContain("MCP: 1 server(s), 1 enabled");
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
@@ -101,9 +101,9 @@ describe("MCP runtime registration", () => {
 
     let currentTools = [docsTool, dbTool];
     const manager = {
-      connectAll: mock(async () => {}),
+      connectAll: vi.fn(async () => {}),
       getAllTools: () => currentTools,
-      callTool: mock(async (name: string) => ({ content: `called ${name}` })),
+      callTool: vi.fn(async (name: string) => ({ content: `called ${name}` })),
     };
     const executors: Record<string, any> = {};
     const agent = {

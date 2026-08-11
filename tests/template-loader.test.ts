@@ -2,9 +2,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { Config } from "../src/config.js";
+import { Config } from "../src/config/config.js";
 import { loadTemplate, validateTemplate } from "../src/templates/loader.js";
 
 function makeTempDir(prefix: string): string {
@@ -24,7 +24,7 @@ function makeConfig(): Config {
 describe("template type validation", () => {
   it("documents autonomous summarize user-message restrictions in the main tool prompt", () => {
     const toolsPrompt = readFileSync(
-      join(process.cwd(), "agent_templates", "main", "tools.md"),
+      join(process.cwd(), "prompts", "templates", "main", "tools.md"),
       "utf-8",
     );
 
@@ -71,7 +71,7 @@ describe("template type validation", () => {
       );
 
       const err = validateTemplate(dir);
-      expect(err).toContain("Invalid template type");
+      expect(err).toMatch(/Invalid template type|无效的模板类型/);
       expect(err).toContain("agent");
     } finally {
       rmSync(dir, { recursive: true, force: true });

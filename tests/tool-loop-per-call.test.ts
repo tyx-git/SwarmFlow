@@ -1,8 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import { asyncRunToolLoop } from "../src/agents/tool-loop.js";
-import { createEphemeralLogState } from "../src/ephemeral-log.js";
-import type { LogEntry } from "../src/log-entry.js";
+import { createEphemeralLogState } from "../src/context/ephemeral-log.js";
+import type { LogEntry } from "../src/context/log-entry.js";
 import { BaseProvider, ProviderResponse, Usage, type ToolCall } from "../src/providers/base.js";
 import { BASIC_TOOLS_MAP } from "../src/tools/basic.js";
 

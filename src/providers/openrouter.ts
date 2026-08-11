@@ -37,6 +37,7 @@ const EFFORT_MAP: Record<string, string> = {
   xhigh: "xhigh",
   max: "xhigh",    // Anthropic "max" → OpenRouter 的最高 effort
   on: "high",       // 二元开/关模型 → 默认 high
+  none: "none",     // OpenAI 风格的显式关闭
 };
 
 export class OpenRouterProvider extends OpenAIChatProvider {
@@ -84,7 +85,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
     const level = options?.thinkingLevel;
 
     // 显式禁用 reasoning
-    if (level === "off") {
+    if (level === "off" || level === "none") {
       const extraBody = (kwargs["extra_body"] as Record<string, unknown>) || {};
       extraBody["reasoning"] = { effort: "none" };
       kwargs["extra_body"] = extraBody;

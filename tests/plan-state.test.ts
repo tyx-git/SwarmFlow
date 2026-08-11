@@ -1,5 +1,5 @@
-import { describe, it, expect } from "bun:test";
-import { parsePlanFile, formatPlanSnapshot } from "../src/plan-state.js";
+import { describe, it, expect } from "vitest";
+import { parsePlanFile, formatPlanSnapshot } from "../src/lib/plan-state.js";
 
 describe("parsePlanFile", () => {
   it("parses all three checkpoint states", () => {

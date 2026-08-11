@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   FACTORY_MODEL_SPECS,
@@ -7,13 +7,13 @@ import {
   modelSpecIds,
   providerModelEffectiveId,
   resolveProviderWireAxes,
-} from "../src/model-registry.js";
-import { normalizeModelId } from "../src/config.js";
+} from "../src/models/registry.js";
+import { normalizeModelId } from "../src/config/config.js";
 import {
   resolveSealedSchema,
   resolveThinkingEncryption,
   resolveTransportProtocol,
-} from "../src/thinking-artifact.js";
+} from "../src/lib/thinking-artifact.js";
 
 /**
  * Consistency invariants for the model/provider registry. Unlike the

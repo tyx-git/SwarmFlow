@@ -8,10 +8,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import { Session } from "../src/session.js";
-import { SubAgentFactory } from "../src/session/sub-agent-factory.js";
+import { SubAgentFactory } from "../src/session/subagent-factory.js";
 import { executeTool } from "../src/tools/basic.js";
 
 function makeTemplateFactory(artifactsDir: string): SubAgentFactory {

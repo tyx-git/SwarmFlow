@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { Config } from "../src/config.js";
-import { detectManagedCredentialCandidates } from "../src/managed-provider-credentials.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Config } from "../src/config/config.js";
+import { detectManagedCredentialCandidates } from "../src/config/managed-provider-credentials.js";
 
 const ENV_VARS = [
   "DASHSCOPE_API_KEY",

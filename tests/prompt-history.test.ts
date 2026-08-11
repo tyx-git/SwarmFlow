@@ -1,14 +1,14 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   __resetPromptHistoryForTesting,
   appendPromptHistory,
   getPromptHistoryNavigationDirection,
   navigatePromptHistory,
-} from "../opentui-src/input/prompt-history.js";
+} from "../external/opentui/input/prompt-history.js";
 
 function readJsonl(file: string): string[] {
   return readFileSync(file, "utf8").split("\n").filter(Boolean);

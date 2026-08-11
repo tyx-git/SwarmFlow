@@ -1,6 +1,6 @@
-import { describe, expect, it, mock, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { OpenAIResponsesProvider } from "../src/providers/openai-responses.js";
 
 function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {
@@ -45,7 +45,7 @@ async function captureCreateCall(
       input_tokens_details: { cached_tokens: 0 },
     },
   };
-  const create = mock(async () => ({
+  const create = vi.fn(async () => ({
     output: [],
     usage: {
       input_tokens: 1,
@@ -304,7 +304,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
 
     (provider as any)._client = {
       responses: {
-        create: mock(async () =>
+        create: vi.fn(async () =>
           streamOf([
             {
               type: "response.output_item.added",
@@ -387,7 +387,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
 
     (provider as any)._client = {
       responses: {
-        create: mock(async () =>
+        create: vi.fn(async () =>
           streamOf([
             {
               type: "response.output_item.added",
@@ -473,7 +473,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
 
     (provider as any)._client = {
       responses: {
-        create: mock(async () =>
+        create: vi.fn(async () =>
           streamOf([
             {
               type: "response.output_item.added",
@@ -568,7 +568,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
 
     (provider as any)._client = {
       responses: {
-        create: mock(async () =>
+        create: vi.fn(async () =>
           streamOf([
             { type: "response.output_text.delta", delta: "review" },
             { type: "response.output_text.delta", delta: " complete" },
@@ -606,7 +606,7 @@ describe("OpenAIResponsesProvider streamed reasoning capture", () => {
 
     (provider as any)._client = {
       responses: {
-        create: mock(async () =>
+        create: vi.fn(async () =>
           streamOf([
             {
               type: "response.output_item.added",

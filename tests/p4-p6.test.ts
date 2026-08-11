@@ -2,13 +2,14 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { SessionStore } from "../src/persistence.js";
+import { SessionStore } from "../src/config/persistence.js";
 import { Session } from "../src/session.js";
 import { executeTool } from "../src/tools/basic.js";
 import { ToolResult } from "../src/providers/base.js";
-import { createAssistantText, createReasoning, createUserMessage } from "../src/log-entry.js";
+import { createAssistantText, createReasoning, createUserMessage } from "../src/context/log-entry.js";
+import { shell } from "../src/platform/index.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -45,9 +46,12 @@ describe("P4 shell governance", () => {
     const prev = process.env["AGENTFLOW_TEST_SECRET"];
     process.env["AGENTFLOW_TEST_SECRET"] = "super-secret-value";
     try {
+      const command = shell.kind === "pwsh" || shell.kind === "powershell"
+        ? "Write-Output -NoNewline $env:AGENTFLOW_TEST_SECRET"
+        : "printf %s \"$AGENTFLOW_TEST_SECRET\"";
       const result = await executeTool(
         "bash",
-        { command: "printf %s \"$AGENTFLOW_TEST_SECRET\"", timeout: 30 },
+        { command, timeout: 30 },
         { projectRoot: process.cwd() },
       );
       expect(result.content).not.toContain("super-secret-value");

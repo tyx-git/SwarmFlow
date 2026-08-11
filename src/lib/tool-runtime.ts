@@ -13,7 +13,7 @@
 
 import type { ToolDef } from "../providers/base.js";
 import { ToolResult } from "../providers/base.js";
-import type { ToolExecutor, ToolExecutorContext } from "../tools/executor-types.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 import type { ToolPreflightContext, ToolPreflightDecision } from "../agents/tool-loop.js";
 import type { ApprovalOffer, InvocationAssessment } from "../permissions/types.js";
 import {
@@ -24,7 +24,6 @@ import {
   SHOW_CONTEXT_TOOL,
   SUMMARIZE_CONTEXT_TOOL,
   ASK_TOOL,
-  SEND_TOOL,
   RELOAD_TOOL,
 } from "../tools/comm.js";
 import {

@@ -4,7 +4,7 @@
  * 综合一个现实的长时间会话日志，计时每个优化路径
  * 相对于被替换的朴素实现。运行：
  *
- *   bun scripts/bench-log-hotpaths.ts [entryCount]
+ *   node --import tsx scripts/bench-log-hotpaths.ts [entryCount]
  *
  * 未接入 CI — 数值记录在 perf plan 文档中。
  */

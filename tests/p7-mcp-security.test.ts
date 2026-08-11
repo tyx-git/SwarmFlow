@@ -2,14 +2,14 @@ import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import { Session } from "../src/session.js";
 import {
   buildMcpServerEnv,
   ensureCredentialFilePermissions,
   validateMcpSseUrl,
-} from "../src/mcp-client.js";
+} from "../src/clients/mcp-client.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));

@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
 import { Session } from "../src/session.js";
 
@@ -6,7 +6,7 @@ describe("tool availability system notices", () => {
   it("does not queue notices before the first real user message", () => {
     const session = Object.create(Session.prototype) as any;
     session._conversationStarted = false;
-    session._deliverMessage = mock(() => ({ accepted: true }));
+    session._deliverMessage = vi.fn(() => ({ accepted: true }));
 
     session.notifySkillAvailabilityChanged({ disabled: ["docx"] });
     expect(session._deliverMessage).toHaveBeenCalledTimes(0);
@@ -15,7 +15,7 @@ describe("tool availability system notices", () => {
   it("queues separate non-waking notices for separate skill changes after the conversation has started", () => {
     const session = Object.create(Session.prototype) as any;
     session._conversationStarted = true;
-    session._deliverMessage = mock(() => ({ accepted: true }));
+    session._deliverMessage = vi.fn(() => ({ accepted: true }));
 
     session.notifySkillAvailabilityChanged({ disabled: ["docx"] });
     session.notifySkillAvailabilityChanged({ enabled: ["xlsx"] });
@@ -37,9 +37,9 @@ describe("tool availability system notices", () => {
   it("queues MCP reconnect notices with concrete tool names", async () => {
     const session = Object.create(Session.prototype) as any;
     session._conversationStarted = true;
-    session._deliverMessage = mock(() => ({ accepted: true }));
+    session._deliverMessage = vi.fn(() => ({ accepted: true }));
     session._mcpConnected = true;
-    session._ensureMcp = mock(async () => {});
+    session._ensureMcp = vi.fn(async () => {});
 
     let tools = [
       { name: "mcp__docs__search", description: "", parameters: {} },
@@ -48,7 +48,7 @@ describe("tool availability system notices", () => {
     session._mcpManager = {
       getAllTools: () => tools,
       getServerStatuses: () => [{ name: "docs", state: "connected", toolCount: tools.length }],
-      reconnectServer: mock(async () => {
+      reconnectServer: vi.fn(async () => {
         tools = [
           { name: "mcp__docs__search", description: "", parameters: {} },
           { name: "mcp__docs__lookup", description: "", parameters: {} },

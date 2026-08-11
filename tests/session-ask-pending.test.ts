@@ -6,7 +6,7 @@
  * (P1.1-P1.4 in Docs/session-refactor-plan-2026-06-11.md).
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   makeScriptedSession,

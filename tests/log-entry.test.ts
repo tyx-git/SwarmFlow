@@ -2,7 +2,7 @@
  * Tests for LogEntry types, factory functions, and LogIdAllocator.
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect } from "vitest";
 import {
   LogIdAllocator,
   createSystemPrompt,
@@ -32,7 +32,7 @@ import {
   createAskResolution,
   type LogEntry,
   type LogEntryType,
-} from "../src/log-entry.js";
+} from "../src/context/log-entry.js";
 
 // ------------------------------------------------------------------
 // LogIdAllocator

@@ -70,7 +70,7 @@ DeepSeek 的 Anthropic 兼容端点会自动启用 prefix cache，无需手动�
 | 会话分叉 | 支持 | — | — | — |
 | Provider 数量 | 9+ | 仅 Anthropic | 多 | 多 |
 | 界面 | 终端 | 终端 | 终端 | 终端 |
-| 运行时 | Bun + TypeScript（Rust 内核规划中） | Node | Go + Rust | Python |
+| 运行时 | Node + TypeScript（Rust 内核规划中） | Node | Go + Rust | Python |
 
 ## 架构
 
@@ -129,17 +129,56 @@ external/
 
 ## 构建
 ```bash
-bun install         # 安装依赖
-bun run dev         # 运行 TUI
-bun run build       # 构建独立二进制 
-bun test            # 运行测试
-bun run typecheck   # 类型检查
+npm install                 # 安装依赖
+npm run dev                # Node.js 运行 TUI
+npm run start:server       # Node.js 运行 RPC 服务
+npm run build               # 构建 Node.js 服务产物
+node dist/src/cli.js --server --work-dir "$PWD"
+npm test                    # Node.js 测试
+npm run test:node           # Node.js 运行时冒烟测试
+npm run typecheck          # Node.js 类型检查
 ```
 
 ## 平台要求
 - macOS（Apple Silicon）· Linux（x86_64、arm64）· Windows（x64、arm64）
 - 无沙箱——shell 与文件工具以当前用户权限运行。使用 `/permission` 管控破坏性操作
 - 第三方编程套餐（Kimi-Code、GLM-Code）使用服务商侧白名单，可能拒绝部分请求
+
+## 诊断日志（运行时崩溃排查）
+
+排查过程中使用的临时诊断工具。默认关闭，避免影响生产输出。
+
+启用方式：
+
+```bash
+SWARMFLOW_LOG=1 npm run dev                  # 写到 stderr + .logs/
+SWARMFLOW_LOG=file npm run dev               # 仅写文件
+SWARMFLOW_LOG_DIR=/tmp/sf-logs npm run dev   # 自定义目录
+SWARMFLOW_LOG_LEVEL=trace npm run dev        # trace|debug|info|warn|error
+```
+
+输出位置：
+
+- 默认 `.logs/swarmflow-<ISO 时间>-pid<PID>-<seq>.log`，单行 JSON，便于 grep/jq
+- `.logs/last-heartbeat.json`：每 5 秒覆盖一次，崩溃前最后 5 秒内的运行时状态
+- 进程 panic / 未捕获异常也会写入（`uncaughtException` / `unhandledRejection`）
+
+记录的关键节点：
+
+| 组件       | 触发点 |
+|-----------|--------|
+| cli        | `main` 入口、`--server` 短路 |
+| server     | `runServerMode` 入口 |
+| rpc        | NDJSON 帧解析、handler 调用、连接关闭 |
+| session    | `Session` 构造、Node GC 边界 |
+| session.turn | `turn()` 进入/退出/异常 |
+| tool-loop  | `asyncRunToolLoop` 入口 |
+
+崩溃复现后，请把以下文件提供给排查者：
+
+1. 崩溃前最后一个 `.logs/swarmflow-*.log`（可能为空但要保留）
+2. `.logs/last-heartbeat.json`（崩溃前最后状态）
+3. 终端上的完整 panic 输出和 Node.js 堆栈
 
 ## 许可证
 MIT。TUI 使用 OpenTUI（MIT）。

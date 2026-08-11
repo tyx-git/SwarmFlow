@@ -8,7 +8,7 @@
 
 import { Agent } from "../agents/agent.js";
 import type { AgentRole, SwarmAgentHandle } from "./types.js";
-import { AgentLifecycle, AGENT_ROLE_LABELS } from "./types.js";
+import { AgentLifecycle } from "./types.js";
 
 /** AgentPool 的配置。 */
 export interface AgentPoolConfig {

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { createEphemeralLogState } from "../src/ephemeral-log.js";
+import { createEphemeralLogState } from "../src/context/ephemeral-log.js";
 import {
   createAssistantText,
   createCompactContext,
@@ -8,7 +8,7 @@ import {
   createToolCall,
   createToolResult,
   createUserMessage,
-} from "../src/log-entry.js";
+} from "../src/context/log-entry.js";
 
 describe("createEphemeralLogState", () => {
   it("round-trips imported assistant tool-call rounds through log projection", () => {

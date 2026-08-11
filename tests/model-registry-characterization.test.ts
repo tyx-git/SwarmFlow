@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { PROVIDER_PRESETS } from "../src/provider-presets.js";
+import { PROVIDER_PRESETS } from "../src/providers/presets.js";
 import {
   getContextLength,
   getExtendedCacheSupport,
@@ -12,14 +12,14 @@ import {
   getTierEligibleThinkingLevels,
   getWebSearchSupport,
   normalizeModelId,
-} from "../src/config.js";
-import { describeModel } from "../src/model-presentation.js";
+} from "../src/config/config.js";
+import { describeModel } from "../src/models/presentation.js";
 import {
   effectiveSealedSchema,
   effectiveThinkingEncryption,
   effectiveTransportProtocol,
-} from "../src/thinking-artifact.js";
-import { getProviderDefaultBaseUrl } from "../src/provider-defaults.js";
+} from "../src/lib/thinking-artifact.js";
+import { getProviderDefaultBaseUrl } from "../src/providers/defaults.js";
 
 /**
  * Phase 0 — characterization baseline for the model/provider registry refactor.

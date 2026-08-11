@@ -48,7 +48,6 @@ import {
   computeContextBefore,
   computeContextAfter,
   countFileLines,
-  buildHunkFromMatch,
   buildAppendDisplayData,
   buildWriteDisplayData,
 } from "../lib/diff-hunk.js";
@@ -121,7 +120,6 @@ export function generateToolCallDisplay(
   toolArgs: Record<string, unknown>,
 ): string {
   const path = compactDisplayValue(toolArgs["path"]);
-  const file = compactDisplayValue(toolArgs["file"]);
   const pattern = compactDisplayValue(toolArgs["pattern"]);
   const url = compactDisplayValue(toolArgs["url"]);
   const command = compactDisplayValue(toolArgs["command"]);
@@ -841,6 +839,16 @@ export interface ToolLoopOptions {
 export async function asyncRunToolLoop(
   opts: ToolLoopOptions,
 ): Promise<ToolLoopResult> {
+  // 诊断：在主要循环入口加 trace，便于 native panic 时关联最后调用栈。
+  try {
+    const { getLogger } = await import("../lib/logger.js");
+    getLogger("tool-loop").info("asyncRunToolLoop:enter", {
+      agent: opts.agentName,
+      turn: opts.turnIndex,
+      tools: opts.tools?.length ?? 0,
+      maxRounds: opts.maxRounds,
+    });
+  } catch { /* logger not initialized */ }
   const {
     provider,
     getMessages,
@@ -887,7 +895,6 @@ export async function asyncRunToolLoop(
 
   const toolHistory: Array<Record<string, unknown>> = [];
   const intermediateText: string[] = [];
-  let hadStreamedText = false;
   let totalInput = 0;
   let totalOutput = 0;
   let lastInput = 0;
@@ -1543,7 +1550,6 @@ export async function asyncRunToolLoop(
 
     // 每次 provider 调用后检查是否需要压缩
     let compactTriggered = false;
-    let compactScenario: "mid_turn" | undefined;
 
     if (compactCheck) {
       const check = compactCheck(
@@ -1553,7 +1559,6 @@ export async function asyncRunToolLoop(
       );
       if (check?.compactNeeded) {
         compactTriggered = true;
-        compactScenario = check.scenario;
       }
     }
 
@@ -1570,10 +1575,6 @@ export async function asyncRunToolLoop(
     // 通知推理内容完毕（无论流式或最终响应返回）
     if ((resp.reasoningContent || providerStreamedReasoning) && onReasoningDone) {
       onReasoningDone(roundIndex, resp.thinkingArtifact, resp.reasoningState);
-    }
-
-    if (resp.text) {
-      hadStreamedText = true;
     }
 
     if (!hasCommittedToolCalls) {

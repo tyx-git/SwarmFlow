@@ -7,7 +7,7 @@
  * Flip the todo in P1.3 (Docs/session-refactor-plan-2026-06-11.md).
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   makeScriptedSession,

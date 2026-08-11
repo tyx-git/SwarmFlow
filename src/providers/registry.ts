@@ -23,12 +23,6 @@ import { MiniMaxAnthropicProvider } from "./minimax-anthropic.js";
 import { XiaomiAnthropicProvider } from "./xiaomi-anthropic.js";
 import { GeminiGenerateContentProvider } from "./gemini-generate-content.js";
 
-// 已弃用 — 由 *-anthropic.ts 变体取代。仅为回滚而保留可导入性。
-// import { KimiProvider } from "./kimi.js";
-// import { MiniMaxProvider } from "./minimax.js";
-// import { DeepSeekProvider } from "./deepseek.js";
-// import { XiaomiProvider } from "./xiaomi.js";
-
 type ProviderCtor = new (config: ModelConfig) => BaseProvider;
 
 const CTOR_BY_CLASS: Record<ProviderClassKind, ProviderCtor> = {

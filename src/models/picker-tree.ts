@@ -158,7 +158,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   const allowedProviderIds = ctx.allowedProviderIds
     ? new Set(Array.from(ctx.allowedProviderIds))
     : null;
-  const includeAddProviderAction = ctx.includeAddProviderAction !== false;
   const includeLocalDiscoverActions = ctx.includeLocalDiscoverActions !== false;
 
   const entries = readModelEntries(config);
@@ -192,7 +191,8 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     providerHasKey.set(currentProvider, true);
   }
 
-  // ── Populate models: only from providers that have keys ──
+  // Populate every preset so unavailable credentials are visible in the
+  // picker and can be configured from the selection flow.
   const byProvider = new Map<string, Map<string, { modelId: string }>>();
   const providerOrder: string[] = [];
 
@@ -209,9 +209,9 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     }
   };
 
-  // Preset models: only for providers with configured keys
+  // Preset models are shown even when credentials are missing; leaf labels
+  // carry the actionable credential hint.
   for (const preset of PROVIDER_PRESETS) {
-    if (!providerHasKey.get(preset.id)) continue;
     for (const model of preset.models) {
       addModel(preset.id, model.key, model.id);
     }

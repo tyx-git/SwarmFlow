@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import type { ToolCall } from "../src/providers/base.js";
 import { OpenAIChatProvider } from "../src/providers/openai-chat.js";
 
@@ -75,7 +75,7 @@ async function runStreamToolCall(
 
   try {
     const provider = new OpenAIChatProvider(modelConfig());
-    const create = mock(async (kwargs: Record<string, unknown>) => {
+    const create = vi.fn(async (kwargs: Record<string, unknown>) => {
       if (kwargs["stream"] === true) {
         return streamFrom(buildToolCallChunks(argChunks));
       }
@@ -113,11 +113,11 @@ async function runStreamToolCall(
 
 describe("OpenAIChatProvider streamed tool arguments", () => {
   beforeEach(() => {
-    spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.restoreAllMocks();
   });
 
   it("parses incremental tool argument chunks", async () => {
@@ -198,7 +198,7 @@ describe("OpenAIChatProvider streamed tool arguments", () => {
     const provider = new OpenAIChatProvider(modelConfig());
     const events: string[] = [];
 
-    const create = mock(async (kwargs: Record<string, unknown>) => {
+    const create = vi.fn(async (kwargs: Record<string, unknown>) => {
       if (kwargs["stream"] === true) {
         return streamFrom([
           {
@@ -257,7 +257,7 @@ describe("OpenAIChatProvider streamed tool arguments", () => {
     const provider = new OpenAIChatProvider(modelConfig());
     const events: string[] = [];
 
-    const create = mock(async (kwargs: Record<string, unknown>) => {
+    const create = vi.fn(async (kwargs: Record<string, unknown>) => {
       if (kwargs["stream"] === true) {
         return streamFrom([
           {

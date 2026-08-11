@@ -16,7 +16,7 @@ import { osCapabilities, shell } from "../platform/index.js";
 
 import type { ToolDef } from "../providers/base.js";
 import { ToolResult } from "../providers/base.js";
-import type { ToolExecutor, ToolExecutorContext } from "./executor-types.js";
+import type { ToolExecutor } from "./executor-types.js";
 import {
   safePath,
   SafePathError,
@@ -48,7 +48,6 @@ import {
   type MatchInfo,
   inferLanguageByExt,
   countFileLines,
-  buildHunkFromMatch,
   buildMultiEditHunks,
   buildAppendDisplayData,
   buildWriteDisplayData,
@@ -2235,9 +2234,6 @@ function simpleUnifiedDiff(
         aCount = 0;
         bCount = 0;
         // Add leading context
-        const ctxStart = Math.max(0, idx - contextLines);
-        // We need to recount from ctxStart -- but for simplicity, just
-        // include context from current position
       }
       lastChangeIdx = idx;
     }
@@ -2623,20 +2619,9 @@ function normalizeGlobPattern(pattern: string): string {
   return "**/" + pattern;
 }
 
-/**
- * 使用 Bun 内置匹配器匹配规范化 glob 模式（相对路径）。
- * 支持 `**`、`*`、`?`、`[abc]`、`{a,b}`。
- */
+/** 使用本地匹配器匹配规范化 glob 模式（相对路径）。 */
 function makeGlobMatcher(pattern: string): (relPath: string) => boolean {
   const normalized = normalizeGlobPattern(pattern);
-  // Bun.Glob is provided by the Bun runtime (>=1.1).
-  // Falls back to the local regex implementation if Bun is unavailable
-  // (e.g. during type-check or in node-only test environments).
-  const BunGlob = (globalThis as unknown as { Bun?: { Glob?: new (p: string) => { match: (s: string) => boolean } } }).Bun?.Glob;
-  if (BunGlob) {
-    const g = new BunGlob(normalized);
-    return (relPath) => g.match(relPath);
-  }
   const regex = globToRegex(normalized);
   return (relPath) => regex.test(relPath);
 }

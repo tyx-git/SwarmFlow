@@ -2,7 +2,7 @@
  * Coverage for the basic-tool overhaul:
  *  - read_file:  offset/limit aliases, per-line truncation
  *  - list_dir:   max_depth, max_entries, skipped-default dirs, file size suffix
- *  - glob:       Bun.Glob path, auto `**\/` prefix, limit cap
+ *  - glob:       auto `**\/` prefix, limit cap
  *  - grep:       multi-pattern OR, smart-case, per-file limit, output cap
  *  - edit_file:  replace_all, no-op rejection, line-number disambiguation
  *  - bash:       spill-to-file when output exceeds the cap
@@ -13,14 +13,17 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import { executeTool } from "../src/tools/basic.js";
+import { shell } from "../src/platform/index.js";
 import { truncateMiddle } from "../src/tools/shared.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
+
+const isPowerShell = shell.kind === "pwsh" || shell.kind === "powershell";
 
 describe("read_file improvements", () => {
   it("accepts offset/limit aliases for start_line/end_line", async () => {
@@ -326,7 +329,9 @@ describe("bash spill", () => {
     const artifacts = makeTempDir("swarmflow-bash-spill-art-");
     try {
       // Generate ~250KB of stdout — comfortably above the 200K cap.
-      const cmd = "yes 'X' | head -n 130000";
+      const cmd = isPowerShell
+        ? 'Write-Output ("X" * 250000)'
+        : "yes 'X' | head -n 130000";
       const r = await executeTool(
         "bash",
         { command: cmd, timeout: 30 },
@@ -345,7 +350,7 @@ describe("bash spill", () => {
       rmSync(root, { recursive: true, force: true });
       rmSync(artifacts, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
 
 // ---------------------------------------------------------------------
@@ -370,7 +375,7 @@ describe("EXCLUDE_DIRS regression: regular files should not be hidden", () => {
         { pattern: "*" },
         { projectRoot: root },
       );
-      expect(r.content).toContain("/build");
+      expect(r.content).toContain(join(root, "build"));
       expect(r.content).toContain("main.ts");
       expect(r.content).not.toContain("should-not-appear.ts");
     } finally {
@@ -403,7 +408,7 @@ describe("EXCLUDE_DIRS regression: regular files should not be hidden", () => {
         { pattern: "needle", path: ".", output_mode: "files_with_matches" },
         { projectRoot: root },
       );
-      expect(r.content).toContain("/vendor");
+      expect(r.content).toContain(join(root, "vendor"));
       expect(r.content).not.toContain("No matches found");
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -412,10 +417,9 @@ describe("EXCLUDE_DIRS regression: regular files should not be hidden", () => {
 });
 
 describe("glob depth guard against circular symlinks", () => {
-  // Skip on Windows where symlink creation needs admin privileges.
-  if (process.platform === "win32") return;
-
-  it("does not recurse forever through a self-referential symlink", async () => {
+  it.skipIf(process.platform === "win32")(
+    "does not recurse forever through a self-referential symlink",
+    async () => {
     const root = makeTempDir("swarmflow-fix-glob-symloop-");
     try {
       mkdirSync(join(root, "a"));
@@ -435,7 +439,8 @@ describe("glob depth guard against circular symlinks", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+    },
+  );
 });
 
 describe("bash timeout spill threshold", () => {
@@ -447,7 +452,9 @@ describe("bash timeout spill threshold", () => {
       // the 1s timeout. stderr stays empty so total < BASH_MAX_OUTPUT_CHARS,
       // which previously suppressed the spill. With the fix, the spill is
       // written whenever a single stream exceeds the per-stream cap.
-      const cmd = "yes 'X' | head -n 60000 && sleep 3";
+      const cmd = isPowerShell
+        ? '[Console]::Out.Write(("X" * 120000)); [Console]::Out.Flush(); Start-Sleep -Seconds 3'
+        : "yes 'X' | head -n 60000 && sleep 3";
       const r = await executeTool(
         "bash",
         { command: cmd, timeout: 1 },
@@ -464,7 +471,7 @@ describe("bash timeout spill threshold", () => {
       rmSync(root, { recursive: true, force: true });
       rmSync(artifacts, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });
 
 describe("read_file: offset/limit semantics", () => {
@@ -544,14 +551,19 @@ describe("dispatcher rejects non-positive limit/count args", () => {
 describe("read_file long-line escape hatch", () => {
   // The shell hint only appears for lines that cannot fit the per-call char
   // budget at all; anything shorter is recoverable in-tool via max_line_chars.
-  it("points at head/tail/cut when a line exceeds the per-call char budget", async () => {
+  it("points at a shell escape hatch when a line exceeds the per-call char budget", async () => {
     const root = makeTempDir("swarmflow-fix-read-longline-hint-");
     try {
       writeFileSync(join(root, "big.txt"), "before\n" + "x".repeat(90_000) + "\nafter\n", "utf-8");
       const r = await executeTool("read_file", { path: "big.txt" }, { projectRoot: root });
-      expect(r.content).toContain("head -n LINE_NUM");
-      expect(r.content).toContain("cut -c FROM-TO");
-      expect(r.content).toContain("pre-approved");
+      if (isPowerShell) {
+        expect(r.content).toContain("@(Get-Content");
+        expect(r.content).toContain("may prompt for approval");
+      } else {
+        expect(r.content).toContain("head -n LINE_NUM");
+        expect(r.content).toContain("cut -c FROM-TO");
+        expect(r.content).toContain("pre-approved");
+      }
       expect(r.content).not.toContain("max_line_chars=");
     } finally {
       rmSync(root, { recursive: true, force: true });

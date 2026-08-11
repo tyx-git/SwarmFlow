@@ -7,7 +7,7 @@
  *   - 冷高亮缓存（首次看见一行）vs 热缓存（重新渲染未改动的行，
  *     即首次之后的每个流式增量）
  *
- * 运行：bun scripts/bench-file-modify-render.ts
+ * 运行：node --import tsx scripts/bench-file-modify-render.ts
  */
 
 import {

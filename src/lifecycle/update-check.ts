@@ -32,6 +32,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
 import { basename, dirname, join } from "node:path";
 
 import { binaryAsset, osCapabilities } from "../platform/index.js";
@@ -258,7 +259,7 @@ async function fetchLatestRelease(): Promise<{ version: string; downloadUrl: str
   }
 }
 
-// 如果这么久没有收到任何字节，则中止下载。Bun 的 fetch 没有内置停滞超时，
+// 如果这么久没有收到任何字节，则中止下载。fetch 没有内置停滞超时，
 // 因此没有进展的挂起连接（进程无法到达代理后的受阻主机）否则会永远等待 —
 // 这个 bug 曾表现为自更新卡在 "Downloading update..."。停滞看门狗
 //（而不是固定总超时）仍能容忍缓慢但持续推进的大文件下载。
@@ -335,11 +336,14 @@ async function downloadAndStage(downloadUrl: string, home: string): Promise<void
 
   writeFileSync(tarball, bytes);
 
-  const proc = Bun.spawn(["tar", "-xzf", tarball, "-C", staged], {
-    stdout: "ignore",
-    stderr: "pipe",
+  const proc = spawn("tar", ["-xzf", tarball, "-C", staged], {
+    stdio: "ignore",
+    windowsHide: true,
   });
-  const code = await proc.exited;
+  const code = await new Promise<number>((resolve, reject) => {
+    proc.once("error", reject);
+    proc.once("close", (exitCode) => resolve(exitCode ?? 1));
+  });
   if (code !== 0) throw new Error("Failed to extract update tarball");
 
   rmSync(tarball);
@@ -465,12 +469,12 @@ export function applyStaged(
   if (version) {
     try {
       const binaryPath = join(installDir, executableNameForPlatform(platform));
-      const result = Bun.spawnSync([binaryPath, "--version"], {
-        stdout: "pipe",
-        stderr: "ignore",
+      const result = spawnSync(binaryPath, ["--version"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
         timeout: 3000,
       });
-      const diskVersion = result.stdout.toString().trim();
+      const diskVersion = (result.stdout ?? "").trim();
       if (diskVersion && compareVersionOrder(diskVersion, version) >= 0) {
         rmSync(staged, { recursive: true, force: true });
         return { kind: "none" };

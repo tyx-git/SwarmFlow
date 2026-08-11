@@ -2,8 +2,8 @@
  * 在启动时将操作系统级别的系统代理规范化为 HTTP_PROXY / HTTPS_PROXY
  * 环境变量。
  *
- * 原因：Bun 的 `fetch` 在请求时读取 HTTP(S)_PROXY，但在 Windows 上
- * 它不会读取 WinINET 系统代理（大多数 VPN/代理客户端切换的设置）。
+ * 原因：Node 的 `fetch` 不会自动读取 WinINET 系统代理（大多数
+ * VPN/代理客户端切换的设置）。
  * 如果用户开启了系统代理但未设置环境变量，每个出站 fetch 都会
  * 静默绕过代理并在被阻塞的主机上挂起——这个问题最初表现为
  * 卡在 "Downloading update..." 的自更新（GitHub release CDN）。
@@ -14,11 +14,12 @@
  * 空操作（提供商返回 null）。幂等操作。
  */
 
-import { systemProxy } from "../platform/index.js";
+import { systemProxy, type SystemProxyProvider } from "../platform/index.js";
 
 /** 将系统代理应用到环境变量中（如缺失） */
 export function applySystemProxyToEnv(
   env: NodeJS.ProcessEnv = process.env,
+  provider: SystemProxyProvider = systemProxy,
 ): void {
   const hasProxyEnv =
     env["HTTPS_PROXY"] ||
@@ -27,7 +28,7 @@ export function applySystemProxyToEnv(
     env["http_proxy"];
   if (hasProxyEnv) return; // explicit configuration wins
 
-  const cfg = systemProxy.getSystemProxy();
+  const cfg = provider.getSystemProxy();
   if (!cfg) return;
 
   if (cfg.httpsProxy) {

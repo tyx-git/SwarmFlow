@@ -7,7 +7,7 @@
  * out-of-process UIs (GUI over RPC) see exactly what the TUI sees.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import type { TurnLifecycleEvent } from "../src/session.js";
 import {

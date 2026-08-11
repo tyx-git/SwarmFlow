@@ -1,16 +1,16 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setDotenvKey, unsetDotenvKey } from "../src/dotenv.js";
+import { setDotenvKey, unsetDotenvKey } from "../src/lifecycle/dotenv.js";
 import {
   resolveCredentialSlot,
   customProviderEnvVar,
   isCredentialConfigured,
   setCredentialKey,
   removeCredentialKey,
-} from "../src/provider-credential-flow.js";
-import { buildCredentialEndpointTree } from "../src/model-picker-tree.js";
+} from "../src/providers/credential-flow.js";
+import { buildCredentialEndpointTree } from "../src/models/picker-tree.js";
 
 let home: string;
 const savedEnv: Record<string, string | undefined> = {};

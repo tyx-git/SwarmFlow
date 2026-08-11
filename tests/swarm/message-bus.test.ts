@@ -2,7 +2,7 @@
  * Tests for the MessageBus.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { MessageBus } from "../../src/swarm/message-bus.js";
 import { MessageType } from "../../src/swarm/types.js";
 

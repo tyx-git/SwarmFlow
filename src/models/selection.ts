@@ -8,7 +8,6 @@
 import { hasOAuthTokens } from "../auth/openai-oauth.js";
 import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
 import {
-  PROVIDER_PRESETS,
   buildProviderPresetRawConfig,
   findProviderPreset,
   findProviderPresetModel,

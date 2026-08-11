@@ -1,12 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildDefaultRegistry,
   type CommandContext,
-} from "../src/commands.js";
+} from "../src/commands/commands.js";
 
 function makeSessionStub(): {
   session: Record<string, unknown>;
@@ -30,13 +30,13 @@ function makeContext(
   registry: ReturnType<typeof buildDefaultRegistry>,
   session: Record<string, unknown>,
   homeDir: string,
-): { ctx: CommandContext; showMessage: ReturnType<typeof mock> } {
-  const showMessage = mock();
+): { ctx: CommandContext; showMessage: ReturnType<typeof vi.fn> } {
+  const showMessage = vi.fn();
   const ctx: CommandContext = {
     session: session as never,
     showMessage,
-    autoSave: mock(),
-    resetUiState: mock(),
+    autoSave: vi.fn(),
+    resetUiState: vi.fn(),
     commandRegistry: registry,
     swarmflowHomeDir: homeDir,
   };
@@ -110,7 +110,7 @@ describe("/summarize_hint command", () => {
 
       const { session, setCalls } = makeSessionStub();
       const { ctx } = makeContext(registry, session, homeDir);
-      const promptCommandPicker = mock(async (options: Array<{ label: string; value: string; customInput?: boolean; inputLabel?: string; inputPlaceholder?: string }>) => {
+      const promptCommandPicker = vi.fn(async (options: Array<{ label: string; value: string; customInput?: boolean; inputLabel?: string; inputPlaceholder?: string }>) => {
         expect(options.map((o) => o.value)).toEqual(["on", "off", "level1", "level2"]);
         expect(options[0].label).toContain("(current)");
         expect(options[2].customInput).toBe(true);
@@ -142,7 +142,7 @@ describe("/summarize_hint command", () => {
         { value: "level2", note: "60" },
         undefined, // Esc — leave the picker
       ];
-      const promptCommandPicker = mock(async (options: Array<{ label: string; value: string }>) => {
+      const promptCommandPicker = vi.fn(async (options: Array<{ label: string; value: string }>) => {
         // The reopened picker reflects already-applied levels.
         if (responses.length === 2) expect(options[2].label).toBe("Level 1 (30%)");
         if (responses.length === 1) expect(options[3].label).toBe("Level 2 (60%)");
@@ -175,7 +175,7 @@ describe("/summarize_hint command", () => {
         { value: "level1", note: "90" }, // >= current level2 (75) — invalid
         undefined,
       ];
-      (ctx as Record<string, unknown>).promptCommandPicker = mock(async () => responses.shift());
+      (ctx as Record<string, unknown>).promptCommandPicker = vi.fn(async () => responses.shift());
 
       await cmd!.handler(ctx, "");
       expect(setCalls).toHaveLength(0);

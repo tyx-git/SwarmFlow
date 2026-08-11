@@ -9,7 +9,6 @@ import type {
   HookEvent,
   HookManifest,
   HookPayload,
-  HookOutput,
 } from "./types.js";
 import {
   DECISION_EVENTS,

@@ -1,9 +1,9 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildDefaultRegistry,
   type CommandContext,
-} from "../src/commands.js";
+} from "../src/commands/commands.js";
 
 describe("/shells command", () => {
   it("delegates to the TUI shells picker when available", async () => {
@@ -11,12 +11,12 @@ describe("/shells command", () => {
     const cmd = registry.lookup("/shells");
     expect(cmd).toBeTruthy();
 
-    const onShellsRequested = mock();
+    const onShellsRequested = vi.fn();
     const ctx: CommandContext = {
       session: {} as never,
-      showMessage: mock(),
-      autoSave: mock(),
-      resetUiState: mock(),
+      showMessage: vi.fn(),
+      autoSave: vi.fn(),
+      resetUiState: vi.fn(),
       commandRegistry: registry,
       onShellsRequested,
     };
@@ -29,12 +29,12 @@ describe("/shells command", () => {
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/shells");
 
-    const showMessage = mock();
+    const showMessage = vi.fn();
     const ctx: CommandContext = {
       session: {} as never,
       showMessage,
-      autoSave: mock(),
-      resetUiState: mock(),
+      autoSave: vi.fn(),
+      resetUiState: vi.fn(),
       commandRegistry: registry,
     };
 

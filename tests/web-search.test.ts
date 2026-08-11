@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { _resetSearchBackend, toolWebSearch } from "../src/tools/web-search.js";
 
@@ -18,7 +18,7 @@ describe("toolWebSearch", () => {
       else process.env[key] = value;
     }
     _resetSearchBackend();
-    mock.restore();
+    vi.restoreAllMocks();
   });
 
   function clearApiKeys(): void {
@@ -31,7 +31,7 @@ describe("toolWebSearch", () => {
 
   it("parses Exa MCP text into individual search results", async () => {
     clearApiKeys();
-    const fetchMock = mock(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       expect(String(input)).toBe("https://mcp.exa.ai/mcp");
       return new Response(
         [
@@ -81,7 +81,7 @@ describe("toolWebSearch", () => {
 
   it("preserves multiline Exa MCP highlights until the next result boundary", async () => {
     clearApiKeys();
-    const fetchMock = mock(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       `data: ${JSON.stringify({
         result: {
           content: [{
@@ -123,7 +123,7 @@ describe("toolWebSearch", () => {
 
   it("falls back to raw Exa MCP text when structured parsing is not possible", async () => {
     clearApiKeys();
-    const fetchMock = mock(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       `data: ${JSON.stringify({ result: { content: [{ text: "unstructured search answer" }] } })}\n`,
       { status: 200 },
     ));
@@ -139,7 +139,7 @@ describe("toolWebSearch", () => {
 
   it("falls back from N/A titles to highlight text", async () => {
     clearApiKeys();
-    const fetchMock = mock(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       `data: ${JSON.stringify({
         result: {
           content: [{
@@ -164,7 +164,7 @@ describe("toolWebSearch", () => {
 
   it("keeps a first highlight even when it repeats the title", async () => {
     clearApiKeys();
-    const fetchMock = mock(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       `data: ${JSON.stringify({
         result: {
           content: [{
@@ -192,7 +192,7 @@ describe("toolWebSearch", () => {
 
   it("shows multiple highlight blocks when more than one highlight is present", async () => {
     clearApiKeys();
-    const fetchMock = mock(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       `data: ${JSON.stringify({
         result: {
           content: [{
@@ -226,7 +226,7 @@ describe("toolWebSearch", () => {
   it("soft-truncates long highlights at a nearby word boundary", async () => {
     clearApiKeys();
     const longHighlight = `${"alpha ".repeat(399)}boundaryword tailword`;
-    const fetchMock = mock(async () => new Response(
+    const fetchMock = vi.fn(async () => new Response(
       `data: ${JSON.stringify({
         result: {
           content: [{

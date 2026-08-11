@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it, mock, spyOn } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import { SessionStore } from "../src/persistence.js";
+import { SessionStore } from "../src/config/persistence.js";
 import { Session } from "../src/session.js";
 import {
   createAssistantText,
@@ -12,7 +12,7 @@ import {
   createSummary,
   createToolResult,
   createUserMessage,
-} from "../src/log-entry.js";
+} from "../src/context/log-entry.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -119,8 +119,8 @@ describe("manual summarize / compact commands", () => {
     const projectRoot = makeTempDir("swarmflow-manual-summarize-");
     try {
       const session = makeSession(projectRoot) as any;
-      session._ensureMcp = mock(async () => {});
-      session._runTurnActivationLoop = mock(async () => "ok");
+      session._ensureMcp = vi.fn(async () => {});
+      session._runTurnActivationLoop = vi.fn(async () => "ok");
       session._log.push(createUserMessage("user-seed", 0, "seed", "seed", "seed1"));
 
       const out = await session.runManualSummarize({
@@ -147,7 +147,7 @@ describe("manual summarize / compact commands", () => {
     try {
       const session = makeSession(projectRoot) as any;
       session._hintState = "level2_sent";
-      session._doAutoCompact = mock(async () => {});
+      session._doAutoCompact = vi.fn(async () => {});
 
       await session.runManualCompact("preserve open debugging threads");
 

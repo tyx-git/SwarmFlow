@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { SessionStore } from "../src/persistence.js";
-import { projectQueuedInputs, projectToApiMessages, projectToTuiEntries } from "../src/log-projection.js";
+import { SessionStore } from "../src/config/persistence.js";
+import { projectQueuedInputs, projectToApiMessages, projectToTuiEntries } from "../src/context/log-projection.js";
 import { Session } from "../src/session.js";
 
 function makeTempDir(prefix: string): string {

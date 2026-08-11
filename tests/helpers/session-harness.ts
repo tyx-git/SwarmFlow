@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { Agent } from "../../src/agents/agent.js";
 import type { ToolExecutor } from "../../src/agents/tool-loop.js";
 import type { ApprovalRequest } from "../../src/ask.js";
-import { SessionStore } from "../../src/persistence.js";
+import { SessionStore } from "../../src/config/persistence.js";
 import {
   BaseProvider,
   ProviderResponse,

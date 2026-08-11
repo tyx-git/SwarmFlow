@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
 import {
   formatDisplayModelName,
@@ -11,7 +11,7 @@ import {
   getThinkingLevels,
   getModelMaxOutputTokens,
   getExtendedCacheSupport,
-} from "../src/config.js";
+} from "../src/config/config.js";
 
 describe("normalizeModelId", () => {
   it("strips vendor prefix from OpenRouter-style model IDs", () => {
@@ -168,16 +168,16 @@ describe("getThinkingLevels with OpenRouter model IDs", () => {
       ["none", "low", "medium", "high", "xhigh"],
     );
     expect(getThinkingLevels("qwen/qwen3.6-plus")).toEqual(
-      ["off", "on"],
+      ["off", "low", "medium", "high"],
     );
     expect(getThinkingLevels("qwen/qwen3.7-max")).toEqual(
-      ["off", "on"],
+      ["off", "low", "medium", "high"],
     );
     expect(getThinkingLevels("minimax/minimax-m2.5")).toEqual(
-      ["on"],
+      ["low", "medium", "high"],
     );
     expect(getThinkingLevels("moonshotai/kimi-k2.5")).toEqual(
-      ["off", "on"],
+      ["off", "low", "medium", "high"],
     );
   });
 

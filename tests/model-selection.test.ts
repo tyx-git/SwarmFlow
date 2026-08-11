@@ -1,11 +1,11 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 
-import { Config } from "../src/config.js";
+import { Config } from "../src/config/config.js";
 import {
   resolveAgentModelEntry,
   resolveModelTierEntry,
   runtimeModelName,
-} from "../src/model-selection.js";
+} from "../src/models/selection.js";
 
 function makeSession(provider = "openai-codex", model = "gpt-5.4"): any {
   return {

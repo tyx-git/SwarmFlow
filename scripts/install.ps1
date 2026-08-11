@@ -54,7 +54,6 @@ try {
         Write-Host ""
         Write-Host "Installed SwarmFlow $Version"
     } else {
-        # Bun-compiled binaries on Windows may not have .exe extension
         $SwarmflowBin = Join-Path $InstallDir "swarmflow"
         if (Test-Path $SwarmflowBin) {
             $Version = & $SwarmflowBin --version 2>$null

@@ -53,26 +53,28 @@ export function allocateContextId(usedIds: Set<string>): string {
   return id;
 }
 
-/** 将上下文 ID 格式化为注入标签：`搂{contextId}搂` */
+/** 将上下文 ID 格式化为注入标签：`§{contextId}§` */
+const CONTEXT_TAG_DELIMITER = "§";
+
 export function formatContextTag(contextId: string): string {
-  return `搂{${contextId}}搂`;
+  return `${CONTEXT_TAG_DELIMITER}{${contextId}}${CONTEXT_TAG_DELIMITER}`;
 }
 
-/** 匹配任何 `搂{...}搂` 上下文标签的正则表达式，包含可选的尾随换行符（全局） */
-export const CONTEXT_TAG_REGEX = /搂\{[^}]*\}搂\n?/g;
+/** 匹配任何 `§{...}§` 上下文标签的正则表达式，包含可选的尾随换行符（全局） */
+export const CONTEXT_TAG_REGEX = /§\{[^}]*\}§\n?/g;
 
-/** 从文本中剥离所有 `搂{...}搂` 上下文标签（及其尾随换行符） */
+/** 从文本中剥离所有 `§{...}§` 上下文标签（及其尾随换行符） */
 export function stripContextTags(text: string): string {
   return text.replace(CONTEXT_TAG_REGEX, "");
 }
 
 // ------------------------------------------------------------------
-// ContextTagStripBuffer——流式剥离搂{...}搂 标签
+// ContextTagStripBuffer——流式剥离 §{...}§ 标签
 // ------------------------------------------------------------------
 
 /**
- * 缓冲流式文本以剥离模型可能产生的 `搂{...}搂` 上下文标签。
- * 遇到 `搂` 时开始缓冲。如果缓冲区完成 `搂{...}搂` 模式则丢弃；
+ * 缓冲流式文本以剥离模型可能产生的 `§{...}§` 上下文标签。
+ * 遇到 `§` 时开始缓冲。如果缓冲区完成 `§{...}§` 模式则丢弃；
  * 否则将缓冲区刷新到下游。
  */
 export class ContextTagStripBuffer {
@@ -94,9 +96,12 @@ export class ContextTagStripBuffer {
       }
       if (this._buffering) {
         this._buffer += ch;
-        if (ch === "搂" && this._buffer.length >= 4) {
-          // Check if we completed a 搂{...}搂 pattern
-          if (this._buffer.startsWith("搂{") && this._buffer.endsWith("}搂")) {
+        if (ch === CONTEXT_TAG_DELIMITER && this._buffer.length >= 4) {
+          // Check if we completed a §{...}§ pattern
+          if (
+            this._buffer.startsWith(`${CONTEXT_TAG_DELIMITER}{`) &&
+            this._buffer.endsWith(`}${CONTEXT_TAG_DELIMITER}`)
+          ) {
             // Discard the matched tag, and swallow the next \n if present
             this._buffer = "";
             this._buffering = false;
@@ -109,7 +114,7 @@ export class ContextTagStripBuffer {
           // Safety: if buffer gets too long without closing, flush
           this._flush();
         }
-      } else if (ch === "搂") {
+      } else if (ch === CONTEXT_TAG_DELIMITER) {
         this._buffering = true;
         this._buffer = ch;
       } else {

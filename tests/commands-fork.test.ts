@@ -1,17 +1,17 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
-import { buildDefaultRegistry, type CommandContext } from "../src/commands.js";
+import { buildDefaultRegistry, type CommandContext } from "../src/commands/commands.js";
 import { Session } from "../src/session.js";
 import {
   createSystemPrompt,
   createTurnStart,
   createUserMessage,
   createAssistantText,
-} from "../src/log-entry.js";
-import { SessionStore, saveLog, createLogSessionMeta } from "../src/persistence.js";
+} from "../src/context/log-entry.js";
+import { SessionStore, saveLog, createLogSessionMeta } from "../src/config/persistence.js";
 
 function buildSession(projectRoot: string, store: SessionStore): Session {
   const modelConfig = {
@@ -48,8 +48,8 @@ function buildSession(projectRoot: string, store: SessionStore): Session {
 function buildCtx(opts: {
   session: Session;
   store: SessionStore;
-  showMessage: ReturnType<typeof mock>;
-  showHint: ReturnType<typeof mock>;
+  showMessage: ReturnType<typeof vi.fn>;
+  showHint: ReturnType<typeof vi.fn>;
 }): CommandContext {
   return {
     session: opts.session,
@@ -75,7 +75,7 @@ describe("/fork", () => {
 
     const store = new SessionStore({ baseDir: tmpDir, projectPath: projectRoot });
     const sessionDir = store.createSession();
-    const origSessionId = sessionDir.split("/").pop()!;
+    const origSessionId = basename(sessionDir);
 
     // Seed a non-empty log so /fork accepts the session.
     const entries = [
@@ -99,14 +99,14 @@ describe("/fork", () => {
 
     const session = buildSession(projectRoot, store);
     // Hydrate session from disk so /fork sees a populated _log/turnCount.
-    const { loadLog } = await import("../src/persistence.js");
+    const { loadLog } = await import("../src/config/persistence.js");
     const loaded = loadLog(sessionDir);
     const prepared = session.prepareRestoreFromLog(loaded.meta, loaded.entries, loaded.idAllocator);
     session.commitPreparedRestore(prepared);
     store.attachToExistingSession(sessionDir);
 
-    const showMessage = mock();
-    const showHint = mock();
+    const showMessage = vi.fn();
+    const showHint = vi.fn();
     const ctx = buildCtx({ session, store, showMessage, showHint });
 
     const registry = buildDefaultRegistry();
@@ -118,7 +118,7 @@ describe("/fork", () => {
     // Store now points at a new UUID dir (different from original).
     expect(store.sessionDir).toBeTruthy();
     expect(store.sessionDir).not.toBe(sessionDir);
-    const newId = store.sessionDir!.split("/").pop()!;
+    const newId = basename(store.sessionDir!);
     expect(newId).not.toBe(origSessionId);
 
     // Title prefixed with (branch).
@@ -159,8 +159,8 @@ describe("/fork", () => {
     store.createSession();
 
     const session = buildSession(projectRoot, store);
-    const showMessage = mock();
-    const showHint = mock();
+    const showMessage = vi.fn();
+    const showHint = vi.fn();
     const ctx = buildCtx({ session, store, showMessage, showHint });
 
     const registry = buildDefaultRegistry();

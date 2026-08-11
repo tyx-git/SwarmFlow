@@ -13,7 +13,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { startServer, stopServer } from "./server.js";
+import { startServer } from "./server.js";
 import { generateThemePickerHtml } from "./theme-picker.js";
 import { browser } from "../platform/index.js";
 

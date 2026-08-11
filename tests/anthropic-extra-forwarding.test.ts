@@ -1,6 +1,6 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 
-import type { ModelConfig } from "../src/config.js";
+import type { ModelConfig } from "../src/config/config.js";
 import { AnthropicProvider } from "../src/providers/anthropic.js";
 import { DeepSeekAnthropicProvider } from "../src/providers/deepseek-anthropic.js";
 
@@ -61,7 +61,7 @@ describe("Anthropic provider request shaping", () => {
       },
     }));
 
-    const create = mock(async () => ({
+    const create = vi.fn(async () => ({
       content: [{ type: "text", text: "OK" }],
       usage: { input_tokens: 1, output_tokens: 1 },
     }));
@@ -87,7 +87,7 @@ describe("Anthropic provider request shaping", () => {
       },
     }));
 
-    const create = mock(async () => ({
+    const create = vi.fn(async () => ({
       content: [{ type: "text", text: "OK" }],
       usage: { input_tokens: 1, output_tokens: 1 },
     }));

@@ -67,3 +67,5 @@ docs/*
 !external/opentui/
 .swarmflow/
 .superpowers/
+# SwarmFlow diagnostic logs (enabled via SWARMFLOW_LOG=1)
+.logs/

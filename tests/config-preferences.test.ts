@@ -1,6 +1,6 @@
-import { describe, expect, it } from "bun:test";
-import { Config } from "../src/config.js";
-import { mergeSettings, parseSettingsOverrides } from "../src/persistence.js";
+import { describe, expect, it } from "vitest";
+import { Config } from "../src/config/config.js";
+import { mergeSettings, parseSettingsOverrides } from "../src/config/persistence.js";
 
 describe("Config preference-backed models", () => {
   it("preserves the OAuth sentinel for openai-codex presets", () => {

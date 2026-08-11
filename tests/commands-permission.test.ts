@@ -1,18 +1,18 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildDefaultRegistry,
   type CommandContext,
-} from "../src/commands.js";
+} from "../src/commands/commands.js";
 
 function baseContext(registry: ReturnType<typeof buildDefaultRegistry>): CommandContext {
   return {
     session: {},
-    showMessage: mock(),
-    autoSave: mock(),
-    resetUiState: mock(),
+    showMessage: vi.fn(),
+    autoSave: vi.fn(),
+    resetUiState: vi.fn(),
     commandRegistry: registry,
   };
 }
