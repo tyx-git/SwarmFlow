@@ -7,6 +7,7 @@ import {
   type TextareaAction,
   type KeyBinding as TextareaKeyBinding,
 } from "./Textarea.js"
+import { stringWidth } from "../platform/runtime.js"
 
 export type InputAction = TextareaAction
 export type InputKeyBinding = TextareaKeyBinding
@@ -92,7 +93,7 @@ export class InputRenderable extends TextareaRenderable {
 
     // Set cursor to end of initial value
     if (initialValue) {
-      this.cursorOffset = Bun.stringWidth(initialValue)
+      this.cursorOffset = stringWidth(initialValue)
     }
   }
 
@@ -138,7 +139,7 @@ export class InputRenderable extends TextareaRenderable {
     const currentValue = this.plainText
     if (currentValue !== newValue) {
       this.setText(newValue)
-      this.cursorOffset = Bun.stringWidth(newValue)
+      this.cursorOffset = stringWidth(newValue)
       this.emit(InputRenderableEvents.INPUT, newValue)
     }
   }

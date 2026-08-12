@@ -365,7 +365,32 @@ export function OpenTuiScreen({
     />
   );
 
-  // Shared overlays block
+  // Command overlays are rendered in the fixed footer so they expand upward
+  // from the top edge of the input area instead of being placed in the
+  // conversation scroll viewport.
+  const commandOverlayBlock = (
+    <>
+      <CommandOverlayView
+        overlay={commandOverlay}
+        theme={theme}
+        contentWidth={pickerContentWidth}
+        maxVisible={pickerMaxVisible}
+        onItemClick={onOverlayItemClick}
+      />
+      <CommandPickerView
+        picker={commandPicker}
+        theme={theme}
+        contentWidth={pickerContentWidth}
+        maxVisible={pickerMaxVisible}
+        onItemClick={onCommandPickerItemClick}
+        noteInputRef={pickerNoteInputRef}
+        noteValue={pickerNoteValue}
+        onNoteInput={onPickerNoteInput}
+      />
+    </>
+  );
+
+  // Shared non-command overlays block
   const overlaysBlock = (
     <>
       {pendingAsk ? (
@@ -389,23 +414,6 @@ export function OpenTuiScreen({
           contentWidth={Math.max(20, conversationColumnWidth - effectiveSidebarWidth)}
         />
       ) : null}
-      <CommandOverlayView
-        overlay={commandOverlay}
-        theme={theme}
-        contentWidth={pickerContentWidth}
-        maxVisible={pickerMaxVisible}
-        onItemClick={onOverlayItemClick}
-      />
-      <CommandPickerView
-        picker={commandPicker}
-        theme={theme}
-        contentWidth={pickerContentWidth}
-        maxVisible={pickerMaxVisible}
-        onItemClick={onCommandPickerItemClick}
-        noteInputRef={pickerNoteInputRef}
-        noteValue={pickerNoteValue}
-        onNoteInput={onPickerNoteInput}
-      />
       <CheckboxPickerView
         picker={checkboxPicker}
         theme={theme}
@@ -497,8 +505,8 @@ export function OpenTuiScreen({
                 onEntryClick={onEntryClick}
                 onAgentClick={onAgentClick}
               />
-              {/* Overlays (pickers, panels) render inside the scroll area
-                  so they appear right after the last transcript entry */}
+              {/* Non-command overlays render inside the scroll area so they
+                  appear right after the last transcript entry. */}
               {overlaysBlock}
             </ScrollViewport>
           </box>
@@ -548,6 +556,7 @@ export function OpenTuiScreen({
       {pendingMessages}
       {pendingMessages ? <box height={1} /> : null}
       {statusPanel}
+      {commandOverlayBlock}
       {inputAreaElement}
 
       <ToastStack terminalWidth={terminal.width}>

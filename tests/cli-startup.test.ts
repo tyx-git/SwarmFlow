@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { main, type MainDeps } from "../src/cli.js";
+import { main, resolveOpenTuiEntry, type MainDeps } from "../src/cli.js";
 import type { ApplyStagedResult } from "../src/lifecycle/update-check.js";
 import { VERSION } from "../src/version.js";
 
@@ -253,4 +253,12 @@ describe("CLI startup", () => {
       expect(result.stderr).toBe("");
     }
   }, 30_000);
+
+  it("resolves the UI source from a compiled dist CLI", () => {
+    const compiledCli = join(process.cwd(), "dist", "src", "cli.js");
+
+    expect(resolveOpenTuiEntry(compiledCli)).toBe(
+      join(process.cwd(), "external", "opentui", "main.tsx"),
+    );
+  });
 });

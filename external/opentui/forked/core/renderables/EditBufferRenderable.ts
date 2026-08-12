@@ -7,6 +7,7 @@ import type { RenderContext, Highlight, CursorStyleOptions, LineInfoProvider, Li
 import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "../yoga.js"
 import type { SyntaxStyle } from "../syntax-style.js"
+import { stringWidth } from "../platform/runtime.js"
 
 const BrandedEditBufferRenderable: unique symbol = Symbol.for("@opentui/core/EditBufferRenderable")
 
@@ -34,7 +35,7 @@ function normalizeDisplayColumnToGraphemeBoundary(text: string, col: number): nu
 
   let currentCol = 0
   for (const grapheme of splitGraphemes(text)) {
-    const width = Bun.stringWidth(grapheme)
+    const width = stringWidth(grapheme)
     const nextCol = currentCol + Math.max(0, width)
 
     if (col > currentCol && col < nextCol) {

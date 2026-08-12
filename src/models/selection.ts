@@ -24,6 +24,7 @@ export type ModelEntryLike = {
   model: string;
   apiKeyRaw: string;
   hasResolvedApiKey: boolean;
+  isPreset?: boolean;
 };
 
 /** 持久化的模型选择 */

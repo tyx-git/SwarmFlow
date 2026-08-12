@@ -36,6 +36,31 @@ import { hasAnyManagedCredential } from "./config/managed-provider-credentials.j
 import { findSessionById, findSessionByName, listSessionsForProject, formatSize } from "./session-resume.js";
 
 /**
+ * OpenTUI's native renderer writes UTF-8 bytes directly to the Windows
+ * console. Node's normal console methods handle Unicode themselves, but the
+ * native path is decoded by the active Windows console code page. Legacy
+ * consoles commonly start in CP936, which turns every non-ASCII glyph into
+ * mojibake. Switch only interactive consoles; redirected output is already a
+ * byte stream and must remain UTF-8 for callers to decode.
+ */
+export function ensureWindowsUtf8Console(): void {
+  if (process.platform !== "win32" || !process.stdout.isTTY) return;
+
+  const commandShell = process.env.ComSpec ?? process.env.COMSPEC;
+  if (!commandShell) return;
+
+  try {
+    spawnSync(commandShell, ["/d", "/s", "/c", "chcp 65001 > nul"], {
+      stdio: "ignore",
+    });
+    process.stdout.setDefaultEncoding("utf8");
+    process.stderr.setDefaultEncoding("utf8");
+  } catch {
+    // The CLI remains usable when launched without a shell-backed console.
+  }
+}
+
+/**
  * main() 的依赖注入表面。
  * 允许测试替换各环节实现（loadDotenv、checkForUpdates 等）。
  */
@@ -475,22 +500,31 @@ async function warnIfCopilotCredentialsMissing(
  * 从默认路径动态导入 opentui/main.js 并启动 TUI。
  * 使用动态路径避免 external/opentui 进入 src/ 的 rootDir 类型检查范围。
  */
-async function launchTuiFromDefaultEntry(): Promise<void> {
+export function resolveOpenTuiEntry(modulePath = fileURLToPath(import.meta.url)): string | null {
   // Development runs the TypeScript entry directly; compiled distributions
-  // contain the JavaScript entry. Resolve the available form at runtime so
-  // Node does not try to load a source tree's missing `.js` file.
-  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const candidates = [
+  // contain the JavaScript entry. A compiled CLI lives under `dist/src`,
+  // while the source UI remains under the repository root, so check both
+  // layouts before reporting that the UI distribution is missing.
+  const moduleDir = dirname(modulePath);
+  const projectRoots = [resolve(moduleDir, ".."), resolve(moduleDir, "../..")];
+  const candidates = projectRoots.flatMap((projectRoot) => [
     join(projectRoot, "external", "opentui", "main.js"),
     join(projectRoot, "external", "opentui", "main.tsx"),
-  ];
-  const entry = candidates.find((candidate) => existsSync(candidate));
+  ]);
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+async function launchTuiFromDefaultEntry(): Promise<void> {
+  const entry = resolveOpenTuiEntry();
   if (!entry) {
     throw new Error(
       "OpenTUI entry not found. Run with --server or install the full UI distribution.",
     );
   }
-  const mod = (await import(pathToFileURL(entry).href)) as { launchTui: () => Promise<void> };
+  const entryUrl = pathToFileURL(entry).href;
+  const mod = entry.endsWith(".ts") || entry.endsWith(".tsx")
+    ? await (await import("tsx/esm/api")).tsImport(entryUrl, import.meta.url)
+    : await import(entryUrl);
   await mod.launchTui();
 }
 
@@ -512,6 +546,8 @@ async function launchTuiFromDefaultEntry(): Promise<void> {
  *   8. 启动 TUI
  */
 export async function main(argv: string[] = process.argv, deps: MainDeps = {}): Promise<void> {
+  ensureWindowsUtf8Console();
+
   // 尽早初始化诊断日志，捕获后续每一帧的状态。
   // 通过 SWARMFLOW_LOG=1 启用；进程 panic 时也会写一行。
   initLogger();

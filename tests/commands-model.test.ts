@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDefaultRegistry, type CommandContext } from "../src/commands/commands.js";
+import { Config } from "../src/config/config.js";
 
 const MODEL_TEST_ENV_VARS = [
   "OPENAI_API_KEY",
@@ -75,7 +76,52 @@ describe("/model command", () => {
     savedModelTestEnv.clear();
   });
 
-  it("shows all preset models and marks models that require API key", () => {
+  it("does not show built-in models when no models have been added", () => {
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/model");
+    expect(cmd?.options).toBeTruthy();
+
+    const session = {
+      config: {
+        modelNames: [],
+        listModelEntries: () => [],
+      },
+      primaryAgent: {
+        modelConfig: {
+          provider: "anthropic",
+          model: "claude-sonnet-4-6",
+          apiKey: "sk-anthropic",
+        },
+      },
+    };
+
+    expect(cmd!.options!({ session })).toEqual([]);
+  });
+
+  it("does not show provider preference presets as registered models", () => {
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/model");
+    expect(cmd?.options).toBeTruthy();
+
+    const config = new Config({
+      providerEnvVars: { openai: "OPENAI_API_KEY" },
+    });
+    const session = {
+      config,
+      primaryAgent: {
+        modelConfig: {
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        },
+      },
+    };
+
+    expect(config.listModelEntries().every((entry) => entry.isPreset)).toBe(true);
+    expect(cmd!.options!({ session })).toEqual([]);
+  });
+
+  it("shows only registered models and preserves provider grouping", () => {
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/model");
     expect(cmd?.options).toBeTruthy();
@@ -89,6 +135,27 @@ describe("/model command", () => {
             provider: "anthropic",
             model: "claude-sonnet-4-6",
             apiKeyRaw: "sk-anthropic",
+            hasResolvedApiKey: true,
+          },
+          {
+            name: "my-openai",
+            provider: "openai",
+            model: "gpt-5.4",
+            apiKeyRaw: "",
+            hasResolvedApiKey: false,
+          },
+          {
+            name: "my-qwen",
+            provider: "qwen",
+            model: "qwen3.6-plus",
+            apiKeyRaw: "sk-qwen",
+            hasResolvedApiKey: true,
+          },
+          {
+            name: "my-qwen-intl",
+            provider: "qwen-intl",
+            model: "qwen3.7-max",
+            apiKeyRaw: "sk-qwen-intl",
             hasResolvedApiKey: true,
           },
         ]),
@@ -105,34 +172,29 @@ describe("/model command", () => {
     const opts = cmd!.options!({ session });
     const anthropic = opts.find((o) => o.value === "anthropic");
     const qwenGroup = opts.find((o) => o.value === "qwen");
-    const kimiGlobal = opts.find((o) => o.value === "kimi");
     const openai = opts.find((o) => o.value === "openai");
 
     expect(anthropic).toBeTruthy();
     expect(qwenGroup).toBeTruthy();
-    expect(kimiGlobal).toBeTruthy();
     expect(openai).toBeTruthy();
-    expect(anthropic!.children?.some((c) => c.label.includes("Claude Haiku 4.5"))).toBe(true);
+    expect(opts.find((o) => o.value === "kimi")).toBeUndefined();
+    expect(anthropic!.children).toHaveLength(1);
     expect(anthropic!.children?.some((c) => c.label.includes("Claude Sonnet 4.6  (current)"))).toBe(true);
-    expect(anthropic!.children?.some((c) => c.label.includes("Claude Sonnet 4.6  (1M context beta)"))).toBe(true);
-    expect(
-      openai!.children?.some((c) => c.label.includes("GPT-5.2  (key missing: run swarmflow init)")),
-    ).toBe(true);
+    expect(anthropic!.children?.some((c) => c.label.includes("Claude Haiku 4.5"))).toBe(false);
+    expect(openai!.children).toHaveLength(1);
+    expect(openai!.children?.some((c) => c.label.includes("GPT-5.4"))).toBe(true);
+    expect(openai!.children?.some((c) => c.label.includes("GPT-5.2"))).toBe(false);
     const qwenChina = qwenGroup!.children?.find((o) => o.value === "qwen");
     const qwenIntl = qwenGroup!.children?.find((o) => o.value === "qwen-intl");
     const qwenUs = qwenGroup!.children?.find((o) => o.value === "qwen-us");
     expect(qwenChina?.label).toBe("Qwen China");
     expect(qwenIntl?.label).toBe("Qwen Intl");
-    expect(qwenUs?.label).toBe("Qwen US");
+    expect(qwenUs).toBeUndefined();
+    expect(qwenChina!.children).toHaveLength(1);
+    expect(qwenIntl!.children).toHaveLength(1);
     expect(qwenChina!.children?.some((c) => c.label.includes("Qwen3.6 Plus"))).toBe(true);
-    expect(qwenChina!.children?.some((c) => c.label.includes("Qwen3.7 Max"))).toBe(true);
-    expect(openai!.children?.some((c) => c.label.includes("gpt-5.1"))).toBe(false);
-    expect(openai!.children?.some((c) => c.label.includes("gpt-4o"))).toBe(false);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.4"))).toBe(true);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.4 Mini"))).toBe(true);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.4 Nano"))).toBe(true);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.2 Codex"))).toBe(true);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.3 Codex"))).toBe(true);
+    expect(qwenChina!.children?.some((c) => c.label.includes("Qwen3.7 Max"))).toBe(false);
+    expect(qwenIntl!.children?.some((c) => c.label.includes("Qwen3.7 Max"))).toBe(true);
   });
 
   it("tracks managed provider keys per exact endpoint instead of sharing them across a group", () => {
@@ -144,8 +206,23 @@ describe("/model command", () => {
 
     const session = {
       config: {
-        modelNames: [],
-        listModelEntries: () => [],
+        modelNames: ["glm:glm-5", "glm-code:glm-5"],
+        listModelEntries: () => ([
+          {
+            name: "glm:glm-5",
+            provider: "glm",
+            model: "glm-5",
+            apiKeyRaw: "${GLM_API_KEY}",
+            hasResolvedApiKey: false,
+          },
+          {
+            name: "glm-code:glm-5",
+            provider: "glm-code",
+            model: "glm-5",
+            apiKeyRaw: "",
+            hasResolvedApiKey: false,
+          },
+        ]),
       },
       primaryAgent: {
         modelConfig: {
@@ -167,15 +244,41 @@ describe("/model command", () => {
     expect(glmChinaCode!.children?.every((c) => c.label.includes("key missing"))).toBe(true);
   });
 
-  it("groups OpenRouter models by vendor prefix into three-level hierarchy", () => {
+  it("groups registered OpenRouter models by vendor prefix into three-level hierarchy", () => {
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/model");
     expect(cmd?.options).toBeTruthy();
 
     const session = {
       config: {
-        modelNames: [],
-        listModelEntries: () => [],
+        modelNames: [
+          "openrouter:anthropic/claude-haiku-4.5",
+          "openrouter:anthropic/claude-sonnet-4.6",
+          "openrouter:openai/gpt-5.4",
+          "openrouter:openai/gpt-5.3-codex",
+          "openrouter:qwen/qwen3.6-plus",
+          "openrouter:qwen/qwen3.7-max",
+          "openrouter:moonshotai/kimi-k2.5",
+          "openrouter:minimax/minimax-m2.5",
+          "openrouter:z-ai/glm-5",
+        ],
+        listModelEntries: () => ([
+          "anthropic/claude-haiku-4.5",
+          "anthropic/claude-sonnet-4.6",
+          "openai/gpt-5.4",
+          "openai/gpt-5.3-codex",
+          "qwen/qwen3.6-plus",
+          "qwen/qwen3.7-max",
+          "moonshotai/kimi-k2.5",
+          "minimax/minimax-m2.5",
+          "z-ai/glm-5",
+        ].map((model) => ({
+          name: `openrouter:${model}`,
+          provider: "openrouter",
+          model,
+          apiKeyRaw: "",
+          hasResolvedApiKey: false,
+        }))),
       },
       primaryAgent: {
         modelConfig: {

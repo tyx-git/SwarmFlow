@@ -1,5 +1,6 @@
 import type { DisplayThemeLayoutTokens } from "../theme/index.js";
 import { osCapabilities } from "../../../../src/platform/index.js";
+import { stringWidth } from "../../forked/core/platform/runtime.js";
 
 export function formatCompactTokens(value: number | undefined): string {
   const safeValue = value ?? 0;
@@ -89,14 +90,14 @@ export function shortenPath(fullPath: string): string {
 }
 
 export function truncateToWidth(text: string, maxWidth: number): string {
-  const textWidth = Bun.stringWidth(text);
+  const textWidth = stringWidth(text);
   if (textWidth <= maxWidth) return text;
   const target = maxWidth - 3;
   if (target <= 0) return "...".slice(0, maxWidth);
   let width = 0;
   let index = 0;
   for (const ch of text) {
-    const chWidth = Bun.stringWidth(ch) || 1;
+    const chWidth = stringWidth(ch) || 1;
     if (width + chWidth > target) return text.slice(0, index) + "...";
     width += chWidth;
     index += ch.length;
@@ -108,7 +109,7 @@ export function countWrappedDisplayLines(text: string, contentWidth: number): nu
   const safeWidth = Math.max(1, contentWidth);
   const lines = text.split("\n");
   return lines.reduce((sum, line) => {
-    const width = Math.max(1, Bun.stringWidth(line || " "));
+    const width = Math.max(1, stringWidth(line || " "));
     return sum + Math.max(1, Math.ceil(width / safeWidth));
   }, 0);
 }

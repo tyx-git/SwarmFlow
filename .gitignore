@@ -2,7 +2,7 @@ node_modules/
 .codegraph/
 dist/
 build/
-dist-releases/
+release/
 .tmp/
 .pnpm-store/
 .env
@@ -65,7 +65,6 @@ external/*
 docs/*
 **.png**
 !external/opentui/
-.swarmflow/
-.superpowers/
 # SwarmFlow diagnostic logs (enabled via SWARMFLOW_LOG=1)
-.logs/
+release/
+.*/

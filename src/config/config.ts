@@ -86,6 +86,8 @@ export interface ModelConfigEntry {
   apiKeyRaw: string;
   /** 该 API 密钥是否可以成功解析（环境变量已设置或 OAuth 令牌存在） */
   hasResolvedApiKey: boolean;
+  /** Whether the entry was synthesized from a provider preset at startup. */
+  isPreset?: boolean;
 }
 
 /** MCP 服务器配置——定义如何连接和与 MCP 服务器通信 */
@@ -553,6 +555,7 @@ export function getBundledAssetsDir(): string {
 
 export class Config {
   private _rawModels: Record<string, Record<string, unknown>> = {};
+  private _presetModelNames = new Set<string>();
   private _models: Map<string, ModelConfig> = new Map();
   private _mcpServers: MCPServerConfig[];
   private _modelTiers: { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry } = {};
@@ -629,6 +632,7 @@ export class Config {
           api_key: preferenceApiKey(providerId, envVar),
           ...(model.config ?? {}),
         };
+        this._presetModelNames.add(name);
       }
     }
 
@@ -647,6 +651,7 @@ export class Config {
           api_key: preferenceApiKey(spec.providerId, spec.internalEnvVar),
           ...(model.config ?? {}),
         };
+        this._presetModelNames.add(name);
       }
     }
 
@@ -834,13 +839,15 @@ export class Config {
       const provider = typeof cfg["provider"] === "string" ? cfg["provider"] : "";
       const model = typeof cfg["model"] === "string" ? cfg["model"] : "";
       const apiKeyRaw = typeof cfg["api_key"] === "string" ? cfg["api_key"] : "";
-      out.push({
+      const entry: ModelConfigEntry = {
         name,
         provider,
         model,
         apiKeyRaw,
         hasResolvedApiKey: hasResolvableApiKey(apiKeyRaw),
-      });
+      };
+      if (this._presetModelNames.has(name)) entry.isPreset = true;
+      out.push(entry);
     }
     return out;
   }
@@ -860,12 +867,14 @@ export class Config {
    */
   upsertModelRaw(name: string, cfg: Record<string, unknown>): void {
     this._rawModels[name] = { ...cfg };
+    this._presetModelNames.delete(name);
     this._models.delete(name);
   }
 
   /** 从运行时配置中移除模型（自定义提供商管理） */
   removeModel(name: string): void {
     delete this._rawModels[name];
+    this._presetModelNames.delete(name);
     this._models.delete(name);
   }
 

@@ -2,7 +2,6 @@
 import {
   BoxRenderable,
   CodeRenderable,
-  createMarkdownSyntheticBlockHighlighter,
   MarkdownRenderable,
   RGBA,
   StyledText,
@@ -14,6 +13,7 @@ import {
   isMarkdownPatchDisabled,
   writeOpenTuiDiag,
 } from "./core/lib/diagnostic.js";
+import { createMarkdownSyntheticBlockHighlighter } from "./core/renderables/MarkdownHighlightContext.js";
 import { clipboard } from "../../../src/platform/index.js";
 import type { DisplayTheme } from "../display/theme/types.js";
 import { isShikiReady, setShikiTheme, shikiHighlightToChunks } from "./shiki-highlighter.js";

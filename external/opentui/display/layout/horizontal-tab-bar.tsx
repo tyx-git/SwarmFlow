@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import type { DisplayThemeColorTokens } from "../theme/index.js";
 import type { TabState } from "../../sidebar/sidebar-tabs.js";
 import { truncateToWidth } from "../utils/format.js";
+import { stringWidth } from "../../forked/core/platform/runtime.js";
 
 interface HorizontalTabBarProps {
   tabs: TabState[];
@@ -40,7 +41,7 @@ function TabButton({
   const [hovered, setHovered] = useState(false);
   const label = formatTabLabel(tab, maxWidth);
   const fg = isActive ? colors.accent : hovered ? colors.accent : colors.accentDim;
-  const totalWidth = Bun.stringWidth(label) + (tab.closeable ? 2 : 0);
+  const totalWidth = stringWidth(label) + (tab.closeable ? 2 : 0);
   const indicator = isActive ? "─".repeat(totalWidth) : " ".repeat(totalWidth);
 
   return (

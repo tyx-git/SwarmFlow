@@ -160,13 +160,14 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     : null;
   const includeLocalDiscoverActions = ctx.includeLocalDiscoverActions !== false;
 
-  const entries = readModelEntries(config);
+  const allEntries = readModelEntries(config);
+  const entries = allEntries.filter((entry) => !entry.isPreset);
   const currentProvider = String(session.primaryAgent?.modelConfig?.provider ?? "");
   const currentModel = String(session.primaryAgent?.modelConfig?.model ?? "");
 
   // ── Build providerHasKey FIRST (before adding models) ──
   const providerHasKey = new Map<string, boolean>();
-  for (const entry of entries) {
+  for (const entry of allEntries) {
     if (entry.hasResolvedApiKey) {
       providerHasKey.set(entry.provider, true);
     }
@@ -191,8 +192,9 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     providerHasKey.set(currentProvider, true);
   }
 
-  // Populate every preset so unavailable credentials are visible in the
-  // picker and can be configured from the selection flow.
+  // Populate only models that are registered in the current configuration.
+  // Provider presets remain metadata for grouping, labels, and credentials;
+  // their built-in model catalog must not be injected into `/model`.
   const byProvider = new Map<string, Map<string, { modelId: string }>>();
   const providerOrder: string[] = [];
 
@@ -209,15 +211,8 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     }
   };
 
-  // Preset models are shown even when credentials are missing; leaf labels
-  // carry the actionable credential hint.
-  for (const preset of PROVIDER_PRESETS) {
-    for (const model of preset.models) {
-      addModel(preset.id, model.key, model.id);
-    }
-  }
-
-  // Config entries: always add (custom providers are always "configured")
+  // Config entries are the source of truth for the model picker. This keeps
+  // `/model` limited to models the user has actually added or registered.
   for (const entry of entries) {
     addModel(entry.provider, entry.model, entry.model);
   }
