@@ -1,0 +1,98 @@
+{
+  "name": "SwarmFlow",
+  "version": "0.3.21",
+  "author": "tyx-git",
+  "updateNotice": "",
+  "description": "SwarmFlow — A multi-agent AI coding assistant with swarm orchestration, parallel sub-agents, and adaptive context management",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://www.github.com/tyx-git/SwarmFlow"
+  },
+  "homepage": "https://www.github.com/tyx-git/SwarmFlow",
+  "bugs": {
+    "url": "https://www.github.com/tyx-git/SwarmFlow"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "llm",
+    "coding-agent",
+    "multi-agent",
+    "swarm",
+    "orchestration",
+    "context-management",
+    "summarization",
+    "terminal"
+  ],
+  "scripts": {
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node scripts/copy-node-assets.mjs",
+    "build:exe": "node scripts/build-sea-exe.mjs",
+    "dev": "node --import tsx external/opentui/main.tsx",
+    "dev:cli": "node --import tsx src/cli.ts",
+    "dev:server": "node --import tsx src/cli.ts --server",
+    "opentui:dev": "node --import tsx external/opentui/main.tsx",
+    "start": "node --import tsx src/cli.ts",
+    "start:server": "node --import tsx src/cli.ts --server",
+    "test": "vitest run",
+    "test:node": "node --test --import tsx tests/node-runtime.test.ts",
+    "test:watch": "vitest",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "docs:dev": "npm --prefix docs-site run dev",
+    "docs:build": "npm --prefix docs-site install && npm --prefix docs-site run build"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.61.0",
+    "@inquirer/prompts": "^8.3.0",
+    "@jimp/plugin-print": "1.6.1",
+    "@joplin/turndown-plugin-gfm": "^1.0.67",
+    "@mozilla/readability": "^0.6.0",
+    "@opentui/core": "0.4.1",
+    "@opentui/react": "0.4.1",
+    "@xmldom/xmldom": "^0.9.10",
+    "commander": "^12.0.0",
+    "diff": "^9.0.0",
+    "gpt-tokenizer": "^3.4.0",
+    "jimp": "^1.6.0",
+    "js-yaml": "^4.1.0",
+    "jszip": "^3.10.1",
+    "linkedom": "^0.18.12",
+    "mammoth": "^1.12.0",
+    "marked": "^15.0.0",
+    "marked-terminal": "^7.0.0",
+    "openai": "^4.90.0",
+    "react": "^19.2.4",
+    "shiki": "^4.0.2",
+    "string-width": "7.2.0",
+    "strip-ansi": "^7.1.0",
+    "tree-sitter-bash": "^0.25.1",
+    "tree-sitter-powershell": "^0.26.4",
+    "turndown": "^7.2.4",
+    "unpdf": "^1.6.2",
+    "web-tree-sitter": "0.25.10"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20",
+    "@types/react": "^19.2.14",
+    "@types/turndown": "^5.0.6",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  },
+  "optionalDependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@opentui/core-darwin-arm64": "0.4.1",
+    "@opentui/core-linux-arm64": "0.4.1",
+    "@opentui/core-linux-x64": "0.4.1",
+    "@opentui/core-win32-arm64": "0.4.1",
+    "@opentui/core-win32-x64": "^0.4.1"
+  }
+}
