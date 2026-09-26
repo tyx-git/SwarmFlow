@@ -1,6 +1,6 @@
 type: agent
 name: explorer
-description: "Explores files and directories. Read-only."
+description: "Explores code and external resources, then returns a precise context handoff. Read-only."
 system_prompt_file: system_prompt.md
 tool_tier: read_only
 tools_prompt_file: tools.md

@@ -2,6 +2,6 @@ type: agent
 name: reviewer
 description: "Reviews changes made by another agent with fresh-eyes context. Runs tests, checks scope, returns a structured verdict."
 system_prompt_file: system_prompt.md
-tool_tier: reversible
+tools: [read_file, list_dir, glob, grep, bash, time, web_search, web_fetch]
 tools_prompt_file: tools.md
 max_tool_rounds: 200

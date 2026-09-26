@@ -81,18 +81,24 @@ function relaunchWithNodeFfi(userArgs) {
 function ensureWindowsUtf8Console() {
   if (process.platform !== "win32" || !process.stdout.isTTY) return;
 
-  const commandShell = process.env.ComSpec || process.env.COMSPEC;
-  if (!commandShell) return;
-
-  try {
-    spawnSync(commandShell, ["/d", "/s", "/c", "chcp 65001 > nul"], {
-      stdio: "ignore",
-    });
-    process.stdout.setDefaultEncoding("utf8");
-    process.stderr.setDefaultEncoding("utf8");
-  } catch {
-    // A redirected or shell-less launch can still use the UTF-8 byte stream.
+  // FFI 重启后的子进程与父进程共享同一个控制台（stdio: "inherit"），
+  // 代码页已由父进程设置过，无需再派发一次 chcp。
+  if (process.env[FFI_RELAUNCH_MARKER] !== "1") {
+    // 直接调用 chcp.com，而不是 `cmd /d /s /c chcp 65001`：绕开 cmd.exe 的
+    // 解释器启动，实测单次派生由约 296ms 降到约 181ms。
+    const systemRoot = process.env.SYSTEMROOT || process.env.SystemRoot || "C:\\Windows";
+    const chcpPath = join(systemRoot, "System32", "chcp.com");
+    try {
+      spawnSync(existsSync(chcpPath) ? chcpPath : "chcp.com", ["65001"], {
+        stdio: "ignore",
+      });
+    } catch {
+      // 无 shell 支撑的控制台仍可使用 UTF-8 字节流。
+    }
   }
+
+  process.stdout.setDefaultEncoding("utf8");
+  process.stderr.setDefaultEncoding("utf8");
 }
 
 async function run() {

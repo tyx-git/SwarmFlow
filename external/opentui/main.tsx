@@ -190,14 +190,18 @@ export async function launchTui(): Promise<void> {
   // the wrong palette on the wrong terminal would be unreadable, so we must
   // never paint contents in an unresolved state.
   const { resolveThemeMode } = await import("./resolve-theme-mode.js");
-  const resolved = await resolveThemeMode(renderer, runtime.themeModePref);
+
+  // 两次终端查询互相独立：OSC 11 问主题模式，OSC 10 问终端默认前景色
+  // （后者用于 auto 模式，让正文颜色匹配用户终端）。渲染器为它们各自
+  // 维护独立的等待状态与超时，因此并行发起是安全的，可把最坏的
+  // 2×250ms 串行等待压缩为 1×250ms。
+  const [resolved, palette] = await Promise.all([
+    resolveThemeMode(renderer, runtime.themeModePref),
+    // Null on failure/timeout — app.tsx 回退到 token 表中的颜色。
+    renderer.getPalette({ timeout: 250 }).catch(() => null),
+  ]);
   let currentThemeMode = resolved.mode;
   let currentThemeModePref = resolved.pref;
-
-  // Query the terminal's actual default foreground (OSC 10) so body text can
-  // match whatever colour the user configured. Null on failure/timeout —
-  // app.tsx falls back to the hardcoded token-table colour in that case.
-  const palette = await renderer.getPalette({ timeout: 250 }).catch(() => null);
   let currentTerminalFg: string | null = palette?.defaultForeground ?? null;
 
   writeOpenTuiDiag("main.theme", {
@@ -337,8 +341,10 @@ export async function launchTui(): Promise<void> {
       saveRuntimeIfNeeded(previousRuntime);
 
       const nextRuntime = await bootstrapOpenTuiRuntime(args);
-      const nextTheme = await resolveThemeMode(renderer, nextRuntime.themeModePref);
-      const nextPalette = await renderer.getPalette({ timeout: 250 }).catch(() => null);
+      const [nextTheme, nextPalette] = await Promise.all([
+        resolveThemeMode(renderer, nextRuntime.themeModePref),
+        renderer.getPalette({ timeout: 250 }).catch(() => null),
+      ]);
       runtime = nextRuntime;
       currentThemeMode = nextTheme.mode;
       currentThemeModePref = nextTheme.pref;

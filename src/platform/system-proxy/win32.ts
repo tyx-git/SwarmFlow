@@ -5,29 +5,51 @@ import type { SystemProxyConfig, SystemProxyProvider } from "../types.js";
 const INTERNET_SETTINGS_KEY =
   "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
 
+/** `reg query` 输出中的值名 → WinInetRawValues 字段。 */
+const FIELD_BY_VALUE_NAME: Record<string, keyof WinInetRawValues> = {
+  AutoConfigURL: "autoConfigUrl",
+  ProxyEnable: "proxyEnable",
+  ProxyServer: "proxyServer",
+  ProxyOverride: "proxyOverride",
+};
+
 /**
- * 从 WinINET Internet Settings 注册表项读取一个值。
- * `reg query` 打印如下一行：
+ * 一次 `reg query` 读出 Internet Settings 键下的全部目标值。
+ *
+ * 逐个值 `reg query ... /v <name>` 需要 4 次子进程派生，而 Windows 上
+ * 单次派生约 150-250ms；不带 `/v` 的整键查询一次即可取回所有值。
+ * `reg query` 对每个值打印一行：
  *     ProxyServer    REG_SZ    127.0.0.1:7890
  *     ProxyEnable    REG_DWORD    0x1
- * 返回修剪后的值，或如果值不存在/查询失败则返回 null
- *（键缺失、`reg` 不可用、非零退出）。
+ * 值名不含空格，因此按空白切分是安全的。
+ * 键不存在 / `reg` 不可用 / 非零退出时，全部字段保持 null。
  */
-function readRegValue(name: string): string | null {
+function readRegValues(): WinInetRawValues {
+  const values: WinInetRawValues = {
+    autoConfigUrl: null,
+    proxyEnable: null,
+    proxyServer: null,
+    proxyOverride: null,
+  };
+
   try {
     const result = spawnSync(
       "reg",
-      ["query", INTERNET_SETTINGS_KEY, "/v", name],
+      ["query", INTERNET_SETTINGS_KEY],
       { encoding: "utf8", windowsHide: true },
     );
-    if (result.status !== 0 || !result.stdout) return null;
-    const m = result.stdout.match(
-      new RegExp(`^\\s*${name}\\s+REG_\\w+\\s+(.*)$`, "m"),
-    );
-    return m?.[1]?.trim() ?? null;
+    if (result.status !== 0 || !result.stdout) return values;
+    for (const line of result.stdout.split(/\r?\n/)) {
+      const m = line.match(/^\s*(\S+)\s+REG_\w+\s+(.*)$/);
+      if (!m) continue;
+      const field = FIELD_BY_VALUE_NAME[m[1]!];
+      if (!field) continue;
+      values[field] = m[2]!.trim();
+    }
   } catch {
-    return null;
+    // `reg` 不可用；按「无系统代理」处理。
   }
+  return values;
 }
 
 /** 当地址缺少协议时，添加 http:// 前缀。*/
@@ -113,11 +135,6 @@ export function parseWinInetProxy(v: WinInetRawValues): SystemProxyConfig | null
 export const win32SystemProxy: SystemProxyProvider = {
   id: "win32-wininet",
   getSystemProxy(): SystemProxyConfig | null {
-    return parseWinInetProxy({
-      autoConfigUrl: readRegValue("AutoConfigURL"),
-      proxyEnable: readRegValue("ProxyEnable"),
-      proxyServer: readRegValue("ProxyServer"),
-      proxyOverride: readRegValue("ProxyOverride"),
-    });
+    return parseWinInetProxy(readRegValues());
   },
 };
