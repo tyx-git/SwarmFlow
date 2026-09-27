@@ -1,9 +1,18 @@
-﻿/**
+/**
  * 网络错误重试工具。
  *
- * 提供瞬态网络错误检测、指数退避延迟计算，以及可感知 abort 的 sleep 助手。
- * 被会话回合循环用于在网络问题（ETIMEDOUT、ECONNRESET、5xx、429 等）
- * 导致 LLM API 调用失败时自动重试。
+ * 提供瞬态网络/上游错误检测、指数退避延迟计算，以及可感知 abort 的等待助手。
+ * 被会话回合循环用于在 LLM API 调用失败时自动重试。
+ *
+ * 设计要点（都是踩过的坑）：
+ * 1. **不能只看最外层的 status 就下结论。** 中转/网关经常把上游故障包在
+ *    4xx 里（外层 400，body 说 upstream 503）。所以要把整棵错误树（自身 +
+ *    error/cause + message 文本）里的状态码全部收集起来，只要有一个可重试
+ *    就重试。
+ * 2. **消息匹配必须读 err.message，不能用 String(err)。**
+ *    `String({message:"..."})` 得到的是 "[object Object]"，纯对象错误
+ *    （很多中转直接抛对象）会被完全漏掉。
+ * 3. **不能因为看到 4xx 就放弃。** 只有在"没有任何可重试证据"时才停摆。
  */
 
 // ------------------------------------------------------------------
@@ -11,7 +20,13 @@
 // ------------------------------------------------------------------
 
 /** 每个回合的最大网络错误重试次数。 */
-export const MAX_NETWORK_RETRIES = 10;
+export const MAX_NETWORK_RETRIES = 5;
+
+/** 退避基数：第一次重试等待 5 秒，之后每次翻倍。 */
+export const RETRY_BASE_DELAY_MS = 5_000;
+
+/** 单次退避上限（防止抖动把等待时间放大到不可接受）。 */
+const RETRY_MAX_DELAY_MS = 120_000;
 
 /**
  * 从错误信息里提取 HTTP 状态码。
@@ -26,9 +41,14 @@ const STATUS_TEXT_PATTERNS: readonly RegExp[] = [
     /\bstatus(?:\s+code)?[\s:=]*([1-5]\d{2})\b/i,
     /\(([1-5]\d{2})\)/,
     /\b([1-5]\d{2})\s+(?:Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-out|Gateway Timeout|Too Many Requests|Unauthorized|Forbidden|Not Found|Bad Request)\b/i,
+    // "upstream returned 503" / "relay: 502" / "provider responded 500"
+    /\b(?:upstream|relay|provider|gateway|backend|origin)\b[^0-9\n]{0,40}?\b([1-5]\d{2})\b/i,
 ];
 
-/** 上游限流/过载时的常见措辞（小写匹配）。 */
+/**
+ * 上游限流 / 过载 / 连接问题的常见措辞（小写匹配）。
+ * 这些只认"明确的瞬态故障"措辞，避免把永久性错误也拖去重试。
+ */
 const RETRYABLE_MESSAGE_PATTERNS_EXTRA: readonly string[] = [
     "rate limit",
     "rate_limit",
@@ -43,44 +63,33 @@ const RETRYABLE_MESSAGE_PATTERNS_EXTRA: readonly string[] = [
     "gateway time-out",
     "gateway timeout",
     "upstream connect error",
+    "upstream error",
     "disable connect reset",
     "connection reset",
     "connection error",
     "connection failure",
-    "ssl",
-    "tls",
     "timed out",
     "timeout",
+    "socket hang up",
+    "premature close",
+    "econnreset",
+    "etimedout",
+    "econnrefused",
+    "enotfound",
+    "eai_again",
+    // 流式响应被截断 / SSE 解析失败：绝大多数是瞬态的
+    "unterminated string",
+    "unexpected end of json",
+    "unexpected end of input",
+    "unexpected token",
+    "invalid json",
+    "malformed json",
+    "json parse",
+    "failed to parse",
+    "stream ended",
+    "stream closed",
+    "incomplete chunked",
 ];
-
-/** 从任意错误形态里尽力取出 HTTP 状态码。 */
-function extractHttpStatus(err: unknown): number | undefined {
-    const seen: string[] = [];
-    const collect = (value: unknown, depth: number): void => {
-        if (depth > 4 || value === null || typeof value !== "object") return;
-        const record = value as Record<string, unknown>;
-        for (const key of ["status", "statusCode", "code"]) {
-            const raw = record[key];
-            if (typeof raw === "number" && Number.isInteger(raw)) return void seen.push(String(raw));
-            if (typeof raw === "string" && /^[1-5]\d{2}$/.test(raw)) seen.push(raw);
-        }
-        const message = record["message"];
-        if (typeof message === "string") {
-            for (const pattern of STATUS_TEXT_PATTERNS) {
-                const match = pattern.exec(message);
-                if (match?.[1]) seen.push(match[1]);
-            }
-        }
-        collect(record["error"], depth + 1);
-        collect(record["cause"], depth + 1);
-    };
-    collect(err, 0);
-    for (const candidate of seen) {
-        const status = Number(candidate);
-        if (Number.isFinite(status) && status >= 100 && status < 600) return status;
-    }
-    return undefined;
-}
 
 /** 表明瞬态网络问题的 Node.js / undici 错误码。 */
 const RETRYABLE_CODES = new Set([
@@ -90,6 +99,7 @@ const RETRYABLE_CODES = new Set([
   "ECONNABORTED",
   "ENETUNREACH",
   "EHOSTUNREACH",
+  "ENOTFOUND",
   "EPIPE",
   "EAI_AGAIN",
   "UND_ERR_SOCKET",
@@ -100,6 +110,7 @@ const RETRYABLE_CODES = new Set([
 /** 表明连接级失败的 SDK 包装类名。 */
 const CONNECTION_ERROR_NAMES = new Set([
   "APIConnectionError",
+  "APIConnectionTimeoutError",
   "APIConnectionTimeoutError",
 ]);
 
@@ -116,63 +127,147 @@ const RETRYABLE_MESSAGE_PATTERNS = [
 ];
 
 // ------------------------------------------------------------------
-// isRetryableNetworkError
+// 错误信息收集
 // ------------------------------------------------------------------
 
+const MAX_TRAVERSE_DEPTH = 6;
+
 /**
- * 判断 `err` 是否为值得重试的瞬态网络错误。
+ * 递归收集错误对象里所有"可能带状态码"的来源。
  *
- * 处理三类错误：
- * 1. SDK 包装的错误（Anthropic / OpenAI 的 `APIConnectionError`）
- * 2. 带有 `.code` 的原生 Node.js 错误（ETIMEDOUT、ECONNRESET、⋯）
- * 3. HTTP 状态码（429 限流、5xx 服务器错误）
- *
- * 使用鸭子类型（构造函数名）而非 `instanceof`，避免引入两个 SDK 包。
+ * 重要：不要在看到第一个 status 字段时就返回。外层 400 里裹着上游 503
+ * 是常见形态，早退会把上游的真实状态码漏掉。
  */
+function collectStatusCandidates(err: unknown, depth = 0, out: number[] = []): number[] {
+  if (depth > MAX_TRAVERSE_DEPTH || err === null || typeof err !== "object") return out;
+  const record = err as Record<string, unknown>;
+
+  for (const key of ["status", "statusCode", "httpStatus", "code"]) {
+    const raw = record[key];
+    if (typeof raw === "number" && Number.isInteger(raw) && raw >= 100 && raw < 600) {
+      out.push(raw);
+    } else if (typeof raw === "string" && /^[1-5]\d{2}$/.test(raw)) {
+      out.push(Number(raw));
+    }
+  }
+
+  const message = record["message"];
+  if (typeof message === "string") {
+    for (const pattern of STATUS_TEXT_PATTERNS) {
+      const match = pattern.exec(message);
+      if (match?.[1]) out.push(Number(match[1]));
+    }
+  }
+
+  for (const key of ["error", "cause", "originalError", "response", "data", "body"]) {
+    const nested = record[key];
+    if (nested && typeof nested === "object") {
+      collectStatusCandidates(nested, depth + 1, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * 递归收集错误对象里所有可用于关键词匹配的文本。
+ *
+ * 必须读 `.message`：`String({message:"..."})` 得到 "[object Object]"，
+ * 纯对象错误会被完全漏掉（真实踩过：中转抛裸对象时重试从不触发）。
+ */
+function collectMessages(err: unknown, depth = 0, out: string[] = []): string[] {
+  if (err === null || err === undefined) return out;
+  if (depth > MAX_TRAVERSE_DEPTH) return out;
+  if (typeof err === "string") {
+    out.push(err);
+    return out;
+  }
+  if (typeof err !== "object") return out;
+
+  const record = err as Record<string, unknown>;
+  const message = record["message"];
+  if (typeof message === "string") out.push(message);
+  const detail = record["detail"];
+  if (typeof detail === "string") out.push(detail);
+  const name = record["name"];
+  if (typeof name === "string") out.push(name);
+  const code = record["code"];
+  if (typeof code === "string") out.push(code);
+
+  for (const key of ["error", "cause", "originalError", "response", "data", "body", "text"]) {
+    const nested = record[key];
+    if (nested && (typeof nested === "string" || typeof nested === "object")) {
+      collectMessages(nested, depth + 1, out);
+    }
+  }
+  return out;
+}
+
+/** HTTP 状态码 → 是否值得重试（408 超时、429 限流、5xx 服务端错误）。 */
+export function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status < 600);
+}
+
 const ALL_RETRYABLE_MESSAGE_PATTERNS: readonly string[] = [
   ...RETRYABLE_MESSAGE_PATTERNS,
   ...RETRYABLE_MESSAGE_PATTERNS_EXTRA,
 ];
 
-/** HTTP 状态码 → 是否值得重试（408 超时、429 限流、5xx 服务端错误）。 */
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 429 || (status >= 500 && status < 600);
-}
+// ------------------------------------------------------------------
+// isRetryableNetworkError
+// ------------------------------------------------------------------
 
+/**
+ * 判断 `err` 是否为值得重试的瞬态网络/上游错误。
+ *
+ * 处理四类错误：
+ * 1. HTTP 状态码（429 限流、5xx 服务端错误、408 超时）—— 包括藏在 message
+ *    文本和 error/cause 里的
+ * 2. SDK 包装的连接错误（Anthropic / OpenAI 的 `APIConnectionError`）
+ * 3. 带有 `.code` 的原生 Node.js 错误（ETIMEDOUT、ECONNRESET、⋯）
+ * 4. 命中瞬态措辞的错误信息（含嵌套 error/cause，纯对象错误也算）
+ *
+ * 判定是"或"关系：只要有任何一条可重试证据就重试；只有在完全找不到证据时
+ * 才停摆。这样中转把上游 5xx 包在 4xx 里也能正确重试。
+ *
+ * 使用鸭子类型（构造函数名）而非 `instanceof`，避免引入两个 SDK 包。
+ */
 export function isRetryableNetworkError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
 
-  const e = err as Record<string, unknown>;
-
   // -- 显式排除：用户主动中止 --
-  if (e["name"] === "AbortError") return false;
+  if ((err as Record<string, unknown>)["name"] === "AbortError") return false;
 
-  const status = extractHttpStatus(err);
+  const statuses = collectStatusCandidates(err);
 
-  // 明确带 HTTP 状态码：按状态码决定（4xx 参数/鉴权类不重试）。
-  if (status !== undefined) return isRetryableStatus(status);
+  // 明确带 HTTP 状态码：只要有一个可重试就重试。
+  if (statuses.some(isRetryableStatus)) return true;
 
   // -- SDK 连接错误（鸭子类型） --
   const ctorName = (err as any)?.constructor?.name as string | undefined;
   if (ctorName && CONNECTION_ERROR_NAMES.has(ctorName)) return true;
 
   // -- Node.js / undici 错误码（含 .cause / .error 内嵌） --
-  const code = e["code"];
-  if (typeof code === "string" && RETRYABLE_CODES.has(code)) return true;
+  const codes = collectMessages(err).filter((text) => text === text.toUpperCase());
+  if (codes.some((code) => RETRYABLE_CODES.has(code))) return true;
 
-  // -- 基于消息的兜底判断 --
-  const msg = String(err).toLowerCase();
-  for (const pattern of ALL_RETRYABLE_MESSAGE_PATTERNS) {
-    if (msg.includes(pattern)) return true;
-  }
-
-  // 还要检查 .cause / .error（包装错误的情况）
-  for (const nestedKey of ["cause", "error"] as const) {
-    const nested = e[nestedKey];
-    if (nested && typeof nested === "object") {
-      const nestedCode = (nested as Record<string, unknown>)["code"];
-      if (typeof nestedCode === "string" && RETRYABLE_CODES.has(nestedCode)) return true;
+  // 直接读 .code 字段（上面 collectMessages 只收字符串，这里补一条路径）
+  const collectCodes = (value: unknown, depth = 0): string[] => {
+    const found: string[] = [];
+    if (depth > MAX_TRAVERSE_DEPTH || !value || typeof value !== "object") return found;
+    const record = value as Record<string, unknown>;
+    if (typeof record["code"] === "string") found.push(record["code"] as string);
+    for (const key of ["error", "cause", "originalError", "response"]) {
+      const nested = record[key];
+      if (nested && typeof nested === "object") found.push(...collectCodes(nested, depth + 1));
     }
+    return found;
+  };
+  if (collectCodes(err).some((code) => RETRYABLE_CODES.has(code))) return true;
+
+  // -- 基于消息的兜底判断（覆盖所有嵌套层与纯对象错误） --
+  const haystack = collectMessages(err).join("\n").toLowerCase();
+  for (const pattern of ALL_RETRYABLE_MESSAGE_PATTERNS) {
+    if (haystack.includes(pattern)) return true;
   }
 
   return false;
@@ -185,13 +280,12 @@ export function isRetryableNetworkError(err: unknown): boolean {
 /**
  * 计算给定重试尝试（从 0 开始）的退避延迟。
  *
- * 使用指数退避（基数 1 秒、倍数 2）并以 30 秒为上限，
- * 再叠加 0–25% 的随机抖动以避免雷暴效应。
+ * 5 秒基数、每次翻倍，上限 120 秒，再叠加 0–25% 的随机抖动以避免雷暴效应。
  *
- * 进度：约 1 秒、约 2 秒、约 4 秒、约 8 秒、约 16 秒、约 30 秒、约 30 秒、⋯
+ * 进度：约 5 秒、约 10 秒、约 20 秒、约 40 秒、约 80 秒。
  */
 export function computeRetryDelay(attempt: number): number {
-  const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30_000);
+  const baseDelay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, attempt)), RETRY_MAX_DELAY_MS);
   const jitter = baseDelay * 0.25 * Math.random();
   return Math.round(baseDelay + jitter);
 }

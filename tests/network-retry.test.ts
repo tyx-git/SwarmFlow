@@ -165,34 +165,39 @@ describe("isRetryableNetworkError", () => {
 // ------------------------------------------------------------------
 
 describe("computeRetryDelay", () => {
-  it("returns ~1000ms for attempt 0", () => {
+  // 规格：5 秒基数、每次翻倍、5 次重试 -> 5s/10s/20s/40s/80s。
+  // 叠加 0~25% 抖动，因此每次断言都按 ±25% 收窄。
+  it("returns ~5000ms for attempt 0", () => {
     const delay = computeRetryDelay(0);
-    expect(delay).toBeGreaterThanOrEqual(1000);
-    expect(delay).toBeLessThanOrEqual(1250);
+    expect(delay).toBeGreaterThanOrEqual(5000);
+    expect(delay).toBeLessThanOrEqual(6250);
   });
 
-  it("returns ~2000ms for attempt 1", () => {
+  it("returns ~10000ms for attempt 1", () => {
     const delay = computeRetryDelay(1);
-    expect(delay).toBeGreaterThanOrEqual(2000);
-    expect(delay).toBeLessThanOrEqual(2500);
+    expect(delay).toBeGreaterThanOrEqual(10_000);
+    expect(delay).toBeLessThanOrEqual(12_500);
   });
 
-  it("returns ~4000ms for attempt 2", () => {
+  it("returns ~20000ms for attempt 2", () => {
     const delay = computeRetryDelay(2);
-    expect(delay).toBeGreaterThanOrEqual(4000);
-    expect(delay).toBeLessThanOrEqual(5000);
+    expect(delay).toBeGreaterThanOrEqual(20_000);
+    expect(delay).toBeLessThanOrEqual(25_000);
   });
 
-  it("caps at ~30000ms for high attempts", () => {
-    const delay = computeRetryDelay(9);
-    expect(delay).toBeGreaterThanOrEqual(30_000);
-    expect(delay).toBeLessThanOrEqual(37_500);
+  it("doubles on every subsequent attempt", () => {
+    for (const attempt of [0, 1, 2, 3]) {
+      const lower = computeRetryDelay(attempt);
+      const upper = computeRetryDelay(attempt + 1);
+      // 抖动上下限都fold进这个不等式里也不影响"翻倍"这一结论
+      expect(upper).toBeGreaterThan(lower * 1.5);
+    }
   });
 
-  it("caps at ~30000ms for very high attempts", () => {
-    const delay = computeRetryDelay(20);
-    expect(delay).toBeGreaterThanOrEqual(30_000);
-    expect(delay).toBeLessThanOrEqual(37_500);
+  it("caps at 120s no matter how high the attempt climbs", () => {
+    expect(computeRetryDelay(9)).toBeLessThanOrEqual(120_000 * 1.25);
+    expect(computeRetryDelay(20)).toBeLessThanOrEqual(120_000 * 1.25);
+    expect(computeRetryDelay(99)).toBeLessThanOrEqual(120_000 * 1.25);
   });
 
   it("returns an integer", () => {
@@ -232,7 +237,17 @@ describe("retrySleep", () => {
 // ------------------------------------------------------------------
 
 describe("MAX_NETWORK_RETRIES", () => {
-  it("is 10", () => {
-    expect(MAX_NETWORK_RETRIES).toBe(10);
+  it("is 5", () => {
+    expect(MAX_NETWORK_RETRIES).toBe(5);
+  });
+
+  it("with the doubling schedule spans about 155s of waiting", () => {
+    let total = 0;
+    for (let attempt = 0; attempt < MAX_NETWORK_RETRIES; attempt += 1) {
+      total += computeRetryDelay(attempt);
+    }
+    // 5/10/20/40/80 = 155s，抖动上下浮动不超过 25%
+    expect(total).toBeGreaterThanOrEqual(155_000 * 0.75);
+    expect(total).toBeLessThanOrEqual(155_000 * 1.25);
   });
 });

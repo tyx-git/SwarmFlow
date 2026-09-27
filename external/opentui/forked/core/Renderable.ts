@@ -1127,8 +1127,14 @@ export abstract class Renderable extends BaseRenderable {
     this._screenX = parentScreenX + this._x + this._translateX
     this._screenY = parentScreenY + this._y + this._translateY
 
-    const newWidth = Math.max(layout.width, 1)
-    const newHeight = Math.max(layout.height, 1)
+    // Math.max(NaN, 1) === NaN —— Yoga 在首帧/零尺寸容器/测量循环时会给出
+    // NaN。NaN 一旦进入 _widthValue/_heightValue，就会随 onResize 传到 FFI
+    // 边界抛 ERR_INVALID_ARG_TYPE，进而被 main.tsx 当成致命错误退出。
+    // 先在这里收敛成合法整数，下游（含 scroll/selection 计算）才安全。
+    const measuredWidth = Number.isFinite(layout.width) ? Math.floor(layout.width) : 1
+    const measuredHeight = Number.isFinite(layout.height) ? Math.floor(layout.height) : 1
+    const newWidth = Math.max(measuredWidth, 1)
+    const newHeight = Math.max(measuredHeight, 1)
     const sizeChanged = oldWidth !== newWidth || oldHeight !== newHeight
 
     this._widthValue = newWidth

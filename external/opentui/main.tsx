@@ -11,6 +11,10 @@ import {
   writeOpenTuiDiag,
 } from "./forked/core/lib/diagnostic.js";
 import type { OpenTuiRuntime } from "./bootstrap.js";
+// 必须在任何 renderable 创建之前装上：它给 @opentui/core 预编译产物补上
+// FFI 数字参数边界，否则 Yoga 给出 NaN/小数尺寸时会直接抛
+// ERR_INVALID_ARG_TYPE，整个 TUI 被 uncaughtException 终结。
+import { installFfiBoundsPatch } from "./forked/patch-ffi-bounds.js";
 
 interface ParsedArgs {
   templates?: string;
@@ -134,6 +138,9 @@ export async function launchTui(): Promise<void> {
     });
   }
 
+  // 装上 FFI 数字参数边界兜底（必须在 renderer/renderable 创建之前）
+  installFfiBoundsPatch();
+
   // bootstrap 期间 spinner 持续旋转（async，不阻塞事件循环）
   let runtime = await bootstrapOpenTuiRuntime(args);
 
@@ -228,8 +235,11 @@ export async function launchTui(): Promise<void> {
     }
   };
 
-  const cleanupTerminalAfterFatal = () => {
-    if (fatalCleaningUp) return;
+  const cleanupTerminalAfterFatal = (onDone: () => void) => {
+    if (fatalCleaningUp) {
+      onDone();
+      return;
+    }
     fatalCleaningUp = true;
 
     try {
@@ -238,11 +248,30 @@ export async function launchTui(): Promise<void> {
       // ignore
     }
 
+    // 与正常退出路径同一套顺序：只调 renderer.destroy() 会把恢复 cooked 模式
+    // 之前仍留在内核输入缓冲里的字节（鼠标移动报告等）甩给 shell，表现为
+    // 终端退出后仍在源源不断打印乱码，只能关窗。先让终端停止上报，等内核把
+    // 在途字节抽上来给 stdinParser 消费掉，再销毁渲染器。
     try {
-      renderer.destroy();
+      renderer.resetMouseTracking();
     } catch {
       // ignore
     }
+    setTimeout(() => {
+      try {
+        while (process.stdin.read() !== null) {
+          // 丢弃残留的输入字节
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        renderer.destroy();
+      } catch {
+        // ignore
+      }
+      onDone();
+    }, 30);
   };
 
   const handleFatal = (err: unknown) => {
@@ -250,9 +279,12 @@ export async function launchTui(): Promise<void> {
       error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
     });
     killShellsSync();
-    cleanupTerminalAfterFatal();
-    console.error("Fatal OpenTUI error:", err);
-    process.exit(1);
+    cleanupTerminalAfterFatal(() => {
+      console.error("Fatal OpenTUI error:", err);
+      process.exit(1);
+    });
+    // 兜底：若上面的回调因异常没跑到，也必须退出，绝不挂死。
+    setTimeout(() => process.exit(1), 300).unref?.();
   };
 
   process.on("uncaughtException", handleFatal);
@@ -263,8 +295,7 @@ export async function launchTui(): Promise<void> {
   // it as a keypress through the normal exit flow.)
   const handleTermination = () => {
     killShellsSync();
-    cleanupTerminalAfterFatal();
-    process.exit(0);
+    cleanupTerminalAfterFatal(() => process.exit(0));
   };
   process.on("SIGHUP", handleTermination);
   process.on("SIGTERM", handleTermination);

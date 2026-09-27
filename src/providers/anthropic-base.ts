@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 所有使用 Anthropic Messages API 的提供者共享的基类。
  *
  * 纯协议机制位于此处：消息/工具转换、响应解析、
@@ -53,6 +53,10 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     this._config = config;
     const opts: ConstructorParameters<typeof Anthropic>[0] = {
       apiKey: config.apiKey,
+      // 关闭 SDK 内置重试：流式请求 SDK 本来就不重试，非流式则会用 0.5s/1s 的
+      // 隐藏退避先跑几轮，用户看不到进度、也享受不到 5/10/20/40/80 的可观测
+      // 退避。重试统一由 tool-loop 的 network-retry 层负责（与 copilot.ts 同取舍）。
+      maxRetries: 0,
     };
     const baseUrl = config.baseUrl || this._defaultBaseUrl();
     if (baseUrl) {
