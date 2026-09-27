@@ -17,7 +17,11 @@ export function useTasks(session: Session): readonly Task[] {
 
   const sync = useCallback(() => {
     const next = session.getTaskState?.() ?? [];
-    setTasks((prev) => (sameTasks(prev, next) ? prev : next));
+    // TaskStore.update mutates its in-memory Task object in place. Keep an
+    // immutable UI snapshot so the previous React state cannot silently change
+    // underneath sameTasks() before the subscription callback runs.
+    const snapshot = next.map(cloneTaskForUi);
+    setTasks((prev) => (sameTasks(prev, snapshot) ? prev : snapshot));
   }, [session]);
 
   useEffect(() => {
@@ -31,7 +35,21 @@ export function useTasks(session: Session): readonly Task[] {
   return tasks;
 }
 
-/** 引用相等优先；仅在 id/status/subject/activeForm 变化时换新数组。 */
+/**
+ * React owns this copy. The session store is an imperative mutable model, so
+ * retaining its Task references would make the previous state observe updates
+ * before React gets a chance to compare them.
+ */
+function cloneTaskForUi(task: Task): Task {
+  return {
+    ...task,
+    metadata: { ...task.metadata },
+    blocks: [...task.blocks],
+    blockedBy: [...task.blockedBy],
+  };
+}
+
+/** 引用相等优先；任务字段变化时才换新数组。 */
 function sameTasks(prev: readonly Task[], next: readonly Task[]): boolean {
   if (prev.length !== next.length) return false;
   for (let i = 0; i < prev.length; i++) {
@@ -42,7 +60,11 @@ function sameTasks(prev: readonly Task[], next: readonly Task[]): boolean {
       a.status !== b.status ||
       a.subject !== b.subject ||
       a.activeForm !== b.activeForm ||
-      a.blockedBy.length !== b.blockedBy.length
+      a.owner !== b.owner ||
+      a.blockedBy.length !== b.blockedBy.length ||
+      a.blockedBy.some((id, index) => id !== b.blockedBy[index]) ||
+      a.blocks.length !== b.blocks.length ||
+      a.blocks.some((id, index) => id !== b.blocks[index])
     ) {
       return false;
     }

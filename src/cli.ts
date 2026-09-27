@@ -770,6 +770,14 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   const globalSettings = await ensureProvidersConfigured(homeDir, deps);
   await warnIfCopilotCredentialsMissing(globalSettings, deps.hasGitHubTokens);
 
+  // 诊断日志：settings.diagnostics === true 时打开 OpenTUI 的 JSONL 诊断。
+  // 必须在 launchTui() 之前落好 —— main.tsx 靠 OPENTUI_DIAG 判断要不要
+  // resetOpenTuiDiagLog()，而 fork 里的 writeOpenTuiDiag 每次都读这个开关。
+  // 显式的 OPENTUI_DIAG 环境变量优先，方便临时打开/关闭而不改配置文件。
+  if (globalSettings.diagnostics === true && !process.env.OPENTUI_DIAG) {
+    process.env.OPENTUI_DIAG = "1";
+  }
+
   // 最佳生效非阻塞：为下次启动预热远程模型注册表。
   startBackgroundRegistryRefresh();
 

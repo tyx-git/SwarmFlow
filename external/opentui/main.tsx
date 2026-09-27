@@ -11,10 +11,12 @@ import {
   writeOpenTuiDiag,
 } from "./forked/core/lib/diagnostic.js";
 import type { OpenTuiRuntime } from "./bootstrap.js";
+import { rotateLogFile } from "../../src/lib/log-rotation.js";
 // 必须在任何 renderable 创建之前装上：它给 @opentui/core 预编译产物补上
 // FFI 数字参数边界，否则 Yoga 给出 NaN/小数尺寸时会直接抛
 // ERR_INVALID_ARG_TYPE，整个 TUI 被 uncaughtException 终结。
 import { installFfiBoundsPatch } from "./forked/patch-ffi-bounds.js";
+import { installConsoleCleanupHooks, restoreConsoleState } from "./forked/patch-windows-console.js";
 
 interface ParsedArgs {
   templates?: string;
@@ -140,6 +142,9 @@ export async function launchTui(): Promise<void> {
 
   // 装上 FFI 数字参数边界兜底（必须在 renderer/renderable 创建之前）
   installFfiBoundsPatch();
+  // 退出兜底：任何退出路径都要关掉鼠标追踪并清空控制台输入缓冲，
+  // 否则退出后鼠标一动就往 shell 里灌 ESC 序列（见 patch-windows-console.ts）。
+  installConsoleCleanupHooks();
 
   // bootstrap 期间 spinner 持续旋转（async，不阻塞事件循环）
   let runtime = await bootstrapOpenTuiRuntime(args);
@@ -166,7 +171,20 @@ export async function launchTui(): Promise<void> {
   const { getSwarmflowHomeDir } = await import("../../src/lib/home-path.js");
   const stderrLogDir = getSwarmflowHomeDir();
   if (!existsSync(stderrLogDir)) mkdirSync(stderrLogDir, { recursive: true });
-  const stderrLogFd = openSync(join(stderrLogDir, "stderr.log"), "w");
+  const stderrLogPath = join(stderrLogDir, "stderr.log");
+  // 用追加而不是 "w" 截断：致命异常的堆栈是唯一的现场证据，被下一次启动
+  // 抹掉就没法回溯了。这里同时做一次体积轮转，避免无限增长。
+  rotateLogFile(stderrLogPath, 3);
+  const stderrLogFd = openSync(stderrLogPath, "a");
+  try {
+    const separator = Buffer.from(
+      `\n===== run ${new Date().toISOString()} pid=${process.pid} argv=${JSON.stringify(process.argv.slice(2))} =====\n`,
+      "utf8",
+    );
+    writeSync(stderrLogFd, separator);
+  } catch {
+    // best effort
+  }
   const _origStderrWrite = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: any, encodingOrCb?: any, cb?: any): boolean => {
     const buf = typeof chunk === "string" ? Buffer.from(chunk, typeof encodingOrCb === "string" ? encodingOrCb as BufferEncoding : "utf8") : chunk;
@@ -252,6 +270,8 @@ export async function launchTui(): Promise<void> {
     // 之前仍留在内核输入缓冲里的字节（鼠标移动报告等）甩给 shell，表现为
     // 终端退出后仍在源源不断打印乱码，只能关窗。先让终端停止上报，等内核把
     // 在途字节抽上来给 stdinParser 消费掉，再销毁渲染器。
+    writeOpenTuiDiag("fatal.enter", {});
+    restoreConsoleState();
     try {
       renderer.resetMouseTracking();
     } catch {
@@ -469,6 +489,12 @@ export async function launchTui(): Promise<void> {
     // window is the first thing to try; the real long-term fix would be a
     // libc tcflush(STDIN_FILENO, TCIFLUSH) via bun:ffi, but that requires
     // platform-specific termios constants.
+    // 先用最硬的手段把鼠标模式关掉并清空控制台输入缓冲 —— 这是 renderer
+    // 自己那套 reset 之外的必要补充：Windows 上残留在 ConHost 输入缓冲里的
+    // 鼠标报告不会被 stdin.read() 抽到，cooked 模式恢复后会被 shell 打印。
+    writeOpenTuiDiag("exit.enter", { farewell: !!farewell });
+    restoreConsoleState();
+    writeOpenTuiDiag("exit.console_restored", {});
     try {
       renderer.resetMouseTracking();
     } catch {
@@ -488,6 +514,7 @@ export async function launchTui(): Promise<void> {
     } catch {
       // ignore
     }
+    writeOpenTuiDiag("exit.renderer_destroyed", {});
 
     if (farewell) {
       try {

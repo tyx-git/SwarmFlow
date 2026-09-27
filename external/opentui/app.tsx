@@ -3263,7 +3263,6 @@ export function OpenTuiApp({
             showTasks={showTasks}
             taskPersistence={session.getTaskPersistence?.() ?? "file"}
             colors={theme.colors}
-            contentWidth={terminal.width - 1}
             terminalHeight={terminal.height}
             onAgentClick={enterChildSession}
           />

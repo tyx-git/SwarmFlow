@@ -12,9 +12,21 @@ import { formatCompactTokensShort } from "../utils/format.js";
 const ATTRS_STRIKE = createTextAttributes({ strikethrough: true });
 
 // ── Glyphs ──────────────────────────────────────────────────
-const MARK_DONE = "✓";
-const MARK_ACTIVE = "▶";
-const MARK_PENDING = "▷";
+const MARK_DONE = "✔";
+const MARK_PENDING = "□";
+const TASK_SPINNER_FRAMES = ["✳", "✴", "✵", "✶", "✷", "✸", "✹", "✺", "✻", "✼", "✽"] as const;
+const TASK_SPINNER_INTERVAL_MS = 150;
+const TASK_OPEN_TEXT = "#CCCCCC";
+const TASK_ACTIVE_TEXT = "#8ABEB7";
+const TASK_DONE_TEXT = "#535354";
+const TASK_ID_TEXT = "#535354";
+/** Header starts with "● "; indent row glyphs by those two display columns. */
+const TASK_ROW_STATUS_INDENT = "  ";
+
+export function taskSpinnerGlyph(frame: number): string {
+  const index = ((frame % TASK_SPINNER_FRAMES.length) + TASK_SPINNER_FRAMES.length) % TASK_SPINNER_FRAMES.length;
+  return TASK_SPINNER_FRAMES[index];
+}
 
 function chunk(text: string, fg?: RGBA, attributes?: number): TextChunk {
   return { __isChunk: true as const, text, fg, attributes };
@@ -33,7 +45,6 @@ export interface StatusPanelProps {
    */
   taskPersistence?: "file" | "pending" | "memory";
   colors: ConversationPalette;
-  contentWidth: number;
   terminalHeight: number;
   onAgentClick?: (agentId: string) => void;
 }
@@ -114,31 +125,45 @@ function clampPanelHeight(terminalHeight: number): number {
 
 // ── Task rows (pi-tasks style) ──────────────────────────────
 
-/** 面板内可见的任务行上限；其余折叠成 `… and N more`（与 pi-tasks 的 maxVisible 一致）。 */
-const MAX_VISIBLE_TASKS = 10;
+/** 任务滚动视口最多显示的行数；多余任务保留在滚动内容中。 */
+export const MAX_VISIBLE_TASKS = 6;
+
+export function taskViewportHeight(taskCount: number): number {
+  return Math.min(Math.max(0, taskCount), MAX_VISIBLE_TASKS);
+}
+
+export function taskSummaryLabel(inProgressCount: number, openCount: number): string {
+  return inProgressCount > 0 ? `${inProgressCount} in progress` : `${openCount} open`;
+}
 
 const MARK_BLOCKED = "›";
 
-/** 任务行的字形与配色：完成 ✔（删除线+暗）、进行中 ◼、待办 ◻。 */
-function buildTaskStyledText(task: Task, openBlockers: readonly string[], colors: ConversationPalette): StyledText {
-  const chunks: TextChunk[] = [];
+/** 任务行的字形与配色：完成 ✔（成功色+删除线）、进行中旋转星标、待办 ◻。 */
+function buildTaskStyledText(
+  task: Task,
+  openBlockers: readonly string[],
+  colors: ConversationPalette,
+  spinnerGlyph: string,
+): StyledText {
+  const chunks: TextChunk[] = [chunk(TASK_ROW_STATUS_INDENT)];
+  const idColor = RGBA.fromHex(TASK_ID_TEXT);
   if (task.status === "completed") {
-    chunks.push(chunk(`${MARK_DONE} `, RGBA.fromHex(colors.todoDoneMark)));
-    chunks.push(chunk(`#${task.id} `, RGBA.fromHex(colors.todoDoneMark)));
-    chunks.push(chunk(task.subject, RGBA.fromHex(colors.todoDoneText), ATTRS_STRIKE));
+    chunks.push(chunk(`${MARK_DONE} `, RGBA.fromHex(TASK_DONE_TEXT)));
+    chunks.push(chunk(`#${task.id} `, idColor));
+    chunks.push(chunk(task.subject, RGBA.fromHex(TASK_DONE_TEXT), ATTRS_STRIKE));
   } else if (task.status === "in_progress") {
-    chunks.push(chunk(`${MARK_ACTIVE} `, RGBA.fromHex(colors.todoActiveMark)));
-    chunks.push(chunk(`#${task.id} `, RGBA.fromHex(colors.textFaint)));
-    chunks.push(chunk(task.activeForm || task.subject, RGBA.fromHex(colors.todoActiveText)));
+    chunks.push(chunk(`${spinnerGlyph} `, RGBA.fromHex(colors.todoActiveMark)));
+    chunks.push(chunk(`#${task.id} `, idColor));
+    chunks.push(chunk(task.activeForm || task.subject, RGBA.fromHex(TASK_ACTIVE_TEXT)));
   } else {
     chunks.push(chunk(`${MARK_PENDING} `, RGBA.fromHex(colors.todoPendingMark)));
-    chunks.push(chunk(`#${task.id} `, RGBA.fromHex(colors.textFaint)));
-    chunks.push(chunk(task.subject, RGBA.fromHex(colors.todoPendingText)));
+    chunks.push(chunk(`#${task.id} `, idColor));
+    chunks.push(chunk(task.subject, RGBA.fromHex(TASK_OPEN_TEXT)));
   }
   if (openBlockers.length > 0) {
     chunks.push(
       chunk(
-        `  ${MARK_BLOCKED} blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}`,
+        `  ${MARK_BLOCKED} blocked by ${openBlockers.join(", ")}`,
         RGBA.fromHex(colors.dim),
       ),
     );
@@ -150,10 +175,12 @@ function TaskRows({
   tasks,
   colors,
   taskPersistence,
+  spinnerFrame,
 }: {
   tasks: readonly Task[];
   colors: ConversationPalette;
   taskPersistence?: "file" | "pending" | "memory";
+  spinnerFrame: number;
 }): React.ReactNode {
   // 存储层已按 id 升序返回；这里把完成项沉到末尾，未完成保持 id 顺序。
   const open = tasks.filter((task) => task.status !== "completed");
@@ -161,24 +188,16 @@ function TaskRows({
   const ordered = [...open, ...done];
 
   const byId = new Map(tasks.map((task) => [task.id, task] as const));
-  const visible = ordered.slice(0, MAX_VISIBLE_TASKS);
-  const hiddenCount = ordered.length - visible.length;
-
   return (
     <>
-      {visible.map((task) => {
+      {ordered.map((task) => {
         const openBlockers = task.blockedBy.filter((id) => {
           const blocker = byId.get(id);
           return blocker !== undefined && blocker.status !== "completed";
         });
-        return <text key={task.id} content={buildTaskStyledText(task, openBlockers, colors)} truncate />;
+        const spinnerGlyph = taskSpinnerGlyph(spinnerFrame);
+        return <text key={task.id} content={buildTaskStyledText(task, openBlockers, colors, spinnerGlyph)} truncate />;
       })}
-      {hiddenCount > 0 ? (
-        <text
-          content={new StyledText([chunk(`    … and ${hiddenCount} more`, RGBA.fromHex(colors.dim))])}
-          truncate
-        />
-      ) : null}
       {taskPersistence === "memory" ? (
         <text
           content={new StyledText([
@@ -205,9 +224,17 @@ function StatusPanelInner({
 }: StatusPanelProps): React.ReactNode {
   const openTasks = tasks.filter((task) => task.status !== "completed");
   const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
-  const pendingCount = openTasks.length - inProgressCount;
-  const doneCount = tasks.length - openTasks.length;
   const runningCount = agents.filter((a) => a.lifecycle === "running" || a.lifecycle === "blocked").length;
+  const [spinnerFrame, setSpinnerFrame] = React.useState(0);
+
+  React.useEffect(() => {
+    if (inProgressCount === 0) {
+      setSpinnerFrame(0);
+      return undefined;
+    }
+    const timer = setInterval(() => setSpinnerFrame((frame) => frame + 1), TASK_SPINNER_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [inProgressCount]);
 
   const hasAgents = agents.length > 0 && showAgents;
   const hasTasks = tasks.length > 0 && showTasks;
@@ -222,78 +249,67 @@ function StatusPanelInner({
   if (doneAgentCount > 0) agentParts.push(`${doneAgentCount} done`);
   const agentTitle = `Agents (${agentParts.join(", ")})`;
 
-  // 汇总头与 pi-tasks 一致：`● N tasks (x done, y in progress, z open)`
-  const taskParts: string[] = [];
-  if (doneCount > 0) taskParts.push(`${doneCount} done`);
-  if (inProgressCount > 0) taskParts.push(`${inProgressCount} in progress`);
-  if (pendingCount > 0) taskParts.push(`${pendingCount} open`);
-  const todoTitle = `● ${tasks.length} tasks (${taskParts.join(", ")})`;
+  // pi-tasks 风格的单行标题，不绘制包围容器或横线。
+  const todoTitle = `● ${tasks.length} tasks (${taskSummaryLabel(inProgressCount, openTasks.length)})`;
+  const taskContentHeight = taskViewportHeight(tasks.length) + (taskPersistence === "memory" ? 1 : 0);
 
   if (hasAgents && hasTasks) {
     return (
-      <box
-        width="100%"
-        flexShrink={0}
-        maxHeight={maxHeight + 2}
-        border={true}
-        borderStyle="rounded"
-        borderColor={colors.dim}
-        title={agentTitle}
-        titleColor={colors.badgeAgentFg}
-        dividerRatio={0.4}
-        dividerTitle={todoTitle}
-        dividerTitleColor={colors.badgeTodoFg}
-        flexDirection="row"
-        gap={0}
-      >
-        <scrollbox width="40%" flexShrink={0} paddingLeft={1} paddingRight={1} maxHeight={maxHeight} scrollY={true} fitContent={true}>
-          <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
-        </scrollbox>
-        <scrollbox flexGrow={1} paddingLeft={2} paddingRight={1} maxHeight={maxHeight} scrollY={true} fitContent={true}>
-          <TaskRows tasks={tasks} colors={colors} taskPersistence={taskPersistence} />
-        </scrollbox>
+      <box width="100%" flexShrink={0} maxHeight={maxHeight + 1} flexDirection="row" gap={0}>
+        <box width="40%" flexShrink={0} flexDirection="column">
+          <text fg={colors.badgeAgentFg} content={agentTitle} />
+          <scrollbox maxHeight={maxHeight} scrollY={true} fitContent={true}>
+            <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
+          </scrollbox>
+        </box>
+        <box flexGrow={1} flexShrink={0} flexDirection="column">
+          <text fg={colors.badgeTodoFg} content={todoTitle} />
+          <scrollbox
+            height={Math.max(1, taskContentHeight)}
+            maxHeight={maxHeight}
+            scrollY={true}
+            fitContent={true}
+          >
+            <TaskRows
+              tasks={tasks}
+              colors={colors}
+              taskPersistence={taskPersistence}
+              spinnerFrame={spinnerFrame}
+            />
+          </scrollbox>
+        </box>
       </box>
     );
   }
 
   if (hasAgents) {
     return (
-      <scrollbox
-        width="100%"
-        flexShrink={0}
-        maxHeight={maxHeight + 2}
-        scrollY={true}
-        fitContent={true}
-        border={true}
-        borderStyle="rounded"
-        borderColor={colors.dim}
-        title={agentTitle}
-        titleColor={colors.badgeAgentFg}
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
-      </scrollbox>
+      <box width="100%" flexShrink={0} flexDirection="column">
+        <text fg={colors.badgeAgentFg} content={agentTitle} />
+        <scrollbox maxHeight={maxHeight} scrollY={true} fitContent={true}>
+          <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
+        </scrollbox>
+      </box>
     );
   }
 
   return (
-    <scrollbox
-      width="100%"
-      flexShrink={0}
-      maxHeight={maxHeight + 2}
-      scrollY={true}
-      fitContent={true}
-      border={true}
-      borderStyle="rounded"
-      borderColor={colors.dim}
-      title={todoTitle}
-      titleColor={colors.badgeTodoFg}
-      paddingLeft={1}
-      paddingRight={1}
-    >
-      <TaskRows tasks={tasks} colors={colors} taskPersistence={taskPersistence} />
-    </scrollbox>
+    <box width="100%" flexShrink={0} flexDirection="column">
+      <text fg={colors.badgeTodoFg} content={todoTitle} />
+      <scrollbox
+        height={Math.max(1, taskContentHeight)}
+        maxHeight={maxHeight}
+        scrollY={true}
+        fitContent={true}
+      >
+        <TaskRows
+          tasks={tasks}
+          colors={colors}
+          taskPersistence={taskPersistence}
+          spinnerFrame={spinnerFrame}
+        />
+      </scrollbox>
+    </box>
   );
 }
 

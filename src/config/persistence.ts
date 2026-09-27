@@ -690,6 +690,16 @@ export interface SwarmflowSettings {
    */
   auto_update?: boolean | "notify";
 
+  // -- 诊断 --
+  /**
+   * 详细诊断日志。默认：false。
+   * - true：把 OpenTUI 的 JSONL 诊断写到 ~/.swarmflow/opentui-diag.jsonl
+   *   （上次运行自动归档为 .1 ~ .5）
+   * - false：不写
+   * 环境变量 OPENTUI_DIAG=1 优先级更高，可临时覆盖。
+   */
+  diagnostics?: boolean;
+
   // -- 摘要提示 --
   /**
    * 双层上下文摘要提示（主会话）。由 /summarize_hint 命令管理。
