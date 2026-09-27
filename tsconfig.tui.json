@@ -1,0 +1,44 @@
+{
+  // TUI（external/opentui）的独立类型检查配置。
+  //
+  // 为什么不并入根 tsconfig：
+  //   * 根配置只覆盖 src/**（Node 侧），TUI 是浏览器/终端侧的 JSX 代码，两者依赖面不同
+  //   * TUI 目录里含大量内置 fork 自带的上游测试（依赖 bun:test）与仅 Bun 运行时可用的
+  //     插件运行时，它们不在应用的运行图里，纳入检查只会产生噪音
+  //
+  // 本配置刻意只排除“运行时不会被加载”的部分，其余一律检查 —— 因此剩下的报错都是真问题。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // TUI 只跑在 Node 22+/26 上（tsx dev 与打包后的 exe），因此允许 ES2024.Promise：
+    // 内置 fork 的 tree-sitter 测试辅助代码用了 Promise.withResolvers。
+    "lib": ["ES2022", "DOM", "ES2024.Promise"]
+  },
+  "include": [
+    "external/opentui/**/*.ts",
+    "external/opentui/**/*.tsx",
+    // 应用侧的 ambient 声明（例如 @joplin/turndown-plugin-gfm），否则会被误报 TS7016
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "release",
+    // 内置 fork 自带的上游测试：跑在 bun 下，且不属于应用运行图
+    "**/*.test.ts",
+    "**/__tests__/**",
+    "**/*.node-test.ts",
+    "external/opentui/forked/core/specs",
+    "external/opentui/forked/core/tests",
+    "external/opentui/forked/core/benchmark",
+    "external/opentui/forked/core/testing",
+    // 仅 Bun 可加载的插件运行时（只被 forked/core/package.json 的 exports 引用）
+    "external/opentui/forked/core/runtime-plugin.ts",
+    "external/opentui/forked/core/runtime-plugin-support.ts",
+    "external/opentui/forked/core/runtime-plugin-support-configure.ts",
+    // 下载 tree-sitter 资产的一次性脚本（import.meta.main 是 Bun API）
+    "external/opentui/forked/core/lib/tree-sitter/assets"
+  ]
+}

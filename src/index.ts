@@ -45,7 +45,6 @@ export { Session } from "./session.js";
 
 // -- 计划状态 ---------------------------------------------------------
 /** 解析和格式化会话 plan 文件。 */
-export { parsePlanFile, formatPlanSnapshot, PLAN_FILENAME, type PlanCheckpoint } from "./lib/plan-state.js";
 
 // -- 上下文渲染 ----------------------------------------------------
 /**

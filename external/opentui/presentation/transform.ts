@@ -64,35 +64,6 @@ function isToolResultInterrupted(entry: ReconciledConversationEntry): boolean {
   return entry.entry.text.startsWith("[Interrupted]");
 }
 
-/**
- * Check if a tool_call + its optional result represent a plan file operation.
- *
- * Plan ops are relabeled in the transcript as a single "Update Todos"
- * pseudo-tool (path / diff suppressed, since the Todos panel shows the content).
- *
- * Detection is by the authoritative `planFileOperation` metadata flag, which the
- * runtime sets only for the exact session plan file (SESSION_ARTIFACTS/plan.md),
- * never by filename — a file merely named `plan.md` elsewhere is NOT matched.
- * The flag is stamped on the tool_call entry once its `path` arg is known (so the
- * TUI can relabel during streaming, before the write finishes) and on the
- * tool_result entry after the write completes.
- */
-function isPlanFileOperation(
-  callEntry: ReconciledConversationEntry,
-  resultEntry: ReconciledConversationEntry | null,
-): boolean {
-  const callMeta = getMeta(callEntry);
-  if ((callMeta.toolMetadata as Record<string, unknown> | undefined)?.planFileOperation === true) return true;
-
-  if (resultEntry) {
-    const resultMeta = (resultEntry.entry.meta as Record<string, unknown>) ?? {};
-    const toolMetadata = resultMeta.toolMetadata as Record<string, unknown> | undefined;
-    if (toolMetadata?.planFileOperation === true) return true;
-  }
-
-  return false;
-}
-
 // ------------------------------------------------------------------
 // Transform functions
 // ------------------------------------------------------------------
@@ -583,22 +554,6 @@ export function presentationTransform(
           ? resultByCallId.get(callId) ?? null
           : null;
         const toolOp = buildToolOperation(callEntry, resultEntry, activeEntryId);
-
-        // Plan-file writes/edits render as a single "Update Todos" pseudo-tool.
-        // The Todos panel already shows the content, so suppress the path, the
-        // line-count suffix, and the inline diff, and relabel the operation.
-        // On failure, keep the inline result so the error reason still shows
-        // (the diff body is already gated off in the error state downstream).
-        if (isPlanFileOperation(callEntry, resultEntry)) {
-          toolOp.toolDisplayName = "Update Todos";
-          toolOp.toolText = "";
-          toolOp.toolSuffix = "";
-          toolOp.fileModifyData = undefined;
-          if (toolOp.state !== "error") {
-            toolOp.toolInlineResult = null;
-            toolOp.toolResultFullText = undefined;
-          }
-        }
 
         // Fold pre-associated summary entries into the summarize_context tool's inline result
         if (callToolName === "summarize_context" && callId) {

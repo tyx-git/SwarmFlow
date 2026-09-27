@@ -21,3 +21,8 @@ interface BunShims {
 }
 
 declare var Bun: BunShims & typeof Bun
+
+/** Bun 运行时提供的 `import.meta.main`（内置 fork 的 tree-sitter 资产脚本用到）。 */
+interface ImportMeta {
+  main?: boolean
+}

@@ -2,7 +2,6 @@
  * Browser module — reusable local browser server for interactive design.
  *
  * Provides:
- * - `launchThemePicker()` — opens a browser-based color customizer
  * - `launchDesignHelper()` — opens a browser-based design assistant (beta)
  * - `stopServer()` — shuts down the running server
  *
@@ -14,7 +13,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { startServer } from "./server.js";
-import { generateThemePickerHtml } from "./theme-picker.js";
 import { browser } from "../platform/index.js";
 
 export { stopServer } from "./server.js";
@@ -27,42 +25,9 @@ function ensureChromeDir(sessionId: string, cwd: string): string {
   return dir;
 }
 
-// ── Theme Picker ───────────────────────────────────────────────────
-
-export interface ThemePickerOptions {
-  sessionId: string;
-  homeDir?: string;
-  cwd: string;
-}
-
-/**
- * Launch the browser-based theme customizer.
- *
- * 1. Creates `.swarmflow/<sessionId>/chrome/` directory
- * 2. Generates the theme picker HTML page
- * 3. Starts a Node.js HTTP server
- * 4. Opens the browser to the theme picker URL
- */
-export async function launchThemePicker(options: ThemePickerOptions): Promise<void> {
-  const { sessionId, cwd } = options;
-  const home = options.homeDir ?? join(homedir(), ".swarmflow");
-
-  // Ensure custom-themes directory exists
-  const customThemesDir = join(home, "custom-themes");
-  mkdirSync(customThemesDir, { recursive: true });
-
-  // Create chrome directory and generate HTML
-  const chromeDir = ensureChromeDir(sessionId, cwd);
-  const html = generateThemePickerHtml("Dracula");
-  writeFileSync(join(chromeDir, "index.html"), html, "utf-8");
-
-  // Start server and open browser
-  const { url } = await startServer(chromeDir);
-  browser.openUrl(url);
-}
-
 // ── Design Helper ──────────────────────────────────────────────────
 
+/** Options for launching the browser-based design assistant. */
 export interface DesignHelperOptions {
   sessionId: string;
   goal: string;

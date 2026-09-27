@@ -296,14 +296,19 @@ export class TaskStore {
 
   // -- 变更 ---------------------------------------------------------
 
-  create(subject: string, description: string, activeForm?: string): { task: Task } & TaskMutationResult {
+  create(
+    subject: string,
+    description: string,
+    activeForm?: string,
+    metadata?: Record<string, unknown>,
+  ): { task: Task } & TaskMutationResult {
     const now = Date.now();
     const task: Task = {
       id: String(this._nextId++),
       subject,
       description,
       status: "pending",
-      metadata: {},
+      metadata: metadata ? { ...metadata } : {},
       blocks: [],
       blockedBy: [],
       createdAt: now,
@@ -414,6 +419,52 @@ export class TaskStore {
     return { cleared, saveError: cleared > 0 ? this._save() : undefined };
   }
 
+  /**
+   * 分叉消毒：分叉里从来没有活着的执行体。
+   *
+   * 清掉与父会话运行体的全部关联（`agentId` / `result` / `lastError` / 续跑痕迹 /
+   * 子清单摘要），并把 `in_progress` 降级为 `pending` —— 分叉继承任务内容，
+   * 但不继承"谁在做"。
+   */
+  sanitizeForFork(now = Date.now()): { changed: string[] } & TaskMutationResult {
+    const dropped = [
+      "agentId",
+      "result",
+      "lastError",
+      "resumeHint",
+      "resumeAttempts",
+      "interruptedAt",
+      "resumedAt",
+      "lastSettledAt",
+      "lastOutcome",
+      "taskSummary",
+    ];
+    const changed: string[] = [];
+    for (const task of this._tasks.values()) {
+      let touched = false;
+      const metadata: Record<string, unknown> = { ...task.metadata };
+      for (const key of dropped) {
+        if (key in metadata) {
+          delete metadata[key];
+          touched = true;
+        }
+      }
+      if (task.owner !== undefined) {
+        delete task.owner;
+        touched = true;
+      }
+      if (task.status === "in_progress") {
+        task.status = "pending";
+        touched = true;
+      }
+      if (!touched) continue;
+      task.metadata = metadata;
+      task.updatedAt = now;
+      changed.push(task.id);
+    }
+    return { changed, saveError: changed.length > 0 ? this._save() : undefined };
+  }
+
   // -- 启动对账 -----------------------------------------------------
 
   /**
@@ -493,6 +544,42 @@ export class TaskStore {
 }
 
 // ------------------------------------------------------------------
+// 压缩快照
+// ------------------------------------------------------------------
+
+/** 快照里最多保留多少条已完成任务（清单可能很长，但压缩上下文要省 token）。 */
+export const TASK_SNAPSHOT_MAX_COMPLETED = 5;
+
+/**
+ * 把任务清单渲染成压缩上下文用的快照。
+ *
+ * 压缩会用一条 continuation prompt 替换旧对话，而任务清单在磁盘上、不在消息里；
+ * 这条快照在压缩点重新注入，保证新实例仍能看到当前任务。
+ * 限量：全部未完成项 + 最近完成的若干条。
+ */
+export function formatTaskSnapshot(tasks: readonly Task[]): string {
+  if (tasks.length === 0) return "";
+  const open = tasks.filter((task) => task.status !== "completed");
+  const completed = tasks.filter((task) => task.status === "completed");
+  const shown = completed.slice(-TASK_SNAPSHOT_MAX_COMPLETED);
+
+  const lines: string[] = [];
+  for (const task of [...open, ...shown]) {
+    let line = `- #${task.id} [${task.status}] ${task.subject}`;
+    const agentId = typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined;
+    if (agentId) line += ` (owner: ${agentId})`;
+    const hint = readResumeHint(task);
+    if (hint && task.status !== "completed") {
+      line += hint.resumable ? " (interrupted — resumable via task_resume)" : " (interrupted — needs re-dispatch)";
+    }
+    lines.push(line);
+  }
+
+  const hidden = completed.length - shown.length;
+  if (hidden > 0) lines.push(`- … and ${hidden} earlier completed task(s)`);
+  return `[Current Tasks]\n${lines.join("\n")}`;
+}
+// ------------------------------------------------------------------
 // 辅助
 // ------------------------------------------------------------------
 
@@ -514,6 +601,11 @@ function edgeWarning(
   if (!target) return `#${targetId} does not exist`;
   if (mutual) return `cycle: #${id} and #${targetId} block each other`;
   return undefined;
+}
+
+/** 读取任务上的续跑提示（对账产物）。 */
+export function readResumeHint(task: Task): TaskResumeHint | undefined {
+  return asResumeHint(task.metadata["resumeHint"]);
 }
 
 function asResumeHint(raw: unknown): TaskResumeHint | undefined {

@@ -33,6 +33,8 @@ import { LogIdAllocator, type LogEntry, type LogEntryType, type TuiDisplayKind }
 import type { ChildSessionMetaRecord } from "../session-tree-types.js";
 import { parseJsonc } from "../lib/jsonc.js";
 import type { MCPServerConfig } from "../config/config.js";
+import type { ThemeMode } from "./theme.js";
+import type { UiLanguage } from "../lib/ui-text.js";
 
 // ------------------------------------------------------------------
 // 常量
@@ -650,8 +652,10 @@ export interface SwarmflowSettings {
   // -- 显示 --
   /** 强调色 */
   accent_color?: string;
-  /** 主题模式："auto"（跟随终端）| "light" | "dark" | "default"（Catppuccin）| "dracula" | "brief"。默认："auto" */
-  theme_mode?: "auto" | "light" | "dark" | "default" | "dracula" | "brief";
+  /** 主题模式：brief（默认）| "dark" | "light"。"auto" 视为未设置，归一化为 brief。 */
+  theme_mode?: ThemeMode;
+  /** 界面语言：zh（默认）| en。安装向导中选择，供 UI 文案表使用。 */
+  ui_language?: UiLanguage;
   /** 内联写入/编辑差异显示模式。默认："compact" */
   diff_display?: "compact" | "full";
   /** 选择时自动复制：将拖拽选择自动复制到剪贴板。默认：true */
@@ -1595,6 +1599,7 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
   if (local.context_budget_percent !== undefined) merged.context_budget_percent = local.context_budget_percent;
   if (local.accent_color !== undefined) merged.accent_color = local.accent_color;
   if (local.theme_mode !== undefined) merged.theme_mode = local.theme_mode;
+  if (local.ui_language !== undefined) merged.ui_language = local.ui_language;
   if (local.permission_mode !== undefined) merged.permission_mode = local.permission_mode;
   if (local.sub_agent_inherit_mcp !== undefined) merged.sub_agent_inherit_mcp = local.sub_agent_inherit_mcp;
   if (local.sub_agent_inherit_hooks !== undefined) merged.sub_agent_inherit_hooks = local.sub_agent_inherit_hooks;
@@ -1700,6 +1705,7 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   if (settings.providers !== undefined) clean.providers = settings.providers;
   if (settings.accent_color !== undefined) clean.accent_color = settings.accent_color;
   if (settings.theme_mode !== undefined) clean.theme_mode = settings.theme_mode;
+  if (settings.ui_language !== undefined) clean.ui_language = settings.ui_language;
   if (settings.diff_display !== undefined) clean.diff_display = settings.diff_display;
   if (settings.permission_mode !== undefined) clean.permission_mode = settings.permission_mode;
   if (settings.disabled_skills !== undefined) clean.disabled_skills = settings.disabled_skills;

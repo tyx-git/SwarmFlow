@@ -55,11 +55,15 @@ const READ_TOOLS = new Set([
   "ask", "check_status", "await_event", "send",
   "bash_output", "skill", "reload", "time",
   "kill_shell",
+  // 任务清单是会话态，只读查看无副作用
+  "task_list", "task_get",
 ]);
 
 /** 可逆写工具集合 */
 const WRITE_REVERSIBLE_TOOLS = new Set([
   "write_file", "edit_file",
+  // 任务清单写入仅改会话态，可逆且不触碰工作区文件
+  "task_create", "task_update", "task_resume",
 ]);
 
 /** 派生工具集合 */

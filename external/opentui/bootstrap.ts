@@ -16,6 +16,7 @@ import {
   settingsToConfigInputs,
 } from "../../src/config/persistence.js";
 import { loadDotenv } from "../../src/lifecycle/dotenv.js";
+import type { ThemeModePref } from "../../src/config/theme.js";
 import { getSwarmflowHomeDir } from "../../src/lib/home-path.js";
 import {
   buildDefaultRegistry,
@@ -110,7 +111,7 @@ export interface OpenTuiRuntime {
   commandRegistry: CommandRegistry;
   verbose: boolean;
   /** Persisted user preference for theme mode. main.tsx feeds this into the resolver. */
-  themeModePref: "auto" | "light" | "dark" | "default" | "dracula" | "brief";
+  themeModePref: ThemeModePref;
   /** Persisted global preference for inline write/edit diff display. */
   diffDisplay: "compact" | "full";
   /** Persisted global preference for copy-on-select. Default: true. */
@@ -291,7 +292,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   const commandRegistry = buildDefaultRegistry();
   registerSkillCommands(commandRegistry, session.skills);
 
-  const themeModePref: "auto" | "light" | "dark" | "default" | "dracula" | "brief" = settings.theme_mode ?? "auto";
+  const themeModePref: ThemeModePref = settings.theme_mode ?? "auto";
   const diffDisplay: "compact" | "full" = globalSettings.diff_display === "full" ? "full" : "compact";
   const copyOnSelect: boolean = globalSettings.copy_on_select !== false;
 

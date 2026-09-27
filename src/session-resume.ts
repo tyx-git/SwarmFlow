@@ -222,6 +222,7 @@ export function applySessionRestore(
   session: Session,
   store: SessionStore,
   sessionDir: string,
+  opts: { fork?: boolean } = {},
 ): RestoreResult {
   const logJsonPath = join(sessionDir, "log.json");
   if (!existsSync(logJsonPath)) {
@@ -254,6 +255,16 @@ export function applySessionRestore(
     const prepared = session.prepareRestoreFromLog(logData.meta, repairedEntries, logData.idAllocator);
     const restoreWarnings = session.commitPreparedRestore(prepared);
     for (const w of restoreWarnings) warnings.push(`[resume] ${w}`);
+
+    // 启动对账：重启后子代理一律视为已终止，只按阈值判定是否值得断点续跑。
+    // 必须在这里（子会话提交之后）：阈值指标来自恢复出的子日志。
+    try {
+      const reconcile = session.reconcileTaskListAfterRestore({ fork: opts.fork === true });
+      for (const w of reconcile.warnings) warnings.push(`[tasks] ${w}`);
+      if (reconcile.notice) session.deliverRestoreNotice(reconcile.notice);
+    } catch (e) {
+      warnings.push(`[tasks] reconciliation failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   } catch (e) {
     store.restoreBindingState(bindingState);
     return {

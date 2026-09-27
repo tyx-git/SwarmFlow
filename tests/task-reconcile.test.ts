@@ -13,6 +13,7 @@ function signals(overrides: Partial<ChildResumeSignals> = {}): ChildResumeSignal
     childId: "explorer-1",
     logAvailable: true,
     templateAvailable: true,
+    sessionAvailable: true,
     outcome: "none",
     taskAgentId: "explorer-1",
     toolCalls: 12,
@@ -40,6 +41,10 @@ describe("decideChildResume", () => {
     expect(decideChildResume(signals({ templateAvailable: false }))).toEqual({ resumable: false, reason: "template_missing" });
   });
 
+  it("does not resume a child whose session object was already released", () => {
+    expect(decideChildResume(signals({ sessionAvailable: false }))).toEqual({ resumable: false, reason: "child_released" });
+  });
+
   it("does not resume a task already taken over by a newer run", () => {
     expect(decideChildResume(signals({ taskAgentId: "worker-2" }))).toEqual({ resumable: false, reason: "superseded" });
   });
@@ -59,6 +64,14 @@ describe("decideChildResume", () => {
     expect(decideChildResume(signals({ outcome: "interrupted", cause: "natural" })).resumable).toBe(true);
   });
 
+  it("exempts persistent children from the threshold", () => {
+    const decision = decideChildResume(signals({ mode: "persistent", toolCalls: 0, tokensIn: 0 }));
+    expect(decision).toEqual({ resumable: true, reason: "persistent_child" });
+    // 排除规则仍然优先于豁免
+    expect(decideChildResume(signals({ mode: "persistent", outcome: "completed" })).reason).toBe("already_completed");
+    expect(decideChildResume(signals({ mode: "persistent", cause: "user_mass_interrupt" })).reason).toBe("user_stopped");
+  });
+
   it("lets hard gates outrank the threshold", () => {
     const decision = decideChildResume(signals({ logAvailable: false, toolCalls: 999, tokensIn: 999_999 }));
     expect(decision).toEqual({ resumable: false, reason: "log_unavailable" });
@@ -73,6 +86,24 @@ describe("childRestartState", () => {
   it("marks every restarted child as failed while keeping the interrupted semantics", () => {
     expect(childRestartState(true)).toEqual({ lifecycle: "idle", status: "error", outcome: "interrupted", keepSession: true });
     expect(childRestartState(false)).toEqual({ lifecycle: "archived", status: "error", outcome: "interrupted", keepSession: false });
+  });
+
+  it("preserves a verdict the child already reached before the restart", () => {
+    expect(childRestartState(false, "completed")).toEqual({
+      lifecycle: "archived",
+      status: "completed",
+      outcome: "completed",
+      keepSession: false,
+    });
+    expect(childRestartState(false, "error")).toEqual({
+      lifecycle: "archived",
+      status: "error",
+      outcome: "error",
+      keepSession: false,
+    });
+    // 被重启打断的子才统一落成 fail
+    expect(childRestartState(false, "interrupted").status).toBe("error");
+    expect(childRestartState(true, "none").lifecycle).toBe("idle");
   });
 
   it("never writes outcome=error, so a later restart cannot self-lock", () => {
@@ -109,6 +140,8 @@ describe("describeResumeReason", () => {
       "superseded",
       "log_unavailable",
       "template_missing",
+      "child_released",
+      "persistent_child",
     ];
     for (const reason of reasons) {
       expect(describeResumeReason(reason).length).toBeGreaterThan(0);

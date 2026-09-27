@@ -135,7 +135,7 @@ export const COMMENT_EXEMPT_COLORS = [
   // Shiki theme comments
   RGBA.fromHex("#51597D"),  // tokyo-night
   RGBA.fromHex("#5A6673"),  // ayu-dark
-  RGBA.fromHex("#6272A4"),  // dracula
+  RGBA.fromHex("#6272A4"),  // muted comment / metadata
   RGBA.fromHex("#6A9955"),  // dark-plus
 ];
 

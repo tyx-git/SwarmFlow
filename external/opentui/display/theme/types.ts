@@ -1,6 +1,8 @@
 import type { SyntaxStyle } from "@opentui/core";
+import type { ThemeMode } from "../../../../src/config/theme.js";
 
-export type ThemeMode = "dark" | "light" | "default" | "dracula" | "brief";
+// 主题模式与可用列表的唯一真实来源在 src/config/theme.ts（避免两处硬编码）。
+export type { ThemeMode } from "../../../../src/config/theme.js";
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends readonly (infer U)[]

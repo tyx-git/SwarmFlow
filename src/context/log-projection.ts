@@ -223,7 +223,7 @@ function toConversationEntry(
       if (typeof streamMode === "string") ce.meta.toolStreamMode = streamMode;
       const fmd = entry.meta["fileModifyData"];
       if (fmd && typeof fmd === "object") ce.meta.fileModifyData = fmd;
-      // Forward toolMetadata (e.g. planFileOperation) so the TUI can relabel a
+      // Forward toolMetadata so the TUI can relabel a
       // plan-file write/edit as "Update Todos" while it streams —before the
       // tool_result lands and carries the same flag. Without this the call-side
       // flag set in tool-loop is dropped here and "Write" + diff flashes first.

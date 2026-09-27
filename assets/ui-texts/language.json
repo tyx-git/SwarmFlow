@@ -1,0 +1,397 @@
+{
+  "$comment": "UI 文案表。顶层 Chinese / English；第二层为模块(Common/Error/Commands/Views/Init)；{var} 为占位符。新增条目必须同时补两份, 测试会校验键集合一致。",
+  "Chinese": {
+    "Common": {
+      "unknown": "未知",
+      "current": "当前",
+      "copy": "复制",
+      "yes": "是",
+      "no": "否",
+      "cancel": "取消",
+      "done": "完成",
+      "running": "运行中",
+      "pending": "等待中",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "languageNameZh": "中文",
+      "languageNameEn": "English"
+    },
+    "Error": {
+      "unknownCommand": "未知命令：{command}",
+      "commandFailed": "命令执行失败（{command}）：{message}",
+      "commandDenied": "命令被钩子拒绝。",
+      "valueRequired": "必须填写一个值。",
+      "copyFailed": "复制失败。",
+      "copiedToClipboard": "已复制到剪贴板",
+      "askNotImplemented": "询问应答在当前原型中尚未实现。",
+      "waitForFinish": "请等助手完成当前工作。",
+      "alreadyQueued": "已有一条排队的消息",
+      "compacting": "正在压缩上下文 —— 请稍后再试",
+      "assistantBusy": "助手正忙，当前原型无法在此排队输入。",
+      "noShells": "没有跟踪到后台 shell。",
+      "noClipboardImage": "剪贴板中没有图片。",
+      "imagePasteFailed": "图片粘贴失败：{message}",
+      "interruptFailed": "中断失败：{reason}",
+      "interruptChildFailed": "中断子代理失败：{reason}",
+      "backToPrimary": "请先返回主会话再发送消息。",
+      "subAgentModelFixed": "子代理模型由模板或模型层级固定，不能手动修改。"
+    },
+    "Commands": {
+      "/theme": {
+        "echo": "主题切换为",
+        "usage": "用法：/theme {modes}",
+        "current": "当前主题模式为“{mode}”。",
+        "invalid": "无法识别的主题模式。",
+        "hint": "主题：{mode}"
+      },
+      "/effort": {
+        "echo": "思考深度切换为",
+        "current": "当前思考深度：{level}",
+        "invalid": "思考深度“{level}”不可用。可用：{levels}",
+        "set": "思考深度已设置为：{level}。",
+        "note": "注意：{level} 仅被 {vendors} 模型支持。"
+      },
+      "/model": {
+        "echo": "模型切换为",
+        "current": "当前模型：{model}",
+        "switchCancelled": "已取消模型切换。",
+        "notSupported": "当前会话不支持切换模型。"
+      },
+      "/autoupdate": {
+        "echo": "自动更新切换为"
+      },
+      "/permission": {
+        "echo": "权限模式切换为"
+      },
+      "/sidebar": {
+        "echo": "侧栏切换为"
+      },
+      "/diff": {
+        "echo": "差异显示切换为"
+      },
+      "/copy": {
+        "echo": "选择复制切换为"
+      },
+      "/mcp": {
+        "echo": "MCP 切换为"
+      },
+      "/skills": {
+        "echo": "技能切换为"
+      },
+      "/hooks": {
+        "echo": "钩子切换为"
+      },
+      "/provider": {
+        "echo": "供应商切换为"
+      },
+      "/language": {
+        "echo": "界面语言切换为",
+        "usage": "用法：/language {languages}",
+        "current": "当前界面语言：{language}",
+        "hint": "界面语言：{language}"
+      }
+    },
+    "Views": {
+      "input": {
+        "askPending": "询问等待应答…",
+        "childActive": "Esc/^C 关闭或中断 · Opt+←→ 切换标签 · Opt+↑ 主会话",
+        "queuedHint": "↑ 可编辑排队中的消息",
+        "default": "输入消息或 /命令"
+      },
+      "permission": {
+        "yolo": "全自动",
+        "readOnly": "只读",
+        "reversible": "可回退"
+      },
+      "indicators": {
+        "agents": " 子代理（{parts}） ",
+        "agentsRunning": "{count} 运行中",
+        "agentsDone": "{count} 已完成",
+        "shells": " 后台 Shell（{count} 运行中） ",
+        "tasks": " 任务（{parts}） ",
+        "tasksPending": "{count} 待办",
+        "tasksDone": "{count} 已完成"
+      },
+      "copy": {
+        "copied": "已复制到剪贴板"
+      },
+      "markdownRaw": {
+        "on": "Markdown 原文：开",
+        "off": "Markdown 原文：关"
+      },
+      "sidebar": {
+        "switched": "侧栏：{mode}"
+      },
+      "shell": {
+        "pwsh7": "Shell：PowerShell 7+（建议安装 Git for Windows 以获得更好兼容性）",
+        "ps51": "Shell：Windows PowerShell 5.1（建议安装 Git for Windows 以获得更好兼容性）"
+      },
+      "image": {
+        "pasted": "已粘贴图片（{width}×{height}，{size} MB）"
+      },
+      "interrupt": {
+        "child": "已中断 {agentId}",
+        "allAgents": "已中断全部子代理",
+        "allShells": "已停止全部后台 shell"
+      },
+      "exit": {
+        "pressAgain": "再按一次 Ctrl+C 退出"
+      },
+      "queue": {
+        "restored": "已恢复排队消息",
+        "sending": "排队消息正在发送",
+        "queued": "消息已排队"
+      }
+    },
+    "Init": {
+      "language": {
+        "title": "选择语言 / Select language",
+        "chinese": "中文（Chinese）",
+        "english": "英文（English）"
+      },
+      "banner": {
+        "title": "欢迎使用 SwarmFlow 安装向导",
+        "backHint": "（Esc 或 Ctrl+C：返回上一步）"
+      },
+      "wizard": {
+        "skipped": "  已跳过安装向导。",
+        "complete": "  ✓ 安装完成。",
+        "hintProviders": "  使用 /provider 添加供应商，用 /model 选择模型。",
+        "themeFallback": "  使用默认主题（Brief）。",
+        "providerFallback": "  跳过供应商配置。"
+      },
+      "search": {
+        "detected": "  ✓ 联网搜索：{name}(已检测到 {env})",
+        "prompt": "联网搜索：粘贴 API key 可获得更好效果（强烈推荐）",
+        "skipChoice": "跳过（使用内置免费搜索 — 质量有限）",
+        "skipDone": "  已启用内置搜索（Exa → Parallel → DuckDuckGo）。\n",
+        "signUp": "\n  请到 {url} 注册并复制 API key。\n",
+        "pasteKey": "粘贴你的 {env}",
+        "saved": "  ✓ 已保存到 ~/.swarmflow/.env\n",
+        "skipped": "  已跳过。稍后可在 ~/.swarmflow/.env 中配置。\n"
+      },
+      "theme": {
+        "prompt": "选择主题",
+        "brief": "Brief（默认）",
+        "dark": "Dark",
+        "light": "Light",
+        "saved": "  ✓ 主题已设置为：{mode}\n"
+      },
+      "provider": {
+        "ask": "现在要配置第三方中转供应商吗？",
+        "yes": "是 — 配置自定义供应商端点",
+        "later": "跳过 — 稍后用 /provider 配置",
+        "label": "供应商显示名称（例如 My LLM）",
+        "endpointUrl": "{label} — 接口地址（例如 https://api.example.com/v1）",
+        "protocol": "{label} — API 协议",
+        "protocolChoices": {
+          "openai-chat": "OpenAI Chat Completions",
+          "openai-responses": "OpenAI Responses API",
+          "anthropic": "Anthropic Messages",
+          "gemini": "Gemini generateContent"
+        },
+        "apiKey": "{label} — API key",
+        "modelId": "{label} — 模型 ID（例如 gpt-4o）",
+        "contextLength": "{label} — 上下文长度（token，例如 128000）",
+        "added": "  ✓ 已添加供应商「{label}」，模型 {model}\n"
+      }
+    }
+  },
+  "English": {
+    "Common": {
+      "unknown": "unknown",
+      "current": "current",
+      "copy": "Copy",
+      "yes": "Yes",
+      "no": "No",
+      "cancel": "Cancel",
+      "done": "Done",
+      "running": "running",
+      "pending": "pending",
+      "enabled": "enabled",
+      "disabled": "disabled",
+      "languageNameZh": "中文（Chinese）",
+      "languageNameEn": "English"
+    },
+    "Error": {
+      "unknownCommand": "Unknown command: {command}",
+      "commandFailed": "Command failed ({command}): {message}",
+      "commandDenied": "Command denied by hook.",
+      "valueRequired": "A value is required.",
+      "copyFailed": "Copy failed.",
+      "copiedToClipboard": "Copied to clipboard",
+      "askNotImplemented": "Ask resolution is not implemented in this prototype yet.",
+      "waitForFinish": "Wait until the assistant finishes.",
+      "alreadyQueued": "A message is already queued",
+      "compacting": "Compacting context — try again in a moment",
+      "assistantBusy": "The assistant is busy and this prototype cannot queue input here.",
+      "noShells": "No background shells tracked.",
+      "noClipboardImage": "No image in clipboard.",
+      "imagePasteFailed": "Image paste failed: {message}",
+      "interruptFailed": "Interrupt failed: {reason}",
+      "interruptChildFailed": "Interrupt failed: {reason}",
+      "backToPrimary": "Return to the primary session to send messages.",
+      "subAgentModelFixed": "Sub-Agent models are fixed by their template or tier and cannot be changed manually."
+    },
+    "Commands": {
+      "/theme": {
+        "echo": "Theme switched to",
+        "usage": "Usage: /theme {modes}",
+        "current": "Theme mode is \"{mode}\".",
+        "invalid": "Unrecognized theme mode.",
+        "hint": "Theme: {mode}"
+      },
+      "/effort": {
+        "echo": "Thinking depth switched to",
+        "current": "Current effort: {level}",
+        "invalid": "Effort \"{level}\" is not valid. Available: {levels}",
+        "set": "Effort set to: {level}.",
+        "note": "Note: {level} is only supported by {vendors} models."
+      },
+      "/model": {
+        "echo": "Model switched to",
+        "current": "Current model: {model}",
+        "switchCancelled": "Model switch cancelled.",
+        "notSupported": "Model switching is not supported in this session."
+      },
+      "/autoupdate": {
+        "echo": "Auto-update switched to"
+      },
+      "/permission": {
+        "echo": "Permission mode switched to"
+      },
+      "/sidebar": {
+        "echo": "Sidebar switched to"
+      },
+      "/diff": {
+        "echo": "Diff display switched to"
+      },
+      "/copy": {
+        "echo": "Copy on select switched to"
+      },
+      "/mcp": {
+        "echo": "MCP switched to"
+      },
+      "/skills": {
+        "echo": "Skills switched to"
+      },
+      "/hooks": {
+        "echo": "Hooks switched to"
+      },
+      "/provider": {
+        "echo": "Provider switched to"
+      },
+      "/language": {
+        "echo": "UI language switched to",
+        "usage": "Usage: /language {languages}",
+        "current": "Current UI language: {language}",
+        "hint": "UI language: {language}"
+      }
+    },
+    "Views": {
+      "input": {
+        "askPending": "ask pending...",
+        "childActive": "Esc/^C close or interrupt · Opt+←→ switch tabs · Opt+↑ main",
+        "queuedHint": "↑ to edit the queued message",
+        "default": "message or /command"
+      },
+      "permission": {
+        "yolo": "Full auto",
+        "readOnly": "Read-only",
+        "reversible": "Reversible"
+      },
+      "indicators": {
+        "agents": " Agents ({parts}) ",
+        "agentsRunning": "{count} running",
+        "agentsDone": "{count} done",
+        "shells": " Shells ({count} running) ",
+        "tasks": " Tasks ({parts}) ",
+        "tasksPending": "{count} pending",
+        "tasksDone": "{count} done"
+      },
+      "copy": {
+        "copied": "Copied to clipboard"
+      },
+      "markdownRaw": {
+        "on": "Markdown raw: ON",
+        "off": "Markdown raw: OFF"
+      },
+      "sidebar": {
+        "switched": "Sidebar: {mode}"
+      },
+      "shell": {
+        "pwsh7": "Shell: PowerShell 7+ (install Git for Windows for better compatibility)",
+        "ps51": "Shell: Windows PowerShell 5.1 (install Git for Windows for better compatibility)"
+      },
+      "image": {
+        "pasted": "Image pasted ({width}×{height}, {size} MB)"
+      },
+      "interrupt": {
+        "child": "Interrupted {agentId}",
+        "allAgents": "All sub-agents interrupted",
+        "allShells": "All background shells killed"
+      },
+      "exit": {
+        "pressAgain": "Press Ctrl+C again to exit"
+      },
+      "queue": {
+        "restored": "Queued message restored",
+        "sending": "Queued message is already being sent",
+        "queued": "Message queued"
+      }
+    },
+    "Init": {
+      "language": {
+        "title": "Select language / 选择语言",
+        "chinese": "中文(Chinese)",
+        "english": "英文(English)"
+      },
+      "banner": {
+        "title": "Welcome to SwarmFlow Setup!",
+        "backHint": "(Esc or Ctrl+C: go back one step)"
+      },
+      "wizard": {
+        "skipped": "  Setup skipped.",
+        "complete": "  ✓ Setup complete.",
+        "hintProviders": "  Use /provider to add providers, /model to select a model.",
+        "themeFallback": "  Using default theme (Brief).",
+        "providerFallback": "  Skipping provider setup."
+      },
+      "search": {
+        "detected": "  ✓ Web search: {name} ({env} detected)",
+        "prompt": "Web search: Paste an API key for better results (strongly recommended)",
+        "skipChoice": "Skip (use built-in free search — limited quality)",
+        "skipDone": "  Using built-in search (Exa → Parallel → DuckDuckGo).\n",
+        "signUp": "\n  Sign up at {url} and copy your API key.\n",
+        "pasteKey": "Paste your {env}",
+        "saved": "  ✓ Saved to ~/.swarmflow/.env\n",
+        "skipped": "  Skipped. You can set it later in ~/.swarmflow/.env\n"
+      },
+      "theme": {
+        "prompt": "Select theme",
+        "brief": "Brief (default)",
+        "dark": "Dark",
+        "light": "Light",
+        "saved": "  ✓ Theme set to: {mode}\n"
+      },
+      "provider": {
+        "ask": "Set up a third-party relay provider now?",
+        "yes": "Yes — configure a custom provider endpoint",
+        "later": "Skip — I'll configure later via /provider",
+        "label": "Provider display name (e.g. My LLM)",
+        "endpointUrl": "{label} — endpoint URL (e.g. https://api.example.com/v1)",
+        "protocol": "{label} — API protocol",
+        "protocolChoices": {
+          "openai-chat": "OpenAI Chat Completions",
+          "openai-responses": "OpenAI Responses API",
+          "anthropic": "Anthropic Messages",
+          "gemini": "Gemini generateContent"
+        },
+        "apiKey": "{label} — API key",
+        "modelId": "{label} — model ID (e.g. gpt-6-luna)",
+        "contextLength": "{label} — context length (tokens, e.g. 128000)",
+        "added": "  ✓ Added provider \"{label}\" with model {model}\n"
+      }
+    }
+  }
+}

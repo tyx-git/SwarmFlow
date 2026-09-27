@@ -436,11 +436,15 @@ describe("resume command", () => {
     await resume!.handler(ctx, "1");
 
     expect(liveStore.sessionDir).toBe(sessionDir);
+    // 启动对账：重启后没有任何子代理是活的，恢复出的子一律归档；
+    // 该子重启前已正常结束，因此保留自己的结局（completed），不会被冒充成 failed。
     expect(session.getChildSessionSnapshots()).toEqual([
       expect.objectContaining({
         id: "repo-mapper",
         mode: "persistent",
-        lifecycle: "idle",
+        lifecycle: "archived",
+        status: "completed",
+        outcome: "completed",
       }),
     ]);
     expect(showMessage).not.toHaveBeenCalledWith(expect.stringContaining("Failed to restore session"));

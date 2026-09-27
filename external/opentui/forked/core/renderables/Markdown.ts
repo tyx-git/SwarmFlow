@@ -244,6 +244,13 @@ type CoalescedLayoutToken = MarkedToken & {
   [COALESCED_MARGIN_TOP]?: number
 }
 
+/**
+ * marked 的 token 联合类型里没有 `Checkbox`（任务列表的勾选框是 list_item 上的字段），
+ * 而列表渲染对历史/变体输出保留了防御性判断。这里把该变体显式纳入比较类型，
+ * 消除 TS2367（“该比较永远不成立”）——纯类型改动，不影响运行时行为。
+ */
+type ListChildToken = MarkedToken | { type: "checkbox" }
+
 function getCoalescedMarginTop(token: MarkedToken): number {
   return (token as CoalescedLayoutToken)[COALESCED_MARGIN_TOP] ?? 0
 }
@@ -828,7 +835,7 @@ export class MarkdownRenderable extends Renderable {
 
     let pendingMarginTop = 0
     for (let index = 0; index < input.item.tokens.length; index += 1) {
-      const child = input.item.tokens[index] as MarkedToken | undefined
+      const child = input.item.tokens[index] as ListChildToken | undefined
       if (!child) continue
       if (child.type === "checkbox") continue
       if (child.type === "space") {
@@ -874,7 +881,7 @@ export class MarkdownRenderable extends Renderable {
     let pendingMarginTop = 0
 
     for (let tokenIndex = 0; tokenIndex < item.tokens.length; tokenIndex += 1) {
-      const token = item.tokens[tokenIndex] as MarkedToken | undefined
+      const token = item.tokens[tokenIndex] as ListChildToken | undefined
       if (!token) continue
       if (token.type === "checkbox") continue
       if (token.type === "space") {
@@ -911,7 +918,7 @@ export class MarkdownRenderable extends Renderable {
   private getRenderableListItemTokens(item: Tokens.ListItem): MarkedToken[] {
     const tokens: MarkedToken[] = []
 
-    for (const token of item.tokens as MarkedToken[]) {
+    for (const token of item.tokens as ListChildToken[]) {
       if (token.type === "checkbox" || token.type === "space") continue
       tokens.push(token)
     }

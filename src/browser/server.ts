@@ -6,9 +6,8 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
-import { homedir } from "node:os";
 import net from "node:net";
 
 let activeServer: Server | null = null;
@@ -106,14 +105,12 @@ export interface ServerInfo {
 
 /**
  * Start a Node.js HTTP server serving files from `rootDir`.
- * Handles GET (static files) and POST /save-theme (save custom theme JSON).
+ * Handles GET (static files).
  */
 export async function startServer(rootDir: string): Promise<ServerInfo> {
   if (activeServer) {
     stopServer();
   }
-
-  const customThemesDir = join(homedir(), ".swarmflow", "custom-themes");
 
   const port = await findAvailablePort();
 
@@ -125,36 +122,10 @@ export async function startServer(rootDir: string): Promise<ServerInfo> {
     if (method === "OPTIONS") {
       res.writeHead(200, {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type",
       });
       res.end();
-      return;
-    }
-
-    // POST /save-theme
-    if (method === "POST" && urlPath === "/save-theme") {
-      try {
-        const body = await readBody(req);
-        const data = JSON.parse(body) as { name?: string; colors?: Record<string, string> };
-        const name = data.name?.trim();
-        const colors = data.colors ?? {};
-
-        if (!name) {
-          sendJson(res, 400, { error: "name required" });
-          return;
-        }
-
-        // Sanitize name — only alphanumeric, dash, underscore
-        const safeName = name.replace(/[^a-zA-Z0-9-_]/g, "");
-        mkdirSync(customThemesDir, { recursive: true });
-        const filePath = join(customThemesDir, `${safeName}.json`);
-        writeFileSync(filePath, JSON.stringify({ name: safeName, colors }, null, 2), "utf-8");
-
-        sendJson(res, 200, { ok: true, path: filePath });
-      } catch (e) {
-        sendJson(res, 500, { error: e instanceof Error ? e.message : String(e) });
-      }
       return;
     }
 
@@ -187,7 +158,3 @@ export function stopServer(): void {
   }
 }
 
-/** Get the current server URL, or null if not running. */
-export function getServerUrl(): string | null {
-  return currentPort > 0 ? `http://127.0.0.1:${currentPort}` : null;
-}

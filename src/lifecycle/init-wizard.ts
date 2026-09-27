@@ -1,9 +1,12 @@
 /**
  * swarmflow 的初始化向导。
  *
- * 简化版：联网搜索 → 主题 → 第三方中转（可选）→ 直接进入主界面。
- * 供应商和模型也可通过 /provider 和 /model 命令随时配置。
+ * 步骤：语言选择 → 联网搜索 → 主题（Brief/Dark/Light）→ 第三方中转（可选）
+ * → 进入主界面。供应商和模型也可通过 /provider 和 /model 命令随时配置。
  * 支持 Ctrl+C / ESC 返回上一步。
+ *
+ * 所有面向用户的文案都来自 `assets/ui-texts/init-wizard.json`（Chinese /
+ * English 两份），本文件只保留流程逻辑，便于增删语言或改文案。
  */
 
 import { mkdirSync } from "node:fs";
@@ -12,6 +15,12 @@ import * as readline from "node:readline";
 import { select, input } from "@inquirer/prompts";
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
+import {
+  DEFAULT_UI_LANGUAGE,
+  createUiText,
+  type UiLanguage,
+  type UiText,
+} from "../lib/ui-text.js";
 import {
   type SwarmflowSettings,
   type ProviderEntry,
@@ -27,6 +36,8 @@ import { customProviderEnvVar } from "../providers/credential-flow.js";
 
 export interface WizardResult {
   homeDir: string;
+  /** 用户在向导中选择的界面语言。 */
+  language: UiLanguage;
 }
 
 // ------------------------------------------------------------------
@@ -80,18 +91,46 @@ interface SelectStepChoice {
   value: string;
 }
 
-async function selectStep(opts: { message: string; choices: SelectStepChoice[] }): Promise<string | Back> {
+interface WizardRuntime {
+  /** 界面语言（决定文案表）。 */
+  language: UiLanguage;
+  /** 文案表。 */
+  t: UiText;
+}
+
+async function selectStep(run: WizardRuntime, opts: { message: string; choices: SelectStepChoice[] }): Promise<string | Back> {
   return withEscBack((signal) =>
     select({ message: opts.message, choices: opts.choices, theme: ESC_BACK_SELECT_THEME }, { signal }),
   );
 }
 
-async function inputStep(opts: { message: string; default?: string }): Promise<string | Back> {
+async function inputStep(run: WizardRuntime, opts: { message: string; default?: string }): Promise<string | Back> {
   return withEscBack((signal) => input({ message: opts.message, default: opts.default }, { signal }));
 }
 
 // ------------------------------------------------------------------
-// 联网搜索配置
+// Stage 0: 语言选择
+// ------------------------------------------------------------------
+
+async function stageLanguage(): Promise<UiLanguage | Back> {
+  const promptText = createUiText(DEFAULT_UI_LANGUAGE);
+  const choice = await selectStep(
+    { language: DEFAULT_UI_LANGUAGE, t: promptText },
+    {
+      message: promptText.get(["Init", "language", "title"]),
+      choices: [
+        { name: promptText.get(["Init", "language", "chinese"]), value: "zh" },
+        { name: promptText.get(["Init", "language", "english"]), value: "en" },
+      ],
+    },
+  );
+  if (choice === BACK) return BACK;
+  const language: UiLanguage = choice === "en" ? "en" : "zh";
+  return language;
+}
+
+// ------------------------------------------------------------------
+// Stage 1: 联网搜索配置
 // ------------------------------------------------------------------
 
 const SEARCH_API_OPTIONS = [
@@ -101,131 +140,143 @@ const SEARCH_API_OPTIONS = [
   { env: "BRAVE_SEARCH_API_KEY", name: "Brave Search", url: "https://brave.com/search/api/", free: "$5 credit" },
 ] as const;
 
-async function stageWebSearch(): Promise<"next" | Back> {
+async function stageWebSearch(run: WizardRuntime): Promise<"next" | Back> {
+  const { t } = run;
   const configured = SEARCH_API_OPTIONS.find(({ env }) => process.env[env]?.trim());
   if (configured) {
-    console.log(`  ✓ Web search: ${configured.name} (${configured.env} detected)\n`);
+    console.log(t.get(["Init", "search", "detected"], { name: configured.name, env: configured.env }) + "\n");
     return "next";
   }
 
-  const choice = await selectStep({
-    message: "Web search: Paste an API key for better results (strongly recommended)",
+  const choice = await selectStep(run, {
+    message: t.get(["Init", "search", "prompt"]),
     choices: [
       ...SEARCH_API_OPTIONS.map((opt) => ({
         name: `${opt.name} — ${opt.free} free → ${opt.url}`,
         value: opt.env,
       })),
-      { name: "Skip (use built-in free search — limited quality)", value: "skip" },
+      { name: t.get(["Init", "search", "skipChoice"]), value: "skip" },
     ],
   });
 
   if (choice === BACK) return BACK;
   if (choice === "skip") {
-    console.log("  Using built-in search (Exa → Parallel → DuckDuckGo).\n");
+    console.log(t.get(["Init", "search", "skipDone"]));
     return "next";
   }
 
   const selected = SEARCH_API_OPTIONS.find(({ env }) => env === choice)!;
-  console.log(`\n  Sign up at ${selected.url} and copy your API key.\n`);
+  console.log(t.get(["Init", "search", "signUp"], { url: selected.url }));
 
-  const key = await inputStep({ message: `Paste your ${selected.env}` });
+  const key = await inputStep(run, { message: t.get(["Init", "search", "pasteKey"], { env: selected.env }) });
   if (key === BACK) return BACK;
 
   if (key.trim()) {
     setDotenvKey(selected.env, key.trim());
-    console.log(`  ✓ Saved to ~/.swarmflow/.env\n`);
+    console.log(t.get(["Init", "search", "saved"]));
   } else {
-    console.log("  Skipped. You can set it later in ~/.swarmflow/.env\n");
+    console.log(t.get(["Init", "search", "skipped"]));
   }
 
   return "next";
 }
 
 // ------------------------------------------------------------------
-// 主题选择
+// Stage 2: 主题选择
 // ------------------------------------------------------------------
 
-const THEME_OPTIONS = [
-  { name: "Default (dark)", value: "default" },
-  { name: "Dracula", value: "dracula" },
-  { name: "Brief", value: "brief" },
-  { name: "Light", value: "light" },
-  { name: "Auto (follow system)", value: "auto" },
-];
+function themeChoicesFor(t: UiText): SelectStepChoice[] {
+  return [
+    { name: t.get(["Init", "theme", "brief"]), value: "brief" },
+    { name: t.get(["Init", "theme", "dark"]), value: "dark" },
+    { name: t.get(["Init", "theme", "light"]), value: "light" },
+  ];
+}
 
-async function stageTheme(homeDir: string): Promise<"next" | Back> {
-  const choice = await selectStep({
-    message: "Select theme",
-    choices: THEME_OPTIONS,
+async function stageTheme(homeDir: string, run: WizardRuntime): Promise<"next" | Back> {
+  const { t } = run;
+  const choice = await selectStep(run, {
+    message: t.get(["Init", "theme", "prompt"]),
+    choices: themeChoicesFor(t),
   });
 
   if (choice === BACK) return BACK;
 
   const settings = loadGlobalSettings(homeDir);
-  saveSettings({ ...settings, theme_mode: choice as SwarmflowSettings["theme_mode"] }, globalSettingsPath(homeDir));
-  console.log(`  ✓ Theme set to: ${choice}\n`);
+  saveSettings(
+    { ...settings, theme_mode: choice as SwarmflowSettings["theme_mode"] },
+    globalSettingsPath(homeDir),
+  );
+  console.log(t.get(["Init", "theme", "saved"], { mode: choice }));
 
   return "next";
 }
 
 // ------------------------------------------------------------------
-// 第三方中转设置
+// Stage 3: 第三方中转设置
 // ------------------------------------------------------------------
 
-const PROTOCOL_CHOICES = [
-  { name: "OpenAI Chat Completions", value: "openai-chat" },
-  { name: "OpenAI Responses API", value: "openai-responses" },
-  { name: "Anthropic Messages", value: "anthropic" },
-  { name: "Gemini generateContent", value: "gemini" },
-];
+function protocolChoicesFor(t: UiText): SelectStepChoice[] {
+  return [
+    { name: t.get(["Init", "provider", "protocolChoices", "openai-chat"]), value: "openai-chat" },
+    { name: t.get(["Init", "provider", "protocolChoices", "openai-responses"]), value: "openai-responses" },
+    { name: t.get(["Init", "provider", "protocolChoices", "anthropic"]), value: "anthropic" },
+    { name: t.get(["Init", "provider", "protocolChoices", "gemini"]), value: "gemini" },
+  ];
+}
 
-async function stageCustomProvider(homeDir: string): Promise<"next" | Back> {
-  const want = await selectStep({
-    message: "Set up a third-party relay provider now?",
+async function stageCustomProvider(homeDir: string, run: WizardRuntime): Promise<"next" | Back> {
+  const { t } = run;
+  const want = await selectStep(run, {
+    message: t.get(["Init", "provider", "ask"]),
     choices: [
-      { name: "Yes — configure a custom provider endpoint", value: "yes" },
-      { name: "Skip — I'll configure later via /provider", value: "skip" },
+      { name: t.get(["Init", "provider", "yes"]), value: "yes" },
+      { name: t.get(["Init", "provider", "later"]), value: "skip" },
     ],
   });
   if (want === BACK) return BACK;
   if (want === "skip") return "next";
 
-  // 1. Display name
-  const label = await inputStep({ message: "Provider display name (e.g. My LLM)" });
+  // 1. 显示名称
+  const label = await inputStep(run, { message: t.get(["Init", "provider", "label"]) });
   if (label === BACK) return BACK;
   if (!label.trim()) return "next";
+  const displayLabel = label.trim();
 
-  // 2. Endpoint URL
-  const rawUrl = await inputStep({ message: `${label.trim()} — endpoint URL (e.g. https://api.example.com/v1/chat/completions)` });
+  // 2. 接口地址：端点路径由下一步选择的协议决定，因此示例只给到 /v1
+  const rawUrl = await inputStep(run, { message: t.get(["Init", "provider", "endpointUrl"], { label: displayLabel }) });
   if (rawUrl === BACK) return BACK;
   if (!rawUrl.trim()) return "next";
 
-  // 3. Protocol
-  const protocol = await selectStep({
-    message: `${label.trim()} — API protocol`,
-    choices: PROTOCOL_CHOICES,
+  // 3. 协议
+  const protocol = await selectStep(run, {
+    message: t.get(["Init", "provider", "protocol"], { label: displayLabel }),
+    choices: protocolChoicesFor(t),
   });
   if (protocol === BACK) return BACK;
 
-  // 4. API key (optional)
-  const apiKey = await inputStep({ message: `${label.trim()} — API key (Enter to skip if none required)` });
+  // 4. API key（可选）
+  const apiKey = await inputStep(run, { message: t.get(["Init", "provider", "apiKey"], { label: displayLabel }) });
   if (apiKey === BACK) return BACK;
 
-  // 5. Model id
-  const modelId = await inputStep({ message: `${label.trim()} — model ID (e.g. gpt-4o)` });
+  // 5. 模型 ID
+  const modelId = await inputStep(run, { message: t.get(["Init", "provider", "modelId"], { label: displayLabel }) });
   if (modelId === BACK) return BACK;
   if (!modelId.trim()) return "next";
 
-  // 6. Context length
-  const ctxLenStr = await inputStep({ message: `${label.trim()} — context length (tokens, e.g. 128000)`, default: "128000" });
+  // 6. 上下文长度
+  const ctxLenStr = await inputStep(run, {
+    message: t.get(["Init", "provider", "contextLength"], { label: displayLabel }),
+    default: "128000",
+  });
   if (ctxLenStr === BACK) return BACK;
   const ctxLen = parseInt(ctxLenStr, 10) || 128000;
 
-  // Build provider entry
-  const baseId = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom";
+  // 组装 provider 条目（id 由显示名称派生，显示时用原始大小写 label）
+  const baseId = displayLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom";
   const entry: ProviderEntry = {
     custom: true,
-    label: label.trim(),
+    label: displayLabel,
     base_url: rawUrl.trim(),
     protocol: protocol as ProviderEntry["protocol"],
     models: [{ id: modelId.trim(), context_length: ctxLen }],
@@ -241,7 +292,7 @@ async function stageCustomProvider(homeDir: string): Promise<"next" | Back> {
   const providers = { ...(settings.providers ?? {}), [baseId]: entry };
   saveSettings({ ...settings, providers }, globalSettingsPath(homeDir));
 
-  console.log(`  ✓ Added provider "${label.trim()}" with model ${modelId.trim()}\n`);
+  console.log(t.get(["Init", "provider", "added"], { label: displayLabel, model: modelId.trim() }));
   return "next";
 }
 
@@ -249,38 +300,57 @@ async function stageCustomProvider(homeDir: string): Promise<"next" | Back> {
 // 主向导
 // ------------------------------------------------------------------
 
+const BANNER_WIDTH = 40;
+
 export async function runInitWizard(): Promise<WizardResult> {
   const homeDir = getSwarmflowHomeDir();
 
+  // Stage 0：语言选择（放在最前面，后续文案都由它决定）
+  const pickedLanguage = await stageLanguage();
+  if (pickedLanguage === BACK) {
+    console.log("\n  Skipping setup.\n");
+    return { homeDir, language: DEFAULT_UI_LANGUAGE };
+  }
+  const language = pickedLanguage;
+  const t = createUiText(language);
+  const run: WizardRuntime = { language, t };
+
+  // 语言选择立即落盘，后续 UI 文案（含命令回显）据此选择 Chinese/English。
+  {
+    const settings = loadGlobalSettings(homeDir);
+    saveSettings({ ...settings, ui_language: language }, globalSettingsPath(homeDir));
+  }
+
+  const title = ` ${t.get(["Init", "banner", "title"])} `;
   console.log();
-  console.log("  ╔══════════════════════════════════════╗");
-  console.log("  ║       Welcome to swarmflow Setup!        ║");
-  console.log("  ╚══════════════════════════════════════╝");
-  console.log("  (Esc or Ctrl+C: go back one step)\n");
+  console.log(`  ╔${"═".repeat(BANNER_WIDTH)}╗`);
+  console.log(`  ║${title.padEnd(BANNER_WIDTH)}║`);
+  console.log(`  ╚${"═".repeat(BANNER_WIDTH)}╝`);
+  console.log(`  ${t.get(["Init", "banner", "backHint"])}\n`);
 
   // Stage 1: 联网搜索
   {
-    const result = await stageWebSearch();
+    const result = await stageWebSearch(run);
     if (result === BACK) {
-      console.log("  Skipping setup.\n");
-      return { homeDir };
+      console.log(`\n${t.get(["Init", "wizard", "skipped"])}`);
+      return { homeDir, language };
     }
   }
 
   // Stage 2: 主题选择
   {
-    const result = await stageTheme(homeDir);
+    const result = await stageTheme(homeDir, run);
     if (result === BACK) {
       // 回退到 web search 不再循环
-      console.log("  Using default theme.\n");
+      console.log(t.get(["Init", "wizard", "themeFallback"]));
     }
   }
 
   // Stage 3: 第三方中转（可选）
   {
-    const result = await stageCustomProvider(homeDir);
+    const result = await stageCustomProvider(homeDir, run);
     if (result === BACK) {
-      console.log("  Skipping provider setup.\n");
+      console.log(t.get(["Init", "wizard", "providerFallback"]));
     }
   }
 
@@ -289,8 +359,8 @@ export async function runInitWizard(): Promise<WizardResult> {
   mkdirSync(join(homeDir, "skills"), { recursive: true });
   mkdirSync(join(process.cwd(), ".swarmflow"), { recursive: true });
 
-  console.log("  ✓ Setup complete.\n");
-  console.log("  Use /provider to add providers, /model to select a model.\n");
+  console.log(t.get(["Init", "wizard", "complete"]));
+  console.log(t.get(["Init", "wizard", "hintProviders"]));
 
-  return { homeDir };
+  return { homeDir, language };
 }

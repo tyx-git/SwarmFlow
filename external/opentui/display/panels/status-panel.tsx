@@ -3,7 +3,7 @@
 import React from "react";
 import { StyledText, RGBA, createTextAttributes, type TextChunk } from "@opentui/core";
 
-import type { PlanCheckpoint } from "../../../../src/lib/plan-state.js";
+import type { Task } from "../../../../src/lib/task-store.js";
 import type { ChildSessionSnapshot } from "../../../../src/session-tree-types.js";
 import type { ConversationPalette } from "../../components/conversation-types.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
@@ -25,8 +25,13 @@ function chunk(text: string, fg?: RGBA, attributes?: number): TextChunk {
 export interface StatusPanelProps {
   agents: readonly ChildSessionSnapshot[];
   showAgents: boolean;
-  todos: readonly PlanCheckpoint[];
-  showTodos: boolean;
+  tasks: readonly Task[];
+  showTasks: boolean;
+  /**
+   * 任务清单的持久化状态。只有 `"memory"`（本次会话确实没有存储）才显示提示；
+   * `"file"` 与过渡态 `"pending"` 都不显示 —— 正常会话的界面不受影响。
+   */
+  taskPersistence?: "file" | "pending" | "memory";
   colors: ConversationPalette;
   contentWidth: number;
   terminalHeight: number;
@@ -56,6 +61,12 @@ function lifecycleLabel(lifecycle: string): string {
 function agentStatusLabel(agent: ChildSessionSnapshot): string {
   if (agent.pendingAskKind === "approval") return "approval";
   if (agent.pendingAskKind === "agent_question") return "asking";
+  // 重启对账后所有子代理统一落成 fail：lifecycle 多为 idle/archived，必须按 status 展示，
+  // 否则会被 lifecycleLabel 显示成 "done"（误导）。
+  if (agent.status === "error") {
+    const resumable = agent.lifecycle === "idle";
+    return resumable ? "failed · resumable" : "failed";
+  }
   return lifecycleLabel(agent.lifecycle);
 }
 
@@ -101,42 +112,81 @@ function clampPanelHeight(terminalHeight: number): number {
   return Math.max(2, Math.min(8, Math.floor((terminalHeight - 8) * 0.2)));
 }
 
-// ── Todo rows (plan-panel style) ────────────────────────────
+// ── Task rows (pi-tasks style) ──────────────────────────────
 
-function buildCheckpointStyledText(cp: PlanCheckpoint, colors: ConversationPalette): StyledText {
-  switch (cp.status) {
-    case "done":
-      return new StyledText([
-        chunk(`${MARK_DONE} `, RGBA.fromHex(colors.todoDoneMark)),
-        chunk(cp.text, RGBA.fromHex(colors.todoDoneText), ATTRS_STRIKE),
-      ]);
-    case "active":
-      return new StyledText([
-        chunk(`${MARK_ACTIVE} `, RGBA.fromHex(colors.todoActiveMark)),
-        chunk(cp.text, RGBA.fromHex(colors.todoActiveText)),
-      ]);
-    default:
-      return new StyledText([
-        chunk(`${MARK_PENDING} `, RGBA.fromHex(colors.todoPendingMark)),
-        chunk(cp.text, RGBA.fromHex(colors.todoPendingText)),
-      ]);
+/** 面板内可见的任务行上限；其余折叠成 `… and N more`（与 pi-tasks 的 maxVisible 一致）。 */
+const MAX_VISIBLE_TASKS = 10;
+
+const MARK_BLOCKED = "›";
+
+/** 任务行的字形与配色：完成 ✔（删除线+暗）、进行中 ◼、待办 ◻。 */
+function buildTaskStyledText(task: Task, openBlockers: readonly string[], colors: ConversationPalette): StyledText {
+  const chunks: TextChunk[] = [];
+  if (task.status === "completed") {
+    chunks.push(chunk(`${MARK_DONE} `, RGBA.fromHex(colors.todoDoneMark)));
+    chunks.push(chunk(`#${task.id} `, RGBA.fromHex(colors.todoDoneMark)));
+    chunks.push(chunk(task.subject, RGBA.fromHex(colors.todoDoneText), ATTRS_STRIKE));
+  } else if (task.status === "in_progress") {
+    chunks.push(chunk(`${MARK_ACTIVE} `, RGBA.fromHex(colors.todoActiveMark)));
+    chunks.push(chunk(`#${task.id} `, RGBA.fromHex(colors.textFaint)));
+    chunks.push(chunk(task.activeForm || task.subject, RGBA.fromHex(colors.todoActiveText)));
+  } else {
+    chunks.push(chunk(`${MARK_PENDING} `, RGBA.fromHex(colors.todoPendingMark)));
+    chunks.push(chunk(`#${task.id} `, RGBA.fromHex(colors.textFaint)));
+    chunks.push(chunk(task.subject, RGBA.fromHex(colors.todoPendingText)));
   }
+  if (openBlockers.length > 0) {
+    chunks.push(
+      chunk(
+        `  ${MARK_BLOCKED} blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}`,
+        RGBA.fromHex(colors.dim),
+      ),
+    );
+  }
+  return new StyledText(chunks);
 }
 
-function TodoRows({ todos, colors }: { todos: readonly PlanCheckpoint[]; colors: ConversationPalette }): React.ReactNode {
-  const nonDone = todos.filter((cp) => cp.status !== "done");
-  const done = todos.filter((cp) => cp.status === "done");
-  const sorted = [...nonDone, ...done];
+function TaskRows({
+  tasks,
+  colors,
+  taskPersistence,
+}: {
+  tasks: readonly Task[];
+  colors: ConversationPalette;
+  taskPersistence?: "file" | "pending" | "memory";
+}): React.ReactNode {
+  // 存储层已按 id 升序返回；这里把完成项沉到末尾，未完成保持 id 顺序。
+  const open = tasks.filter((task) => task.status !== "completed");
+  const done = tasks.filter((task) => task.status === "completed");
+  const ordered = [...open, ...done];
+
+  const byId = new Map(tasks.map((task) => [task.id, task] as const));
+  const visible = ordered.slice(0, MAX_VISIBLE_TASKS);
+  const hiddenCount = ordered.length - visible.length;
 
   return (
     <>
-      {sorted.map((cp, i) => (
+      {visible.map((task) => {
+        const openBlockers = task.blockedBy.filter((id) => {
+          const blocker = byId.get(id);
+          return blocker !== undefined && blocker.status !== "completed";
+        });
+        return <text key={task.id} content={buildTaskStyledText(task, openBlockers, colors)} truncate />;
+      })}
+      {hiddenCount > 0 ? (
         <text
-          key={i}
-          content={buildCheckpointStyledText(cp, colors)}
+          content={new StyledText([chunk(`    … and ${hiddenCount} more`, RGBA.fromHex(colors.dim))])}
           truncate
         />
-      ))}
+      ) : null}
+      {taskPersistence === "memory" ? (
+        <text
+          content={new StyledText([
+            chunk("    (not persisted — this session has no task storage)", RGBA.fromHex(colors.dim)),
+          ])}
+          truncate
+        />
+      ) : null}
     </>
   );
 }
@@ -146,20 +196,23 @@ function TodoRows({ todos, colors }: { todos: readonly PlanCheckpoint[]; colors:
 function StatusPanelInner({
   agents,
   showAgents,
-  todos,
-  showTodos,
+  tasks,
+  showTasks,
+  taskPersistence,
   colors,
   terminalHeight,
   onAgentClick,
 }: StatusPanelProps): React.ReactNode {
-  const openTodos = todos.filter((cp) => cp.status !== "done");
-  const doneCount = todos.length - openTodos.length;
+  const openTasks = tasks.filter((task) => task.status !== "completed");
+  const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
+  const pendingCount = openTasks.length - inProgressCount;
+  const doneCount = tasks.length - openTasks.length;
   const runningCount = agents.filter((a) => a.lifecycle === "running" || a.lifecycle === "blocked").length;
 
   const hasAgents = agents.length > 0 && showAgents;
-  const hasTodos = todos.length > 0 && showTodos;
+  const hasTasks = tasks.length > 0 && showTasks;
 
-  if (!hasAgents && !hasTodos) return null;
+  if (!hasAgents && !hasTasks) return null;
 
   const maxHeight = clampPanelHeight(terminalHeight);
 
@@ -169,12 +222,14 @@ function StatusPanelInner({
   if (doneAgentCount > 0) agentParts.push(`${doneAgentCount} done`);
   const agentTitle = `Agents (${agentParts.join(", ")})`;
 
-  const todoParts: string[] = [];
-  if (openTodos.length > 0) todoParts.push(`${openTodos.length} pending`);
-  if (doneCount > 0) todoParts.push(`${doneCount} done`);
-  const todoTitle = `Todos (${todoParts.join(", ")})`;
+  // 汇总头与 pi-tasks 一致：`● N tasks (x done, y in progress, z open)`
+  const taskParts: string[] = [];
+  if (doneCount > 0) taskParts.push(`${doneCount} done`);
+  if (inProgressCount > 0) taskParts.push(`${inProgressCount} in progress`);
+  if (pendingCount > 0) taskParts.push(`${pendingCount} open`);
+  const todoTitle = `● ${tasks.length} tasks (${taskParts.join(", ")})`;
 
-  if (hasAgents && hasTodos) {
+  if (hasAgents && hasTasks) {
     return (
       <box
         width="100%"
@@ -195,7 +250,7 @@ function StatusPanelInner({
           <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
         </scrollbox>
         <scrollbox flexGrow={1} paddingLeft={2} paddingRight={1} maxHeight={maxHeight} scrollY={true} fitContent={true}>
-          <TodoRows todos={todos} colors={colors} />
+          <TaskRows tasks={tasks} colors={colors} taskPersistence={taskPersistence} />
         </scrollbox>
       </box>
     );
@@ -237,7 +292,7 @@ function StatusPanelInner({
       paddingLeft={1}
       paddingRight={1}
     >
-      <TodoRows todos={todos} colors={colors} />
+      <TaskRows tasks={tasks} colors={colors} taskPersistence={taskPersistence} />
     </scrollbox>
   );
 }

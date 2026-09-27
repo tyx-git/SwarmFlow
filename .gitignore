@@ -1,5 +1,5 @@
 node_modules/
-.workbuddy-ai/
+.pi/
 .codegraph/
 dist/
 build/
@@ -68,3 +68,8 @@ docs/*
 # SwarmFlow diagnostic logs (enabled via SWARMFLOW_LOG=1)
 release/
 .*/
+# 图标源码是构建输入（scripts/make-icon.py 的输入，-Task icon 依赖它），需要入库；
+# 注意必须写成 icons/* 而不是 icons/：目录被整体排除后，
+# git 不会再用 ! 规则放行里面的文件。生成的 ICO 仍保持忽略。
+icons/*
+!icons/swarmflow.png

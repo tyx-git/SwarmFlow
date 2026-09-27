@@ -9,6 +9,7 @@ import type { CommandPickerState } from "../../../../src/ui/command-picker.js";
 import type { CheckboxPickerState } from "../../../../src/ui/checkbox-picker.js";
 import type { PresentationEntry } from "../../presentation/types.js";
 import type { ComposerTokenVisuals } from "../../composer-tokens.js";
+import type { UiText } from "../../../../src/lib/ui-text.js";
 import { createTextAttributes } from "@opentui/core";
 import { PresentationPanel } from "../../components/entry/presentation-panel.js";
 import { VERSION } from "../../../../src/version.js";
@@ -114,6 +115,8 @@ export interface OpenTuiScreenProps {
   turnElapsed: number;
   hint: string | null;
   composerTokenVisuals: ComposerTokenVisuals;
+  /** 界面文案表（language.json）；语言切换时由上层刷新。 */
+  uiText: UiText;
   keyBindings: readonly KeyBinding[];
   onSubmit: () => void;
   onModelClick: () => void;
@@ -234,6 +237,7 @@ export function OpenTuiScreen({
   turnElapsed,
   hint,
   composerTokenVisuals,
+  uiText,
   keyBindings,
   onSubmit,
   onModelClick,
@@ -342,6 +346,7 @@ export function OpenTuiScreen({
       colors={theme.colors}
       maxInputLines={theme.layout.inputMaxVisibleLines}
       composerTokenVisuals={composerTokenVisuals}
+      uiText={uiText}
       keyBindings={keyBindings}
       onSubmit={onSubmit}
       onModelClick={onModelClick}

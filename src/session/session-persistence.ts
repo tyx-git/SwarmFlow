@@ -58,6 +58,12 @@ export const SAFE_INTERRUPT_TOOLS = new Set([
   "web_fetch",
   "web_search",
   "bash_output",
+  // 任务工具只改会话态（tasks.json 为 write-through 副本），中断后无部分副作用
+  "task_create",
+  "task_list",
+  "task_get",
+  "task_update",
+  "task_resume",
 ]);
 
 /** 该工具中断后可能留下部分副作用。 */

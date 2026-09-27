@@ -18,7 +18,7 @@ export const COMPACT_PROMPT_OUTPUT = `Condense this conversation into a continua
 
 **Before writing the continuation prompt**, make sure any stable, long-term knowledge from this session has been written to AGENTS.md if it belongs there.
 
-**What the new instance will already have:** your system prompt and AGENTS.md persistent memory are automatically re-injected after compact. Do not duplicate their contents in the continuation prompt — focus on what they don't cover: current progress, session-specific context, and in-flight work state.
+**What the new instance will already have:** your system prompt and AGENTS.md persistent memory are automatically re-injected after compact. The session task list — ids, statuses and dependency edges — is re-injected as well. Do not duplicate any of their contents in the continuation prompt: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
 
 Your summary should capture everything that matters and nothing that doesn't. Use whatever structure best fits the actual content — there is no fixed template. But as you write, pressure-test yourself against these questions:
 
@@ -44,7 +44,7 @@ You just made a tool call and received its result above. That result is real and
 
 **Before writing the continuation prompt**, make sure any stable, long-term knowledge from this session has been written to AGENTS.md if it belongs there.
 
-**What the new instance will already have:** your system prompt and AGENTS.md persistent memory are automatically re-injected after compact. Do not duplicate their contents in the continuation prompt — focus on what they don't cover: current progress, session-specific context, and in-flight work state.
+**What the new instance will already have:** your system prompt and AGENTS.md persistent memory are automatically re-injected after compact. The session task list — ids, statuses and dependency edges — is re-injected as well. Do not duplicate any of their contents in the continuation prompt: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
 
 Write in natural prose. Use structure where it aids clarity, not for its own sake. As you write, pressure-test yourself against these questions:
 

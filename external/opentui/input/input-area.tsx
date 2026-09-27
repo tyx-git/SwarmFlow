@@ -10,6 +10,7 @@ import type { ComposerTokenVisuals } from "../composer-tokens.js";
 import type { ActivityPhase } from "../display/types.js";
 import { formatCompactTokensShort } from "../display/utils/format.js";
 import { formatElapsed } from "../presentation/use-turn-timer.js";
+import type { UiText } from "../../../src/lib/ui-text.js";
 import {
   useSpinner,
   WORKING_SPINNER_FRAMES,
@@ -26,7 +27,7 @@ interface InputAreaProps {
   hasQueuedUserInput?: boolean;
   phase: ActivityPhase;
   modelName: string;
-  /** Thinking level suffix shown after the model name in dim color, e.g. "(high)". Empty string = hidden. */
+  /** 思考深度后缀，显示在"供应商/模型"之后（暗色）。空串 = 隐藏。 */
   thinkingSuffix: string;
   modelColor: string;
   elapsed: number;
@@ -47,6 +48,8 @@ interface InputAreaProps {
   colors: ConversationPalette;
   maxInputLines: number;
   composerTokenVisuals: ComposerTokenVisuals;
+  /** 界面文案表（language.json）；由上层按当前语言注入。 */
+  uiText: UiText;
   keyBindings: readonly KeyBinding[];
   onSubmit: () => void;
   onModelClick: () => void;
@@ -130,6 +133,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     colors,
     maxInputLines,
     composerTokenVisuals,
+    uiText,
     keyBindings,
     onSubmit,
     onModelClick,
@@ -152,13 +156,14 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     onShellsClick,
   } = props;
 
+  const t = uiText;
   const placeholder = pendingAsk
-    ? "ask pending..."
+    ? t.get(["Views", "input", "askPending"])
     : selectedChildId
-      ? "Esc/^C close or interrupt · Opt+←→ switch tabs · Opt+↑ main"
+      ? t.get(["Views", "input", "childActive"])
       : hasQueuedUserInput
-        ? "↑ to edit the queued message"
-        : "message or /command";
+        ? t.get(["Views", "input", "queuedHint"])
+        : t.get(["Views", "input", "default"]);
 
   const focused = phase !== "closing" && !pendingAsk && !commandPicker && !checkboxPicker && !promptSelect && !promptSecret && !selectedChildId;
 
@@ -197,10 +202,10 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
           >
             <text fg={colors.badgeAgentFg} content={(() => {
               const parts: string[] = [];
-              if (runningAgentCount > 0) parts.push(`${runningAgentCount} running`);
+              if (runningAgentCount > 0) parts.push(t.get(["Views", "indicators", "agentsRunning"], { count: runningAgentCount }));
               const doneAgents = idleAgentCount + archivedAgentCount;
-              if (doneAgents > 0) parts.push(`${doneAgents} done`);
-              return ` Agents (${parts.join(", ")}) `;
+              if (doneAgents > 0) parts.push(t.get(["Views", "indicators", "agentsDone"], { count: doneAgents }));
+              return t.get(["Views", "indicators", "agents"], { parts: parts.join(", ") });
             })()} />
           </box>
           </>
@@ -217,12 +222,12 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
             backgroundColor={colors.badgeShellBg}
             onMouseDown={(e: any) => { e.stopPropagation(); e.preventDefault(); onShellsClick?.(); }}
           >
-            <text fg={colors.badgeShellFg} content={` Shells (${shellRunningCount} running) `} />
+            <text fg={colors.badgeShellFg} content={t.get(["Views", "indicators", "shells"], { count: shellRunningCount })} />
           </box>
           </>
         ) : null}
 
-        {/* Todo indicator: show whenever checkpoints exist */}
+        {/* Task indicator: show whenever tasks exist (只统计父会话清单) */}
         {(todoOpenCount + todoDoneCount) > 0 && !selectedChildId ? (
           <>
           {((runningAgentCount + idleAgentCount + archivedAgentCount) > 0 || shellRunningCount > 0 || processing) ? <box width={1} /> : null}
@@ -235,9 +240,9 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
           >
             <text fg={colors.badgeTodoFg} content={(() => {
               const parts: string[] = [];
-              if (todoOpenCount > 0) parts.push(`${todoOpenCount} pending`);
-              if (todoDoneCount > 0) parts.push(`${todoDoneCount} done`);
-              return ` Todos (${parts.join(", ")}) `;
+              if (todoOpenCount > 0) parts.push(t.get(["Views", "indicators", "tasksPending"], { count: todoOpenCount }));
+              if (todoDoneCount > 0) parts.push(t.get(["Views", "indicators", "tasksDone"], { count: todoDoneCount }));
+              return t.get(["Views", "indicators", "tasks"], { parts: parts.join(", ") });
             })()} />
           </box>
           </>
@@ -300,7 +305,11 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
             ) : (
               <text
                 fg={permissionMode === "yolo" ? colors.red : permissionMode === "read_only" ? colors.permissionReadOnly : colors.accent}
-                content={permissionMode === "yolo" ? "Full auto" : permissionMode === "read_only" ? "Read-only" : "Reversible"}
+                content={permissionMode === "yolo"
+                  ? t.get(["Views", "permission", "yolo"])
+                  : permissionMode === "read_only"
+                    ? t.get(["Views", "permission", "readOnly"])
+                    : t.get(["Views", "permission", "reversible"])}
               />
             )}
           </box>

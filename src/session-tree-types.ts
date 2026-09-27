@@ -9,6 +9,15 @@ export type ChildSessionPhase =
   | "generating"
   | "waiting";
 
+/** 子会话展示态（比 lifecycle 细：error 表示重启后判定为失败）。 */
+export type ChildSessionStatus =
+  | "working"
+  | "idle"
+  | "error"
+  | "interrupted"
+  | "terminated"
+  | "completed";
+
 export type ChildSessionOutcome =
   | "none"
   | "completed"
@@ -23,6 +32,8 @@ export interface ChildSessionSnapshot {
   mode: ChildSessionMode;
   lifecycle: ChildSessionLifecycle;
   phase: ChildSessionPhase;
+  /** 展示态。重启对账后统一为 `error`（fail），`outcome` 仍是 `interrupted`。 */
+  status: ChildSessionStatus;
   outcome: ChildSessionOutcome;
   running: boolean;
   lifetimeToolCallCount: number;
@@ -42,6 +53,11 @@ export interface ChildSessionSnapshot {
   activeLogEntryId: string | null;
   turnElapsed: number;
   cacheReadTokens: number;
+  /**
+   * 子会话自己的任务清单摘要（内存态，随子会话消亡；释放时随 frozenSnapshot 冻结）。
+   * 由父会话的 Agents 面板/子视图只读展示。
+   */
+  taskSummary?: { total: number; open: number; done: number };
 }
 
 export interface ChildSessionMetaRecord {

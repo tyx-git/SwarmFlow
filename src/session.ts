@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join, resolve, relative, isAbsolute } from "node:path";
+import { basename, join, resolve, relative, isAbsolute } from "node:path";
 import { getLogger, initLogger } from "./lib/logger.js";
 
 import { assembleSystemPrompt, getPromptLayers } from "./templates/loader.js";
@@ -69,10 +69,26 @@ import {
   parseReferences,
 } from "./lib/file-attach.js";
 import { SafePathError, safePath } from "./security/path.js";
-import { parsePlanFile, formatPlanSnapshot, PLAN_FILENAME, type PlanCheckpoint } from "./lib/plan-state.js";
+import {
+  TaskStore,
+  formatTaskSnapshot,
+  readResumeHint,
+  taskStorePath,
+  type Task,
+  type TaskResumeHint,
+  type TaskUpdateFields,
+} from "./lib/task-store.js";
+import {
+  decideChildResume,
+  describeResumeReason,
+  type ChildOutcome,
+  type ResumeReason,
+  type TerminationCause,
+} from "./lib/task-reconcile.js";
 import {
   buildToolExecutors,
   ensureCommTools,
+  ensureTaskTools,
   ensureSkillTool,
   buildSkillToolDef,
   registerMcpTools,
@@ -451,9 +467,12 @@ export class Session {
   private _sessionArtifactsOverride: string;
   private _systemData: string;
 
-  // Plan state (parsed from {SESSION_ARTIFACTS}/plan.md)
-  private _planState: PlanCheckpoint[] = [];
-  private _planListeners: (() => void)[] = [];
+  // Task list state ({SESSION_ARTIFACTS}/tasks.json 为权威；子会话纯内存)
+  private _taskStoreScope: "session" | "memory" = "session";
+  private _taskStoreRef: TaskStore | undefined;
+  /** 已绑定的 tasks.json 路径：变化时重建 store（/new、/resume、/fork 会切换目录）。 */
+  private _taskStoreKey: string | undefined;
+  private _taskListeners: (() => void)[] = [];
 
   // File/bash rewind planning + application (owns the crash journal).
   private _rewindEngine!: RewindEngine;
@@ -755,6 +774,11 @@ export class Session {
     projectRoot?: string;
     sessionArtifactsDir?: string;
     capabilities?: SessionCapabilities;
+    /**
+     * 任务清单作用域。`session`（默认）：落 `{SESSION_ARTIFACTS}/tasks.json`；
+     * `memory`：纯内存（子会话用 —— 子代理不写持久化文件，清单随子会话消亡）。
+     */
+    taskStoreScope?: "session" | "memory";
     onTurnOutput?: (text: string) => void;
     toolExecutorOverrides?: Record<string, ToolExecutor>;
     /** Stable key for OpenAI prompt cache routing affinity. Auto-generated if omitted. */
@@ -789,6 +813,7 @@ export class Session {
     this._mcpReadyPromise = opts.mcpReadyPromise;
     this._promptsDirs = opts.promptsDirs;
     this._capabilities = opts.capabilities ?? ROOT_SESSION_CAPABILITIES;
+    this._taskStoreScope = opts.taskStoreScope ?? "session";
     this._turnOutputTarget = opts.onTurnOutput;
     this._toolExecutorOverrides = opts.toolExecutorOverrides ?? {};
     this._contextManager = new ContextManager({
@@ -851,6 +876,7 @@ export class Session {
     this._initConversation();
     this._toolExecutors = this._buildToolExecutors();
     this._ensureCommTools();
+    this._ensureTaskTools();
     this._ensureSkillTool();
     this._persistedModelSelection = this._buildPersistedModelSelection();
 
@@ -2102,7 +2128,6 @@ export class Session {
 
     const result = await this._rewindEngine.applyFiles(plan);
     if (!result.error) {
-      this._refreshPlanState();
       this._bumpLogRevision();
       this._notifyLogListeners();
       this.onSaveRequest?.();
@@ -2169,7 +2194,6 @@ export class Session {
       }
     }
 
-    this._refreshPlanState();
     this._bumpLogRevision();
     this._notifyLogListeners();
     this.onSaveRequest?.();
@@ -2252,9 +2276,6 @@ export class Session {
     if (prepared.rootInbox && prepared.rootInbox.length > 0) {
       this._inbox = [...prepared.rootInbox];
     }
-
-    // Restore plan state from plan.md if it exists
-    this._refreshPlanState();
 
     this._bumpLogRevision();
     this._notifyLogListeners();
@@ -2412,11 +2433,11 @@ export class Session {
     // 5. Reset MCP connection flag (will reconnect on next turn)
     this._mcpConnected = false;
 
-    // 6. Clear plan state
-    if (this._planState.length > 0) {
-      this._planState = [];
-      this._notifyPlanListeners();
-    }
+    // 6. Drop the in-memory task list. The file stays in the old session
+    // directory (each session owns its own tasks.json).
+    this._taskStoreRef = undefined;
+    this._taskStoreKey = undefined;
+    if (this._taskListeners.length > 0) this._notifyTaskListeners();
 
     // 7. /new must start from a truly fresh session tree. _resetTransientState()
     // archives existing children so they can be saved before teardown, but those
@@ -2450,10 +2471,15 @@ export class Session {
         reload: () => this._execReload(),
         $web_search: (args) => toolBuiltinWebSearchPassthrough(args as Record<string, unknown>),
       },
+      taskExecutors: {
+        task_create: (args) => this._execTaskCreate(args),
+        task_list: () => this._execTaskList(),
+        task_get: (args) => this._execTaskGet(args),
+        task_update: (args) => this._execTaskUpdate(args),
+        task_resume: (args) => this._execTaskResume(args),
+      },
       overrides: this._toolExecutorOverrides,
       onFileWrite: undefined,
-      isPlanFile: (filePath) => this._isPlanFilePath(filePath),
-      onPlanFileWrite: () => this._refreshPlanState(),
       getApprovedExternalPrefixes: () => {
         if (this._permissionAdvisor.sessionMode === "yolo") return ["/"];
         return this._permissionRuleStore.getApprovedExternalPrefixes();
@@ -2917,58 +2943,531 @@ export class Session {
   }
 
   // ==================================================================
-  // Plan state
+  // Task list —— tasks.json 为权威，子会话纯内存
   // ==================================================================
 
-  getPlanState(): PlanCheckpoint[] {
-    return this._planState;
+  /** 当前会话的任务清单（按 id 升序）。 */
+  getTaskState(): readonly Task[] {
+    return this._ensureTaskStore().list();
   }
 
-  subscribePlan(listener: () => void): () => void {
-    this._planListeners.push(listener);
+  subscribeTaskState(listener: () => void): () => void {
+    this._taskListeners.push(listener);
     return () => {
-      const idx = this._planListeners.indexOf(listener);
-      if (idx !== -1) this._planListeners.splice(idx, 1);
+      const idx = this._taskListeners.indexOf(listener);
+      if (idx !== -1) this._taskListeners.splice(idx, 1);
     };
   }
 
-  private _notifyPlanListeners(): void {
-    for (const listener of this._planListeners) {
-      listener();
+  private _notifyTaskListeners(): void {
+    for (const listener of this._taskListeners) listener();
+  }
+
+  /**
+   * 任务清单存储，惰性创建。
+   *
+   * - 主会话：`{SESSION_ARTIFACTS}/tasks.json`（每会话一份，与 childSessionDir 的
+   *   所有权模型一致）
+   * - 子会话：纯内存（子代理不写持久化文件，清单随子会话对象消亡）
+   * - 工件目录在会话存储绑定后才可用，且 `/new`、`/resume`、`/fork` 会切换目录，
+   *   因此按路径 key 重定位；key 变化时才重建（重建即从磁盘载入）。
+   */
+  private _ensureTaskStore(): TaskStore {
+    if (this._taskStoreScope === "memory") {
+      if (!this._taskStoreRef) this._taskStoreRef = TaskStore.memory();
+      return this._taskStoreRef;
     }
+    const dir = this._sessionArtifactsOverride || this._getArtifactsDirIfAvailable();
+    if (!dir) {
+      // 会话存储尚未绑定：先退回内存态；绑定后按 key 重定位到文件。
+      if (!this._taskStoreRef) this._taskStoreRef = TaskStore.memory();
+      return this._taskStoreRef;
+    }
+    const path = taskStorePath(dir);
+    if (!this._taskStoreRef || this._taskStoreKey !== path) {
+      const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
+      this._taskStoreRef = new TaskStore({
+        filePath: path,
+        sessionId: sessionDir ? basename(sessionDir) : "session",
+      });
+      this._taskStoreKey = path;
+    }
+    return this._taskStoreRef;
+  }
+
+  private _ensureTaskTools(): void {
+    ensureTaskTools(this.primaryAgent.tools, this._capabilities);
   }
 
   /**
-   * Resolve the plan file path. Returns undefined if artifacts dir
-   * is not yet available (session storage not created).
+   * 任务清单的持久化状态 —— 供 UI 决定是否标注"不持久化"。
+   *
+   * - `"file"`：任务落 `{SESSION_ARTIFACTS}/tasks.json`（正常会话）
+   * - `"pending"`：会话目录尚未惰性创建 —— **正常会话的过渡态**，UI 不应提示任何东西
+   * - `"memory"`：本次会话没有任务持久化（子会话，或根本没有会话存储）
+   *
+   * 注意边界：只有 `"memory"` 才代表"确实不落盘"，`"pending"` 会在首个回合前
+   * 由 `_ensureSessionStorageReady()` 创建目录后自然变成 `"file"`。
    */
-  private _getPlanFilePath(): string | undefined {
-    const dir = this._sessionArtifactsOverride
-      || this._getArtifactsDirIfAvailable();
-    if (!dir) return undefined;
-    return join(dir, PLAN_FILENAME);
+  getTaskPersistence(): "file" | "pending" | "memory" {
+    if (this._taskStoreScope === "memory") return "memory";
+    if (this._sessionArtifactsOverride) return "file";
+    if (!this._store) return "memory";
+    if (!this._store.sessionDir) return "pending";
+    return "file";
   }
 
   /**
-   * Read and parse the plan file if it exists.
-   * Updates _planState and notifies listeners if changed.
+   * 子会话 settle：把"子拆分结果"回写进对应任务的 metadata。
+   *
+   * 由父会话写（子不写盘），让子的拆分结果在父侧可审计、重派时有上下文。
+   * 任务是按 `metadata.agentId` 关联的；子代理可能只是被 spawn 派生而未登记为任务，
+   * 此时静默跳过。
    */
-  private _refreshPlanState(): void {
-    const planPath = this._getPlanFilePath();
-    if (!planPath || !existsSync(planPath)) {
-      if (this._planState.length > 0) {
-        this._planState = [];
-        this._notifyPlanListeners();
+  private _onChildSettled(info: {
+    childId: string;
+    outcome: ChildOutcome;
+    cause: TerminationCause;
+    taskSummary?: { total: number; open: number; done: number };
+  }): void {
+    const store = this._ensureTaskStore();
+    const task = store.list().find((candidate) => candidate.metadata["agentId"] === info.childId);
+    if (!task) return;
+
+    const metadata: Record<string, unknown> = {
+      lastOutcome: info.outcome,
+      lastSettledAt: Date.now(),
+    };
+    if (info.taskSummary) metadata["taskSummary"] = info.taskSummary;
+    if (info.outcome === "completed") {
+      // 已完成：清掉续跑建议，避免下次重启又提示续跑一个已经跑完的任务。
+      metadata["resumeHint"] = null;
+    }
+
+    const result = store.update(task.id, { metadata });
+    if (result.saveError) console.warn(result.saveError);
+    this._notifyTaskListeners();
+  }
+
+  // -- 启动对账 ------------------------------------------------------
+
+  /**
+   * 重启对账：子代理一律视为已终止，只判定"是否值得断点续跑"。
+   *
+   * 顺序要求：必须在子日志加载完成（`commitPreparedChildren`）之后调用 ——
+   * 阈值指标（toolCalls / tokensIn）由恢复出的子会话从日志重算。
+   *
+   * 天然幂等：对账后不再有 `in_progress` 任务，重复调用是空操作。
+   */
+  reconcileTaskListAfterRestore(opts: { fork?: boolean } = {}): { warnings: string[]; notice?: string } {
+    const warnings: string[] = [];
+    const store = this._ensureTaskStore();
+    const manager = this._childSessionManagerInstance;
+
+    // 分叉里从来没有活着的执行体：消毒任务清单（清 agentId/result/续跑痕迹，in_progress → pending），
+    // 并把所有恢复出的子会话落成不可续（否则它们会带着持久化的 running/blocked/idle 变成幻影）。
+    if (opts.fork) {
+      const sanitized = store.sanitizeForFork();
+      if (sanitized.saveError) warnings.push(sanitized.saveError);
+      if (sanitized.changed.length > 0) {
+        this._notifyTaskListeners();
+        warnings.push(
+          `分叉对账：${sanitized.changed.length} 个继承任务已解除执行体关联并回到 pending（分叉中没有活着的执行体）`,
+        );
       }
-      return;
+      for (const signal of manager.getResumeSignals()) {
+        manager.finalizeRestoredChild(signal.childId, false);
+      }
+      const forkNotice =
+        sanitized.changed.length > 0
+          ? [
+              "<task-reconciliation>",
+              "This session was forked. The inherited task list was sanitized: executors, recorded results and resume hints from the parent run were removed, and in-progress tasks were returned to `pending`.",
+              "Nothing can be resumed in a fork — re-dispatch any work you still need with `spawn` using a new agent id. Do not mention this message to the user unless they ask.",
+              "</task-reconciliation>",
+            ].join("\n")
+          : undefined;
+      return { warnings, notice: forkNotice };
     }
-    try {
-      const content = readFileSync(planPath, "utf-8");
-      this._planState = parsePlanFile(content);
-      this._notifyPlanListeners();
-    } catch {
-      // File read error —leave state unchanged.
+
+    const signals = new Map(manager.getResumeSignals().map((signal) => [signal.childId, signal] as const));
+    const finalized = new Set<string>();
+    const tasks = store.list();
+    const failures = manager.getRestoreFailures();
+    const loggedOutcomes = this._indexChildOutcomesFromLog();
+
+    const hints: Record<string, TaskResumeHint> = {};
+    const lines: string[] = [];
+
+    for (const task of tasks) {
+      if (task.status !== "in_progress") continue;
+      const agentId = typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined;
+      if (!agentId) continue;
+
+      const signal = signals.get(agentId);
+      const failure = failures.get(agentId);
+      const fromLog = loggedOutcomes.get(agentId);
+      const decision = opts.fork
+        ? // 分叉：执行体一律作废，不提供续跑
+          { resumable: false, reason: "superseded" as const }
+        : decideChildResume({
+          childId: agentId,
+          // 恢复失败的子根本不在 signals 里：日志/模板不可用 → 只能重派
+          logAvailable: signal !== undefined,
+          templateAvailable: signal !== undefined || failure !== "template_missing",
+          sessionAvailable: signal?.sessionAvailable ?? false,
+          outcome: fromLog?.outcome ?? signal?.outcome ?? "none",
+          cause: fromLog?.cause ?? signal?.cause,
+          taskAgentId: agentId,
+          mode: signal?.mode,
+          toolCalls: signal?.toolCalls ?? 0,
+          tokensIn: signal?.tokensIn ?? 0,
+        });
+
+      hints[agentId] = {
+        childId: agentId,
+        toolCalls: signal?.toolCalls ?? 0,
+        tokensIn: signal?.tokensIn ?? 0,
+        resumable: decision.resumable,
+        reason: decision.reason,
+      };
+      if (signal) {
+        manager.finalizeRestoredChild(agentId, decision.resumable);
+        finalized.add(agentId);
+      }
+
+      lines.push(
+        `#${task.id} ${task.subject} — ${
+          decision.resumable ? "resumable: call task_resume to continue this run" : describeResumeReason(decision.reason)
+        }`,
+      );
     }
+
+    // 未被任何任务引用的子也必须归一：重启后没有任何执行体是活的，
+    // 否则它们会带着持久化的 running/blocked/idle 留在面板上（幻影状态）。
+    for (const childId of signals.keys()) {
+      if (!finalized.has(childId)) manager.finalizeRestoredChild(childId, false);
+    }
+
+    const { changed, saveError } = store.markInterrupted(hints);
+    if (saveError) warnings.push(saveError);
+    if (changed.length === 0) return { warnings };
+    this._notifyTaskListeners();
+
+    warnings.push(`重启对账：${changed.length} 个进行中的任务已降级为 pending（子代理已全部终止）`);
+    for (const line of lines) warnings.push(`  ${line}`);
+
+    const notice = [
+      "<task-reconciliation>",
+      "This session was restarted, so every sub-agent from the previous run is terminated. The tasks below were in progress and have been returned to `pending`:",
+      ...lines.map((line) => `- ${line}`),
+      "For each task, either call `task_resume` to continue the interrupted run from its own context, or re-dispatch it with `spawn` using a NEW agent id (re-dispatching clears the stale resume hint). Do not mention this message to the user unless they ask about the restart.",
+      "</task-reconciliation>",
+    ].join("\n");
+
+    return { warnings, notice };
+  }
+
+  /**
+   * 把对账结果作为"随行"系统通知放入收件箱。
+   *
+   * `wake: false`：不唤醒空闲会话 —— 用户刚 resume，可能只想看看；通知在下一次
+   * 真实输入时随该轮送达模型，而不是立刻自动跑一轮。
+   */
+  deliverRestoreNotice(text: string): void {
+    this._deliverMessage({
+      type: "system_notice",
+      sender: "system",
+      content: text,
+      timestamp: Date.now(),
+      wake: false,
+      tuiVisible: false,
+    });
+  }
+
+  /** 从父日志的 agent_result 条目索引每个子代理的最终结局与终止原因。 */
+  private _indexChildOutcomesFromLog(): Map<string, { outcome: ChildOutcome; cause?: TerminationCause }> {
+    const indexed = new Map<string, { outcome: ChildOutcome; cause?: TerminationCause }>();
+    for (const entry of this._log) {
+      if (entry.type !== "agent_result" || entry.discarded) continue;
+      const meta = entry.meta as Record<string, unknown>;
+      const agentId = typeof meta["agentId"] === "string" ? meta["agentId"] : undefined;
+      if (!agentId) continue;
+      const rawOutcome = meta["outcome"];
+      const outcome: ChildOutcome =
+        rawOutcome === "completed" ? "completed" : rawOutcome === "failed" ? "error" : rawOutcome === "interrupted" ? "interrupted" : "none";
+      const rawCause = meta["cause"];
+      const cause: TerminationCause | undefined =
+        rawCause === "natural" || rawCause === "parent_kill" || rawCause === "user_targeted_kill" || rawCause === "user_mass_interrupt"
+          ? rawCause
+          : undefined;
+      indexed.set(agentId, { outcome, cause });
+    }
+    return indexed;
+  }
+
+  // -- 任务工具执行器 ------------------------------------------------
+
+  // -- 任务工具执行器 ------------------------------------------------
+
+  private _execTaskCreate(args: Record<string, unknown>): ToolResult {
+    const subject = this._argRequiredString("task_create", args, "subject", { nonEmpty: true });
+    if (subject instanceof ToolResult) return subject;
+    const description = this._argRequiredString("task_create", args, "description", { nonEmpty: true });
+    if (description instanceof ToolResult) return description;
+    const activeForm = this._argOptionalString("task_create", args, "active_form");
+    if (activeForm instanceof ToolResult) return activeForm;
+    const metadata = this._argTaskMetadata(args["metadata"]);
+    if (metadata instanceof ToolResult) return metadata;
+
+    const { task, saveError } = this._ensureTaskStore().create(
+      subject.trim(),
+      description.trim(),
+      activeForm,
+      metadata,
+    );
+    this._notifyTaskListeners();
+    return new ToolResult({
+      content: `Task #${task.id} created: ${task.subject}${saveError ? `\nwarning: ${saveError}` : ""}`,
+    });
+  }
+
+  private _execTaskList(): ToolResult {
+    const store = this._ensureTaskStore();
+    const tasks = store.list();
+    if (tasks.length === 0) return new ToolResult({ content: "No tasks found" });
+
+    // 面向模型的可读顺序：未完成在前，同状态按 id。
+    const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, completed: 2 };
+    const sorted = [...tasks].sort(
+      (a, b) => (statusOrder[a.status] ?? 0) - (statusOrder[b.status] ?? 0) || Number(a.id) - Number(b.id),
+    );
+
+    const lines = sorted.map((task) => {
+      let line = `#${task.id} [${task.status}] ${task.subject}`;
+      const owner = task.owner ?? (typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined);
+      if (owner) line += ` (${owner})`;
+
+      if (task.status !== "completed") {
+        const openBlockers = task.blockedBy.filter((id) => {
+          const blocker = store.get(id);
+          return blocker !== undefined && blocker.status !== "completed";
+        });
+        if (openBlockers.length > 0) {
+          line += ` [blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}]`;
+        }
+      }
+
+      if (task.status === "pending") {
+        const hint = readResumeHint(task);
+        if (hint) {
+          line += hint.resumable
+            ? ` [interrupted — resumable via task_resume (${hint.toolCalls} tool calls, ${hint.tokensIn} input tokens)]`
+            : ` [interrupted — re-dispatch with a new agent id: ${describeResumeReason(hint.reason as ResumeReason)}]`;
+        }
+      }
+      return line;
+    });
+
+    return new ToolResult({ content: lines.join("\n") });
+  }
+
+  private _execTaskGet(args: Record<string, unknown>): ToolResult {
+    const taskId = this._argRequiredString("task_get", args, "task_id", { nonEmpty: true });
+    if (taskId instanceof ToolResult) return taskId;
+
+    const store = this._ensureTaskStore();
+    const task = store.get(taskId.trim());
+    if (!task) return new ToolResult({ content: `Task #${taskId} not found` });
+
+    const lines: string[] = [`Task #${task.id}: ${task.subject}`, `Status: ${task.status}`];
+    const owner = task.owner ?? (typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined);
+    if (owner) lines.push(`Owner: ${owner}`);
+    if (task.activeForm) lines.push(`Active form: ${task.activeForm}`);
+    lines.push(`Description: ${task.description.replace(/\\n/g, "\n")}`);
+
+    const openBlockers = task.blockedBy.filter((id) => {
+      const blocker = store.get(id);
+      return blocker !== undefined && blocker.status !== "completed";
+    });
+    if (openBlockers.length > 0) lines.push(`Blocked by: ${openBlockers.map((id) => `#${id}`).join(", ")}`);
+    if (task.blocks.length > 0) lines.push(`Blocks: ${task.blocks.map((id) => `#${id}`).join(", ")}`);
+
+    const hint = readResumeHint(task);
+    if (hint) {
+      lines.push(
+        `Interrupted run: child ${hint.childId}, ${hint.toolCalls} tool calls, ${hint.tokensIn} input tokens — ` +
+          (hint.resumable ? "resumable via task_resume" : `do not resume (${describeResumeReason(hint.reason as ResumeReason)})`),
+      );
+    }
+
+    const metaKeys = Object.keys(task.metadata);
+    if (metaKeys.length > 0) lines.push(`Metadata: ${JSON.stringify(task.metadata)}`);
+    return new ToolResult({ content: lines.join("\n") });
+  }
+
+  private _execTaskUpdate(args: Record<string, unknown>): ToolResult {
+    const taskId = this._argRequiredString("task_update", args, "task_id", { nonEmpty: true });
+    if (taskId instanceof ToolResult) return taskId;
+    const id = taskId.trim();
+
+    const fields: TaskUpdateFields = {};
+
+    const status = args["status"];
+    if (status !== undefined) {
+      if (status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "deleted") {
+        return new ToolResult({
+          content: "Error: 'status' must be one of pending, in_progress, completed, deleted.",
+        });
+      }
+      fields.status = status;
+    }
+
+    const textFields: Array<[string, "subject" | "description" | "activeForm" | "owner"]> = [
+      ["subject", "subject"],
+      ["description", "description"],
+      ["active_form", "activeForm"],
+      ["owner", "owner"],
+    ];
+    for (const [key, field] of textFields) {
+      const value = this._argOptionalString("task_update", args, key);
+      if (value instanceof ToolResult) return value;
+      if (value !== undefined) fields[field] = value;
+    }
+
+    const metadata = this._argTaskMetadata(args["metadata"]);
+    if (metadata instanceof ToolResult) return metadata;
+    if (metadata) fields.metadata = metadata;
+
+    const edges: Array<[string, "addBlocks" | "addBlockedBy"]> = [
+      ["add_blocks", "addBlocks"],
+      ["add_blocked_by", "addBlockedBy"],
+    ];
+    for (const [key, field] of edges) {
+      const raw = args[key];
+      if (raw === undefined) continue;
+      if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string" || item.length === 0)) {
+        return new ToolResult({ content: `Error: '${key}' must be an array of task ids.` });
+      }
+      fields[field] = [...(raw as string[])];
+    }
+
+    const result = this._ensureTaskStore().update(id, fields);
+    if (!result.task && !result.changedFields.includes("deleted")) {
+      return new ToolResult({ content: `Task #${id} not found` });
+    }
+    this._notifyTaskListeners();
+
+    let message = `Updated task #${id} ${result.changedFields.join(", ")}`;
+    if (result.warnings.length > 0) message += ` (warning: ${result.warnings.join("; ")})`;
+    if (result.saveError) message += `\nwarning: ${result.saveError}`;
+    return new ToolResult({ content: message });
+  }
+
+  /**
+   * 断点续跑：把某个被重启打断的子代理从它自己的上下文里接着跑。
+   *
+   * 守卫（任一不满足即拒绝，且不消耗尝试次数）：任务存在、带可续的 resumeHint、
+   * 未被新的 run 接管、尝试次数未超上限。`beginResume` 成功但子代理不可用时回滚
+   * 任务状态（尝试次数保留，避免死循环）。
+   */
+  private _execTaskResume(args: Record<string, unknown>): ToolResult {
+    const taskId = this._argRequiredString("task_resume", args, "task_id", { nonEmpty: true });
+    if (taskId instanceof ToolResult) return taskId;
+    const id = taskId.trim();
+
+    const store = this._ensureTaskStore();
+    const task = store.get(id);
+    if (!task) return new ToolResult({ content: `Task #${id} not found` });
+
+    const hint = readResumeHint(task);
+    if (!hint) {
+      return new ToolResult({
+        content: `Task #${id} has no interrupted run to resume. Use task_update to change its status, or spawn a new agent for it.`,
+      });
+    }
+
+    const begun = store.beginResume(id);
+    if (!begun.ok || !begun.task) {
+      return new ToolResult({
+        content: `Cannot resume task #${id}: ${this._resumeRefusalText(begun.reason ?? "not_resumable")}`,
+      });
+    }
+
+    const note = this._argOptionalString("task_resume", args, "note");
+    if (note instanceof ToolResult) return note;
+
+    const prompt = this._buildContinuationPrompt(begun.task, hint, note);
+    const resumed = this._resumeChildSession(hint.childId, prompt);
+    if (!resumed.ok) {
+      // 回滚状态；尝试次数保留（防止调用方反复重试同一个不可用子代理）。
+      store.update(id, { status: "pending" });
+      this._notifyTaskListeners();
+      return new ToolResult({
+        content: `Failed to resume task #${id}: ${resumed.reason ?? "unknown"} (child ${hint.childId}). Re-dispatch it with spawn instead.`,
+      });
+    }
+
+    this._notifyTaskListeners();
+    return new ToolResult({
+      content:
+        `Task #${id} resumed on child ${hint.childId} (attempt ${Number(begun.task.metadata["resumeAttempts"] ?? 1)}). ` +
+        `It continues from its previous context; use check_status or await_event to follow up.`,
+    });
+  }
+
+  private _resumeRefusalText(reason: string): string {
+    switch (reason) {
+      case "attempts_exhausted":
+        return "resume attempts exhausted — re-dispatch with spawn (new agent id) or ask the user";
+      case "superseded":
+        return "a newer run has taken over this task";
+      case "already_completed":
+        return "the task is already completed";
+      case "no_resume_hint":
+        return "no interrupted run recorded";
+      case "not_found":
+        return "task not found";
+      default:
+        return describeResumeReason(reason as ResumeReason);
+    }
+  }
+
+  /** 续跑提示：必须让子代理先复核"可能只生效一半"的那一步。 */
+  private _buildContinuationPrompt(task: Task, hint: TaskResumeHint, note?: string): string {
+    const parts: string[] = [
+      `You are resuming task #${task.id}: "${task.subject}"`,
+      `Your previous run on this task was interrupted by a session restart ` +
+        `(recorded progress: ${hint.toolCalls} tool call(s), about ${hint.tokensIn} input tokens).`,
+      "If the last tool call in your history has no result, its real-world effect may be partial or unknown: " +
+        "re-verify that step before continuing.",
+      "Continue from the first incomplete step. Do not redo work that is already finished.",
+    ];
+    if (task.description.trim().length > 0) parts.push(`Original task description:\n${task.description}`);
+    const lastResult = task.metadata["lastResult"];
+    if (typeof lastResult === "string" && lastResult.trim().length > 0) {
+      const clipped = lastResult.length > 4000 ? `${lastResult.slice(0, 4000)}\n\n[... truncated]` : lastResult;
+      parts.push(`What you had reported so far:\n${clipped}`);
+    }
+    if (note && note.trim().length > 0) parts.push(note);
+    parts.push(
+      "Complete this task fully. You may track your own substeps with task_create/task_update; " +
+        "do not modify the parent session's task list.",
+    );
+    return parts.join("\n\n");
+  }
+
+  private _resumeChildSession(childId: string, prompt: string): { ok: boolean; reason?: string } {
+    return this._childSessionManagerInstance.resumeChildTurn(childId, prompt);
+  }
+
+  /** `metadata` 参数解析：必须是普通对象；`null` 值保留（语义为删除该键）。 */
+  private _argTaskMetadata(raw: unknown): Record<string, unknown> | undefined | ToolResult {
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== "object" || Array.isArray(raw)) {
+      return new ToolResult({ content: "Error: 'metadata' must be an object." });
+    }
+    return { ...(raw as Record<string, unknown>) };
   }
 
   // ==================================================================
@@ -5340,7 +5839,6 @@ export class Session {
       onRetryExhausted: emitRetryExhausted,
       onToolCallPartial: onToolCallPartialCb,
       resolveToolCallVisibility: this._resolveToolCallVisibility,
-      isPlanFilePath: (filePath) => this._isPlanFilePath(filePath),
       updateEntry: updateEntryFn,
       discardEntry: discardEntryFn,
     });
@@ -5757,22 +6255,10 @@ export class Session {
   // AGENTS.md persistent memory
   // ==================================================================
 
-  /** Check if a file path refers to the plan file (SESSION_ARTIFACTS/plan.md). */
-  private _isPlanFilePath(filePath: string): boolean {
-    const planPath = this._getPlanFilePath();
-    if (!planPath) return false;
-    return resolve(filePath) === resolve(planPath);
-  }
-
   /**
    * Hook to override a tool call's TUI visibility. Returning "hide" suppresses
    * the call entirely —the runtime "hide" machinery is retained for future use,
    * but nothing uses it right now.
-   *
-   * Plan-file writes/edits are intentionally NOT hidden: they stay visible and
-   * the presentation layer relabels them as an "Update Todos" step (clean on
-   * success, with the error reason on failure). They are detected by exact path
-   * via `isPlanFilePath` (see the asyncRunWithMessages wiring), not by filename.
    */
   private _resolveToolCallVisibility: ResolveToolCallVisibilityCallback = () => {
     return undefined;
@@ -6071,10 +6557,11 @@ export class Session {
       false,
     );
     const currentMarkerIdx = this._log.length - 1;
-    // Append plan snapshot to compact context so plan state survives compaction.
-    const planSnapshot = formatPlanSnapshot(this._planState);
-    const planSuffix = planSnapshot ? `\n\n${planSnapshot}` : "";
-    const contContent = `${continuationPrompt}\n\n[Contexts before this point have been compacted.]${planSuffix}`;
+    // 任务清单在磁盘上（tasks.json 为权威），压缩后必须重新注入一次，
+    // 否则新实例会看不到当前任务与依赖状态。
+    const taskSnapshot = formatTaskSnapshot(this.getTaskState());
+    const taskSuffix = taskSnapshot ? `\n\n${taskSnapshot}` : "";
+    const contContent = `${continuationPrompt}\n\n[Contexts before this point have been compacted.]${taskSuffix}`;
     this._appendEntry(
       createCompactContext(
         this._nextLogId("compact_context"),
@@ -6355,6 +6842,7 @@ export class Session {
       recordChildEvent: (child, event) => child._recordSessionEvent(event),
       normalizeChildInterruptedTurn: (child, message) => child._normalizeInterruptedTurnFromLog?.(message),
       saveChildSession: (handle) => this._saveChildSession(handle),
+      reportChildSettled: (info) => this._onChildSettled(info),
       getProgress: () => this._progress,
       fireHook: (event, payload) => this.hookRuntime.fireAndForget(event, payload),
       resolveSessionArtifacts: () => this._resolveSessionArtifacts(),
@@ -6377,6 +6865,8 @@ export class Session {
           projectRoot: this._projectRoot,
           sessionArtifactsDir: o.artifactsDir,
           capabilities: CHILD_SESSION_CAPABILITIES,
+          // 子代理不写持久化文件：清单只在内存里，随子会话消亡
+          taskStoreScope: "memory",
           onTurnOutput: o.onTurnOutput,
           toolExecutorOverrides: {},
           promptCacheKey: o.promptCacheKey,

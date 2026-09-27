@@ -12,7 +12,6 @@
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
@@ -57,7 +56,10 @@ import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptio
 import { describeModel, getCurrentModelDescriptor } from "../models/presentation.js";
 import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "../auth/openai-oauth.js";
 import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth.js";
-import { launchThemePicker, launchDesignHelper } from "../browser/index.js";
+import { launchDesignHelper } from "../browser/index.js";
+import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme.js";
+import { THINKING_LEVEL_LIST, THINKING_LEVEL_NOTES } from "../config/thinking.js";
+import { createUiText, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -745,7 +747,7 @@ function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: strin
  */
 async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefined> {
   const session = ctx.session;
-  const levels = ["low", "medium", "high", "xhigh", "max"];
+  const levels = THINKING_LEVEL_LIST;
 
   if (session.primaryAgent?.modelConfig?.supportsThinking !== true) {
     return undefined;
@@ -758,11 +760,10 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
 
   const current = session.thinkingLevel ?? "";
   const options = levels.map((level) => {
-    let label = level;
-    if (current === level) label += "  (current)";
-    if (level === "xhigh") label += "  — OpenAI only";
-    if (level === "max") label += "  — DeepSeek, Anthropic, GLM";
-    return { label, value: level };
+    const note = THINKING_LEVEL_NOTES[level as keyof typeof THINKING_LEVEL_NOTES];
+    const currentMark = current === level ? "  (current)" : "";
+    const suffix = note ? `  — ${note} only` : "";
+    return { label: `${level}${currentMark}${suffix}`, value: level };
   });
 
   const choice = await ctx.promptSelect({
@@ -1759,28 +1760,31 @@ async function cmdDiff(ctx: CommandContext, _args: string): Promise<void> {
 // /主题-选择浅色/深色/自动
 // ------------------------------------------------------------------
 
+/** 主题模式的显示名（中英文命令面板统一）。 */
+function themeLabel(mode: ThemeMode): string {
+  switch (mode) {
+    case "brief": return "Brief";
+    case "dark": return "Dark";
+    default: return "Light";
+  }
+}
+
+/** 是否是受支持的主题模式（用于校验 /theme 参数）。 */
+function isThemeMode(value: string): value is ThemeMode {
+  return (THEME_MODES as readonly string[]).includes(value);
+}
+
 function themeModeOptions(_ctx: CommandOptionsContext): CommandOption[] {
-  const current = loadGlobalSettings().theme_mode ?? "auto";
-  const mark = (v: string) => (v === current ? " (current)" : "");
-  return [
-    {
-      label: `Custom${mark("custom")}`,
-      labelParts: [
-        { text: `Custom${mark("custom")}` },
-        { text: "  browser-based color picker (beta)", color: "muted" },
-      ],
-      value: "custom",
-    },
-    { label: `Auto (follow terminal)${mark("auto")}`, value: "auto" },
-    { label: `Light${mark("light")}`, value: "light" },
-    { label: `Dark${mark("dark")}`, value: "dark" },
-    { label: `Default (Catppuccin)${mark("default")}`, value: "default" },
-    { label: `Dracula${mark("dracula")}`, value: "dracula" },
-    { label: `Brief${mark("brief")}`, value: "brief" },
-  ];
+  const current = normalizeThemeMode(loadGlobalSettings().theme_mode);
+  const currentLabel = themeLabel(current);
+  return THEME_MODES.map((mode) => ({
+    label: mode === current ? `${themeLabel(mode)}${currentLabel ? "  (current)" : ""}` : themeLabel(mode),
+    value: mode,
+  }));
 }
 
 async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
+  const t = createUiText();
   const hint = ctx.showHint ?? ctx.showMessage;
   let choice = args.trim().toLowerCase();
 
@@ -1808,57 +1812,89 @@ async function cmdTheme(ctx: CommandContext, args: string): Promise<void> {
     choice = picked.value;
   }
 
-  if (choice === "custom") {
-    // 为 custom 选择单独触发 hook
-    const hookRt = ctx.session?.hookRuntime;
-    if (hookRt) {
-      const customHookResult = await hookRt.evaluate("CommandExecute", {
-        event: "CommandExecute",
-        timestamp: Date.now(),
-        sessionId: ctx.store?.sessionDir ? basename(ctx.store.sessionDir) : undefined,
-        commandName: "/theme",
-        commandArgs: "custom",
-      });
-      if (customHookResult.decision === "deny") {
-        ctx.showMessage(customHookResult.denyReason ?? "Custom theme denied by hook.");
-        return;
-      }
-    }
-
-    // 询问用户是否使用测试版功能
-    if (ctx.promptCommandPicker) {
-      ctx.showMessage("Custom theme opens a browser-based color picker (beta). Continue?");
-      const picked = await ctx.promptCommandPicker([
-        { label: "Yes — open browser color picker", value: "yes" },
-        { label: "No — cancel", value: "no" },
-      ]);
-      if (!picked || picked.value !== "yes") return;
-    }
-
-    hint("Opening browser-based theme picker (beta)...");
-    try {
-      await launchThemePicker({
-        sessionId: getSessionId(ctx),
-        homeDir: ctx.swarmflowHomeDir ?? join(homedir(), ".swarmflow"),
-        cwd: process.cwd(),
-      });
-    } catch (e) {
-      hint(`Failed to open theme picker: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    return;
-  }
-
-  if (choice === "auto" || choice === "light" || choice === "dark" || choice === "default" || choice === "dracula" || choice === "brief") {
+  if (isThemeMode(choice)) {
     persistSettingsPatch({ theme_mode: choice }, ctx.swarmflowHomeDir);
     // 魔术消息- TUI拦截和更新React状态而不重启。
     ctx.showMessage(`__theme_mode__:${choice}`);
-    hint(`Theme: ${choice}`);
+    hint(t.get(["Commands", "/theme", "hint"], { mode: choice }));
     return;
   }
 
-  const current = loadGlobalSettings().theme_mode ?? "auto";
-  ctx.showMessage(`Theme mode is "${current}".\nUsage: /theme custom | auto | light | dark | default | nord | dracula | brief`);
+  const current = normalizeThemeMode(loadGlobalSettings().theme_mode);
+  ctx.showMessage(
+    t.get(["Commands", "/theme", "current"], { mode: current })
+      + "\n"
+      + t.get(["Commands", "/theme", "usage"], { modes: THEME_MODES.join(" | ") }),
+  );
 }
+
+/** 语言在文案表里的名字（中文/英文各自母语显示）。 */
+function languageNameKey(lang: UiLanguage): string {
+  return lang === "en" ? "languageNameEn" : "languageNameZh";
+}
+
+/** 语言选项（/language 选择器）。 */
+function languageOptions(_ctx: CommandOptionsContext): CommandOption[] {
+  const t = createUiText();
+  const current = normalizeUiLanguage(loadGlobalSettings().ui_language);
+  return UI_LANGUAGES.map((lang) => {
+    const name = t.get(["Common", languageNameKey(lang)]);
+    return { label: lang === current ? `${name}  (current)` : name, value: lang };
+  });
+}
+
+async function cmdLanguage(ctx: CommandContext, args: string): Promise<void> {
+  const t = createUiText();
+  const hint = ctx.showHint ?? ctx.showMessage;
+  let choice = args.trim().toLowerCase();
+
+  // 触发 CommandExecute hook
+  const hookRuntime = ctx.session?.hookRuntime;
+  if (hookRuntime) {
+    const hookResult = await hookRuntime.evaluate("CommandExecute", {
+      event: "CommandExecute",
+      timestamp: Date.now(),
+      sessionId: ctx.store?.sessionDir ? basename(ctx.store.sessionDir) : undefined,
+      commandName: "/language",
+      commandArgs: choice,
+    });
+    if (hookResult.decision === "deny") {
+      ctx.showMessage(hookResult.denyReason ?? "Command denied by hook.");
+      return;
+    }
+  }
+
+  if (!choice && ctx.promptCommandPicker) {
+    const picked = await ctx.promptCommandPicker(
+      languageOptions({ session: ctx.session, store: ctx.store }),
+    );
+    if (!picked) return;
+    choice = picked.value;
+  }
+
+  // "中文" / "英文" / "chinese" / "english" 之类的写法也接受
+  const normalizedChoice = normalizeUiLanguage(choice);
+  const known = UI_LANGUAGES.includes(normalizedChoice)
+    && (choice === normalizedChoice
+        || choice === "zh" || choice === "cn" || choice === "chinese"
+        || choice === "en" || choice === "english");
+
+  if (known) {
+    persistSettingsPatch({ ui_language: normalizedChoice }, ctx.swarmflowHomeDir);
+    // 魔术消息- TUI拦截后直接切换文案表，无需重启。
+    ctx.showMessage(`__ui_language__:${normalizedChoice}`);
+    hint(t.get(["Commands", "/language", "hint"], { language: t.get(["Common", languageNameKey(normalizedChoice)]) }));
+    return;
+  }
+
+  const current = normalizeUiLanguage(loadGlobalSettings().ui_language);
+  ctx.showMessage(
+    t.get(["Commands", "/language", "current"], { language: t.get(["Common", languageNameKey(current)]) })
+      + "\n"
+      + t.get(["Commands", "/language", "usage"], { languages: UI_LANGUAGES.join(" | ") }),
+  );
+}
+
 
 // ------------------------------------------------------------------
 // /autoupdate -切换自动更新检查
@@ -2647,6 +2683,7 @@ async function cmdPlan(ctx: CommandContext, args: string): Promise<void> {
     "Enter SwarmFlow plan discussion mode.",
     "Clarify ambiguous requirements with the user before making edits.",
     "When ready, write plan.md, process.md, and finding.md under .swarmflow/<session_id>/plan/ using Stage N headings and checkbox subtasks.",
+    "Those files are the negotiation artifact for this planning discussion — track execution progress with task_create/task_update, not with the plan file.",
     "Do not execute the plan until the user gives deterministic approval such as 执行, 开始, approve, 确认, or 按计划执行.",
     `Plan files directory: ${planDir}.`,
     goal ? `Initial plan goal: ${goal}` : "Ask the user for the stage goal or requirement.",
@@ -2727,7 +2764,7 @@ async function cmdStatus(ctx: CommandContext, _args: string): Promise<void> {
   const model = currentSessionModelDisplayName(session) || session.currentModelConfigName || "unknown";
   const provider = session.primaryAgent?.modelConfig?.provider ?? "unknown";
   const permission = session.permissionMode ?? "reversible";
-  const planState = session.getPlanState?.() ?? [];
+  const taskState = session.getTaskState?.() ?? [];
   const mcpStatuses = session.mcpManager?.getServerStatuses?.() ?? [];
   const skills = session.getAllSkillNames?.() ?? [];
   const enabledSkills = skills.filter((s: { enabled: boolean }) => s.enabled).length;
@@ -2738,7 +2775,7 @@ async function cmdStatus(ctx: CommandContext, _args: string): Promise<void> {
     `Provider: ${provider}`,
     `Permission: ${permission}`,
     `Goal: not persisted yet`,
-    `Plan: ${planState.length} checkpoint(s)`,
+    `Tasks: ${taskState.filter((task: { status: string }) => task.status !== "completed").length} open / ${taskState.length} total`,
     `MCP: ${mcpStatuses.length} server(s)`,
     `Skills: ${enabledSkills}/${skills.length} enabled`,
     `Tokens: last ${session.lastTotalTokens ?? 0}, cache read ${session.lastCacheReadTokens ?? 0}, cumulative input ${session.cumulativeInputTokens ?? 0}, output ${session.cumulativeOutputTokens ?? 0}`,
@@ -2788,39 +2825,36 @@ async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
 }
 
 async function cmdEffort(ctx: CommandContext, args: string): Promise<void> {
+  const t = createUiText();
   const requested = args.trim().toLowerCase();
-  const levels = ["low", "medium", "high", "xhigh", "max"];
+  const levels = THINKING_LEVEL_LIST;
   let level = requested;
   if (!level && ctx.promptSelect) {
     const choice = await ctx.promptSelect({
       message: "Select effort level",
       options: levels.map((value) => {
-        let label = value;
-        if (value === ctx.session.thinkingLevel) label += " (current)";
-        if (value === "xhigh") label += " — OpenAI only";
-        if (value === "max") label += " — DeepSeek, Anthropic, GLM";
-        return { label, value };
+        const note = THINKING_LEVEL_NOTES[value as keyof typeof THINKING_LEVEL_NOTES];
+        const current = value === ctx.session.thinkingLevel ? "  (current)" : "";
+        const suffix = note ? `  — ${note} only` : "";
+        return { label: `${value}${current}${suffix}`, value };
       }),
     });
     if (!choice) return;
     level = choice;
   }
   if (!level) {
-    ctx.showMessage(`Current effort: ${ctx.session.thinkingLevel ?? "none"}`);
+    ctx.showMessage(t.get(["Commands", "/effort", "current"], { level: ctx.session.thinkingLevel ?? "none" }));
     return;
   }
   if (!levels.includes(level)) {
-    ctx.showMessage(`Effort "${level}" is not valid. Available: ${levels.join(", ")}`);
+    ctx.showMessage(t.get(["Commands", "/effort", "invalid"], { level, levels: levels.join(", ") }));
     return;
   }
   ctx.session.thinkingLevel = level;
   persistModelSelection(ctx);
-  const notes: Record<string, string> = {
-    xhigh: "Note: xhigh only supported by OpenAI models.",
-    max: "Note: max only supported by DeepSeek, Anthropic, GLM models.",
-  };
-  const note = notes[level] ? ` ${notes[level]}` : "";
-  ctx.showMessage(`Effort set to: ${level}.${note}`);
+  const note = THINKING_LEVEL_NOTES[level as keyof typeof THINKING_LEVEL_NOTES];
+  const suffix = note ? ` ${t.get(["Commands", "/effort", "note"], { level, vendors: note })}` : "";
+  ctx.showMessage(t.get(["Commands", "/effort", "set"], { level }) + suffix);
 }
 
 // ------------------------------------------------------------------
@@ -2873,6 +2907,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/memory", description: "Inspect and correct current session context", handler: cmdMemory, category: "Ecosystem" });
   registry.register({ name: "/rules", description: "View or update project .rules", handler: cmdRules, category: "Project Configuration" });
   registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, category: "UI" });
+  registry.register({ name: "/language", description: "Switch UI language (Chinese / English)", handler: cmdLanguage, options: languageOptions, category: "UI" });
   registry.register({ name: "/autoupdate", description: "Configure automatic update checks", handler: cmdAutoUpdate, options: autoUpdateOptions, category: "Project Configuration" });
   registry.register({ name: "/autocopy", description: "Configure copy-on-select", handler: cmdAutoCopy, options: autoCopyOptions, category: "UI" });
   registry.register({ name: "/rewind", description: "Rewind conversation and file changes", handler: cmdRewind, options: rewindOptions, pickerTitle: "Rewind", category: "Context" });
@@ -2968,7 +3003,8 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
 
   ctx.resetUiState();
 
-  const result = applySessionRestore(session, store, newDir);
+  // 分叉：任务清单随会话目录被复制，但必须消毒（清执行体关联、in_progress 降级）
+  const result = applySessionRestore(session, store, newDir, { fork: true });
   for (const w of result.warnings) ctx.showMessage(w);
   if (!result.ok && result.error) {
     ctx.showMessage(result.error);

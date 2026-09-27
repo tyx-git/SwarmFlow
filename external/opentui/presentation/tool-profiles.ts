@@ -128,6 +128,40 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     text: (args) => str(args.url),
     inlineResult: { maxLines: 1 },
   },
+  task_create: {
+    category: "orchestrate",
+    displayName: "TaskCreate",
+    text: (args) => str(args.subject),
+    inlineResult: false,
+  },
+  task_list: {
+    category: "observe",
+    displayName: "TaskList",
+    text: () => "",
+    inlineResult: false,
+  },
+  task_get: {
+    category: "observe",
+    displayName: "TaskGet",
+    text: (args) => `#${str(args.task_id)}`,
+    inlineResult: false,
+  },
+  task_update: {
+    category: "orchestrate",
+    displayName: "TaskUpdate",
+    text: (args) => {
+      const id = str(args.task_id);
+      const status = str(args.status);
+      return status ? `#${id} -> ${status}` : `#${id}`;
+    },
+    inlineResult: false,
+  },
+  task_resume: {
+    category: "orchestrate",
+    displayName: "TaskResume",
+    text: (args) => `#${str(args.task_id)}`,
+    inlineResult: false,
+  },
   spawn: {
     category: "orchestrate",
     displayName: "Spawn",

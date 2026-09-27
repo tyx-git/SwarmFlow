@@ -20,24 +20,16 @@ import type { ThemeMode } from "../display/theme/types.js";
 // Configuration
 // ---------------------------------------------------------------------------
 
-/** Shiki theme names by mode. */
-export const SHIKI_THEME_DARK = "catppuccin-mocha";
-export const SHIKI_THEME_LIGHT = "catppuccin-latte";
-export const SHIKI_THEME_DEFAULT = "catppuccin-mocha";
-export const SHIKI_THEME_DRACULA = "dracula";
+/** Shiki theme names by mode（brief / dark 共用深色调色板）。 */
+const SHIKI_THEME_DARK = "catppuccin-mocha";
+const SHIKI_THEME_LIGHT = "catppuccin-latte";
 
 /** Currently active shiki theme. Mutated by setShikiTheme(). Defaults to dark. */
 let currentShikiTheme: string = SHIKI_THEME_DARK;
 
 /** Switch the shiki theme to use for subsequent highlight calls. */
 export function setShikiTheme(mode: ThemeMode): void {
-  const next = mode === "light"
-    ? SHIKI_THEME_LIGHT
-    : mode === "dracula"
-      ? SHIKI_THEME_DRACULA
-      : mode === "default"
-        ? SHIKI_THEME_DEFAULT
-        : SHIKI_THEME_DARK;
+  const next = mode === "light" ? SHIKI_THEME_LIGHT : SHIKI_THEME_DARK;
   if (next !== currentShikiTheme) {
     currentShikiTheme = next;
     // Keys embed the theme so stale entries are never returned; clear anyway
@@ -165,7 +157,7 @@ export async function initShikiHighlighter(): Promise<void> {
     try {
       const shiki = await import("shiki");
       const h = await shiki.createHighlighter({
-        themes: [SHIKI_THEME_DARK, SHIKI_THEME_LIGHT, SHIKI_THEME_DRACULA],
+        themes: [SHIKI_THEME_DARK, SHIKI_THEME_LIGHT],
         langs: PRELOAD_LANGS,
       });
       highlighter = h as unknown as ShikiHighlighter;

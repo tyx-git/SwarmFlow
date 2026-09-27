@@ -32,9 +32,9 @@ registerEnvVar({
   default: "",
 })
 
-declare global {
-  const OTUI_TREE_SITTER_WORKER_PATH: string
-}
+// 注：`OTUI_TREE_SITTER_WORKER_PATH` 这个全局常量已由安装的 @opentui/core 类型声明
+// （node_modules/@opentui/core/lib/tree-sitter/client.d.ts）。此处再声明一遍会与它冲突
+// （TS2451 Cannot redeclare block-scoped variable），故删除；标识符仍可正常引用。
 
 interface EditQueueItem {
   edits: Edit[]

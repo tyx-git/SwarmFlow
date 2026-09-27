@@ -37,7 +37,11 @@ export type ResumeReason =
   /** 子日志不可加载（恢复时已被跳过）→ 只能重派。 */
   | "log_unavailable"
   /** 模板缺失/不可解析 → 只能重派。 */
-  | "template_missing";
+  | "template_missing"
+  /** 子会话对象已被释放（归档过的 oneshot），无法直接续跑 → 重派。 */
+  | "child_released"
+  /** persistent 子会话（可多轮对话）豁免阈值：上下文本身就有价值。 */
+  | "persistent_child";
 
 export interface ChildResumeSignals {
   childId: string;
@@ -45,10 +49,14 @@ export interface ChildResumeSignals {
   logAvailable: boolean;
   /** 模板是否仍可解析（子 Session 是否创建成功）。 */
   templateAvailable: boolean;
+  /** 子 Session 对象是否仍在内存里（归档过的 oneshot 会被释放，无法直接续跑）。 */
+  sessionAvailable: boolean;
   outcome: ChildOutcome;
   cause?: TerminationCause;
   /** 父任务 `metadata.agentId`；undefined 表示该任务从未派发过。 */
   taskAgentId?: string;
+  /** 子会话形态：persistent 豁免阈值。 */
+  mode?: "oneshot" | "persistent";
   toolCalls: number;
   tokensIn: number;
 }
@@ -66,6 +74,7 @@ export interface ResumeDecision {
 export function decideChildResume(signals: ChildResumeSignals): ResumeDecision {
   if (!signals.logAvailable) return { resumable: false, reason: "log_unavailable" };
   if (!signals.templateAvailable) return { resumable: false, reason: "template_missing" };
+  if (!signals.sessionAvailable) return { resumable: false, reason: "child_released" };
   if (signals.taskAgentId !== undefined && signals.taskAgentId !== signals.childId) {
     return { resumable: false, reason: "superseded" };
   }
@@ -74,6 +83,8 @@ export function decideChildResume(signals: ChildResumeSignals): ResumeDecision {
   }
   if (signals.outcome === "completed") return { resumable: false, reason: "already_completed" };
   if (signals.outcome === "error") return { resumable: false, reason: "failed" };
+  // persistent 子会话（多轮对话）不受阈值限制：它的上下文不该因为"动作少"被丢掉
+  if (signals.mode === "persistent") return { resumable: true, reason: "persistent_child" };
   return isWorthResuming(signals.toolCalls, signals.tokensIn)
     ? { resumable: true, reason: "in_progress_work" }
     : { resumable: false, reason: "too_early" };
@@ -82,8 +93,8 @@ export function decideChildResume(signals: ChildResumeSignals): ResumeDecision {
 /** 重启归一后的子会话状态（写入 handle）。 */
 export interface ChildRestartState {
   lifecycle: "idle" | "archived";
-  status: "error";
-  outcome: "interrupted";
+  status: "error" | "completed";
+  outcome: ChildOutcome;
   /** 是否保留 Session 以支持续跑。 */
   keepSession: boolean;
 }
@@ -94,7 +105,17 @@ export interface ChildRestartState {
  * 注意 `outcome` 固定为 `"interrupted"`：它表达「被重启打断」，而不是子自身失败；
  * 这也让下次重启的判定不会因为读到 `error` 而自锁。
  */
-export function childRestartState(resumable: boolean): ChildRestartState {
+export function childRestartState(resumable: boolean, priorOutcome: ChildOutcome = "none"): ChildRestartState {
+  // 重启前就已经有结论的子（正常结束 / 自身出错）保留它自己的结局：
+  // 既不能把成功的运行显示成 failed，也不该再提供续跑。
+  if (priorOutcome === "completed" || priorOutcome === "error") {
+    return {
+      lifecycle: "archived",
+      status: priorOutcome === "completed" ? "completed" : "error",
+      outcome: priorOutcome,
+      keepSession: false,
+    };
+  }
   return {
     lifecycle: resumable ? "idle" : "archived",
     status: "error",
@@ -133,5 +154,12 @@ export function describeResumeReason(reason: ResumeReason): string {
       return "子会话日志不可用，只能重派";
     case "template_missing":
       return "子代理模板缺失或不可解析，只能重派";
+    case "child_released":
+      return "子会话对象已释放，无法直接续跑，需重派";
+    case "persistent_child":
+      return "persistent 子会话，可断点续跑";
+    default:
+      // resumeHint 来自 tasks.json（可被手工编辑），未知原因不允许渲染成 undefined
+      return "无法续跑，建议重派";
   }
 }

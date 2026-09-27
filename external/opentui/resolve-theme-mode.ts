@@ -1,19 +1,17 @@
-import type { ThemeMode } from "./display/theme/types.js";
+import {
+  DEFAULT_THEME_MODE,
+  parseThemeModePref,
+  type ThemeMode,
+  type ThemeModePref,
+} from "../../src/config/theme.js";
 
-export type ThemeModePref = "auto" | ThemeMode;
-
-/** Parse a value into a ThemeModePref, or null if unrecognized. */
-export function parseThemeModePref(value: string | undefined | null): ThemeModePref | null {
-  if (!value) return null;
-  const v = value.trim().toLowerCase();
-  if (v === "auto" || v === "light" || v === "dark" || v === "default" || v === "dracula" || v === "brief") return v;
-  return null;
-}
+export type { ThemeMode, ThemeModePref };
+export { DEFAULT_THEME_MODE, parseThemeModePref };
 
 /**
  * Read the THEME env var. Returns null if unset or invalid.
  */
-export function readEnvThemePref(): ThemeModePref | null {
+function readEnvThemePref(): ThemeModePref | null {
   return parseThemeModePref(process.env.THEME);
 }
 
@@ -26,7 +24,7 @@ export function readEnvThemePref(): ThemeModePref | null {
  *    don't try to peek their preferences here — too brittle. COLORFGBG is the
  *    only reliable signal.
  */
-export function inferThemeFromEnvHints(): ThemeMode | null {
+function inferThemeFromEnvHints(): ThemeMode | null {
   const fgBg = process.env.COLORFGBG;
   if (fgBg) {
     const parts = fgBg.split(";");
@@ -89,15 +87,12 @@ export async function resolveThemeMode(
   }
 
   // 4. env hint
+  // auto 模式下的兜底：统一落到默认主题（Brief）。
   const hint = inferThemeFromEnvHints();
   if (hint) {
     return { mode: hint, pref, source: "env-hint" };
   }
 
   // 5. fallback
-  process.stderr.write(
-    "swarmflow: terminal theme not detected (no OSC response, no COLORFGBG hint). " +
-    "Falling back to dark. Set THEME=light or run /theme to pick.\n",
-  );
-  return { mode: "dark", pref, source: "fallback" };
+  return { mode: DEFAULT_THEME_MODE, pref, source: "fallback" };
 }

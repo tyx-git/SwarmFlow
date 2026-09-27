@@ -20,6 +20,7 @@ import { join } from "node:path";
 
 import type { Agent } from "../agents/agent.js";
 import type { PendingAskUi } from "../ask.js";
+import { childRestartState } from "../lib/task-reconcile.js";
 import type { HookEvent, HookPayload } from "../hooks/index.js";
 import { createAgentResult, type LogEntry } from "../context/log-entry.js";
 import { describeModel } from "../models/presentation.js";
@@ -137,6 +138,16 @@ export interface ChildSessionManagerDeps {
   setChildInbox(child: Session, msgs: MessageEnvelope[]): void;
   recordChildEvent(child: Session, event: string): void;
   normalizeChildInterruptedTurn(child: Session, message: string): void;
+  /**
+   * 子会话 settle 时（`_freezeAndRelease` 之前）回传只读摘要，
+   * 供父会话把"子拆分结果"写进对应任务的 metadata。
+   */
+  reportChildSettled?(info: {
+    childId: string;
+    outcome: ChildSessionOutcome;
+    cause: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt";
+    taskSummary: { total: number; open: number; done: number } | undefined;
+  }): void;
   /** 持久化子会话日志+meta。路由经 Session._saveChildSession。返回保存是否成功——决定释放逻辑。 */
   saveChildSession(handle: ChildSessionHandle): boolean;
   // 父环境
@@ -159,6 +170,11 @@ export interface ChildSessionManagerDeps {
 export class ChildSessionManager {
   private _handles = new Map<string, ChildSessionHandle>();
   private _archived = new Map<string, ArchivedChildRecord>();
+  /**
+   * 恢复失败的子（prepareChildRestores 会跳过它们）。
+   * 启动对账用：让父任务知道"这个子的记录/模板不可用，只能重派"。
+   */
+  private _restoreFailures = new Map<string, "log_unavailable" | "template_missing">();
   private _counter = 0;
 
   constructor(private readonly deps: ChildSessionManagerDeps) {}
@@ -277,6 +293,7 @@ export class ChildSessionManager {
         mode: handle.mode,
         lifecycle: handle.lifecycle,
         phase: "idle",
+        status: handle.status,
         outcome: handle.lastOutcome,
         running: false,
         lifetimeToolCallCount: handle.lifetimeToolCallCount,
@@ -333,7 +350,9 @@ export class ChildSessionManager {
       mode: handle.mode,
       lifecycle: handle.lifecycle,
       phase,
+      status: handle.status,
       outcome,
+      taskSummary: this._childTaskSummary(handle),
       running: currentTurnRunning,
       lifetimeToolCallCount: session.lifetimeToolCallCount,
       lastTotalTokens: session.lastTotalTokens,
@@ -643,6 +662,18 @@ export class ChildSessionManager {
     });
     handle.terminationCause = undefined;
 
+    // 子拆分结果回传：在冻结/释放之前抓取（释放后 Session 就没了）。
+    try {
+      this.deps.reportChildSettled?.({
+        childId: handle.id,
+        outcome: handle.lastOutcome,
+        cause,
+        taskSummary: this._childTaskSummary(handle),
+      });
+    } catch (error) {
+      console.warn(`Failed to report child settle for '${handle.id}':`, error);
+    }
+
     // 生命周期转换：oneshot → archived，persistent → idle
     let savedOk = false;
     if (handle.mode === "oneshot") {
@@ -669,6 +700,14 @@ export class ChildSessionManager {
 
     // one-shot 子会话在此终结——丢弃 Session（日志已在 saveChildSession 持久化）。
     this._freezeAndRelease(handle, savedOk);
+  }
+
+  /** 子会话自己的任务清单摘要（纯内存读取；已释放或无清单时返回 undefined）。 */
+  private _childTaskSummary(handle: ChildSessionHandle): { total: number; open: number; done: number } | undefined {
+    const tasks = handle.session?.getTaskState();
+    if (!tasks || tasks.length === 0) return undefined;
+    const done = tasks.filter((task) => task.status === "completed").length;
+    return { total: tasks.length, open: tasks.length - done, done };
   }
 
   /** 构建 agent_result 内容（处理输出截断和溢出文件）。 */
@@ -723,6 +762,25 @@ export class ChildSessionManager {
       artifactsDir: handle.artifactsDir,
     });
     this._handles.delete(handle.id);
+  }
+
+  /**
+   * 断点续跑入口（启动对账后由主 agent 经 task_resume 调用）。
+   *
+   * 与 `send` 的区别：
+   *  - 允许 **oneshot** 子会话续跑（`send` 对 oneshot 有硬守卫 `cannot receive messages`）
+   *  - 续跑文本作为该轮的**直接输入**（与 spawn 语义一致），而不是 `[Incoming Messages]`，
+   *    以免与 oneshot 提示词的 "You cannot receive follow-up messages" 冲突
+   *
+   * 前置条件：handle 存在且 Session 未被释放 —— 对账判定为"可续"的子会保留 Session。
+   */
+  resumeChildTurn(childId: string, prompt: string): { ok: boolean; reason?: string } {
+    const handle = this._handles.get(childId);
+    if (!handle) return { ok: false, reason: "child_not_found" };
+    if (!handle.session) return { ok: false, reason: "child_released" };
+    if (this._isLive(handle)) return { ok: false, reason: "already_running" };
+    this._startChildTurn(handle, prompt);
+    return { ok: true };
   }
 
   /** send tool 实现：向 persistent 子会话发送消息（可复活 archived persistent）。 */
@@ -913,6 +971,81 @@ export class ChildSessionManager {
       });
     }
     this._handles.clear();
+  }
+
+  // -- 启动对账（重启后子代理一律视为已终止） --------------------------
+
+  /** 恢复失败的子：子代理 id → 原因。 */
+  getRestoreFailures(): ReadonlyMap<string, "log_unavailable" | "template_missing"> {
+    return this._restoreFailures;
+  }
+
+  /**
+   * 启动对账输入：每个已恢复子会话的可判定信号。
+   *
+   * 指标取自子会话自身：`lifetimeToolCallCount` 恢复时由日志重算，
+   * `cumulativeInputTokens` 由 `token_update` 条目求和 —— 重启后依然可用，
+   * 不需要为阈值额外持久化任何字段。
+   */
+  getResumeSignals(): Array<{
+    childId: string;
+    mode: ChildSessionMode;
+    outcome: ChildSessionOutcome;
+    cause: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt" | undefined;
+    toolCalls: number;
+    tokensIn: number;
+    sessionAvailable: boolean;
+  }> {
+    type ResumeSignal = ReturnType<ChildSessionManager["getResumeSignals"]>[number];
+    const signals: ResumeSignal[] = [];
+    for (const handle of this._handles.values()) {
+      signals.push({
+        childId: handle.id,
+        mode: handle.mode,
+        outcome: handle.lastOutcome,
+        cause: handle.terminationCause,
+        toolCalls: handle.session?.lifetimeToolCallCount ?? handle.lifetimeToolCallCount,
+        tokensIn: handle.session?.cumulativeInputTokens ?? 0,
+        sessionAvailable: handle.session !== null,
+      });
+    }
+    return signals;
+  }
+
+  /**
+   * 启动对账归一：把"曾经活着"的子会话统一落成 fail。
+   *
+   * - 可续：`idle` + `status:error` + **保留 Session**（等主 agent 显式 task_resume）
+   * - 不可续：`archived` + `status:error` + **释放 Session**（日志按需从磁盘读取）
+   *
+   * `outcome` 固定为 `interrupted`（"被重启打断"），绝不用 `error` —— 否则下次重启
+   * 的判定会读到 `error` 而永久拒绝续跑（自锁）。
+   */
+  finalizeRestoredChild(childId: string, resumable: boolean): void {
+    const handle = this._handles.get(childId);
+    if (!handle) return;
+    const state = childRestartState(resumable, handle.lastOutcome);
+    handle.lifecycle = state.lifecycle;
+    handle.status = state.status;
+    handle.lastOutcome = state.outcome;
+    handle.suspended = true;
+    handle.terminationCause = undefined;
+
+    if (handle.session && !state.keepSession) {
+      // 先落盘再释放：释放后磁盘副本是唯一副本。
+      const savedOk = this.deps.saveChildSession(handle);
+      handle.frozenSnapshot = this._buildSnapshot(handle);
+      handle.session = null;
+      handle.turnPromise = null;
+      handle.abortController = null;
+      handle.settlePromise = null;
+      handle.settleResolve = null;
+      if (!savedOk) {
+        console.warn(`Failed to persist child session '${childId}' before release.`);
+      }
+      return;
+    }
+    this.deps.saveChildSession(handle);
   }
 
   /** 等待所有运行中的子会话 turn 结束（带超时）。 */
@@ -1179,6 +1312,7 @@ export class ChildSessionManager {
     childSessions: ChildSessionMetaRecord[],
     warnings: string[],
   ): PreparedChildRestore[] {
+    this._restoreFailures.clear();
     if (childSessions.length === 0) return [];
 
     const prepared: PreparedChildRestore[] = [];
@@ -1194,6 +1328,7 @@ export class ChildSessionManager {
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         warnings.push(`Failed to prepare child session '${record.id}': ${reason}`);
+        this._restoreFailures.set(record.id, "template_missing");
         continue;
       }
 
@@ -1221,6 +1356,7 @@ export class ChildSessionManager {
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         warnings.push(`Failed to load child session '${record.id}': ${reason}`);
+        this._restoreFailures.set(record.id, "log_unavailable");
       }
     }
     return prepared;

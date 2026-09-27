@@ -49,7 +49,7 @@ function semanticSnapshot(runtime: OpenTuiRuntime): Record<string, unknown> {
     disabledSkills: [...session.disabledSkills].sort(),
     sessionPhase: session.sessionPhase,
     lastTurnEndStatus: session.lastTurnEndStatus,
-    planState: session.getPlanState(),
+    taskCount: session.getTaskState().length,
   };
 }
 

@@ -108,9 +108,10 @@ import {
   type ComposerTokenVisuals,
 } from "./composer-tokens.js";
 import { createDisplayTheme, type DisplayTheme, type DisplayThemeTokens, type DeepPartial, type ThemeMode } from "./display/theme/index.js";
+import { parseThemeModePref, normalizeThemeMode } from "../../src/config/theme.js";
 import { ContextUsageCard, CodexUsageCard } from "./display/panels/usage-cards.js";
 import { StatusPanel } from "./display/panels/status-panel.js";
-import { usePlan } from "./presentation/use-plan.js";
+import { useTasks } from "./presentation/use-tasks.js";
 import {
   type ActivityPhase,
   type AnyOAuthTokens,
@@ -125,6 +126,8 @@ import {
 import { clamp, computePickerMaxVisible } from "./display/layout/metrics.js";
 import { OpenTuiScreen } from "./display/layout/open-tui-screen.js";
 import { resolveModelNameColor } from "./display/utils/model.js";
+import { createUiText, getUiLanguage, normalizeUiLanguage, resolveCommandEchoDisplay, type UiLanguage, type UiText } from "../../src/lib/ui-text.js";
+import { getSwarmflowHomeDir } from "../../src/lib/home-path.js";
 import { getDeleteToVisualLineStartAction } from "./input/delete-to-visual-line-start.js";
 import { appendPromptHistory, getPromptHistoryNavigationDirection, navigatePromptHistory } from "./input/prompt-history.js";
 
@@ -306,6 +309,12 @@ export function OpenTuiApp({
   copyOnSelect: initialCopyOnSelect,
 }: OpenTuiAppProps): React.ReactNode {
   const renderer = useRenderer();
+  // 界面文案表（language.json）。语言是状态：/language 一改，整棵组件树跟着刷新。
+  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(
+    () => normalizeUiLanguage(getUiLanguage(getSwarmflowHomeDir())),
+  );
+  const uiText: UiText = useMemo(() => createUiText(uiLanguage), [uiLanguage]);
+  const t = uiText;
   const terminal = useTerminalDimensions();
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemeMode);
   const [themeModePref, setThemeModePref] = useState<"auto" | ThemeMode>(initialThemeModePref);
@@ -327,7 +336,8 @@ export function OpenTuiApp({
   useEffect(() => {
     if (themeModePref !== "auto") return;
     const handler = (mode: ThemeMode | null) => {
-      if (mode === "light" || mode === "dark" || mode === "default" || mode === "dracula" || mode === "brief") setThemeMode(mode);
+      const next = parseThemeModePref(mode);
+      if (next && next !== "auto") setThemeMode(next);
       // Re-query the terminal palette on every mode flip — the new theme
       // almost certainly changed foreground too. The renderer caches the
       // palette across calls (see Renderer.getPalette), so invalidate the
@@ -368,7 +378,7 @@ export function OpenTuiApp({
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const presentationEntries = usePresentationEntries({ session, selectedChildId, childSessions, processing });
   const turnElapsed = useTurnTimer(phase);
-  const planCheckpoints = usePlan(session);
+  const tasks = useTasks(session);
   const [agentsPanelOpen, setAgentsPanelOpen] = useState(false);
   const [todoPanelOpen, setTodoPanelOpen] = useState(false);
   const [rootLogRevision, setRootLogRevision] = useState(session.getLogRevision?.() ?? 0);
@@ -390,11 +400,11 @@ export function OpenTuiApp({
     }
   }, [childSessions.length]);
   useEffect(() => {
-    if (planCheckpoints.length > 0 && !hasAutoOpenedTodos.current) {
+    if (tasks.length > 0 && !hasAutoOpenedTodos.current) {
       hasAutoOpenedTodos.current = true;
       setTodoPanelOpen(true);
     }
-  }, [planCheckpoints.length]);
+  }, [tasks.length]);
   // Frozen child view — protects display when viewed child becomes archived
   const [frozenChildView, setFrozenChildView] = useState<{
     snapshot: ChildSessionSnapshot;
@@ -1179,7 +1189,7 @@ export function OpenTuiApp({
   }, []);
   // Show the copy-on-select toast and auto-dismiss it after ~2s. A fresh flash
   // resets the timer (clearTimeout) so only the latest one survives.
-  const flashCopyToast = useCallback((message = "Copied to clipboard") => {
+  const flashCopyToast = useCallback((message = t.get(["Views", "copy", "copied"])) => {
     setCopyToast(message);
     if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
     copyToastTimerRef.current = setTimeout(() => {
@@ -1203,7 +1213,7 @@ export function OpenTuiApp({
       if (!text) return;
       void copyToClipboard(text, (t) => renderer.copyToClipboardOSC52(t)).then((ok) => {
         if (ok) flashCopyToast();
-        else showHint("Copy failed.");
+        else showHint(t.get(["Error", "copyFailed"]));
       });
     };
     renderer.on("selection", onSelection);
@@ -1235,7 +1245,7 @@ export function OpenTuiApp({
   const openShellsPicker = useCallback(() => {
     const options = buildShellPickerOptions();
     if (options.length === 0) {
-      showHint("No background shells tracked.");
+      showHint(t.get(["Error", "noShells"]));
       return;
     }
     resolvePromptSelect(undefined);
@@ -1300,9 +1310,9 @@ export function OpenTuiApp({
         shell: { kind: string };
       };
       if (shell.kind === "pwsh") {
-        showHint("Shell: PowerShell 7+ (install Git for Windows for better compatibility)", 8000);
+        showHint(t.get(["Views", "shell", "pwsh7"]), 8000);
       } else if (shell.kind === "powershell") {
-        showHint("Shell: Windows PowerShell 5.1 (install Git for Windows for better compatibility)", 8000);
+        showHint(t.get(["Views", "shell", "ps51"]), 8000);
       }
     } catch { /* not on Windows or import unavailable */ }
   }, [showHint]);
@@ -1561,7 +1571,7 @@ export function OpenTuiApp({
         if (message === "__toggle_markdown_raw__") {
           setMarkdownMode((current) => {
             const next = current === "rendered" ? "raw" : "rendered";
-            showHint(next === "raw" ? "Markdown raw: ON" : "Markdown raw: OFF");
+            showHint(t.get(["Views", "markdownRaw", next === "raw" ? "on" : "off"]));
             return next;
           });
           return;
@@ -1577,20 +1587,25 @@ export function OpenTuiApp({
         if (message.startsWith("__sidebar_mode__:")) {
           const mode = message.slice(17) as "open" | "close" | "auto";
           setSidebarMode(mode);
-          showHint(`Sidebar: ${mode}`);
+          showHint(t.get(["Views", "sidebar", "switched"], { mode }));
+          return;
+        }
+        if (message.startsWith("__ui_language__:")) {
+          const raw = message.slice("__ui_language__:".length);
+          // 只支持 zh / en；未知值回落默认语言。
+          const next = normalizeUiLanguage(raw);
+          setUiLanguage(next);
+          showHint(createUiText(next).get(["Commands", "/language", "hint"], {
+            language: createUiText(next).get(["Common", next === "en" ? "languageNameEn" : "languageNameZh"]),
+          }));
           return;
         }
         if (message.startsWith("__theme_mode__:")) {
-          const value = message.slice("__theme_mode__:".length) as "auto" | ThemeMode;
-          setThemeModePref(value);
-          if (value === "light" || value === "dark" || value === "default" || value === "dracula" || value === "brief") {
-            setThemeMode(value);
-          } else if (value === "auto") {
-            // Snap to whatever the renderer already knows; the live-follow
-            // effect below will pick up future changes.
-            const oscMode = renderer.themeMode;
-            if (oscMode === "light" || oscMode === "dark") setThemeMode(oscMode);
-          }
+          const raw = message.slice("__theme_mode__:".length);
+          // 只受支持三种主题；历史遗留值/未知值归一化为默认主题 Brief。
+          const next = normalizeThemeMode(raw);
+          setThemeModePref(next);
+          setThemeMode(next);
           return;
         }
         if (message.startsWith("__diff_display__:")) {
@@ -1618,7 +1633,7 @@ export function OpenTuiApp({
         if (message === "__sidebar_toggle__") {
           setSidebarMode((current) => {
             const next = current === "auto" ? "open" : current === "open" ? "close" : "auto";
-            showHint(`Sidebar: ${next}`);
+            showHint(t.get(["Views", "sidebar", "switched"], { mode: next }));
             return next;
           });
           return;
@@ -1631,7 +1646,6 @@ export function OpenTuiApp({
         updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
         setPendingAsk(null);
         setAskError(null);
-        setClearDisplay(true);
       },
       requestFullRepaint: () => {
         renderer?.requestFullRepaint?.();
@@ -1812,7 +1826,7 @@ export function OpenTuiApp({
       if (pendingAsk.kind === "approval") {
         resolveApproval(askSelectionIndex);
       } else {
-        showHint("Ask resolution is not implemented in this prototype yet.");
+        showHint(t.get(["Error", "askNotImplemented"]));
       }
       return;
     }
@@ -1835,11 +1849,11 @@ export function OpenTuiApp({
     const isProcessing = processingRef.current;
     if (isProcessing) {
       if (isSessionConfigCommand) {
-        showHint("Wait until the assistant finishes.");
+        showHint(t.get(["Error", "waitForFinish"]));
         return;
       }
       if (queuedInputsRef.current.length > 0) {
-        showHint("A message is already queued");
+        showHint(t.get(["Error", "alreadyQueued"]));
         return;
       }
       if (typeof session.deliverMessage === "function") {
@@ -1847,15 +1861,15 @@ export function OpenTuiApp({
         queuedInputsRef.current = projectQueuedInputs([...(session.log ?? [])]);
         if (decision && decision.accepted === false) {
           showHint(decision.reason === "compact_in_progress"
-            ? "Compacting context — try again in a moment"
-            : "A message is already queued");
+            ? t.get(["Error", "compacting"])
+            : t.get(["Error", "alreadyQueued"]));
           return;
         }
         appendPromptHistory(input);
         clearInput();
-        showHint("Message queued");
+        showHint(t.get(["Views", "queue", "queued"]));
       } else {
-        showHint("The assistant is busy and this prototype cannot queue input here.");
+        showHint(t.get(["Error", "assistantBusy"]));
       }
       return;
     }
@@ -1878,11 +1892,12 @@ export function OpenTuiApp({
       const args = input.slice(cmdName.length).trim();
       const command = commandRegistry.lookup(cmdName);
       if (!command) {
-        session.appendErrorMessage?.(`Unknown command: ${cmdName}`, "command");
+        session.appendErrorMessage?.(t.get(["Error", "unknownCommand"], { command: cmdName }), "command");
         return;
       }
-      // 显式显示命令文本到主界面，渲染为用户输入样式（背景色 userWash）
-      session.appendUserInputDisplay?.(input);
+      // 切换类命令不显示原始命令字符，改显 language.json 里的中文/英文文案。
+      const echo = resolveCommandEchoDisplay(input, uiText.language);
+      session.appendUserInputDisplay?.(echo ?? input);
       try {
         await command.handler(buildCommandContext(), args);
       } catch (err) {
@@ -1891,7 +1906,7 @@ export function OpenTuiApp({
           return;
         }
         const message = err instanceof Error ? err.message : String(err);
-        session.appendErrorMessage?.(`Command failed (${cmdName}): ${message}`, "command");
+        session.appendErrorMessage?.(t.get(["Error", "commandFailed"], { command: cmdName, message }), "command");
       }
       return;
     }
@@ -2177,7 +2192,7 @@ export function OpenTuiApp({
   const submitPromptSecret = useCallback((value: string) => {
     if (!promptSecret) return;
     if (!promptSecret.allowEmpty && value.trim() === "") {
-      showHint("A value is required.");
+      showHint(t.get(["Error", "valueRequired"]));
       return;
     }
     resolvePromptSecret(value);
@@ -2242,7 +2257,7 @@ export function OpenTuiApp({
       // hint when the copy ultimately fails.
       void copyToClipboard(selectionText, (text) => renderer.copyToClipboardOSC52(text))
         .then((copied) => {
-          if (!copied) showHint("Copy failed.");
+          if (!copied) showHint(t.get(["Error", "copyFailed"]));
         });
       renderer.clearSelection();
       event.preventDefault();
@@ -2716,7 +2731,7 @@ export function OpenTuiApp({
         try {
           const clipResult = await readClipboardImage();
           if (!clipResult) {
-            showHint("No image in clipboard.");
+            showHint(t.get(["Error", "noClipboardImage"]));
             return;
           }
           const processed = await processImage(clipResult.buffer, clipResult.mediaType);
@@ -2748,9 +2763,9 @@ export function OpenTuiApp({
             syncComposerState();
           }
           const sizeMB = (processed.sizeBytes / (1024 * 1024)).toFixed(1);
-          showHint(`Image pasted (${processed.width}×${processed.height}, ${sizeMB} MB)`);
+          showHint(t.get(["Views", "image", "pasted"], { width: processed.width, height: processed.height, size: sizeMB }));
         } catch (err) {
-          showHint(`Image paste failed: ${err instanceof Error ? err.message : String(err)}`);
+          showHint(t.get(["Error", "imagePasteFailed"], { message: err instanceof Error ? err.message : String(err) }));
         }
       })();
       return;
@@ -2788,7 +2803,7 @@ export function OpenTuiApp({
         if (snapshot?.lifecycle === "running" || snapshot?.lifecycle === "blocked") {
           const decision = session.interruptChildSession?.(selectedChildId) ?? { accepted: false, reason: "unsupported" };
           if (decision.accepted) {
-            showHint(`Interrupted ${selectedChildId}`);
+            showHint(t.get(["Views", "interrupt", "child"], { agentId: selectedChildId }));
           }
           event.preventDefault();
           event.stopPropagation();
@@ -2817,7 +2832,7 @@ export function OpenTuiApp({
       if (pendingAsk) {
         const decision = session.denyAndInterruptPendingAsk?.();
         if (decision && !decision.accepted) {
-          showHint(`Interrupt failed: ${decision.reason ?? "unknown"}`);
+          showHint(t.get(["Error", "interruptFailed"], { reason: decision.reason ?? t.get(["Common", "unknown"]) }));
           return false;
         }
         if (decision?.accepted) {
@@ -2894,7 +2909,7 @@ export function OpenTuiApp({
         clearInput();
         return;
       }
-      showHint("Press Ctrl+C again to exit");
+      showHint(t.get(["Views", "exit", "pressAgain"]));
       return;
     }
     // Ctrl+X: kill all sub-agents (any state)
@@ -2902,7 +2917,7 @@ export function OpenTuiApp({
       event.preventDefault();
       event.stopPropagation();
       session.interruptAllChildAgents?.();
-      showHint("All sub-agents interrupted");
+      showHint(t.get(["Views", "interrupt", "allAgents"]));
       return;
     }
     // Ctrl+K: kill all background shells (any state)
@@ -2910,14 +2925,14 @@ export function OpenTuiApp({
       event.preventDefault();
       event.stopPropagation();
       session.killAllShells?.();
-      showHint("All background shells killed");
+      showHint(t.get(["Views", "interrupt", "allShells"]));
       return;
     }
     // Ctrl+G: toggle markdown raw/rendered
     if (event.name === "g" && event.ctrl) {
       setMarkdownMode((current) => {
         const next = current === "rendered" ? "raw" : "rendered";
-        showHint(next === "raw" ? "Markdown raw: ON" : "Markdown raw: OFF");
+        showHint(t.get(["Views", "markdownRaw", next === "raw" ? "on" : "off"]));
         return next;
       });
       event.preventDefault();
@@ -2974,9 +2989,9 @@ export function OpenTuiApp({
         composer.setText(restored);
         composer.cursorOffset = displayWidthWithNewlines(restored);
         syncComposerState();
-        showHint("Queued message restored");
+        showHint(t.get(["Views", "queue", "restored"]));
       } else {
-        showHint("Queued message is already being sent");
+        showHint(t.get(["Views", "queue", "sending"]));
       }
       event.preventDefault();
       event.stopPropagation();
@@ -3053,14 +3068,14 @@ export function OpenTuiApp({
   const modelDescriptor = getCurrentModelDescriptor(session);
   const modelName = modelDescriptor?.compactScopedLabel ?? "unknown";
   const modelNameColor = resolveModelNameColor(modelDescriptor, theme);
-  // Thinking level suffix for the status line
+  // 输入框右上角："供应商/模型 思考深度"。
+  // 深度档位统一来自 src/config/thinking.ts（low/medium/high/xhigh/max，不提供 ultra）；
+  // 非思考模型不显示深度，off 原样显示。
   const thinkingLevel = session.thinkingLevel ?? "";
   const thinkingSuffix = (() => {
-    if (!thinkingLevel || thinkingLevel === "none") return "";        // not a thinking model
-    if (thinkingLevel === "off") return "Thinking off";               // explicitly disabled
-    if (thinkingLevel === "xhigh") return "Thinking xhigh *";        // xhigh: OpenAI only
-    if (thinkingLevel === "max") return "Thinking max *";             // max: DeepSeek, Anthropic, GLM
-    return `Thinking ${thinkingLevel}`;                               // low/medium/high
+    if (!thinkingLevel || thinkingLevel === "none") return ""; // 非思考模型
+    if (thinkingLevel === "off") return "off";                 // 显式关闭
+    return thinkingLevel;                                      // low/medium/high/xhigh/max
   })();
   // Agent counts for indicator — all 3 states
   const runningAgentCount = childSessions.filter((s) => s.lifecycle === "running" || s.lifecycle === "blocked").length;
@@ -3211,6 +3226,7 @@ export function OpenTuiApp({
       phase={effectivePhase}
       modelName={effectiveModelName}
       thinkingSuffix={childSnapshot ? "" : thinkingSuffix}
+      uiText={uiText}
       modelColor={effectiveModelColor}
       turnElapsed={effectiveElapsed}
       hint={hint}
@@ -3218,14 +3234,14 @@ export function OpenTuiApp({
       keyBindings={COMPOSER_KEY_BINDINGS}
       onSubmit={() => {
         if (selectedChildId) {
-          showHint("Return to the primary session to send messages.");
+          showHint(t.get(["Error", "backToPrimary"]));
           return;
         }
         void handleSubmit(getSerializedComposerInput());
       }}
       onModelClick={() => {
         if (selectedChildId) {
-          showHint("Sub-Agent models are fixed by their template or tier and cannot be changed manually.");
+          showHint(t.get(["Error", "subAgentModelFixed"]));
           return;
         }
         void handleSubmit("/model");
@@ -3237,14 +3253,15 @@ export function OpenTuiApp({
       sidebarMode={sidebarMode}
       statusPanel={(() => {
         const showAgents = agentsPanelOpen && childSessions.length > 0;
-        const showTodos = todoPanelOpen && planCheckpoints.length > 0;
-        if (!showAgents && !showTodos) return undefined;
+        const showTasks = todoPanelOpen && tasks.length > 0;
+        if (!showAgents && !showTasks) return undefined;
         return (
           <StatusPanel
             agents={childSessions}
             showAgents={showAgents}
-            todos={planCheckpoints}
-            showTodos={showTodos}
+            tasks={tasks}
+            showTasks={showTasks}
+            taskPersistence={session.getTaskPersistence?.() ?? "file"}
             colors={theme.colors}
             contentWidth={terminal.width - 1}
             terminalHeight={terminal.height}
@@ -3264,8 +3281,8 @@ export function OpenTuiApp({
           ))}
         </box>
       ) : undefined}
-      todoOpenCount={planCheckpoints.filter((cp) => cp.status !== "done").length}
-      todoDoneCount={planCheckpoints.filter((cp) => cp.status === "done").length}
+      todoOpenCount={tasks.filter((task) => task.status !== "completed").length}
+      todoDoneCount={tasks.filter((task) => task.status === "completed").length}
       todoPanelOpen={todoPanelOpen}
       onTodoClick={() => setTodoPanelOpen((p) => !p)}
       shellRunningCount={shellSnapshots.filter((s) => s.status === "running").length}

@@ -190,6 +190,31 @@ run(process.execPath, [
   "--overwrite",
 ]);
 
+// 图标不在 SEA blob 里，而是 PE 资源（postject 只注入 blob），因此必须单独写入；
+// 不写的话 exe 会保留 node.exe 自带的 Node.js 图标。
+const iconPath = join(root, "icons", "swarmflow.ico");
+const iconScript = join(root, "scripts", "set-exe-icon.ps1");
+if (existsSync(iconPath) && existsSync(iconScript)) {
+  console.log("Applying application icon...");
+  run("powershell.exe", [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    iconScript,
+    "-ExePath",
+    executablePath,
+    "-IcoPath",
+    iconPath,
+  ]);
+} else {
+  console.warn(
+    "icon assets not found (icons/swarmflow.ico + scripts/set-exe-icon.ps1) — " +
+      "SwarmFlow.exe keeps the default Node.js icon. " +
+      "Provide an ICO at icons/swarmflow.ico (generated externally, e.g. Photoshop).",
+  );
+}
+
 rmSync(seaConfigPath, { force: true });
 rmSync(seaBlobPath, { force: true });
 writeFileSync(

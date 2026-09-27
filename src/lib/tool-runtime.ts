@@ -12,7 +12,7 @@
  */
 
 import type { ToolDef } from "../providers/base.js";
-import { ToolResult } from "../providers/base.js";
+import { TASK_CONTROL_TOOLS, TASK_TOOLS } from "../tools/tasks.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
 import type { ToolPreflightContext, ToolPreflightDecision } from "../agents/tool-loop.js";
 import type { ApprovalOffer, InvocationAssessment } from "../permissions/types.js";
@@ -137,6 +137,30 @@ export function ensureCommTools(
 }
 
 /**
+ * 按能力确保任务工具存在于工具数组中。
+ *
+ * 必须在子会话约束（subagent-factory 的 COMM_TOOL_NAMES 剥离）**之后**调用：
+ * 子 Session 的构造函数会按 CHILD_SESSION_CAPABILITIES 重新追加 —— 把任务工具
+ * 放进剥离清单是无效的（参见 await_event 的既有陷阱）。
+ *
+ * 就地修改传入的数组。
+ */
+export function ensureTaskTools(
+  tools: ToolDef[],
+  capabilities: SessionCapabilities,
+): void {
+  const existing = new Set(tools.map((t) => t.name));
+  const wanted: ToolDef[] = [];
+  if (capabilities.includeTaskTools) wanted.push(...TASK_TOOLS);
+  if (capabilities.includeTaskControl) wanted.push(...TASK_CONTROL_TOOLS);
+  for (const toolDef of wanted) {
+    if (!existing.has(toolDef.name)) {
+      tools.push(toolDef);
+    }
+  }
+}
+
+/**
  * 根据能力和可用技能确保 skill 工具的存在/缺失。
  * 就地修改传入数组（filter+push 模式需要重新赋值）。
  * 返回新的工具数组。
@@ -167,13 +191,12 @@ export interface ExecutorDeps {
   supportsMultimodal: boolean;
   /* 会话拥有的通信工具执行器（execAsk， execSpawn等） */
   commExecutors: Record<string, ToolExecutor>;
+  /* 会话拥有的任务清单执行器（task_create / task_list / task_get / task_update / task_resume） */
+  taskExecutors?: Record<string, ToolExecutor>;
   /* 额外的覆盖（例如，从构造函数选项） */
   overrides?: Record<string, ToolExecutor>;
   /* 在文件写入后调用（例如用于自定义写入后的副作用）。 */
   onFileWrite?: (filePath: string) => void;
-  /* 在文件写入后调用以检查是否计划。Md被修改了 */
-  isPlanFile?: (filePath: string) => boolean;
-  onPlanFileWrite?: () => void;
   /* 从权限规则中获取已批准的外部路径前缀的动态getter。 */
   getApprovedExternalPrefixes?: () => string[];
   /* 将超时的同步bash进程移交给后台shell管理器。 */
@@ -186,10 +209,9 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     getSessionArtifactsDir,
     supportsMultimodal,
     commExecutors,
+    taskExecutors = {},
     overrides = {},
     onFileWrite,
-    isPlanFile,
-    onPlanFileWrite,
     getApprovedExternalPrefixes,
     adoptShell,
   } = deps;
@@ -216,36 +238,13 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     return result;
   };
 
-  const withPlanHook = (inner: ToolExecutor): ToolExecutor => {
-    return (args, rtCtx) => {
-      const filePath = String((args as Record<string, unknown>)["path"] ?? "");
-      const isPlan = filePath && isPlanFile?.(filePath);
-      const result = inner(args, rtCtx);
-      if (!isPlan) return result;
-
-      const finalize = (r: ToolResult | string): ToolResult => {
-        onPlanFileWrite?.();
-        if (r instanceof ToolResult) {
-          r.metadata.planFileOperation = true;
-          return r;
-        }
-        return new ToolResult({ content: String(r), metadata: { planFileOperation: true } });
-      };
-
-      if (result instanceof Promise) {
-        return result.then(finalize);
-      }
-      return finalize(result as ToolResult | string);
-    };
-  };
-
   return {
     read_file: scopedBuiltin("read_file"),
     list_dir: scopedBuiltin("list_dir"),
     glob: scopedBuiltin("glob"),
     grep: scopedBuiltin("grep"),
-    edit_file: withPlanHook(scopedBuiltin("edit_file")),
-    write_file: withPlanHook(writeFileWithReload),
+    edit_file: scopedBuiltin("edit_file"),
+    write_file: writeFileWithReload,
     web_search: (args, rtCtx) => executeTool("web_search", args, { signal: rtCtx?.signal }),
     web_fetch: (args, rtCtx) => executeTool("web_fetch", args, { signal: rtCtx?.signal }),
     bash: (args, rtCtx) => executeTool("bash", args, {
@@ -257,6 +256,7 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
       signal: rtCtx?.signal,
     }),
     ...commExecutors,
+    ...taskExecutors,
     ...overrides,
   };
 }

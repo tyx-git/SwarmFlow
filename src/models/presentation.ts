@@ -7,6 +7,8 @@ import {
   EFFECTIVE_MODEL_TABLES,
   EFFECTIVE_PROVIDER_SPECS,
 } from "../providers/registry-effective.js";
+import { loadGlobalSettings } from "../config/persistence.js";
+import { getSwarmflowHomeDir } from "../lib/home-path.js";
 
 function normalizeModelId(model: string): string {
   const idx = model.lastIndexOf("/");
@@ -171,6 +173,12 @@ export function describeModel(params: {
   selectionKey?: string;
   modelId?: string;
   configName?: string;
+  /**
+   * 任意 provider id 的显示名（自定义/本地供应商在设置里填写的 label）。
+   * 传了就优先使用原文字符串，不再对 id 做大小写归一——否则用户写的
+   * "JuCode" 会被改写成 "Jucode"。
+   */
+  providerLabelOverride?: string;
 }): ModelDescriptor {
   const providerId = String(params.providerId ?? "").trim();
   const selectionKey = String(params.selectionKey ?? params.modelId ?? "").trim();
@@ -192,7 +200,7 @@ export function describeModel(params: {
   const compactModelDetailedLabel = note ? `${compactModelLabel} (${note})` : compactModelLabel;
   const brandKey = resolveBrandKey(providerId);
   const brandLabel = resolveBrandLabel(providerId);
-  const providerLabel = resolveProviderLabel(providerId);
+  const providerLabel = params.providerLabelOverride?.trim() || resolveProviderLabel(providerId);
   const scopedLabel = providerLabel && modelLabel ? `${providerLabel}/${modelLabel}` : modelLabel || providerLabel;
   const scopedDetailedLabel = note ? `${scopedLabel} (${note})` : scopedLabel;
   const compactScopedLabel = providerLabel && compactModelLabel
@@ -235,14 +243,38 @@ export function getCurrentModelDescriptor(session: any): ModelDescriptor | null 
     ? session.getGlobalPreferences()
     : undefined;
 
+  const providerId = String(prefs?.modelProvider ?? modelConfig.provider ?? "").trim();
+  // home 目录只用于读取自定义供应商的显示名，取不到时回落到默认位置。
+  let homeDir: string | undefined;
+  try {
+    homeDir = getSwarmflowHomeDir();
+  } catch {
+    homeDir = undefined;
+  }
+
   return describeModel({
     configName: prefs?.modelConfigName ?? session.currentModelConfigName ?? modelConfig.name,
-    providerId: prefs?.modelProvider ?? modelConfig.provider,
+    providerId,
     selectionKey: prefs?.modelSelectionKey ?? modelConfig.model,
     modelId: prefs?.modelId ?? session.currentModelName ?? modelConfig.model,
+    providerLabelOverride: customProviderLabel(homeDir, providerId),
   });
 }
 
-export function formatCurrentModelScopedLabel(session: any): string {
-  return getCurrentModelDescriptor(session)?.scopedLabel ?? "";
+/**
+ * 取自定义/本地供应商在设置里填写的显示名（原文字符串，不归一化大小写）。
+ *
+ * 自定义供应商在 settings.providers[id].label 里保存用户输入的大小写
+ * （例如 "JuCode"），而 provider id 会小写成 "jucode" 用于内部寻址；
+ * 显示时必须用前者，否则用户看到的名称和自己输入的差一个大小写。
+ */
+function customProviderLabel(homeDir: string | undefined, providerId: string): string | undefined {
+  try {
+    const label = loadGlobalSettings(homeDir).providers?.[providerId]?.label;
+    return typeof label === "string" && label.trim() ? label : undefined;
+  } catch {
+    // 读取失败不该影响模型标签渲染，退回 id 归一化结果。
+    return undefined;
+  }
 }
+

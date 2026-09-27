@@ -619,7 +619,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
 
   server.on("session.getChildSnapshots", () => session.getChildSessionSnapshots());
 
-  server.on("session.getPlanState", () => session.getPlanState());
+  server.on("session.getTaskState", () => session.getTaskState());
 
   // ── 回合提交 ──
   // 即发即忘：不要让 RPC 响应阻塞到回合完成。
@@ -958,11 +958,12 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   const unsubscribeLog = session.subscribeLog(onLogChange);
   disposers.push(unsubscribeLog);
 
-  const onPlanChange = (): void => {
-    server.emit("plan.changed", { state: session.getPlanState() });
+  // 任务清单变更（tasks.json 为权威，内存为读路径）：进程外 UI 直接拿内存态。
+  const onTaskChange = (): void => {
+    server.emit("task.changed", { state: session.getTaskState() });
   };
-  const unsubscribePlan = session.subscribePlan(onPlanChange);
-  disposers.push(unsubscribePlan);
+  const unsubscribeTasks = session.subscribeTaskState(onTaskChange);
+  disposers.push(unsubscribeTasks);
 
   // Ask 事件 — 由运行时真实 ask 订阅驱动（能力 "askEvents"）。
   // 与旧的日志变化轮询不同，这也会观察永远不会触及根日志的子 session ask。

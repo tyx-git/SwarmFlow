@@ -15,6 +15,10 @@ export interface SessionCapabilities {
   includeAskTool: boolean;
   includeSkillTools: boolean;
   includeReloadTool: boolean;
+  /** 任务清单工具（task_create / task_list / task_get / task_update）：主、子会话都可持有。 */
+  includeTaskTools: boolean;
+  /** 任务控制工具（task_resume，`task_execute` 落地后并入）：只有主会话可持有。 */
+  includeTaskControl: boolean;
 }
 
 export const ROOT_SESSION_CAPABILITIES: SessionCapabilities = {
@@ -27,6 +31,8 @@ export const ROOT_SESSION_CAPABILITIES: SessionCapabilities = {
   includeAskTool: true,
   includeSkillTools: true,
   includeReloadTool: true,
+  includeTaskTools: true,
+  includeTaskControl: true,
 };
 
 export const CHILD_SESSION_CAPABILITIES: SessionCapabilities = {
@@ -39,4 +45,8 @@ export const CHILD_SESSION_CAPABILITIES: SessionCapabilities = {
   includeAskTool: false,
   includeSkillTools: false,
   includeReloadTool: false,
+  // 子代理自己也要拆分并记录任务（清单为纯内存，随子会话消亡）
+  includeTaskTools: true,
+  // 但子代理不能派生执行体
+  includeTaskControl: false,
 };

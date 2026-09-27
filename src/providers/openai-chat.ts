@@ -308,13 +308,40 @@ export class OpenAIChatProvider extends BaseProvider {
     });
   }
 
+  /**
+   * 把思考深度档位映射为 Chat Completions 的 `reasoning_effort`。
+   *
+   * Chat Completions 不识别 `xhigh` / `max`，统一收敛到最高可用档 `high`；
+   * 关闭思维链时返回 undefined（不发送该字段）。
+   */
+  private _chatCompletionsEffort(level: string | undefined): string | undefined {
+    if (!level || level === "off" || level === "none") return undefined;
+    switch (level) {
+      case "minimal":
+      case "low":
+        return "low";
+      case "medium":
+        return "medium";
+      case "high":
+      case "xhigh":
+      case "max":
+        return "high";
+      default:
+        return "high";
+    }
+  }
+
   // ------------------------------------------------------------------
   // 思考参数
   // ------------------------------------------------------------------
 
-  protected _applyThinkingParams(kwargs: Record<string, unknown>, _options?: SendMessageOptions): void {
+  protected _applyThinkingParams(kwargs: Record<string, unknown>, options?: SendMessageOptions): void {
     if (!this._config.supportsThinking) return;
-    kwargs["reasoning_effort"] = "high";
+    // Chat Completions 的 reasoning_effort 只认 minimal/low/medium/high；
+    // 更高档位（xhigh/max）按上限收敛，避免发送非法值。
+    const effort = this._chatCompletionsEffort(options?.thinkingLevel);
+    if (effort === undefined) return;
+    kwargs["reasoning_effort"] = effort;
     // o 系列不支持 temperature；使用 max_completion_tokens
     delete kwargs["temperature"];
     if ("max_tokens" in kwargs) {

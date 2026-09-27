@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   RESUME_MAX_ATTEMPTS,
+  TASK_SNAPSHOT_MAX_COMPLETED,
   TaskStore,
+  formatTaskSnapshot,
   isWorthResuming,
   normalizeTask,
   taskStorePath,
@@ -290,5 +292,94 @@ describe("isWorthResuming", () => {
     expect(isWorthResuming(9, 29_999)).toBe(false);
     expect(isWorthResuming(10, 0)).toBe(true);
     expect(isWorthResuming(0, 30_000)).toBe(true);
+  });
+});
+
+describe("formatTaskSnapshot", () => {
+  it("returns an empty string for an empty list", () => {
+    expect(formatTaskSnapshot([])).toBe("");
+  });
+
+  it("lists open tasks first, then recent completed ones, with owners and hints", () => {
+    const store = TaskStore.memory();
+    const first = store.create("Finished", "d").task;
+    const second = store.create("Running", "d").task;
+    const third = store.create("Waiting", "d").task;
+    store.update(first.id, { status: "completed" });
+    // third 由子代理推进 → 重启对账后降级为 pending 并带续跑提示
+    store.update(third.id, { status: "in_progress", metadata: { agentId: "explorer-1" } });
+    store.markInterrupted({ "explorer-1": hint() });
+    // second 是本轮新开始的工作（对账之后），应保持 in_progress
+    store.update(second.id, { status: "in_progress", metadata: { agentId: "worker-1" } });
+
+    const snapshot = formatTaskSnapshot(store.list());
+    expect(snapshot.startsWith("[Current Tasks]")).toBe(true);
+    expect(snapshot).toContain(`- #${second.id} [in_progress] Running (owner: worker-1)`);
+    expect(snapshot).toContain(`- #${third.id} [pending] Waiting (owner: explorer-1) (interrupted — resumable via task_resume)`);
+    expect(snapshot).toContain(`- #${first.id} [completed] Finished`);
+    // 未完成项在已完成项之前
+    expect(snapshot.indexOf("Running")).toBeLessThan(snapshot.indexOf("Finished"));
+  });
+
+  it("caps how many completed tasks it keeps", () => {
+    const store = TaskStore.memory();
+    for (let i = 0; i < TASK_SNAPSHOT_MAX_COMPLETED + 3; i++) {
+      const task = store.create(`done-${i}`, "d").task;
+      store.update(task.id, { status: "completed" });
+    }
+    const snapshot = formatTaskSnapshot(store.list());
+    expect(snapshot).toContain("… and 3 earlier completed task(s)");
+    expect(snapshot).not.toContain("done-0");
+    expect(snapshot).toContain(`done-${TASK_SNAPSHOT_MAX_COMPLETED + 2}`);
+  });
+
+  it("marks non-resumable interruptions as needing re-dispatch", () => {
+    const store = TaskStore.memory();
+    const task = store.create("Stuck", "d").task;
+    store.update(task.id, { status: "in_progress", metadata: { agentId: "explorer-9" } });
+    store.markInterrupted({ "explorer-9": hint({ childId: "explorer-9", resumable: false, reason: "too_early" }) });
+    expect(formatTaskSnapshot(store.list())).toContain("(interrupted — needs re-dispatch)");
+  });
+});
+
+describe("sanitizeForFork", () => {
+  it("keeps task content but drops every link to the parent run", () => {
+    const store = TaskStore.memory();
+    const task = store.create("Inherited", "desc", "Inheriting").task;
+    store.update(task.id, {
+      status: "in_progress",
+      owner: "worker-1",
+      metadata: { agentId: "worker-1", result: "partial", lastError: "boom", taskSummary: { total: 2, open: 1, done: 1 } },
+    });
+    store.markInterrupted({ "worker-1": hint({ childId: "worker-1" }) });
+
+    const result = store.sanitizeForFork(1_700_000_000_000);
+
+    expect(result.changed).toEqual([task.id]);
+    const forked = store.get(task.id);
+    expect(forked?.status).toBe("pending");
+    expect(forked?.owner).toBeUndefined();
+    expect(forked?.metadata).toEqual({});
+    expect(forked?.subject).toBe("Inherited");
+    expect(forked?.activeForm).toBe("Inheriting");
+  });
+
+  it("is a no-op for tasks with nothing to sanitize", () => {
+    const store = TaskStore.memory();
+    store.create("Plain", "d");
+    expect(store.sanitizeForFork().changed).toEqual([]);
+  });
+
+  it("persists the sanitized list when file-backed", () => {
+    const dir = makeTempDir();
+    const filePath = taskStorePath(dir);
+    const store = new TaskStore({ filePath, sessionId: "s1" });
+    const task = store.create("T", "d").task;
+    store.update(task.id, { status: "in_progress", metadata: { agentId: "a1" } });
+    store.sanitizeForFork();
+
+    const reloaded = new TaskStore({ filePath, sessionId: "s1" });
+    expect(reloaded.get(task.id)?.status).toBe("pending");
+    expect(reloaded.get(task.id)?.metadata["agentId"]).toBeUndefined();
   });
 });

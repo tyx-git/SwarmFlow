@@ -811,12 +811,6 @@ export interface ToolLoopOptions {
   onToolCallPartial?: (callId: string, name: string, rawArguments: string) => void;
   /** 解析工具调用在 TUI 中是延迟、显示还是隐藏。 */
   resolveToolCallVisibility?: ResolveToolCallVisibilityCallback;
-  /**
-   * 判断文件路径是否为会话 plan 文件。
-   * 若是，写/编辑该文件时 tool_call 条目会被标记为 planFileOperation，
-   * TUI 将其重标签为"Update Todos"。在 path 参数已知后检查。
-   */
-  isPlanFilePath?: (filePath: string) => boolean;
   /** 就地更新已有日志条目（用于最终化 pending tool call 条目）。 */
   updateEntry?: (entryId: string, patch: {
     apiRole?: LogEntry["apiRole"];
@@ -883,7 +877,6 @@ export async function asyncRunToolLoop(
     onRetryExhausted,
     onToolCallPartial: onToolCallPartialOpt,
     resolveToolCallVisibility,
-    isPlanFilePath,
     updateEntry,
     discardEntry,
   } = opts;
@@ -1054,9 +1047,6 @@ export async function asyncRunToolLoop(
       const contextId = pending.contextId ?? ensureRoundContextId();
       const display = generateToolCallDisplay(pending.name, args);
       const fmd = buildFileModifyData(pending);
-      // 当 path 已知且为 plan 文件时，标记为 planFileOperation
-      const callPath = typeof args.path === "string" ? args.path : "";
-      const isPlanCall = callPath !== "" && isPlanFilePath?.(callPath) === true;
       const meta = buildToolCallMeta(
         { toolCallId: callId, toolName: pending.name, agentName, contextId },
         {
@@ -1066,7 +1056,6 @@ export async function asyncRunToolLoop(
           toolStreamLanguage: pending.streamLanguage,
           toolStreamMode: pending.streamMode,
           fileModifyData: fmd,
-          ...(isPlanCall ? { toolMetadata: { planFileOperation: true } } : {}),
         },
       );
       const entryTuiVisible = pending.tuiVisibility === "show";

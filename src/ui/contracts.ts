@@ -6,7 +6,7 @@
  */
 
 import type { ProgressReporter } from "../lib/progress.js";
-import type { PlanCheckpoint } from "../lib/plan-state.js";
+import type { Task } from "../lib/task-store.js";
 import type { SessionStore, LogSessionMeta } from "../config/persistence.js";
 import type {
   PendingAskUi,
@@ -216,8 +216,12 @@ export interface Session {
   reconnectMcpServerFromCommand?(serverName: string): Promise<boolean>;
   ensureMcpReadyFromCommand?(): Promise<void>;
   skills?: ReadonlyMap<string, unknown>;
-  getPlanState?(): PlanCheckpoint[];
-  subscribePlan?(listener: () => void): () => void;
+  /** 当前会话的任务清单（内存权威，磁盘为 write-through 副本）。 */
+  getTaskState?(): readonly Task[];
+  /** 任务清单变更订阅（父面板与 badge 用；不读盘）。 */
+  subscribeTaskState?(listener: () => void): () => void;
+  /** 任务清单是否落盘；`"memory"` 时 UI 才需要标注"不持久化"。 */
+  getTaskPersistence?(): "file" | "pending" | "memory";
   /** 待处理询问变更订阅（自身 + 子会话询问）。 */
   subscribeAsk?(listener: () => void): () => void;
   /** 轮次生命周期订阅；参见 session.ts 中的 TurnLifecycleEvent。 */
