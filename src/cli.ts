@@ -45,6 +45,13 @@ import { findSessionById, findSessionByName, listSessionsForProject, formatSize 
  */
 export function ensureWindowsUtf8Console(): void {
   if (process.platform !== "win32" || !process.stdout.isTTY) return;
+  // SEA 单文件版由 scripts/sea-bootstrap.cjs 提前切过代码页，这里跳过，
+  // 避免重复派生子进程（一次 chcp 实测约 100~180ms，纯浪费）。
+  if (process.env.SWARMFLOW_SEA_CONSOLE_READY === "1") {
+    process.stdout.setDefaultEncoding("utf8");
+    process.stderr.setDefaultEncoding("utf8");
+    return;
+  }
 
   // 直接调用 chcp.com，而不是 `cmd /d /s /c chcp 65001`：绕开 cmd.exe 的
   // 解释器启动，实测单次派生由约 296ms 降到约 181ms。stdout 被忽略，

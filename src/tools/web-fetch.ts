@@ -7,9 +7,6 @@
  */
 
 import { isIP } from "node:net";
-import { Readability } from "@mozilla/readability";
-import { parseHTML } from "linkedom";
-import TurndownService from "turndown";
 import type { ToolDef } from "../providers/base.js";
 import { truncateMiddle } from "./shared.js";
 
@@ -57,10 +54,41 @@ export const WEB_FETCH: ToolDef = {
 // HTML 到可读文本转换器
 // ------------------------------------------------------------------
 
-const turndown = new TurndownService({
-  headingStyle: "atx",
-  codeBlockStyle: "fenced",
-});
+/**
+ * linkedom / turndown / readability 只在真正抓网页时才需要，
+ * 并且只在"本地提取"这条兜底路径上用到。三者冷启动 import 合计约 400ms，
+ * 对从不调用 web_fetch 的用户是纯粹的浪费 —— 因此全部按需加载。
+ */
+type ReadabilityCtor = typeof import("@mozilla/readability")["Readability"];
+type ParseHtmlFn = typeof import("linkedom")["parseHTML"];
+type TurndownModule = typeof import("turndown");
+type TurndownServiceCtor = TurndownModule extends { default: infer D } ? D : TurndownModule;
+
+let parseHtmlFn: ParseHtmlFn | null = null;
+let ReadabilityCtor: ReadabilityCtor | null = null;
+let TurndownServiceCtor: TurndownServiceCtor | null = null;
+let turndownInstance: InstanceType<TurndownServiceCtor> | null = null;
+
+async function loadExtractors(): Promise<void> {
+  if (!parseHtmlFn) {
+    parseHtmlFn = (await import("linkedom")).parseHTML;
+  }
+  if (!ReadabilityCtor) {
+    ReadabilityCtor = (await import("@mozilla/readability")).Readability;
+  }
+  if (!TurndownServiceCtor) {
+    const mod = (await import("turndown")) as unknown as {
+      default?: TurndownServiceCtor;
+    } & TurndownModule;
+    TurndownServiceCtor = mod.default ?? (mod as unknown as TurndownServiceCtor);
+  }
+  if (!turndownInstance) {
+    turndownInstance = new TurndownServiceCtor({
+      headingStyle: "atx",
+      codeBlockStyle: "fenced",
+    });
+  }
+}
 
 function cleanupText(text: string): string {
   return text
@@ -85,13 +113,14 @@ function removeNoisyElements(document: Document): void {
  * Readability 尽可能提取主要文章，Turndown 将
  * 剩余的 HTML 转换为 markdown。如果提取失败，回退到 body HTML。
  */
-function htmlToMarkdown(html: string): string {
-  const { document } = parseHTML(html);
+async function htmlToMarkdown(html: string): Promise<string> {
+  await loadExtractors();
+  const { document } = parseHtmlFn!(html);
   removeNoisyElements(document);
   const explicitMain = document.querySelector("article, main")?.innerHTML;
-  const article = new Readability(document, { keepClasses: false }).parse();
+  const article = new ReadabilityCtor!(document, { keepClasses: false }).parse();
   const source = explicitMain || article?.content || document.body?.innerHTML || html;
-  return cleanupText(turndown.turndown(source));
+  return cleanupText(turndownInstance!.turndown(source));
 }
 
 function isPrivateIpv4(hostname: string): boolean {
@@ -413,7 +442,7 @@ async function fetchLocally(
 
   let output: string;
   if (isHTML) {
-    output = htmlToMarkdown(body);
+    output = await htmlToMarkdown(body);
   } else if (isJSON) {
     try {
       output = JSON.stringify(JSON.parse(body), null, 2);

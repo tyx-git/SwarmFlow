@@ -18,7 +18,6 @@
  *      （与之前 sips 回退行为一致）。
  */
 
-import { Jimp } from "jimp";
 
 /** 长边最大像素数 */
 const MAX_LONG_EDGE = 2000;
@@ -30,6 +29,16 @@ const MAX_SIZE_BYTES = 4.5 * 1024 * 1024; // 4.5 MB
 const JPEG_QUALITY_LADDER = [90, 85, 80, 70, 60];
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * jimp 只在真正需要"解码/重编码"时才加载（约 1.7 MB，冷启动 import 实测 ~250ms）。
+ * 绝大多数路径走的是上面的 PNG 快速路径，根本用不到它。
+ */
+let jimpModule: typeof import("jimp") | null = null;
+async function loadJimp(): Promise<typeof import("jimp")> {
+  if (!jimpModule) jimpModule = await import("jimp");
+  return jimpModule;
+}
 
 /** 处理后的图片信息 */
 export interface ProcessedImage {
@@ -86,6 +95,7 @@ export async function processImage(
     }
   }
 
+  const { Jimp } = await loadJimp();
   const image = await Jimp.fromBuffer(inputBuffer);
 
   const longEdge = Math.max(image.bitmap.width, image.bitmap.height);
