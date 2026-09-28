@@ -144,8 +144,6 @@ export interface OpenTuiAppProps {
   themeModePref: "auto" | ThemeMode;
   /** Global write/edit diff display preference. */
   diffDisplay: "compact" | "full";
-  /** Whether copy-on-select (auto-copy a drag selection) is enabled. Default: true. */
-  copyOnSelect: boolean;
   /**
    * Terminal's default foreground (OSC 10 query at startup). Used as body
    * text colour when the user is in auto mode so the TUI matches their
@@ -306,7 +304,6 @@ export function OpenTuiApp({
   themeModePref: initialThemeModePref,
   terminalDefaultFg: initialTerminalFg = null,
   diffDisplay: initialDiffDisplay,
-  copyOnSelect: initialCopyOnSelect,
 }: OpenTuiAppProps): React.ReactNode {
   const renderer = useRenderer();
   // 界面文案表（language.json）。语言是状态：/language 一改，整棵组件树跟着刷新。
@@ -320,7 +317,6 @@ export function OpenTuiApp({
   const [themeModePref, setThemeModePref] = useState<"auto" | ThemeMode>(initialThemeModePref);
   const [terminalFg, setTerminalFg] = useState<string | null>(initialTerminalFg);
   const [diffDisplayMode, setDiffDisplayMode] = useState<"compact" | "full">(initialDiffDisplay);
-  const [copyOnSelect, setCopyOnSelect] = useState<boolean>(initialCopyOnSelect);
   const theme = useMemo<DisplayTheme>(() => {
     // Only apply the terminal-fg override in auto mode. When the user pins a
     // mode (THEME=dark|light or /theme), assume they want the canonical
@@ -549,9 +545,6 @@ export function OpenTuiApp({
   const [hint, setHint] = useState<string | null>(null);
   const [updateToast, setUpdateToast] = useState<{ phase: import("./display/overlays/update-toast.js").UpdateToastPhase; version?: string; error?: string } | null>(null);
   const [mcpFailures, setMcpFailures] = useState<import("./display/overlays/mcp-toast.js").McpFailure[] | null>(null);
-  // Transient copy-on-select toast: a body string while visible, null when hidden.
-  const [copyToast, setCopyToast] = useState<string | null>(null);
-  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [usagePanel, setUsagePanel] = useState(false);
   const [usageData, setUsageData] = useState<import("./display/overlays/usage-panel.js").UsageData | null>(null);
   const [statPanel, setStatPanel] = useState(false);
@@ -1216,40 +1209,6 @@ export function OpenTuiApp({
       setHint((current) => (current === message ? null : current));
     }, durationMs);
   }, []);
-  // Show the copy-on-select toast and auto-dismiss it after ~2s. A fresh flash
-  // resets the timer (clearTimeout) so only the latest one survives.
-  const flashCopyToast = useCallback((message = t.get(["Views", "copy", "copied"])) => {
-    setCopyToast(message);
-    if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
-    copyToastTimerRef.current = setTimeout(() => {
-      setCopyToast(null);
-      copyToastTimerRef.current = undefined;
-    }, 2000);
-  }, []);
-  useEffect(
-    () => () => {
-      if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
-    },
-    [],
-  );
-  // Copy-on-select: when a drag selection finishes (renderer "selection" event),
-  // auto-copy the text and flash a toast. The highlight is intentionally NOT
-  // cleared so the user keeps their visual selection. Toggled via /autocopy.
-  useEffect(() => {
-    if (!copyOnSelect) return;
-    const onSelection = (selection: { getSelectedText?: () => string } | null) => {
-      const text = selection?.getSelectedText?.() ?? "";
-      if (!text) return;
-      void copyToClipboard(text, (t) => renderer.copyToClipboardOSC52(t)).then((ok) => {
-        if (ok) flashCopyToast();
-        else showHint(t.get(["Error", "copyFailed"]));
-      });
-    };
-    renderer.on("selection", onSelection);
-    return () => {
-      renderer.off("selection", onSelection);
-    };
-  }, [copyOnSelect, renderer, flashCopyToast, showHint]);
   // ── Background shells: stop action + picker ─────────────────────────
   const stopShellFromUi = useCallback((shellId: string) => {
     void (async () => {
@@ -1643,11 +1602,6 @@ export function OpenTuiApp({
           setDiffDisplayMode(value === "full" ? "full" : "compact");
           return;
         }
-        if (message.startsWith("__copy_on_select__:")) {
-          const value = message.slice("__copy_on_select__:".length);
-          setCopyOnSelect(value === "on");
-          return;
-        }
         if (message === "__help_panel__") {
           setHelpPanel((current) => !current);
           return;
@@ -1698,7 +1652,6 @@ export function OpenTuiApp({
         openShellsPicker();
       },
       showHint,
-      copyToClipboard: (text: string) => copyToClipboard(text, (t) => renderer.copyToClipboardOSC52(t)),
       isProcessing: () => processingRef.current,
       promptSecret: async (request: PromptSecretRequest) => {
         resolvePromptSecret(undefined);
@@ -2733,12 +2686,10 @@ export function OpenTuiApp({
       event.stopPropagation();
       return;
     }
-    // Ctrl+L: dismiss transient toasts (update + MCP failure + copy)
+    // Ctrl+L: dismiss transient update and MCP failure toasts.
     if (event.name === "l" && event.ctrl) {
       setUpdateToast(null);
       setMcpFailures(null);
-      setCopyToast(null);
-      if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -3350,7 +3301,6 @@ export function OpenTuiApp({
         setUpdateToast(null);
       }}
       mcpFailures={mcpFailures}
-      copyToast={copyToast}
       usagePanel={usagePanel}
       usageData={usageData}
       onUsageDismiss={() => setUsagePanel(false)}

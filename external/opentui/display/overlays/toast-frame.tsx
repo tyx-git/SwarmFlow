@@ -26,7 +26,7 @@ export interface ToastFrameProps {
 }
 
 /**
- * Shared visual shell for the top-right corner toasts (update / MCP / copy).
+ * Shared visual shell for the top-right corner toasts (update / MCP).
  * Pure presentation — positioning and vertical stacking are owned by
  * <ToastStack>, so this component never sets its own absolute position.
  *
@@ -94,8 +94,8 @@ export interface ToastStackProps {
 /**
  * Absolutely-positioned top-right container that stacks toasts vertically.
  * Toasts render in child order and reflow upward when one unmounts. Owning
- * positioning here (instead of per-toast) is what keeps the update / MCP /
- * copy toasts from colliding at the same top-right coordinate.
+ * positioning here (instead of per-toast) is what keeps update and MCP toasts
+ * from colliding at the same top-right coordinate.
  */
 export function ToastStack({ terminalWidth, children }: ToastStackProps): React.ReactNode {
   return (

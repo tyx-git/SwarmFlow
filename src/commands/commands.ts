@@ -138,13 +138,6 @@ export interface CommandContext {
   /* 打开后台shell选择器（badge / /shell命令）。 */
   onShellsRequested?: () => void;
 
-  /**
-   * Copy text to the system clipboard. Returns true on success.
-   * Implementations may be async (the platform-native tool runs in
-   * a child process), so callers should `await` the return value.
-   */
-  copyToClipboard?: (text: string) => boolean | Promise<boolean>;
-
   /* 当代理正在为当前回合产生输出时为True。 */
   isProcessing?: () => boolean;
 
@@ -1944,43 +1937,6 @@ async function cmdAutoUpdate(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /autocopy -选择复制（自动复制拖动选择）
-// ------------------------------------------------------------------
-
-function autoCopyOptions(_ctx: CommandOptionsContext): CommandOption[] {
-  const current = loadGlobalSettings().copy_on_select !== false;
-  return [
-    { label: current ? "On (current)" : "On", value: "on" },
-    { label: current ? "Off" : "Off (current)", value: "off" },
-  ];
-}
-
-async function cmdAutoCopy(ctx: CommandContext, args: string): Promise<void> {
-  const hint = ctx.showHint ?? ctx.showMessage;
-  let choice = args.trim().toLowerCase();
-
-  if (!choice && ctx.promptCommandPicker) {
-    const picked = await ctx.promptCommandPicker(
-      autoCopyOptions({ session: ctx.session, store: ctx.store }),
-    );
-    if (!picked) return;
-    choice = picked.value;
-  }
-
-  if (choice === "on" || choice === "off") {
-    const enabled = choice === "on";
-    persistSettingsPatch({ copy_on_select: enabled }, ctx.swarmflowHomeDir);
-    // 神奇的消息——TUI拦截并翻转React状态而不重启。
-    ctx.showMessage(`__copy_on_select__:${enabled ? "on" : "off"}`);
-    hint(`Copy-on-select: ${enabled ? "ON" : "OFF"}`);
-    return;
-  }
-
-  const current = loadGlobalSettings().copy_on_select !== false;
-  ctx.showMessage(`Copy-on-select is ${current ? "ON" : "OFF"}.\nUsage: /autocopy on | off`);
-}
-
-// ------------------------------------------------------------------
 // /rename -设置自定义会话标题
 // ------------------------------------------------------------------
 
@@ -2877,7 +2833,6 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, category: "UI" });
   registry.register({ name: "/language", description: "Switch UI language (Chinese / English)", handler: cmdLanguage, options: languageOptions, category: "UI" });
   registry.register({ name: "/autoupdate", description: "Configure automatic update checks", handler: cmdAutoUpdate, options: autoUpdateOptions, category: "Project Configuration" });
-  registry.register({ name: "/autocopy", description: "Configure copy-on-select", handler: cmdAutoCopy, options: autoCopyOptions, category: "UI" });
   registry.register({ name: "/rewind", description: "Rewind conversation and file changes", handler: cmdRewind, options: rewindOptions, pickerTitle: "Rewind", category: "Context" });
   return registry;
 }

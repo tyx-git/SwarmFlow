@@ -660,8 +660,6 @@ export interface SwarmflowSettings {
   ui_language?: UiLanguage;
   /** 内联写入/编辑差异显示模式。默认："compact" */
   diff_display?: "compact" | "full";
-  /** 选择时自动复制：将拖拽选择自动复制到剪贴板。默认：true */
-  copy_on_select?: boolean;
 
   // -- 权限 --
   /** 默认权限模式："read_only" | "reversible" | "yolo" */

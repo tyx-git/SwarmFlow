@@ -4,7 +4,6 @@
     "Common": {
       "unknown": "未知",
       "current": "当前",
-      "copy": "复制",
       "yes": "是",
       "no": "否",
       "cancel": "取消",
@@ -22,7 +21,6 @@
       "commandDenied": "命令被钩子拒绝。",
       "valueRequired": "必须填写一个值。",
       "copyFailed": "复制失败。",
-      "copiedToClipboard": "已复制到剪贴板",
       "askNotImplemented": "询问应答在当前原型中尚未实现。",
       "waitForFinish": "请等助手完成当前工作。",
       "alreadyQueued": "已有一条排队的消息",
@@ -61,9 +59,6 @@
       },
       "/diff": {
         "echo": "差异显示切换为"
-      },
-      "/copy": {
-        "echo": "选择复制切换为"
       },
       "/mcp": {
         "echo": "MCP 切换为"
@@ -104,9 +99,6 @@
         "tasks": " 任务（{parts}） ",
         "tasksPending": "{count} 待办",
         "tasksDone": "{count} 已完成"
-      },
-      "copy": {
-        "copied": "已复制到剪贴板"
       },
       "markdownRaw": {
         "on": "Markdown 原文：开",
@@ -194,7 +186,6 @@
     "Common": {
       "unknown": "unknown",
       "current": "current",
-      "copy": "Copy",
       "yes": "Yes",
       "no": "No",
       "cancel": "Cancel",
@@ -212,7 +203,6 @@
       "commandDenied": "Command denied by hook.",
       "valueRequired": "A value is required.",
       "copyFailed": "Copy failed.",
-      "copiedToClipboard": "Copied to clipboard",
       "askNotImplemented": "Ask resolution is not implemented in this prototype yet.",
       "waitForFinish": "Wait until the assistant finishes.",
       "alreadyQueued": "A message is already queued",
@@ -251,9 +241,6 @@
       },
       "/diff": {
         "echo": "Diff display switched to"
-      },
-      "/copy": {
-        "echo": "Copy on select switched to"
       },
       "/mcp": {
         "echo": "MCP switched to"
@@ -294,9 +281,6 @@
         "tasks": " Tasks ({parts}) ",
         "tasksPending": "{count} pending",
         "tasksDone": "{count} done"
-      },
-      "copy": {
-        "copied": "Copied to clipboard"
       },
       "markdownRaw": {
         "on": "Markdown raw: ON",

@@ -375,7 +375,6 @@ export async function launchTui(): Promise<void> {
         themeModePref: currentThemeModePref,
         terminalDefaultFg: currentTerminalFg,
         diffDisplay: runtime.diffDisplay,
-        copyOnSelect: runtime.copyOnSelect,
       }),
     );
   };

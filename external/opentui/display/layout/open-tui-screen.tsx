@@ -47,7 +47,6 @@ import { HorizontalTabBar } from "./horizontal-tab-bar.js";
 import { shortenPath } from "../utils/format.js";
 import { UpdateToast } from "../overlays/update-toast.js";
 import { McpToast } from "../overlays/mcp-toast.js";
-import { CopyToast } from "../overlays/copy-toast.js";
 import { ToastStack } from "../overlays/toast-frame.js";
 import { UsagePanel } from "../overlays/usage-panel.js";
 import { StatPanel } from "../overlays/stat-panel.js";
@@ -154,9 +153,6 @@ export interface OpenTuiScreenProps {
   /** MCP connection failures — null means hidden. Dismissal (manual via Ctrl+L
    * or auto-clear on recovery) is owned by the app; the screen just renders. */
   mcpFailures?: import("../overlays/mcp-toast.js").McpFailure[] | null;
-  /** Copy-on-select toast body — null means hidden. The ~2s auto-dismiss
-   * timer is owned by the app; the screen just renders. */
-  copyToast?: string | null;
   /** Called when user clicks "Restart" in the update toast. */
   onUpdateRestart?: () => void;
   /** Called when user dismisses the update toast. */
@@ -263,7 +259,6 @@ export function OpenTuiScreen({
   onUpdateRestart,
   onUpdateDismiss,
   mcpFailures,
-  copyToast,
   usagePanel,
   usageData,
   onUsageDismiss,
@@ -591,7 +586,6 @@ export function OpenTuiScreen({
           <McpToast failures={mcpFailures} theme={theme} />
         ) : null}
 
-        {copyToast ? <CopyToast message={copyToast} theme={theme} /> : null}
       </ToastStack>
 
       {usagePanel && onUsageDismiss ? (
