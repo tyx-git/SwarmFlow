@@ -506,9 +506,7 @@ describe("session storage lifecycle", () => {
       expect(session.currentModelConfigName).toBe("restored-model");
       expect(session.currentModelName).toBe("claude-sonnet-4-5");
       expect(session.primaryAgent.modelConfig.provider).toBe("anthropic");
-      expect(session.thinkingLevel).toBe(
-        session._resolveThinkingLevelForModel("claude-sonnet-4-5", "high"),
-      );
+      expect(session.thinkingLevel).toBe("high");
       expect(session._preferredThinkingLevel).toBe("high");
     } finally {
       rmSync(baseDir, { recursive: true, force: true });

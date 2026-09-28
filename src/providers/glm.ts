@@ -24,7 +24,6 @@ export class GLMProvider extends OpenAIChatProvider {
     kwargs: Record<string, unknown>,
     options?: import("./base.js").SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
     const level = options?.thinkingLevel;
     if (level === "off" || level === "none") {
       kwargs["extra_body"] = {

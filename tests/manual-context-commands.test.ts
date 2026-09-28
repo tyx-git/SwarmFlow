@@ -32,7 +32,6 @@ function makeSession(projectRoot: string): Session {
       maxTokens: 1024,
       contextLength: 8192,
       supportsMultimodal: false,
-      supportsThinking: false,
       thinkingBudget: 0,
       supportsWebSearch: false,
       extra: {},

@@ -204,8 +204,6 @@ export class OpenAIChatProvider extends BaseProvider {
           entry["reasoning_content"] = transmission.plainReplayText;
         } else if ("reasoning_content" in m) {
           entry["reasoning_content"] = m["reasoning_content"];
-        } else if (this._config.supportsThinking) {
-          entry["reasoning_content"] = "";
         }
         converted.push(entry);
       } else if (m["role"] === "assistant") {
@@ -321,19 +319,7 @@ export class OpenAIChatProvider extends BaseProvider {
    */
   private _chatCompletionsEffort(level: string | undefined): string | undefined {
     if (!level || level === "off" || level === "none") return undefined;
-    switch (level) {
-      case "minimal":
-      case "low":
-        return "low";
-      case "medium":
-        return "medium";
-      case "high":
-      case "xhigh":
-      case "max":
-        return "high";
-      default:
-        return "high";
-    }
+    return level;
   }
 
   // ------------------------------------------------------------------
@@ -341,7 +327,6 @@ export class OpenAIChatProvider extends BaseProvider {
   // ------------------------------------------------------------------
 
   protected _applyThinkingParams(kwargs: Record<string, unknown>, options?: SendMessageOptions): void {
-    if (!this._config.supportsThinking) return;
     // Chat Completions 的 reasoning_effort 只认 minimal/low/medium/high；
     // 更高档位（xhigh/max）按上限收敛，避免发送非法值。
     const effort = this._chatCompletionsEffort(options?.thinkingLevel);

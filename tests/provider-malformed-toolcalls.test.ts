@@ -24,7 +24,6 @@ function modelConfig(overrides: Partial<ModelConfig>): ModelConfig {
     maxTokens: 1024,
     contextLength: 400_000,
     supportsMultimodal: true,
-    supportsThinking: false,
     thinkingBudget: 0,
     supportsWebSearch: false,
     extra: {},

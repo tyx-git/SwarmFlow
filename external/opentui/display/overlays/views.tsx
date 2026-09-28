@@ -216,6 +216,7 @@ export function CommandPickerView(
     theme,
     contentWidth,
     maxVisible,
+    language = "en",
     onItemClick,
     noteInputRef,
     noteValue,
@@ -225,6 +226,7 @@ export function CommandPickerView(
     theme: DisplayTheme;
     contentWidth: number;
     maxVisible: number;
+    language?: "zh" | "en";
     onItemClick: (index: number) => void;
     noteInputRef?: React.RefObject<InputRenderable | null>;
     noteValue?: string;
@@ -239,12 +241,24 @@ export function CommandPickerView(
   const { start, end } = getCommandPickerVisibleRange(picker);
   const visibleOptions = level.options.slice(start, end);
   const inlineInputLines = (picker.noteEditing || picker.customInputMode) ? 2 : 0;
-  const hintLine = 1;
-  const pickerHeight = 1 + visibleOptions.length + inlineInputLines + hintLine;
+  const hintLine = picker.inputArea ? 0 : 1;
+  const titleLine = 1;
+  const pickerHeight = titleLine + visibleOptions.length + inlineInputLines + hintLine;
   const rootTitle = picker.title ?? picker.commandName;
   const title = path.length > 0
     ? `${rootTitle} › ${path.join(" › ")}`
     : rootTitle;
+  const rowContentWidth = contentWidth;
+  const modelPickerHasBranches = level.options.some((option) =>
+    Array.isArray(option.children) && option.children.length > 0,
+  );
+  const inlineTitle = picker.commandName === "/model"
+    ? language === "zh"
+      ? (modelPickerHasBranches ? "选择供应商:" : "选择模型:")
+      : (modelPickerHasBranches ? "Select provider:" : "Select model:")
+    : picker.title?.toLowerCase() === "thinking depth"
+      ? language === "zh" ? "选择思考深度:" : "Select thinking depth:"
+      : title;
 
   // Compute max detail width for column alignment
   const hasAnyDetail = visibleOptions.some(o => o.detail !== undefined);
@@ -262,7 +276,7 @@ export function CommandPickerView(
 
   return (
     <OverlayFrame theme={theme} height={pickerHeight}>
-      <text fg={theme.colors.accent} content={truncateToWidth(title, contentWidth)} />
+      <text fg={theme.colors.accent} content={truncateToWidth(picker.inputArea ? inlineTitle : title, contentWidth)} />
       {visibleOptions.map((item, index) => {
         const actualIndex = start + index;
         return (
@@ -276,7 +290,7 @@ export function CommandPickerView(
             detailColumnWidth={detailColumnWidth}
             selected={actualIndex === level.selected}
             disabled={item.disabled}
-            width={contentWidth}
+            width={rowContentWidth}
             onPress={() => onItemClick(actualIndex)}
           />
         );
@@ -304,7 +318,7 @@ export function CommandPickerView(
           />
         </box>
       )}
-      <text fg={theme.colors.dim} content={truncateToWidth(hintText, contentWidth)} />
+      {!picker.inputArea ? <text fg={theme.colors.dim} content={truncateToWidth(hintText, contentWidth)} /> : null}
     </OverlayFrame>
   );
 }

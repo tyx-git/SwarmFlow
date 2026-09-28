@@ -3,24 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_VISIBLE_TASKS,
   taskSpinnerGlyph,
-  taskSummaryLabel,
   taskViewportHeight,
 } from "../external/opentui/display/panels/status-panel.js";
 
 describe("task status panel layout and presentation", () => {
-  it("sizes the viewport to the task count and caps it at six rows", () => {
-    expect(MAX_VISIBLE_TASKS).toBe(6);
+  it("sizes the viewport to the task count and caps it at four rows", () => {
+    expect(MAX_VISIBLE_TASKS).toBe(4);
     expect(taskViewportHeight(0)).toBe(0);
     expect(taskViewportHeight(1)).toBe(1);
     expect(taskViewportHeight(3)).toBe(3);
-    expect(taskViewportHeight(6)).toBe(6);
-    expect(taskViewportHeight(7)).toBe(6);
-  });
-
-  it("shows in-progress count instead of open count while a task is active", () => {
-    expect(taskSummaryLabel(2, 5)).toBe("2 in progress");
-    expect(taskSummaryLabel(0, 5)).toBe("5 open");
-    expect(taskSummaryLabel(0, 0)).toBe("0 open");
+    expect(taskViewportHeight(4)).toBe(4);
+    expect(taskViewportHeight(7)).toBe(4);
   });
 
   it("rotates the active spinner frames and wraps at the end", () => {
@@ -55,11 +48,10 @@ describe("task status panel layout and presentation", () => {
     const source = readFileSync("external/opentui/display/panels/status-panel.tsx", "utf8");
     expect(source).not.toContain('borderStyle="rounded"');
     expect(source).not.toContain("border={true}");
-    expect(source).toContain("● ${tasks.length} tasks (${taskSummaryLabel(inProgressCount, openTasks.length)})");
+    expect(source).toContain("● ${tasks.length} tasks (${openTasks.length} open)");
     expect(source).toContain("height={Math.max(1, taskContentHeight)}");
     expect(source).toContain('const TASK_ROW_STATUS_INDENT = "  ";');
     expect(source).toContain("chunk(TASK_ROW_STATUS_INDENT)");
-    expect(source).toContain("taskSummaryLabel(inProgressCount, openTasks.length)");
   });
 });
 

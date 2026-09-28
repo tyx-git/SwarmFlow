@@ -524,7 +524,6 @@ export interface ParseRestoreDeps {
   };
   /** 包装 config.getModel。可能抛出（未知模型 = 恢复失败）。 */
   getModelConfig(configName: string): ModelConfig;
-  resolveThinkingLevel(modelName: string, preferredLevel: string): string;
   /** 当 meta 没有 initialModel 时的回退。 */
   describeInitialModelFallback(): string;
   /** 当 meta 没有 createdAt 时的回退。 */
@@ -570,8 +569,8 @@ export function parseRestoredState(
   // 模型解析优先——这是常见失败模式，在任何手术之前。
   const selection = deps.resolveModelSelection(meta);
   const modelConfig = deps.getModelConfig(selection.selectedConfigName);
-  const preferredThinkingLevel = meta.thinkingLevel ?? "";
-  const thinkingLevel = deps.resolveThinkingLevel(modelConfig.model, preferredThinkingLevel);
+  const preferredThinkingLevel = meta.thinkingLevel ?? "off";
+  const thinkingLevel = preferredThinkingLevel || "off";
   const persistedModelSelection: PersistedModelSelection = {
     modelConfigName: selection.selectedConfigName,
     modelProvider: selection.modelProvider,

@@ -137,10 +137,6 @@ export interface OpenTuiScreenProps {
   sidebarContextSection?: React.ReactNode;
   /** Pre-rendered codex usage card for sidebar */
   sidebarCodexSection?: React.ReactNode;
-  todoOpenCount?: number;
-  todoDoneCount?: number;
-  todoPanelOpen?: boolean;
-  onTodoClick?: () => void;
   agentsPanelOpen?: boolean;
   onAgentsPanelClick?: () => void;
   /** Number of RUNNING background shells (badge above the input box). */
@@ -253,10 +249,6 @@ export function OpenTuiScreen({
   sidebarPlanSection,
   sidebarContextSection,
   sidebarCodexSection,
-  todoOpenCount,
-  todoDoneCount,
-  todoPanelOpen,
-  onTodoClick,
   agentsPanelOpen,
   onAgentsPanelClick,
   shellRunningCount,
@@ -296,6 +288,10 @@ export function OpenTuiScreen({
   const sidebarWidth = getSidebarWidth(terminal.width, theme.layout);
   const effectiveSidebarWidth = sidebarVisible ? sidebarWidth : 0;
   const pickerContentWidth = terminal.width - effectiveSidebarWidth - 10;
+  const inputContentWidth = Math.max(20, conversationColumnWidth - effectiveSidebarWidth);
+  // The inline picker lives inside a PanelSurface with one cell of horizontal
+  // padding on each side, so reserve those cells when calculating truncation.
+  const inlinePickerContentWidth = Math.max(20, inputContentWidth - 2);
 
   // Logo disappears once any content appears in the conversation (user messages,
   // status messages like /help output, agent replies, etc.). Shown at every
@@ -322,6 +318,20 @@ export function OpenTuiScreen({
     ),
   );
 
+  const inlineCommandPicker = commandPicker?.inputArea ? (
+    <CommandPickerView
+      picker={commandPicker}
+      theme={theme}
+      contentWidth={inlinePickerContentWidth}
+      maxVisible={pickerMaxVisible}
+      language={uiText.language}
+      onItemClick={onCommandPickerItemClick}
+      noteInputRef={pickerNoteInputRef}
+      noteValue={pickerNoteValue}
+      onNoteInput={onPickerNoteInput}
+    />
+  ) : undefined;
+
   // Shared InputArea element — rendered inside scrollbox for main view, outside for detail tabs
   const inputAreaElement = (
     <InputArea
@@ -342,7 +352,7 @@ export function OpenTuiScreen({
       contextLimit={contextLimit}
       cacheReadTokens={cacheReadTokens ?? 0}
       usageText={usageText ?? null}
-      contentWidth={Math.max(20, conversationColumnWidth - effectiveSidebarWidth)}
+      contentWidth={inputContentWidth}
       colors={theme.colors}
       maxInputLines={theme.layout.inputMaxVisibleLines}
       composerTokenVisuals={composerTokenVisuals}
@@ -356,13 +366,10 @@ export function OpenTuiScreen({
       archivedAgentCount={archivedAgentCount}
       commandOverlayVisible={commandOverlay.visible}
       commandPicker={Boolean(commandPicker)}
+      inlineCommandPicker={inlineCommandPicker}
       checkboxPicker={Boolean(checkboxPicker)}
       promptSelect={Boolean(promptSelect)}
       promptSecret={Boolean(promptSecret)}
-      todoOpenCount={todoOpenCount}
-      todoDoneCount={todoDoneCount}
-      todoPanelOpen={todoPanelOpen}
-      onTodoClick={onTodoClick}
       agentsPanelOpen={agentsPanelOpen}
       onAgentsPanelClick={onAgentsPanelClick}
       shellRunningCount={shellRunningCount}
@@ -383,7 +390,7 @@ export function OpenTuiScreen({
         onItemClick={onOverlayItemClick}
       />
       <CommandPickerView
-        picker={commandPicker}
+        picker={commandPicker?.inputArea ? null : commandPicker}
         theme={theme}
         contentWidth={pickerContentWidth}
         maxVisible={pickerMaxVisible}

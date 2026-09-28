@@ -28,7 +28,7 @@ import type {
 } from "./agents/tool-loop.js";
 import { allocateContextId, stripContextTags, ContextTagStripBuffer } from "./context/context-rendering.js";
 import { estimateEntryTokens, generateShowContext } from "./context/show-context.js";
-import { getThinkingLevels, type Config, type ModelConfig } from "./config/config.js";
+import { type Config, type ModelConfig } from "./config/config.js";
 import type { MCPClientManager } from "./clients/mcp-client.js";
 import { type ProgressLevel, type ProgressReporter } from "./lib/progress.js";
 import { ToolResult } from "./providers/base.js";
@@ -798,12 +798,8 @@ export class Session {
       hasSkills: (opts.skills?.size ?? 0) > 0,
     });
     this.primaryAgent = opts.primaryAgent;
-    // Default thinking level: highest available for this model (or "none" for non-thinking).
-    // Resolves once at construction so the field is consistent before any setter call.
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      this.primaryAgent.modelConfig.model,
-      "",
-    );
+    // Thinking depth is user/provider controlled; off is the safe default.
+    this._thinkingLevel = "off";
     this.config = opts.config;
     this.agentTemplates = opts.agentTemplates ?? {};
     this._skills = opts.skills ?? new Map();
@@ -2235,7 +2231,6 @@ export class Session {
           modelId: m.modelId,
         }),
         getModelConfig: (configName) => this.config.getModel(configName),
-        resolveThinkingLevel: (modelName, preferred) => this._resolveThinkingLevelForModel(modelName, preferred),
         describeInitialModelFallback: () => this._describeInitialModel(),
         fallbackCreatedAt: this._createdAt,
         agentName: this.primaryAgent.name,
@@ -2425,10 +2420,7 @@ export class Session {
     this._usedContextIds = new Set<string>();
 
     // 4. Reset thinking state
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      this.primaryAgent.modelConfig.model,
-      this._preferredThinkingLevel,
-    );
+    this._thinkingLevel = this._preferredThinkingLevel || "off";
 
     // 5. Reset MCP connection flag (will reconnect on next turn)
     this._mcpConnected = false;
@@ -3480,10 +3472,7 @@ export class Session {
 
   set thinkingLevel(value: string) {
     this._preferredThinkingLevel = value;
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      this.primaryAgent.modelConfig.model,
-      value,
-    );
+    this._thinkingLevel = value || "off";
   }
 
   get accentColor(): string | undefined {
@@ -3517,10 +3506,7 @@ export class Session {
       modelSelectionKey: newModelConfig.model,
       modelId: newModelConfig.model,
     });
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      newModelConfig.model,
-      this._preferredThinkingLevel,
-    );
+    this._thinkingLevel = this._preferredThinkingLevel || "off";
   }
 
   reloadCurrentModelConfig(): void {
@@ -3534,20 +3520,14 @@ export class Session {
       modelSelectionKey: newModelConfig.model,
       modelId: newModelConfig.model,
     });
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      newModelConfig.model,
-      this._preferredThinkingLevel,
-    );
+    this._thinkingLevel = this._preferredThinkingLevel || "off";
   }
 
   applyGlobalPreferences(preferences: GlobalTuiPreferences): void {
     const prefs = createGlobalTuiPreferences(preferences);
     this._preferredThinkingLevel = prefs.thinkingLevel;
     this._preferredAccentColor = prefs.accentColor;
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      this.primaryAgent.modelConfig.model,
-      prefs.thinkingLevel,
-    );
+    this._thinkingLevel = prefs.thinkingLevel || "off";
 
     // Restore disabled skills
     if (prefs.disabledSkills && prefs.disabledSkills.length > 0) {
@@ -3569,10 +3549,7 @@ export class Session {
     const thinkingLevel = modelState.thinking_level ?? settings.thinking_level ?? "";
     this._preferredThinkingLevel = thinkingLevel;
     this._preferredAccentColor = settings.accent_color;
-    this._thinkingLevel = this._resolveThinkingLevelForModel(
-      this.primaryAgent.modelConfig.model,
-      thinkingLevel,
-    );
+    this._thinkingLevel = thinkingLevel || "off";
     if (settings.context_budget_percent !== undefined) {
       this._contextManager.setBudgetPercent(settings.context_budget_percent);
     }
@@ -3628,19 +3605,6 @@ export class Session {
         : undefined,
       permissionMode: this._permissionAdvisor.sessionMode,
     });
-  }
-
-  private _resolveThinkingLevelForModel(modelName: string, preferredLevel: string): string {
-    const levels = getThinkingLevels(modelName);
-    const highest = levels.length > 0 ? levels[levels.length - 1] : undefined;
-    // Non-thinking model —no thinking level to set
-    if (!highest) return "none";
-    // No preference —use highest
-    if (!preferredLevel) return highest;
-    // Preferred level valid for this model —use it
-    if (levels.includes(preferredLevel)) return preferredLevel;
-    // Preferred level not available on this model —use highest
-    return highest;
   }
 
   /** Input tokens from the most recent provider response. */
@@ -5822,7 +5786,7 @@ export class Session {
       toolContextIdAllocator: () => this._allocateContextId(),
       compactCheck: this._buildCompactCheck(),
       onTokenUpdate,
-      thinkingLevel: this._thinkingLevel === "none" ? undefined : this._thinkingLevel,
+      thinkingLevel: this._thinkingLevel,
       promptCacheKey: this._promptCacheKey,
       onSaveCheckpoint: this._compactInProgress ? undefined : (() => this.onSaveRequest?.()),
       beforeToolExecute: this._beforeToolExecute,

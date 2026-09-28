@@ -44,13 +44,6 @@
         "invalid": "无法识别的主题模式。",
         "hint": "主题：{mode}"
       },
-      "/effort": {
-        "echo": "思考深度切换为",
-        "current": "当前思考深度：{level}",
-        "invalid": "思考深度“{level}”不可用。可用：{levels}",
-        "set": "思考深度已设置为：{level}。",
-        "note": "注意：{level} 仅被 {vendors} 模型支持。"
-      },
       "/model": {
         "echo": "模型切换为",
         "current": "当前模型：{model}",
@@ -240,13 +233,6 @@
         "current": "Theme mode is \"{mode}\".",
         "invalid": "Unrecognized theme mode.",
         "hint": "Theme: {mode}"
-      },
-      "/effort": {
-        "echo": "Thinking depth switched to",
-        "current": "Current effort: {level}",
-        "invalid": "Effort \"{level}\" is not valid. Available: {levels}",
-        "set": "Effort set to: {level}.",
-        "note": "Note: {level} is only supported by {vendors} models."
       },
       "/model": {
         "echo": "Model switched to",

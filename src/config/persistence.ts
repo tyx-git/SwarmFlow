@@ -642,6 +642,8 @@ export interface SwarmflowSettings {
   };
   /** 主代理的默认思维链级别 */
   thinking_level?: string;
+  /** /model 最后一步显示的思考深度选项；不配置时使用内置默认列表 */
+  thinking_levels?: string[];
   /** 主会话上下文预算百分比（1-100） */
   context_budget_percent?: number;
 
@@ -1606,6 +1608,7 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
   // 标量——如果存在则本地覆盖
   if (local.default_model !== undefined) merged.default_model = local.default_model;
   if (local.thinking_level !== undefined) merged.thinking_level = local.thinking_level;
+  if (local.thinking_levels !== undefined) merged.thinking_levels = local.thinking_levels;
   if (local.context_budget_percent !== undefined) merged.context_budget_percent = local.context_budget_percent;
   if (local.accent_color !== undefined) merged.accent_color = local.accent_color;
   if (local.theme_mode !== undefined) merged.theme_mode = local.theme_mode;
@@ -1711,6 +1714,7 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   if (settings.default_model !== undefined) clean.default_model = settings.default_model;
   if (settings.model_tiers !== undefined) clean.model_tiers = settings.model_tiers;
   if (settings.thinking_level !== undefined) clean.thinking_level = settings.thinking_level;
+  if (settings.thinking_levels !== undefined) clean.thinking_levels = settings.thinking_levels;
   if (settings.context_budget_percent !== undefined) clean.context_budget_percent = settings.context_budget_percent;
   if (settings.providers !== undefined) clean.providers = settings.providers;
   if (settings.accent_color !== undefined) clean.accent_color = settings.accent_color;

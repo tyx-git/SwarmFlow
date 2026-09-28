@@ -126,14 +126,10 @@ function clampPanelHeight(terminalHeight: number): number {
 // ── Task rows (pi-tasks style) ──────────────────────────────
 
 /** 任务滚动视口最多显示的行数；多余任务保留在滚动内容中。 */
-export const MAX_VISIBLE_TASKS = 6;
+export const MAX_VISIBLE_TASKS = 4;
 
 export function taskViewportHeight(taskCount: number): number {
   return Math.min(Math.max(0, taskCount), MAX_VISIBLE_TASKS);
-}
-
-export function taskSummaryLabel(inProgressCount: number, openCount: number): string {
-  return inProgressCount > 0 ? `${inProgressCount} in progress` : `${openCount} open`;
 }
 
 const MARK_BLOCKED = "›";
@@ -223,18 +219,17 @@ function StatusPanelInner({
   onAgentClick,
 }: StatusPanelProps): React.ReactNode {
   const openTasks = tasks.filter((task) => task.status !== "completed");
-  const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
   const runningCount = agents.filter((a) => a.lifecycle === "running" || a.lifecycle === "blocked").length;
   const [spinnerFrame, setSpinnerFrame] = React.useState(0);
 
   React.useEffect(() => {
-    if (inProgressCount === 0) {
+    if (tasks.every((task) => task.status !== "in_progress")) {
       setSpinnerFrame(0);
       return undefined;
     }
     const timer = setInterval(() => setSpinnerFrame((frame) => frame + 1), TASK_SPINNER_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [inProgressCount]);
+  }, [tasks]);
 
   const hasAgents = agents.length > 0 && showAgents;
   const hasTasks = tasks.length > 0 && showTasks;
@@ -250,7 +245,7 @@ function StatusPanelInner({
   const agentTitle = `Agents (${agentParts.join(", ")})`;
 
   // pi-tasks 风格的单行标题，不绘制包围容器或横线。
-  const todoTitle = `● ${tasks.length} tasks (${taskSummaryLabel(inProgressCount, openTasks.length)})`;
+  const todoTitle = `● ${tasks.length} tasks (${openTasks.length} open)`;
   const taskContentHeight = taskViewportHeight(tasks.length) + (taskPersistence === "memory" ? 1 : 0);
 
   if (hasAgents && hasTasks) {

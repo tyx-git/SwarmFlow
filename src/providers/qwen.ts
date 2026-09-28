@@ -52,8 +52,6 @@ export class QwenProvider extends OpenAIChatProvider {
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
-
     this._hoistDashScopeTopLevelFields(kwargs);
 
     const level = options?.thinkingLevel;

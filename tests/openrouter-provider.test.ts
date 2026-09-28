@@ -14,7 +14,6 @@ function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {
     maxTokens: 4096,
     contextLength: 200_000,
     supportsMultimodal: true,
-    supportsThinking: true,
     thinkingBudget: 0,
     supportsWebSearch: false,
     extra: {},
@@ -41,7 +40,7 @@ describe("OpenRouter _applyThinkingParams", () => {
       { level: "medium", expected: "medium" },
       { level: "high", expected: "high" },
       { level: "xhigh", expected: "xhigh" },
-      { level: "max", expected: "xhigh" },
+      { level: "max", expected: "max" },
       { level: "minimal", expected: "minimal" },
       { level: "on", expected: "high" },
     ];
@@ -97,14 +96,6 @@ describe("OpenRouter _applyThinkingParams", () => {
 
     expect(kwargs["max_tokens"]).toBe(4096);
     expect(kwargs["max_completion_tokens"]).toBeUndefined();
-  });
-
-  it("does nothing when supportsThinking is false", () => {
-    const provider = new OpenRouterProvider(modelConfig({ supportsThinking: false }));
-    const kwargs: Record<string, unknown> = { temperature: 0.7 };
-    (provider as any)._applyThinkingParams(kwargs, { thinkingLevel: "high" });
-
-    expect(kwargs["extra_body"]).toBeUndefined();
   });
 
   it("preserves existing extra_body fields", () => {

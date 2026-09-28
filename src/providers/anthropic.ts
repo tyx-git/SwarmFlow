@@ -69,8 +69,6 @@ export class AnthropicProvider extends BaseAnthropicProvider {
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
-
     const level = options?.thinkingLevel;
     const model = this._config.model;
     const noSamplingParams = AnthropicProvider._NO_SAMPLING_PARAMS_RE.test(model);
@@ -83,31 +81,29 @@ export class AnthropicProvider extends BaseAnthropicProvider {
     if (AnthropicProvider._ADAPTIVE_MODEL_RE.test(model)) {
       kwargs["thinking"] = { type: "adaptive" };
 
-      const validEfforts = AnthropicProvider._XHIGH_EFFORT_RE.test(model)
-        ? ["low", "medium", "high", "xhigh", "max"]
-        : ["low", "medium", "high", "max"];
-      let effort: string;
-      if (level && validEfforts.includes(level)) {
-        effort = level;
-      } else {
-        effort = "high";
-      }
+      const effort = level || "high";
       kwargs["output_config"] = { effort };
     } else {
-      let budget: number;
+      let budget: number | string;
       if (level === "low") {
         budget = 2048;
       } else if (level === "medium") {
         budget = 5000;
       } else if (level === "high") {
         budget = 10_000;
-      } else {
+      } else if (!level) {
         budget = this._config.thinkingBudget || 10_000;
+      } else {
+        // Preserve unknown configured values so Anthropic can reject them and
+        // return its native error to the user.
+        budget = level;
       }
-      budget = Math.max(budget, 1024);
-      const currentMax = (kwargs["max_tokens"] as number) || this._config.maxTokens;
-      if (currentMax <= budget) {
-        kwargs["max_tokens"] = budget + currentMax;
+      if (typeof budget === "number") budget = Math.max(budget, 1024);
+      if (typeof budget === "number") {
+        const currentMax = (kwargs["max_tokens"] as number) || this._config.maxTokens;
+        if (currentMax <= budget) {
+          kwargs["max_tokens"] = budget + currentMax;
+        }
       }
       kwargs["thinking"] = { type: "enabled", budget_tokens: budget };
     }

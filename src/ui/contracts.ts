@@ -179,7 +179,7 @@ export interface Session {
   reloadCurrentModelConfig?(): void;
   config?: {
     modelNames: string[];
-    getModel(name: string): { provider: string; model: string; contextLength: number; supportsThinking: boolean; supportsMultimodal: boolean };
+    getModel(name: string): { provider: string; model: string; contextLength: number; supportsMultimodal: boolean };
     invalidateModel?(name: string): void;
     invalidateModelsByProvider?(provider: string): void;
   };

@@ -58,7 +58,7 @@ import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens
 import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth.js";
 import { launchDesignHelper } from "../browser/index.js";
 import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme.js";
-import { THINKING_LEVEL_LIST, THINKING_LEVEL_NOTES } from "../config/thinking.js";
+import { THINKING_LEVEL_LIST } from "../config/thinking.js";
 import { createUiText, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
 
 // ------------------------------------------------------------------
@@ -160,7 +160,7 @@ export interface CommandContext {
    */
   promptCommandPicker?: (
     options: CommandOption[],
-    config?: { title?: string; allowNote?: boolean },
+    config?: { title?: string; allowNote?: boolean; inputArea?: boolean },
   ) => Promise<CommandPickerResult | undefined>;
 
   /**
@@ -238,6 +238,8 @@ export interface SlashCommand {
   category?: CommandCategory;
   /* 选择器的可选显示标题；仍然提交命令名。 */
   pickerTitle?: string;
+  /** 将选择列表放入输入框区域，替代文本输入框。 */
+  inputAreaPicker?: boolean;
 }
 
 export class CommandExitSignal extends Error {
@@ -742,34 +744,34 @@ function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: strin
  * Called after model switch to let the user choose a thinking level
  * (replaces the removed /thinking command).
  *
- * Returns the selected level string, or undefined if the model doesn't
- * support thinking or the user cancelled.
+ * Returns the selected level string, or undefined if the user cancelled.
  */
 async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefined> {
   const session = ctx.session;
-  const levels = THINKING_LEVEL_LIST;
+  // Keep the final step uniform across registered and custom models. The
+  // session/provider layer normalizes unsupported values for models whose
+  // capabilities are not known locally.
+  const configuredLevels = loadGlobalSettings(ctx.swarmflowHomeDir).thinking_levels;
+  const levels = Array.isArray(configuredLevels)
+    ? [...new Set(configuredLevels.map((level) => String(level).trim()).filter(Boolean))]
+    : [];
+  const availableLevels = levels.length > 0 ? levels : [...THINKING_LEVEL_LIST];
 
-  if (session.primaryAgent?.modelConfig?.supportsThinking !== true) {
-    return undefined;
-  }
-
-  if (!ctx.promptSelect) {
-    // 非交互式环境-保持当前/默认的思维水平。
+  if (!ctx.promptCommandPicker) {
+    // 非交互式环境保持当前思考深度。
     return undefined;
   }
 
   const current = session.thinkingLevel ?? "";
-  const options = levels.map((level) => {
-    const note = THINKING_LEVEL_NOTES[level as keyof typeof THINKING_LEVEL_NOTES];
+  const options = availableLevels.map((level) => {
     const currentMark = current === level ? "  (current)" : "";
-    const suffix = note ? `  — ${note} only` : "";
-    return { label: `${level}${currentMark}${suffix}`, value: level };
+    return { label: `${level}${currentMark}`, value: level };
   });
 
-  const choice = await ctx.promptSelect({
-    message: "Select thinking level",
-    options,
-  });
+  const choice = (await ctx.promptCommandPicker(options, {
+    title: "Thinking depth",
+    inputArea: true,
+  }))?.value;
   if (!choice) return undefined;
 
   session.thinkingLevel = choice;
@@ -2824,39 +2826,6 @@ async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
   );
 }
 
-async function cmdEffort(ctx: CommandContext, args: string): Promise<void> {
-  const t = createUiText();
-  const requested = args.trim().toLowerCase();
-  const levels = THINKING_LEVEL_LIST;
-  let level = requested;
-  if (!level && ctx.promptSelect) {
-    const choice = await ctx.promptSelect({
-      message: "Select effort level",
-      options: levels.map((value) => {
-        const note = THINKING_LEVEL_NOTES[value as keyof typeof THINKING_LEVEL_NOTES];
-        const current = value === ctx.session.thinkingLevel ? "  (current)" : "";
-        const suffix = note ? `  — ${note} only` : "";
-        return { label: `${value}${current}${suffix}`, value };
-      }),
-    });
-    if (!choice) return;
-    level = choice;
-  }
-  if (!level) {
-    ctx.showMessage(t.get(["Commands", "/effort", "current"], { level: ctx.session.thinkingLevel ?? "none" }));
-    return;
-  }
-  if (!levels.includes(level)) {
-    ctx.showMessage(t.get(["Commands", "/effort", "invalid"], { level, levels: levels.join(", ") }));
-    return;
-  }
-  ctx.session.thinkingLevel = level;
-  persistModelSelection(ctx);
-  const note = THINKING_LEVEL_NOTES[level as keyof typeof THINKING_LEVEL_NOTES];
-  const suffix = note ? ` ${t.get(["Commands", "/effort", "note"], { level, vendors: note })}` : "";
-  ctx.showMessage(t.get(["Commands", "/effort", "set"], { level }) + suffix);
-}
-
 // ------------------------------------------------------------------
 // 注册表生成器
 // ------------------------------------------------------------------
@@ -2894,8 +2863,7 @@ export function buildDefaultRegistry(): CommandRegistry {
 
   registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, pickerTitle: "Providers", category: "Provider and Model" });
   registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, pickerTitle: "API keys", category: "Provider and Model" });
-  registry.register({ name: "/model", description: "Select the current session model", handler: cmdModel, options: modelOptions, category: "Provider and Model" });
-  registry.register({ name: "/effort", description: "Set current session and sub-agent effort", handler: cmdEffort, category: "Provider and Model" });
+  registry.register({ name: "/model", description: "Select the current session model and thinking depth", handler: cmdModel, options: modelOptions, inputAreaPicker: true, category: "Provider and Model" });
   registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions, category: "Provider and Model" });
   registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, category: "Provider and Model" });
   registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, category: "Provider and Model" });

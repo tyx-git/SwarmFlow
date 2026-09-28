@@ -144,7 +144,7 @@ const ECHO_COMMANDS: ReadonlySet<string> = new Set(uiTextKeys(DEFAULT_UI_LANGUAG
  * 把用户输入的命令行转换成"回显文案"。
  *
  * - 输入 `/theme Brief` → `主题切换为 Brief`（有参数时追加参数）
- * - 输入 `/effort`     → `思考深度切换为`（无参数时只显示文案本身）
+ * - 在 `/model` 最后一步选择思考深度     → `思考深度切换为`（无参数时只显示文案本身）
  * - 未登记的命令/普通文本 → 返回 null，调用方按原样显示
  */
 export function resolveCommandEchoDisplay(input: string, language: UiLanguage = DEFAULT_UI_LANGUAGE): string | null {

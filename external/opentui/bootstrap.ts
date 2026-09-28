@@ -56,7 +56,6 @@ function identifyPrimaryAgent(
       temperature: 0.7,
       maxTokens: 8192,
       contextLength: 128000,
-      supportsThinking: false,
       supportsMultimodal: false,
       supportsWebSearch: false,
       thinkingBudget: 0,

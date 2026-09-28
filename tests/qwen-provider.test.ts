@@ -15,7 +15,6 @@ function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {
     maxTokens: 4096,
     contextLength: 1_000_000,
     supportsMultimodal: true,
-    supportsThinking: true,
     thinkingBudget: 0,
     supportsWebSearch: true,
     transportProtocol: "chat",

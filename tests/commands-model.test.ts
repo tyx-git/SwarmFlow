@@ -76,6 +76,244 @@ describe("/model command", () => {
     savedModelTestEnv.clear();
   });
 
+  it("is the only model-depth entry point and uses an inline picker", () => {
+    const registry = buildDefaultRegistry();
+    const model = registry.lookup("/model");
+
+    expect(model).toBeTruthy();
+    expect(model?.inputAreaPicker).toBe(true);
+    expect(registry.lookup("/effort")).toBeUndefined();
+    expect(registry.getAll().some((command) => command.name === "/effort")).toBe(false);
+  });
+
+  it("opens thinking depth as an inline picker after switching models", async () => {
+    process.env["OPENAI_API_KEY"] = "sk-openai";
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/model");
+    expect(cmd).toBeTruthy();
+
+    const promptCommandPicker = vi.fn(async (
+      _options: Array<{ label: string; value: string }>,
+      config?: { inputArea?: boolean },
+    ) => {
+      expect(config?.inputArea).toBe(true);
+      return { value: "high" };
+    });
+    const switchModel = vi.fn();
+    const session: any = {
+      config: {
+        modelNames: ["my-openai"],
+        getModel: () => ({
+          name: "my-openai",
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        }),
+        listModelEntries: () => ([
+          {
+            name: "my-openai",
+            provider: "openai",
+            model: "gpt-5.4",
+            apiKeyRaw: "sk-openai",
+            hasResolvedApiKey: true,
+          },
+        ]),
+      },
+      switchModel: (name: string) => {
+        switchModel(name);
+        session.primaryAgent.modelConfig = {
+          name,
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        };
+      },
+      setPersistedModelSelection: vi.fn(),
+      getGlobalPreferences: () => ({
+        modelConfigName: "my-openai",
+        modelProvider: "openai",
+        modelSelectionKey: "gpt-5.4",
+        modelId: "gpt-5.4",
+        thinkingLevel: session.thinkingLevel ?? "none",
+      }),
+      primaryAgent: {
+        modelConfig: {
+          name: "my-openai",
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        },
+      },
+      thinkingLevel: "none",
+    };
+
+    const ctx = {
+      ...makeContext(registry, session),
+      promptCommandPicker,
+    };
+    await cmd!.handler(ctx, "my-openai");
+
+    expect(switchModel).toHaveBeenCalledWith("my-openai");
+    expect(promptCommandPicker).toHaveBeenCalledTimes(1);
+    expect(session.thinkingLevel).toBe("high");
+  });
+
+  it("keeps the completed model switch when thinking depth is cancelled", async () => {
+    process.env["OPENAI_API_KEY"] = "sk-openai";
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/model");
+    expect(cmd).toBeTruthy();
+
+    const switchModel = vi.fn();
+    const session: any = {
+      config: {
+        modelNames: ["my-openai"],
+        getModel: () => ({
+          name: "my-openai",
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        }),
+        listModelEntries: () => ([
+          {
+            name: "my-openai",
+            provider: "openai",
+            model: "gpt-5.4",
+            apiKeyRaw: "sk-openai",
+            hasResolvedApiKey: true,
+          },
+        ]),
+      },
+      switchModel: (name: string) => {
+        switchModel(name);
+        session.primaryAgent.modelConfig = {
+          name,
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        };
+      },
+      setPersistedModelSelection: vi.fn(),
+      getGlobalPreferences: () => ({
+        modelConfigName: "my-openai",
+        modelProvider: "openai",
+        modelSelectionKey: "gpt-5.4",
+        modelId: "gpt-5.4",
+        thinkingLevel: session.thinkingLevel ?? "none",
+      }),
+      primaryAgent: {
+        modelConfig: {
+          name: "old-model",
+          provider: "anthropic",
+          model: "claude-sonnet-4-6",
+          apiKey: "sk-anthropic",
+        },
+      },
+      thinkingLevel: "medium",
+    };
+
+    const promptCommandPicker = vi.fn(async () => undefined);
+    const ctx = {
+      ...makeContext(registry, session),
+      promptCommandPicker,
+    };
+    await cmd!.handler(ctx, "my-openai");
+
+    expect(switchModel).toHaveBeenCalledWith("my-openai");
+    expect(session.primaryAgent.modelConfig.name).toBe("my-openai");
+    expect(promptCommandPicker).toHaveBeenCalledTimes(1);
+  });
+
+  it("still opens thinking depth for an unknown custom model", async () => {
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/model");
+    expect(cmd).toBeTruthy();
+
+    const promptCommandPicker = vi.fn(async () => ({ value: "high" }));
+    const session: any = {
+      config: {
+        modelNames: ["jucode:gpt-5"],
+        getModel: () => ({
+          name: "jucode:gpt-5",
+          provider: "jucode",
+          model: "gpt-5",
+          apiKey: "sk-jucode",
+        }),
+        listModelEntries: () => ([
+          {
+            name: "jucode:gpt-5",
+            provider: "jucode",
+            model: "gpt-5",
+            apiKeyRaw: "sk-jucode",
+            hasResolvedApiKey: true,
+          },
+        ]),
+      },
+      switchModel: vi.fn(),
+      setPersistedModelSelection: vi.fn(),
+      getGlobalPreferences: () => ({ thinkingLevel: session.thinkingLevel ?? "none" }),
+      primaryAgent: {
+        modelConfig: {
+          name: "jucode:gpt-5",
+          provider: "jucode",
+          model: "gpt-5",
+          apiKey: "sk-jucode",
+        },
+      },
+      thinkingLevel: "none",
+    };
+    const ctx = { ...makeContext(registry, session), promptCommandPicker };
+
+    await cmd!.handler(ctx, "jucode:gpt-5");
+
+    expect(promptCommandPicker).toHaveBeenCalledTimes(1);
+    expect(promptCommandPicker.mock.calls[0]?.[1]).toMatchObject({ inputArea: true });
+  });
+
+  it("uses thinking_levels from settings.json without filtering or reordering", async () => {
+    const tempHome = mkdtempSync(join(tmpdir(), "swarmflow-thinking-levels-"));
+    const swarmflowHome = join(tempHome, ".swarmflow");
+    mkdirSync(swarmflowHome, { recursive: true });
+    writeFileSync(join(swarmflowHome, "settings.json"), JSON.stringify({
+      thinking_levels: ["off", "max", "vendor_custom"],
+    }));
+
+    try {
+      const registry = buildDefaultRegistry();
+      const cmd = registry.lookup("/model");
+      expect(cmd).toBeTruthy();
+      const promptCommandPicker = vi.fn(async (options: Array<{ value: string }>) => {
+        expect(options.map((option) => option.value)).toEqual(["off", "max", "vendor_custom"]);
+        return { value: "vendor_custom" };
+      });
+      const session: any = {
+        config: {
+          modelNames: ["custom-model"],
+          getModel: () => ({ name: "custom-model", provider: "custom", model: "model", apiKey: "key" }),
+          listModelEntries: () => ([{
+            name: "custom-model",
+            provider: "custom",
+            model: "model",
+            apiKeyRaw: "key",
+            hasResolvedApiKey: true,
+          }]),
+        },
+        switchModel: vi.fn(),
+        setPersistedModelSelection: vi.fn(),
+        getGlobalPreferences: () => ({ thinkingLevel: session.thinkingLevel ?? "off" }),
+        primaryAgent: { modelConfig: { name: "custom-model", provider: "custom", model: "model", apiKey: "key" } },
+        thinkingLevel: "off",
+      };
+      await cmd!.handler({
+        ...makeContext(registry, session, swarmflowHome),
+        promptCommandPicker,
+      }, "custom-model");
+      expect(session.thinkingLevel).toBe("vendor_custom");
+    } finally {
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
   it("does not show built-in models when no models have been added", () => {
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/model");

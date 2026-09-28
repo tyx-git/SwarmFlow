@@ -35,7 +35,7 @@ const EFFORT_MAP: Record<string, string> = {
   medium: "medium",
   high: "high",
   xhigh: "xhigh",
-  max: "xhigh",    // Anthropic "max" → OpenRouter 的最高 effort
+  max: "max",
   on: "high",       // 二元开/关模型 → 默认 high
   none: "none",     // OpenAI 风格的显式关闭
 };
@@ -84,8 +84,6 @@ export class OpenRouterProvider extends OpenAIChatProvider {
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
-
     const level = options?.thinkingLevel;
 
     // 显式禁用 reasoning
@@ -104,7 +102,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
       reasoningConfig["max_tokens"] = this._config.thinkingBudget;
     } else {
       // 将思考级别映射为 effort
-      const effort = level ? (EFFORT_MAP[level] ?? "high") : "high";
+      const effort = level ? (EFFORT_MAP[level] ?? level) : "high";
       reasoningConfig["effort"] = effort;
     }
 

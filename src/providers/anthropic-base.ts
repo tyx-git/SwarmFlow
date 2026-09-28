@@ -126,7 +126,6 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
     const level = options?.thinkingLevel;
     if (level === "off" || level === "none") {
       kwargs["thinking"] = { type: "disabled" };

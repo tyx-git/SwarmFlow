@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   acceptCommandPickerSelection,
   createCommandPicker,
+  exitCommandPickerLevel,
+  getCommandPickerVisibleRange,
   moveCommandPickerSelection,
   setCommandPickerSelection,
 } from "../src/ui/command-picker.js";
@@ -57,5 +59,49 @@ describe("command picker", () => {
       command: "/summarize_hint level1",
       note: "40",
     });
+  });
+
+  it("keeps inline mode while drilling from provider to model", () => {
+    const picker = createCommandPicker("/model", [
+      {
+        label: "JuCode",
+        value: "jucode",
+        children: [{ label: "GPT 5", value: "jucode:gpt-5" }],
+      },
+    ], 5, undefined, false, true);
+
+    expect(picker.inputArea).toBe(true);
+    const drilled = acceptCommandPickerSelection(picker);
+    expect(drilled?.kind).toBe("drill_down");
+    if (drilled?.kind !== "drill_down") throw new Error("unreachable");
+    expect(drilled.picker.inputArea).toBe(true);
+    expect(acceptCommandPickerSelection(drilled.picker)).toEqual({
+      kind: "submit",
+      command: "/model jucode:gpt-5",
+    });
+  });
+
+  it("scrolls long inline lists without changing the picker slot", () => {
+    const picker = createCommandPicker("/model", Array.from({ length: 8 }, (_, index) => ({
+      label: `Provider ${index + 1}`,
+      value: `provider-${index + 1}`,
+    })), 3, undefined, false, true);
+
+    expect(getCommandPickerVisibleRange(picker)).toEqual({ start: 0, end: 3 });
+    const moved = moveCommandPickerSelection(picker, 6);
+    expect(moved.inputArea).toBe(true);
+    expect(moved.stack[0]?.selected).toBe(6);
+    expect(getCommandPickerVisibleRange(moved)).toEqual({ start: 4, end: 7 });
+  });
+
+  it("cancels a child level while preserving the inline picker state", () => {
+    const picker = createCommandPicker("/model", [
+      { label: "Provider", value: "provider", children: [{ label: "Model", value: "provider:model" }] },
+    ], 3, undefined, false, true);
+    const drilled = acceptCommandPickerSelection(picker);
+    if (drilled?.kind !== "drill_down") throw new Error("unreachable");
+    const parent = exitCommandPickerLevel(drilled.picker);
+    expect(parent?.inputArea).toBe(true);
+    expect(parent?.stack).toHaveLength(1);
   });
 });

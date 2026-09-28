@@ -56,6 +56,8 @@ interface InputAreaProps {
   onPermissionClick?: () => void;
   commandOverlayVisible: boolean;
   commandPicker: boolean;
+  /** Model / thinking picker rendered in the composer's input slot. */
+  inlineCommandPicker?: React.ReactNode;
   checkboxPicker: boolean;
   promptSelect: boolean;
   promptSecret: boolean;
@@ -65,14 +67,6 @@ interface InputAreaProps {
   idleAgentCount?: number;
   /** Number of archived child agents. */
   archivedAgentCount?: number;
-  /** Number of open (non-done) todo items. */
-  todoOpenCount?: number;
-  /** Number of done todo items. */
-  todoDoneCount?: number;
-  /** Whether the todo panel is currently expanded. */
-  todoPanelOpen?: boolean;
-  /** Toggle the todo panel. */
-  onTodoClick?: () => void;
   /** Number of RUNNING background shells (async only — sync bash never shows here). */
   shellRunningCount?: number;
   /** Open the shells picker. */
@@ -140,16 +134,13 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     onPermissionClick,
     commandOverlayVisible,
     commandPicker,
+    inlineCommandPicker,
     checkboxPicker,
     promptSelect,
     promptSecret,
     runningAgentCount = 0,
     idleAgentCount = 0,
     archivedAgentCount = 0,
-    todoOpenCount = 0,
-    todoDoneCount = 0,
-    todoPanelOpen = false,
-    onTodoClick,
     agentsPanelOpen = false,
     onAgentsPanelClick,
     shellRunningCount = 0,
@@ -170,6 +161,25 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const spinnerConfig = getPhaseSpinnerConfig(phase);
   const activeSpinner = useSpinner(spinnerConfig.frames, spinnerConfig.interval, processing);
   const phaseColor = getPhaseColor(phase, colors);
+
+  if (inlineCommandPicker) {
+    return (
+      <box flexDirection="column" gap={0} flexShrink={0}>
+        <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1}>
+          <box flexGrow={1} />
+          <box flexDirection="row" flexShrink={0}>
+            <text fg={modelColor} content={modelName} />
+            {props.thinkingSuffix ? <text fg={colors.dim} content={` ${props.thinkingSuffix}`} /> : null}
+          </box>
+        </box>
+        <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
+        <box flexDirection="row" width="100%">
+          <box flexGrow={1} flexDirection="column">{inlineCommandPicker}</box>
+        </box>
+        <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
+      </box>
+    );
+  }
 
   const cacheLabel = cacheReadTokens > 0 ? ` (${formatCompactTokensShort(cacheReadTokens)} cached)` : "";
   const contextText = contextLimit
@@ -223,27 +233,6 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
             onMouseDown={(e: any) => { e.stopPropagation(); e.preventDefault(); onShellsClick?.(); }}
           >
             <text fg={colors.badgeShellFg} content={t.get(["Views", "indicators", "shells"], { count: shellRunningCount })} />
-          </box>
-          </>
-        ) : null}
-
-        {/* Task indicator: show whenever tasks exist (只统计父会话清单) */}
-        {(todoOpenCount + todoDoneCount) > 0 && !selectedChildId ? (
-          <>
-          {((runningAgentCount + idleAgentCount + archivedAgentCount) > 0 || shellRunningCount > 0 || processing) ? <box width={1} /> : null}
-          <box
-            flexDirection="row"
-            flexShrink={0}
-            cursor="pointer"
-            backgroundColor={todoPanelOpen ? colors.badgeTodoBgActive : colors.badgeTodoBg}
-            onMouseDown={(e: any) => { e.stopPropagation(); e.preventDefault(); onTodoClick?.(); }}
-          >
-            <text fg={colors.badgeTodoFg} content={(() => {
-              const parts: string[] = [];
-              if (todoOpenCount > 0) parts.push(t.get(["Views", "indicators", "tasksPending"], { count: todoOpenCount }));
-              if (todoDoneCount > 0) parts.push(t.get(["Views", "indicators", "tasksDone"], { count: todoDoneCount }));
-              return t.get(["Views", "indicators", "tasks"], { parts: parts.join(", ") });
-            })()} />
           </box>
           </>
         ) : null}

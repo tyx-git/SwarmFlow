@@ -16,7 +16,6 @@ export {
   type ResolvedPaths,
   getContextLength,
   getMultimodalSupport,
-  getThinkingSupport,
   getWebSearchSupport,
   resolveAssetPaths,
   getBundledAssetsDir,

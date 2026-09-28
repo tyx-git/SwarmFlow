@@ -15,7 +15,7 @@ import {
   normalizeThemeMode,
   parseThemeModePref,
 } from "../src/config/theme.js";
-import { THINKING_LEVEL_LIST, isThinkingLevel } from "../src/config/thinking.js";
+import { THINKING_LEVEL_LIST } from "../src/config/thinking.js";
 import { createDisplayTheme } from "../external/opentui/display/theme/index.js";
 
 const MODULES: UiTextModule[] = ["Common", "Error", "Commands", "Views", "Init"];
@@ -106,7 +106,7 @@ describe("command echo display", () => {
       expect(resolveCommandEchoDisplay(`${cmd} x`, "en")).not.toBeNull();
     }
     expect(commands).toContain("/theme");
-    expect(commands).toContain("/effort");
+    expect(commands).not.toContain("/effort");
   });
 
   it("normalizes unknown languages to the default", () => {
@@ -198,12 +198,12 @@ describe("theme modes", () => {
 // ------------------------------------------------------------------
 
 describe("thinking depth", () => {
-  it("ships exactly low/medium/high/xhigh/max", () => {
-    expect(THINKING_LEVEL_LIST).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  it("ships the default off/low/medium/high/xhigh/max options", () => {
+    expect(THINKING_LEVEL_LIST).toEqual(["off", "low", "medium", "high", "xhigh", "max"]);
   });
 
-  it("does not offer ultra", () => {
-    expect(THINKING_LEVEL_LIST).not.toContain("ultra");
-    expect(isThinkingLevel("ultra")).toBe(false);
+  it("uses settings.json for additional or reduced options", () => {
+    expect(THINKING_LEVEL_LIST).toContain("off");
+    expect(THINKING_LEVEL_LIST).toContain("max");
   });
 });

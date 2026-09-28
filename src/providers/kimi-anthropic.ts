@@ -58,7 +58,7 @@ export class KimiAnthropicProvider extends BaseAnthropicProvider {
     options?: SendMessageOptions,
   ): void {
     const thinkingOff = options?.thinkingLevel === "off" || options?.thinkingLevel === "none";
-    if (this._config.supportsThinking && !thinkingOff) {
+    if (!thinkingOff) {
       // Kimi K2.5/K2.6 thinking 模式要求 temperature=1。
       kwargs["temperature"] = 1;
       return;

@@ -456,8 +456,6 @@ export class OpenAIResponsesProvider extends BaseProvider {
   // ------------------------------------------------------------------
 
   protected _applyThinkingParams(kwargs: Record<string, unknown>, options?: SendMessageOptions): void {
-    if (!this._config.supportsThinking) return;
-
     const level = options?.thinkingLevel;
 
     if (level === "off" || level === "none") {
@@ -466,7 +464,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
     }
 
     let effort: string;
-    if (level && ["minimal", "low", "medium", "high", "xhigh"].includes(level)) {
+    if (level) {
       effort = level;
     } else {
       // 默认：从预算推导

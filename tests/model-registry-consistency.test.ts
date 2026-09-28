@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   FACTORY_MODEL_SPECS,
   FACTORY_PROVIDER_SPECS,
-  isThinkingSpec,
   modelSpecIds,
   providerModelEffectiveId,
   resolveProviderWireAxes,
@@ -35,13 +34,6 @@ describe("model registry consistency", () => {
     for (const spec of FACTORY_MODEL_SPECS) {
       expect(spec.contextLength).toBeGreaterThan(0);
       expect(spec.displayName.trim().length).toBeGreaterThan(0);
-    }
-  });
-
-  it("thinking support iff there is a non-off/none thinking level", () => {
-    for (const spec of FACTORY_MODEL_SPECS) {
-      const hasRealLevel = spec.thinkingLevels.some((l) => l !== "off" && l !== "none");
-      expect(isThinkingSpec(spec)).toBe(hasRealLevel);
     }
   });
 

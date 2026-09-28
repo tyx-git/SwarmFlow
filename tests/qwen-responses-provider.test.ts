@@ -16,7 +16,6 @@ function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {
     maxTokens: 4096,
     contextLength: 1_000_000,
     supportsMultimodal: true,
-    supportsThinking: true,
     thinkingBudget: 0,
     supportsWebSearch: true,
     transportProtocol: "responses",
@@ -236,8 +235,27 @@ describe("QwenResponsesProvider request shaping", () => {
   });
 
   it("extracts Qwen web_search_call sources as citations", async () => {
-    const provider = new QwenResponsesProvider(modelConfig({ supportsThinking: false }));
-    const create = vi.fn(async () => ({
+    const provider = new QwenResponsesProvider(modelConfig());
+    const create = vi.fn(async (params: Record<string, unknown>) => {
+      if (params["stream"]) {
+        return streamOf([{
+          type: "response.completed",
+          response: {
+            output: [
+              {
+                type: "web_search_call",
+                action: {
+                  query: "qwen docs",
+                  sources: [{ type: "url", url: "https://docs.qwencloud.com/" }],
+                },
+              },
+              { type: "message", content: [{ type: "output_text", text: "found it" }] },
+            ],
+            usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } },
+          },
+        }]);
+      }
+      return {
       output: [
         {
           type: "web_search_call",
@@ -254,7 +272,8 @@ describe("QwenResponsesProvider request shaping", () => {
         },
       ],
       usage: { input_tokens: 10, output_tokens: 5, input_tokens_details: { cached_tokens: 0 } },
-    }));
+      };
+    });
 
     (provider as any)._client = {
       responses: {

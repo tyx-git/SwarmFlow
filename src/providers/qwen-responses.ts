@@ -14,8 +14,6 @@ export class QwenResponsesProvider extends OpenAIResponsesProvider {
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
-
     const level = options?.thinkingLevel;
     const thinkingOff = level === "off" || level === "none";
     kwargs["enable_thinking"] = !thinkingOff;
@@ -34,9 +32,11 @@ export class QwenResponsesProvider extends OpenAIResponsesProvider {
   }
 
   protected override _forceStream(options?: SendMessageOptions): boolean {
-    if (!this._config.supportsThinking) return false;
+    // Qwen Responses requires streaming for reasoning/tool events. Keep the
+    // historical behavior for the default call path while allowing explicit
+    // `off` to use the normal non-streaming response.
     const level = options?.thinkingLevel;
-    return level !== "off" && level !== "none";
+    return level === undefined || (level !== "off" && level !== "none");
   }
 
   protected override _plainThinkingInputItems(

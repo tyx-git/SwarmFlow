@@ -55,8 +55,6 @@ export interface ModelConfig {
   contextLength: number;
   /** 是否支持多模态输入（图像等） */
   supportsMultimodal: boolean;
-  /** 是否支持思维链/推理模式 */
-  supportsThinking: boolean;
   /** 思维链预算（token 数，0 表示不限制） */
   thinkingBudget: number;
   /** 是否支持原生网络搜索 */
@@ -123,9 +121,6 @@ export const KNOWN_CONTEXT_LENGTHS: Record<string, number> = _MODEL_TABLES.conte
 /** 已知支持多模态的模型集合 */
 export const KNOWN_MULTIMODAL_MODELS: Set<string> = _MODEL_TABLES.multimodal;
 
-/** 已知支持思维链的模型集合 */
-export const KNOWN_THINKING_MODELS: Set<string> = _MODEL_TABLES.thinking;
-
 /** 已知不支持网络搜索的模型集合 */
 export const KNOWN_NO_WEB_SEARCH_MODELS: Set<string> = _MODEL_TABLES.noWebSearch;
 
@@ -156,7 +151,7 @@ export function getModelMaxOutputTokens(model: string): number | undefined {
 // 每个模型的思维链级别
 // ------------------------------------------------------------------
 
-/** 已知模型的思维链级别映射（模型 ID → 可用级别列表） */
+/** 已知模型的思维链级别映射（用于子代理层级等兼容功能）。 */
 export const KNOWN_THINKING_LEVELS: Record<string, string[]> = _MODEL_TABLES.thinkingLevels;
 
 /** 返回模型可用的思维链级别列表，非思维链模型返回空数组 */
@@ -233,13 +228,6 @@ export function getMultimodalSupport(model: string, explicit?: boolean): boolean
   if (explicit !== undefined) return explicit;
   return KNOWN_MULTIMODAL_MODELS.has(model)
     || KNOWN_MULTIMODAL_MODELS.has(normalizeModelId(model));
-}
-
-/** 解析思维链/推理支持。优先级：显式指定 > 已知查找（精确 > 标准化）> false */
-export function getThinkingSupport(model: string, explicit?: boolean): boolean {
-  if (explicit !== undefined) return explicit;
-  return KNOWN_THINKING_MODELS.has(model)
-    || KNOWN_THINKING_MODELS.has(normalizeModelId(model));
 }
 
 /** 检查模型是否支持 OpenAI 的扩展 24 小时提示缓存保留 */
@@ -675,7 +663,6 @@ export class Config {
           supports_multimodal: m.multimodal ?? false,
           supports_web_search: m.webSearch ?? false,
           ...(m.maxOutputTokens ? { max_tokens: m.maxOutputTokens } : {}),
-          ...(m.thinkingLevels?.length ? { supports_thinking: true } : {}),
         };
       }
     }
@@ -744,7 +731,6 @@ export class Config {
     const maxTokens = optionalConfigNumberField(name, cfg, "max_tokens") ?? 32_000;
     const thinkingBudget = optionalConfigNumberField(name, cfg, "thinking_budget") ?? 0;
     const supportsMultimodalOverride = optionalConfigBooleanField(name, cfg, "supports_multimodal");
-    const supportsThinkingOverride = optionalConfigBooleanField(name, cfg, "supports_thinking");
     const supportsWebSearchOverride = optionalConfigBooleanField(name, cfg, "supports_web_search");
     const transportProtocol = optionalConfigEnumField(
       name,
@@ -776,10 +762,6 @@ export class Config {
       supportsMultimodal: getMultimodalSupport(
         modelName,
         supportsMultimodalOverride,
-      ),
-      supportsThinking: getThinkingSupport(
-        modelName,
-        supportsThinkingOverride,
       ),
       thinkingBudget,
       supportsWebSearch: getWebSearchSupport(

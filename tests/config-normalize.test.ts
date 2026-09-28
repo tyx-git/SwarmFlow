@@ -6,7 +6,6 @@ import {
   normalizeModelId,
   getContextLength,
   getMultimodalSupport,
-  getThinkingSupport,
   getWebSearchSupport,
   getThinkingLevels,
   getModelMaxOutputTokens,
@@ -104,28 +103,6 @@ describe("getMultimodalSupport with OpenRouter model IDs", () => {
   it("respects explicit override", () => {
     expect(getMultimodalSupport("moonshotai/kimi-k2-instruct", true)).toBe(true);
     expect(getMultimodalSupport("anthropic/claude-sonnet-4.6", false)).toBe(false);
-  });
-});
-
-describe("getThinkingSupport with OpenRouter model IDs", () => {
-  it("recognizes OpenRouter model IDs", () => {
-    expect(getThinkingSupport("anthropic/claude-haiku-4.5")).toBe(true);
-    expect(getThinkingSupport("anthropic/claude-opus-4.6")).toBe(true);
-    expect(getThinkingSupport("openai/gpt-5.2")).toBe(true);
-    expect(getThinkingSupport("openai/gpt-5.4")).toBe(true);
-    expect(getThinkingSupport("openai/gpt-5.4-mini")).toBe(true);
-    expect(getThinkingSupport("openai/gpt-5.4-nano")).toBe(true);
-    expect(getThinkingSupport("openai/gpt-5.2-codex")).toBe(true);
-    expect(getThinkingSupport("openai/gpt-5.3-codex")).toBe(true);
-    expect(getThinkingSupport("qwen/qwen3.6-plus")).toBe(true);
-    expect(getThinkingSupport("qwen/qwen3.7-max")).toBe(true);
-    expect(getThinkingSupport("minimax/minimax-m2.5")).toBe(true);
-    expect(getThinkingSupport("moonshotai/kimi-k2.5")).toBe(true);
-    expect(getThinkingSupport("z-ai/glm-5")).toBe(true);
-  });
-
-  it("returns false for non-thinking models", () => {
-    expect(getThinkingSupport("moonshotai/kimi-k2-instruct")).toBe(false);
   });
 });
 

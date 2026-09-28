@@ -34,7 +34,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-haiku-4-5",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -81,7 +80,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4-6",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -130,7 +128,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4-6",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -179,7 +176,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4-7",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -230,7 +226,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-sonnet-4-6",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -277,7 +272,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-sonnet-4-6",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -324,7 +318,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4.7",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -375,7 +368,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4.8",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -426,7 +418,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-sonnet-4.6",
     "sealedSchema": "anthropic-messages",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -473,7 +464,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "gpt-5-mini",
     "sealedSchema": "openai-responses",
-    "thinking": false,
     "thinkingLevels": [],
     "tierThinkingLevels": [],
     "transport": "responses",
@@ -511,7 +501,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.3-codex",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -559,7 +548,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -609,7 +597,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4-mini",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -659,7 +646,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.5",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -709,7 +695,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "deepseek-v4-flash",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "high",
@@ -754,7 +739,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "deepseek-v4-pro",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "high",
@@ -799,7 +783,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-4.7",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -846,7 +829,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -893,7 +875,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -940,7 +921,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5.1",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -987,7 +967,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5.2",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "high",
       "max",
@@ -1031,7 +1010,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "glm-5v-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1078,7 +1056,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-4.7",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1125,7 +1102,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1172,7 +1148,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1219,7 +1194,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5.1",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1266,7 +1240,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5.2",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "high",
       "max",
@@ -1310,7 +1283,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "glm-5v-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1357,7 +1329,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-4.7",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1404,7 +1375,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1451,7 +1421,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1498,7 +1467,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5.1",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1545,7 +1513,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "glm-5v-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1592,7 +1559,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-4.7",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1639,7 +1605,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1686,7 +1651,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1733,7 +1697,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5.1",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1780,7 +1743,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "glm-5v-turbo",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1827,7 +1789,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "kimi-k2-instruct",
     "sealedSchema": null,
-    "thinking": false,
     "thinkingLevels": [],
     "tierThinkingLevels": [],
     "transport": "anthropic",
@@ -1865,7 +1826,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1912,7 +1872,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.6",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -1959,7 +1918,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.7-code",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2005,7 +1963,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "kimi-k2-instruct",
     "sealedSchema": null,
-    "thinking": false,
     "thinkingLevels": [],
     "tierThinkingLevels": [],
     "transport": "anthropic",
@@ -2043,7 +2000,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -2090,7 +2046,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.6",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -2137,7 +2092,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.7-code",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2183,7 +2137,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "kimi-k2-instruct",
     "sealedSchema": null,
-    "thinking": false,
     "thinkingLevels": [],
     "tierThinkingLevels": [],
     "transport": "anthropic",
@@ -2221,7 +2174,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -2268,7 +2220,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.6",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -2315,7 +2266,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.7-code",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2361,7 +2311,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2407,7 +2356,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.5-highspeed",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2453,7 +2401,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.7",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2499,7 +2446,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.7-highspeed",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2545,7 +2491,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "MiniMax-M3",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -2592,7 +2537,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2638,7 +2582,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.5-highspeed",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2684,7 +2627,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.7",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2730,7 +2672,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "MiniMax-M2.7-highspeed",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2776,7 +2717,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "MiniMax-M3",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -2823,7 +2763,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.2-codex",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2871,7 +2810,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.3-codex",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -2919,7 +2857,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -2969,7 +2906,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4-mini",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3019,7 +2955,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.5",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3069,7 +3004,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.2",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3119,7 +3053,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.2-codex",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -3167,7 +3100,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.3-codex",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -3215,7 +3147,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3265,7 +3196,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4-mini",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3315,7 +3245,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4-nano",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3365,7 +3294,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.5",
     "sealedSchema": "openai-responses",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3415,7 +3343,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-haiku-4.5",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -3462,7 +3389,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4.6",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -3511,7 +3437,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-opus-4.7",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -3562,7 +3487,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "claude-sonnet-4.6",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -3609,7 +3533,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "deepseek-v4-flash",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "high",
@@ -3654,7 +3577,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "deepseek-v4-pro",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "high",
@@ -3699,7 +3621,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "minimax-m2.5",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -3745,7 +3666,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "minimax-m2.7",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -3791,7 +3711,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "minimax-m3",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -3838,7 +3757,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "kimi-k2.5",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -3885,7 +3803,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.2",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -3935,7 +3852,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.2-codex",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -3983,7 +3899,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.3-codex",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "low",
       "medium",
@@ -4031,7 +3946,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.4",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -4081,7 +3995,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "gpt-5.5",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "none",
       "low",
@@ -4131,7 +4044,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.6-plus",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4178,7 +4090,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "qwen3.7-max",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4225,7 +4136,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.7-plus",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4272,7 +4182,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "mimo-v2.5",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4319,7 +4228,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "mimo-v2.5-pro",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4366,7 +4274,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-4.7",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4413,7 +4320,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4460,7 +4366,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "glm-5-turbo",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4507,7 +4412,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "glm-5v-turbo",
     "sealedSchema": "openrouter-chat",
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4554,7 +4458,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.6-plus",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4601,7 +4504,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "qwen3.7-max",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4648,7 +4550,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.7-plus",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4695,7 +4596,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.6-plus",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4742,7 +4642,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "qwen3.7-max",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4789,7 +4688,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.7-plus",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4836,7 +4734,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.6-plus",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4883,7 +4780,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": false,
     "normalized": "qwen3.7-max",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4930,7 +4826,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "qwen3.7-plus",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -4977,7 +4872,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "mimo-v2.5",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",
@@ -5024,7 +4918,6 @@ exports[`model/provider derivation characterization (Phase 0 baseline) > freezes
     "multimodal": true,
     "normalized": "mimo-v2.5-pro",
     "sealedSchema": null,
-    "thinking": true,
     "thinkingLevels": [
       "off",
       "low",

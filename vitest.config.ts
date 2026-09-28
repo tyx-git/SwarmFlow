@@ -24,5 +24,10 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     exclude: ["tests/node-runtime.test.ts", ".history/**", "external/**", "dist/**", "node_modules/**"],
+    // Keep native-heavy DOCX/web extraction tests from timing out when the
+    // default fork pool matches a large workstation's logical CPU count.
+    maxWorkers: 4,
+    minWorkers: 1,
+    testTimeout: 15_000,
   },
 });

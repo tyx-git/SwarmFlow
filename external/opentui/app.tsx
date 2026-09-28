@@ -380,7 +380,6 @@ export function OpenTuiApp({
   const turnElapsed = useTurnTimer(phase);
   const tasks = useTasks(session);
   const [agentsPanelOpen, setAgentsPanelOpen] = useState(false);
-  const [todoPanelOpen, setTodoPanelOpen] = useState(false);
   const [rootLogRevision, setRootLogRevision] = useState(session.getLogRevision?.() ?? 0);
   const queuedInputs = useMemo(() => {
     if (selectedChildId !== null) return [];
@@ -392,19 +391,12 @@ export function OpenTuiApp({
   }, [queuedInputs]);
   // Auto-open panels on first appearance (once per session)
   const hasAutoOpenedAgents = useRef(false);
-  const hasAutoOpenedTodos = useRef(false);
   useEffect(() => {
     if (childSessions.length > 0 && !hasAutoOpenedAgents.current) {
       hasAutoOpenedAgents.current = true;
       setAgentsPanelOpen(true);
     }
   }, [childSessions.length]);
-  useEffect(() => {
-    if (tasks.length > 0 && !hasAutoOpenedTodos.current) {
-      hasAutoOpenedTodos.current = true;
-      setTodoPanelOpen(true);
-    }
-  }, [tasks.length]);
   // Frozen child view — protects display when viewed child becomes archived
   const [frozenChildView, setFrozenChildView] = useState<{
     snapshot: ChildSessionSnapshot;
@@ -546,6 +538,7 @@ export function OpenTuiApp({
   // inputVisibleLines removed — textarea self-drives height via Yoga measure
   const [commandOverlay, setCommandOverlay] = useState<CommandOverlayState>(EMPTY_COMMAND_OVERLAY);
   const [commandPicker, setCommandPicker] = useState<CommandPickerState | null>(null);
+  const [modelUiRevision, setModelUiRevision] = useState(0);
   const [checkboxPicker, setCheckboxPicker] = useState<CheckboxPickerState | null>(null);
   const [promptSelect, setPromptSelect] = useState<PromptSelectState | null>(null);
   const [helpPanel, setHelpPanel] = useState(false);
@@ -1407,6 +1400,8 @@ export function OpenTuiApp({
         options,
         pickerMaxVisible,
         command?.pickerTitle,
+        false,
+        command?.inputAreaPicker ?? false,
       ),
     );
     return true;
@@ -1581,7 +1576,6 @@ export function OpenTuiApp({
           return;
         }
         if (message === "__toggle_todo_panel__") {
-          setTodoPanelOpen((p) => !p);
           return;
         }
         if (message.startsWith("__sidebar_mode__:")) {
@@ -1702,7 +1696,7 @@ export function OpenTuiApp({
           });
         });
       },
-      promptCommandPicker: async (options: CommandOption[], config?: { title?: string; allowNote?: boolean }) => {
+      promptCommandPicker: async (options: CommandOption[], config?: { title?: string; allowNote?: boolean; inputArea?: boolean }) => {
         resolvePromptSelect(undefined);
         resolvePromptSecret(undefined);
         return await new Promise<CommandPickerResult | undefined>((resolve) => {
@@ -1712,7 +1706,7 @@ export function OpenTuiApp({
           setCheckboxPicker(null);
           setPickerNoteValue("");
           setCommandPicker(
-            createCommandPicker("", options, pickerMaxVisible, config?.title, config?.allowNote),
+            createCommandPicker("", options, pickerMaxVisible, config?.title, config?.allowNote, config?.inputArea),
           );
         });
       },
@@ -1799,7 +1793,7 @@ export function OpenTuiApp({
   // against turns via its turn lock, so they need no UI "Working" state. While
   // a turn is processing we only intercept them with a hint so they are not
   // queued to the LLM as a user message.
-  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/provider", "/model", "/effort", "/permission", "/theme", "/hooks"]);
+  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/provider", "/model", "/permission", "/theme", "/hooks"]);
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;
@@ -1819,6 +1813,7 @@ export function OpenTuiApp({
           const message = err instanceof Error ? err.message : String(err);
           session.appendErrorMessage?.(`Command failed (${cmdToken}): ${message}`, "command");
         }
+        setModelUiRevision((revision) => revision + 1);
       }
       return;
     }
@@ -1908,6 +1903,7 @@ export function OpenTuiApp({
         const message = err instanceof Error ? err.message : String(err);
         session.appendErrorMessage?.(t.get(["Error", "commandFailed"], { command: cmdName, message }), "command");
       }
+      setModelUiRevision((revision) => revision + 1);
       return;
     }
     await runTurn(input, inlineImages);
@@ -3065,13 +3061,24 @@ export function OpenTuiApp({
     setTimeout(syncComposerState, 50);
     setTimeout(syncComposerState, 100);
   });
-  const modelDescriptor = getCurrentModelDescriptor(session);
+  const modelDescriptor = useMemo(
+    () => getCurrentModelDescriptor(session),
+    [session, modelUiRevision],
+  );
   const modelName = modelDescriptor?.compactScopedLabel ?? "unknown";
   const modelNameColor = resolveModelNameColor(modelDescriptor, theme);
   // 输入框右上角："供应商/模型 思考深度"。
   // 深度档位统一来自 src/config/thinking.ts（low/medium/high/xhigh/max，不提供 ultra）；
   // 非思考模型不显示深度，off 原样显示。
-  const thinkingLevel = session.thinkingLevel ?? "";
+  const runtimeThinkingLevel = session.thinkingLevel ?? "";
+  const preferredThinkingLevel = typeof session.getGlobalPreferences === "function"
+    ? session.getGlobalPreferences()?.thinkingLevel ?? ""
+    : "";
+  // Keep the selected depth visible exactly as chosen. Capability validation
+  // belongs to the provider response, not to the local model registry.
+  const thinkingLevel = runtimeThinkingLevel && runtimeThinkingLevel !== "none"
+    ? runtimeThinkingLevel
+    : preferredThinkingLevel;
   const thinkingSuffix = (() => {
     if (!thinkingLevel || thinkingLevel === "none") return ""; // 非思考模型
     if (thinkingLevel === "off") return "off";                 // 显式关闭
@@ -3253,7 +3260,7 @@ export function OpenTuiApp({
       sidebarMode={sidebarMode}
       statusPanel={(() => {
         const showAgents = agentsPanelOpen && childSessions.length > 0;
-        const showTasks = todoPanelOpen && tasks.length > 0;
+        const showTasks = tasks.length > 0;
         if (!showAgents && !showTasks) return undefined;
         return (
           <StatusPanel
@@ -3280,10 +3287,6 @@ export function OpenTuiApp({
           ))}
         </box>
       ) : undefined}
-      todoOpenCount={tasks.filter((task) => task.status !== "completed").length}
-      todoDoneCount={tasks.filter((task) => task.status === "completed").length}
-      todoPanelOpen={todoPanelOpen}
-      onTodoClick={() => setTodoPanelOpen((p) => !p)}
       shellRunningCount={shellSnapshots.filter((s) => s.status === "running").length}
       onShellsClick={openShellsPicker}
       activeShells={shellSnapshots.map(({ id, command, status }) => ({ id, command, status }))}

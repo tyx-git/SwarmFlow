@@ -701,7 +701,6 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
         provider: m.provider,
         model: m.model,
         contextLength: m.contextLength,
-        supportsThinking: m.supportsThinking,
         supportsMultimodal: m.supportsMultimodal,
         tierThinkingLevels: getThinkingLevels(m.model).length === 0
           ? ["none"]

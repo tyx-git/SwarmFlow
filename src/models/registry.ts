@@ -75,11 +75,6 @@ export function modelSpecIds(spec: ModelSpec): string[] {
   return [spec.id, ...(spec.aliases ?? [])];
 }
 
-/** 思考模型 = 至少有一个非 off 级别。 */
-export function isThinkingSpec(spec: ModelSpec): boolean {
-  return spec.thinkingLevels.some((l) => l !== "off");
-}
-
 /**
  * 验证原始模型注册表并返回其 ModelSpec[]。在任何
  * 结构/不变量违反时抛出（工厂数据 → 构建时失败；
@@ -166,7 +161,6 @@ export interface DerivedModelTables {
   contextLengths: Record<string, number>;
   maxOutputTokens: Record<string, number>;
   multimodal: Set<string>;
-  thinking: Set<string>;
   thinkingLevels: Record<string, string[]>;
   noWebSearch: Set<string>;
   extendedCache: Set<string>;
@@ -191,7 +185,6 @@ export function deriveModelTables(specs: readonly ModelSpec[]): DerivedModelTabl
     contextLengths: {},
     maxOutputTokens: {},
     multimodal: new Set(),
-    thinking: new Set(),
     thinkingLevels: {},
     noWebSearch: new Set(),
     extendedCache: new Set(),
@@ -199,12 +192,10 @@ export function deriveModelTables(specs: readonly ModelSpec[]): DerivedModelTabl
   };
   for (const spec of specs) {
     const ids = modelSpecIds(spec);
-    const thinks = isThinkingSpec(spec);
     for (const id of ids) {
       tables.contextLengths[id] = spec.contextLength;
       if (spec.maxOutputTokens !== undefined) tables.maxOutputTokens[id] = spec.maxOutputTokens;
       if (spec.multimodal) tables.multimodal.add(id);
-      if (thinks) tables.thinking.add(id);
       tables.thinkingLevels[id] = [...spec.thinkingLevels];
       if (!spec.webSearch) tables.noWebSearch.add(id);
       if (spec.extendedCache) tables.extendedCache.add(id);

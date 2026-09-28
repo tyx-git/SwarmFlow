@@ -27,8 +27,6 @@ export class DeepSeekAnthropicProvider extends BaseAnthropicProvider {
     kwargs: Record<string, unknown>,
     options?: SendMessageOptions,
   ): void {
-    if (!this._config.supportsThinking) return;
-
     const level = options?.thinkingLevel;
     if (level === "off" || level === "none") {
       kwargs["thinking"] = { type: "disabled" };
@@ -36,6 +34,6 @@ export class DeepSeekAnthropicProvider extends BaseAnthropicProvider {
     }
 
     kwargs["thinking"] = { type: "enabled" };
-    kwargs["output_config"] = { effort: level === "max" ? "max" : "high" };
+    kwargs["output_config"] = { effort: level || "high" };
   }
 }
