@@ -9,7 +9,11 @@ import type { ConversationPalette } from "../components/conversation-types.js";
 import type { ComposerTokenVisuals } from "../composer-tokens.js";
 import type { ActivityPhase } from "../display/types.js";
 import { formatCompactTokensShort } from "../display/utils/format.js";
-import { formatElapsed } from "../presentation/use-turn-timer.js";
+import {
+  formatElapsed,
+  formatWorkedDuration,
+  formatWorkedStartTime,
+} from "../presentation/use-turn-timer.js";
 import type { UiText } from "../../../src/lib/ui-text.js";
 import {
   useSpinner,
@@ -31,6 +35,9 @@ interface InputAreaProps {
   thinkingSuffix: string;
   modelColor: string;
   elapsed: number;
+  /** Duration and start time of the most recently completed turn. */
+  lastWorkedElapsed?: number;
+  lastWorkedStartedAt?: number | null;
   cwd: string;
   permissionMode?: string;
   hint: string | null;
@@ -116,6 +123,8 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     modelName,
     modelColor,
     elapsed,
+    lastWorkedElapsed = 0,
+    lastWorkedStartedAt = null,
     cwd,
     permissionMode,
     hint,
@@ -161,11 +170,25 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const spinnerConfig = getPhaseSpinnerConfig(phase);
   const activeSpinner = useSpinner(spinnerConfig.frames, spinnerConfig.interval, processing);
   const phaseColor = getPhaseColor(phase, colors);
+  const workedStatus = typeof lastWorkedElapsed === "number" && lastWorkedStartedAt !== null
+    ? `Worked for ${formatWorkedDuration(lastWorkedElapsed)} · ${formatWorkedStartTime(lastWorkedStartedAt)}`
+    : null;
+  const activityStatus = processing ? (
+    <box flexDirection="row" flexShrink={0}>
+      <text fg={phaseColor} content={`${activeSpinner} ${phase}`} />
+      {elapsed > 0 ? (
+        <text fg={colors.dim} content={` ${formatElapsed(elapsed)}`} />
+      ) : null}
+    </box>
+  ) : workedStatus ? (
+    <text fg="#616161" content={workedStatus} />
+  ) : null;
 
   if (inlineCommandPicker) {
     return (
       <box flexDirection="column" gap={0} flexShrink={0}>
         <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1}>
+          {activityStatus}
           <box flexGrow={1} />
           <box flexDirection="row" flexShrink={0}>
             <text fg={modelColor} content={modelName} />
@@ -190,14 +213,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     <box flexDirection="column" gap={0} flexShrink={0}>
       {/* Top row: activity indicator (left) + agent indicator (center) + model name (right) */}
       <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1}>
-        {processing ? (
-          <box flexDirection="row" flexShrink={0}>
-            <text fg={phaseColor} content={`${activeSpinner} ${phase}`} />
-            {elapsed > 0 ? (
-              <text fg={colors.dim} content={` ${formatElapsed(elapsed)}`} />
-            ) : null}
-          </box>
-        ) : null}
+        {activityStatus}
 
         {/* Agent indicator: show whenever agents exist */}
         {(runningAgentCount + idleAgentCount + archivedAgentCount) > 0 && !selectedChildId ? (

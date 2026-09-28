@@ -206,6 +206,49 @@ function TaskRows({
   );
 }
 
+/** Keep short task lists tightly sized; only overflowing lists need a scrollbox. */
+function TaskList({
+  tasks,
+  colors,
+  taskPersistence,
+  spinnerFrame,
+  taskContentHeight,
+  maxHeight,
+}: {
+  tasks: readonly Task[];
+  colors: ConversationPalette;
+  taskPersistence?: "file" | "pending" | "memory";
+  spinnerFrame: number;
+  taskContentHeight: number;
+  maxHeight: number;
+}): React.ReactNode {
+  const taskRowCount = tasks.length + (taskPersistence === "memory" ? 1 : 0);
+  const rows = (
+    <TaskRows
+      tasks={tasks}
+      colors={colors}
+      taskPersistence={taskPersistence}
+      spinnerFrame={spinnerFrame}
+    />
+  );
+
+  if (taskRowCount <= MAX_VISIBLE_TASKS) {
+    return <box flexDirection="column" width="100%" flexShrink={0}>{rows}</box>;
+  }
+
+  return (
+    <scrollbox
+      height={Math.max(1, taskContentHeight)}
+      maxHeight={maxHeight}
+      scrollY={true}
+      fitContent={true}
+      horizontalScrollbarOptions={{ visible: false }}
+    >
+      {rows}
+    </scrollbox>
+  );
+}
+
 // ── Main panel ──────────────────────────────────────────────
 
 function StatusPanelInner({
@@ -253,25 +296,25 @@ function StatusPanelInner({
       <box width="100%" flexShrink={0} maxHeight={maxHeight + 1} flexDirection="row" gap={0}>
         <box width="40%" flexShrink={0} flexDirection="column">
           <text fg={colors.badgeAgentFg} content={agentTitle} />
-          <scrollbox maxHeight={maxHeight} scrollY={true} fitContent={true}>
+          <scrollbox
+            maxHeight={maxHeight}
+            scrollY={true}
+            fitContent={true}
+            horizontalScrollbarOptions={{ visible: false }}
+          >
             <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
           </scrollbox>
         </box>
         <box flexGrow={1} flexShrink={0} flexDirection="column">
           <text fg={colors.badgeTodoFg} content={todoTitle} />
-          <scrollbox
-            height={Math.max(1, taskContentHeight)}
+          <TaskList
+            tasks={tasks}
+            colors={colors}
+            taskPersistence={taskPersistence}
+            spinnerFrame={spinnerFrame}
+            taskContentHeight={taskContentHeight}
             maxHeight={maxHeight}
-            scrollY={true}
-            fitContent={true}
-          >
-            <TaskRows
-              tasks={tasks}
-              colors={colors}
-              taskPersistence={taskPersistence}
-              spinnerFrame={spinnerFrame}
-            />
-          </scrollbox>
+          />
         </box>
       </box>
     );
@@ -281,7 +324,12 @@ function StatusPanelInner({
     return (
       <box width="100%" flexShrink={0} flexDirection="column">
         <text fg={colors.badgeAgentFg} content={agentTitle} />
-        <scrollbox maxHeight={maxHeight} scrollY={true} fitContent={true}>
+        <scrollbox
+          maxHeight={maxHeight}
+          scrollY={true}
+          fitContent={true}
+          horizontalScrollbarOptions={{ visible: false }}
+        >
           <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
         </scrollbox>
       </box>
@@ -291,19 +339,14 @@ function StatusPanelInner({
   return (
     <box width="100%" flexShrink={0} flexDirection="column">
       <text fg={colors.badgeTodoFg} content={todoTitle} />
-      <scrollbox
-        height={Math.max(1, taskContentHeight)}
+      <TaskList
+        tasks={tasks}
+        colors={colors}
+        taskPersistence={taskPersistence}
+        spinnerFrame={spinnerFrame}
+        taskContentHeight={taskContentHeight}
         maxHeight={maxHeight}
-        scrollY={true}
-        fitContent={true}
-      >
-        <TaskRows
-          tasks={tasks}
-          colors={colors}
-          taskPersistence={taskPersistence}
-          spinnerFrame={spinnerFrame}
-        />
-      </scrollbox>
+      />
     </box>
   );
 }

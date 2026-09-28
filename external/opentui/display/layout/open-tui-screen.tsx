@@ -113,6 +113,8 @@ export interface OpenTuiScreenProps {
   thinkingSuffix: string;
   modelColor: string;
   turnElapsed: number;
+  lastWorkedElapsed?: number;
+  lastWorkedStartedAt?: number | null;
   hint: string | null;
   composerTokenVisuals: ComposerTokenVisuals;
   /** 界面文案表（language.json）；语言切换时由上层刷新。 */
@@ -231,6 +233,8 @@ export function OpenTuiScreen({
   thinkingSuffix,
   modelColor,
   turnElapsed,
+  lastWorkedElapsed,
+  lastWorkedStartedAt,
   hint,
   composerTokenVisuals,
   uiText,
@@ -345,6 +349,8 @@ export function OpenTuiScreen({
       thinkingSuffix={thinkingSuffix}
       modelColor={modelColor}
       elapsed={turnElapsed}
+      lastWorkedElapsed={lastWorkedElapsed}
+      lastWorkedStartedAt={lastWorkedStartedAt}
       cwd={shortenPath(process.cwd())}
       permissionMode={permissionMode}
       hint={hint}
@@ -564,9 +570,7 @@ export function OpenTuiScreen({
         Fixed footer — input area stays visible while scrolling.
         Lifted out of the main scrollbox so it stays at the bottom.
       */}
-      <box height={1} />
       {pendingMessages}
-      {pendingMessages ? <box height={1} /> : null}
       {statusPanel}
       {commandOverlayBlock}
       {inputAreaElement}

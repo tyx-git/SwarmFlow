@@ -377,7 +377,8 @@ export function OpenTuiApp({
   const [activeShellDetail, setActiveShellDetail] = useState<ShellDetailUi | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const presentationEntries = usePresentationEntries({ session, selectedChildId, childSessions, processing });
-  const turnElapsed = useTurnTimer(phase);
+  const turnTimer = useTurnTimer(phase);
+  const turnElapsed = turnTimer.elapsed;
   const tasks = useTasks(session);
   const [agentsPanelOpen, setAgentsPanelOpen] = useState(false);
   const [rootLogRevision, setRootLogRevision] = useState(session.getLogRevision?.() ?? 0);
@@ -389,6 +390,41 @@ export function OpenTuiApp({
   useEffect(() => {
     queuedInputsRef.current = queuedInputs;
   }, [queuedInputs]);
+
+  // Work spans are persisted in the session log, so the stopped status also
+  // survives restoring a historical session and does not depend on a React
+  // phase transition happening during the current process.
+  const lastWorkedStatus = useMemo(() => {
+    const entries = session.log ?? [];
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const end = entries[index];
+      if (!end || end.discarded || end.type !== "work_end") continue;
+      const endMeta = end.meta as Record<string, unknown>;
+      const workId = typeof endMeta.workId === "string" ? endMeta.workId : undefined;
+      let elapsedMs = typeof endMeta.elapsedMs === "number" && Number.isFinite(endMeta.elapsedMs)
+        ? endMeta.elapsedMs
+        : undefined;
+      let startedAt: number | undefined;
+      if (workId) {
+        for (let startIndex = index - 1; startIndex >= 0; startIndex -= 1) {
+          const start = entries[startIndex];
+          if (!start || start.discarded || start.type !== "work_start") continue;
+          const startMeta = start.meta as Record<string, unknown>;
+          if (startMeta.workId !== workId) continue;
+          startedAt = start.timestamp;
+          if (elapsedMs === undefined) elapsedMs = Math.max(0, end.timestamp - start.timestamp);
+          break;
+        }
+      }
+      if (elapsedMs === undefined) continue;
+      const endedAt = Number.isFinite(end.timestamp) ? end.timestamp : Date.now();
+      return {
+        elapsed: Math.max(0, elapsedMs / 1000),
+        startedAt: startedAt ?? Math.max(0, endedAt - elapsedMs),
+      };
+    }
+    return null;
+  }, [rootLogRevision, session]);
   // Auto-open panels on first appearance (once per session)
   const hasAutoOpenedAgents = useRef(false);
   useEffect(() => {
@@ -3236,6 +3272,8 @@ export function OpenTuiApp({
       uiText={uiText}
       modelColor={effectiveModelColor}
       turnElapsed={effectiveElapsed}
+      lastWorkedElapsed={childSnapshot ? childSnapshot.turnElapsed : (lastWorkedStatus?.elapsed ?? turnTimer.lastElapsed)}
+      lastWorkedStartedAt={childSnapshot ? null : (lastWorkedStatus?.startedAt ?? turnTimer.lastStartedAt)}
       hint={hint}
       composerTokenVisuals={composerTokenVisuals}
       keyBindings={COMPOSER_KEY_BINDINGS}
