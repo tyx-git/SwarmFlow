@@ -184,11 +184,17 @@ export function CommandOverlayView(
   },
 ): React.ReactNode {
   if (!overlay.visible || overlay.items.length === 0) return null;
+  // Slash command completion should stay compact even on tall terminals.
+  // File completion keeps the layout-derived limit because paths can be
+  // numerous and the existing picker height is useful there.
+  const visibleLimit = overlay.mode === "command"
+    ? Math.min(maxVisible, 5)
+    : maxVisible;
   const start = Math.max(0, Math.min(
-    overlay.selected - Math.floor(maxVisible / 2),
-    Math.max(0, overlay.items.length - maxVisible),
+    overlay.selected - Math.floor(visibleLimit / 2),
+    Math.max(0, overlay.items.length - visibleLimit),
   ));
-  const end = Math.min(overlay.items.length, start + maxVisible);
+  const end = Math.min(overlay.items.length, start + visibleLimit);
   const visibleItems = overlay.items.slice(start, end);
 
   return (
