@@ -510,6 +510,7 @@ export function OpenTuiScreen({
                 markdownMode={markdownMode}
                 diffDisplayMode={diffDisplayMode}
                 colors={theme.colors}
+                interruptionText={uiText.get(["Views", "interrupt", "conversation"])}
                 theme={theme}
                 markdownStyle={theme.markdownStyle}
                 selectedChildId={selectedChildId}

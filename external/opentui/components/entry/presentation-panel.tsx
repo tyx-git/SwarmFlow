@@ -34,6 +34,7 @@ function PresentationPanelInner(
   {
     items,
     colors,
+    interruptionText,
     theme,
     contentWidth,
     markdownMode,
@@ -66,6 +67,7 @@ function PresentationPanelInner(
           key={entry.id}
           entry={entry}
           colors={colors}
+          interruptionText={interruptionText}
           theme={theme}
           contentWidth={contentWidth}
           markdownMode={markdownMode}
@@ -85,6 +87,7 @@ export const PresentationPanel = React.memo(
     previous.items === next.items
     && previous.processing === next.processing
     && previous.contentWidth === next.contentWidth
+    && previous.interruptionText === next.interruptionText
     && previous.markdownMode === next.markdownMode
     && previous.diffDisplayMode === next.diffDisplayMode
     && previous.colors === next.colors

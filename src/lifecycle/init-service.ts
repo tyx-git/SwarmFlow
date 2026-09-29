@@ -31,7 +31,7 @@ import {
   hasManagedCredential,
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
-import { Config, getThinkingLevels, getTierEligibleThinkingLevels } from "../config/config.js";
+import { Config, getThinkingLevels, getTierEligibleThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
 import {
   buildModelPickerTree,
   labelModelPickerNode,
@@ -329,6 +329,7 @@ export class InitService {
           api_key: entry.api_key ?? "local",
           base_url: entry.base_url,
           context_length: entry.context_length,
+          ...(entry.protocol ? { transport_protocol: runtimeTransportProtocol(entry.protocol) ?? "chat" } : {}),
           supports_web_search: false,
         });
         continue;

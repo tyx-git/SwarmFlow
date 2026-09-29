@@ -14,7 +14,7 @@ import {
 } from "../providers/presets.js";
 import { isManagedProvider } from "../config/managed-provider-credentials.js";
 import { describeModel } from "../models/presentation.js";
-import { getThinkingLevels, getTierEligibleThinkingLevels } from "../config/config.js";
+import { getThinkingLevels, getTierEligibleThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
 import type { AgentModelEntry, ModelTierEntry } from "../config/persistence.js";
 
 /** 模型条目接口 */
@@ -439,16 +439,19 @@ export function resolveModelSelection(
     }
 
     const runtimeName = runtimeModelName(parsed.provider, selectionKey);
-    config.upsertModelRaw(
-      runtimeName,
-      presetModel
-        ? buildProviderPresetRawConfig(parsed.provider, presetModel, keySource)
-        : {
-            provider: parsed.provider,
-            model: resolvedModel,
-            api_key: keySource,
-          },
-    );
+    const rawConfig: Record<string, unknown> = presetModel
+      ? buildProviderPresetRawConfig(parsed.provider, presetModel, keySource)
+      : {
+          provider: parsed.provider,
+          model: resolvedModel,
+          api_key: keySource,
+        };
+    if (rawConfig.transport_protocol !== undefined) {
+      rawConfig.transport_protocol = runtimeTransportProtocol(String(rawConfig.transport_protocol))
+        ?? runtimeTransportProtocol(parsed.provider)
+        ?? "chat";
+    }
+    config.upsertModelRaw(runtimeName, rawConfig);
     selectedConfigName = runtimeName;
   }
 

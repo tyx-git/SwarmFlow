@@ -13,6 +13,8 @@ export type ConversationPalette = DisplayThemeColorTokens;
 export interface PresentationEntryItemProps {
   entry: PresentationEntry;
   colors: ConversationPalette;
+  /** Localized message shown when a turn is interrupted. */
+  interruptionText: string;
   theme: DisplayTheme;
   contentWidth: number;
   markdownMode: "rendered" | "raw";
@@ -25,6 +27,8 @@ export interface PresentationEntryItemProps {
 export interface PresentationPanelProps {
   items: readonly PresentationEntry[];
   colors: ConversationPalette;
+  /** Localized message shown when a turn is interrupted. */
+  interruptionText: string;
   theme: DisplayTheme;
   contentWidth: number;
   markdownMode: "rendered" | "raw";

@@ -26,6 +26,7 @@ import type {
 import { truncateToWidth } from "../utils/format.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
+import { ErrorMessage } from "../primitives/error-message.js";
 
 interface OverlayFrameProps {
   theme: DisplayTheme;
@@ -522,7 +523,9 @@ export function OAuthOverlayView(
   return (
     <OverlayFrame theme={theme} height={lines.length + 2}>
       <text fg={theme.colors.accent} content={titleText} />
-      {lines.map((line, index) => (
+      {lines.map((line, index) => phase.step === "error" && index === lines.length - 1 ? (
+        <ErrorMessage key={`oauth-line-${index}`} text={truncateToWidth(line, contentWidth)} colors={theme.colors} />
+      ) : (
         <text key={`oauth-line-${index}`} fg={theme.colors.text} content={truncateToWidth(line, contentWidth)} />
       ))}
       <text fg={theme.colors.dim} content="Esc cancel" />

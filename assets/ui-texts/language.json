@@ -115,6 +115,7 @@
         "pasted": "已粘贴图片（{width}×{height}，{size} MB）"
       },
       "interrupt": {
+        "conversation": "会话已中断 - 告诉模型要做哪些不同的事情。出了什么问题？",
         "child": "已中断 {agentId}",
         "allAgents": "已中断全部子代理",
         "allShells": "已停止全部后台 shell"
@@ -297,6 +298,7 @@
         "pasted": "Image pasted ({width}×{height}, {size} MB)"
       },
       "interrupt": {
+        "conversation": "Conversation interrupted - tell the model what to do differently. Something went wrong?",
         "child": "Interrupted {agentId}",
         "allAgents": "All sub-agents interrupted",
         "allShells": "All background shells killed"

@@ -6,6 +6,7 @@ import { RGBA, createTextAttributes } from "@opentui/core";
 import type { PresentationEntry } from "../../presentation/types.js";
 import { useShimmer } from "../../presentation/use-shimmer.js";
 import type { ConversationPalette } from "../conversation-types.js";
+import { ErrorMessage } from "../../display/primitives/error-message.js";
 
 interface ThinkingEntryProps {
   entry: PresentationEntry;
@@ -84,10 +85,7 @@ function ThinkingEntryInner(
 
       {/* Interrupted marker */}
       {isError ? (
-        <text
-          fg={colors.orange}
-          content="[Interrupted — not sent to model]"
-        />
+        <ErrorMessage text="Interrupted — not sent to model" colors={colors} />
       ) : null}
     </box>
   );

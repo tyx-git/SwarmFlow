@@ -28,6 +28,7 @@ import { fetchModelsFromServer } from "../models/discovery.js";
 import {
   getThinkingLevels,
   getTierEligibleThinkingLevels,
+  runtimeTransportProtocol,
 } from "../config/config.js";
 import {
   PROVIDER_PRESETS,
@@ -1547,7 +1548,7 @@ function registerCustomModel(config: any, providerId: string, baseUrl: string, p
     api_key: apiKeyRef,
     base_url: baseUrl,
     context_length: m.context_length,
-    transport_protocol: wireProtocolFromStored(protocol) === "anthropic-messages" ? "anthropic" : wireProtocolFromStored(protocol) === "openai-chat-completions" ? "chat" : protocol,
+    transport_protocol: runtimeTransportProtocol(protocol) ?? "chat",
     supports_multimodal: m.multimodal ?? false,
     supports_web_search: false,
     ...(m.max_output_tokens ? { max_tokens: m.max_output_tokens } : {}),

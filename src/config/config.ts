@@ -124,6 +124,27 @@ export const KNOWN_MULTIMODAL_MODELS: Set<string> = _MODEL_TABLES.multimodal;
 /** 已知不支持网络搜索的模型集合 */
 export const KNOWN_NO_WEB_SEARCH_MODELS: Set<string> = _MODEL_TABLES.noWebSearch;
 
+/** Convert the user-facing settings protocol alias to the runtime enum. */
+export function runtimeTransportProtocol(protocol: string | undefined): TransportProtocol | undefined {
+  switch (protocol) {
+    case "anthropic":
+    case "anthropic-messages":
+      return "anthropic";
+    case "openai-responses":
+    case "responses":
+      return "responses";
+    case "gemini":
+    case "gemini-generate-content":
+      return "gemini";
+    case "openai-chat":
+    case "openai-chat-completions":
+    case "chat":
+      return "chat";
+    default:
+      return undefined;
+  }
+}
+
 /**
  * 支持 OpenAI 扩展 24 小时提示缓存保留的模型
  * （`prompt_cache_retention: "24h"`）。从标记为 extendedCache 的规格派生，
@@ -653,13 +674,7 @@ export class Config {
           api_key: local.apiKey ?? "local",
           base_url: local.baseUrl,
           context_length: m.contextLength,
-          transport_protocol: local.protocol === "anthropic" || local.protocol === "anthropic-messages"
-            ? "anthropic"
-            : local.protocol === "openai-responses"
-              ? "responses"
-              : local.protocol === "gemini" || local.protocol === "gemini-generate-content"
-                ? "gemini"
-                : "chat",
+          transport_protocol: runtimeTransportProtocol(local.protocol) ?? "chat",
           supports_multimodal: m.multimodal ?? false,
           supports_web_search: m.webSearch ?? false,
           ...(m.maxOutputTokens ? { max_tokens: m.maxOutputTokens } : {}),
@@ -848,7 +863,12 @@ export class Config {
    * 在运行时插入或替换原始模型配置（仅内存中）。
    */
   upsertModelRaw(name: string, cfg: Record<string, unknown>): void {
-    this._rawModels[name] = { ...cfg };
+    const normalized = { ...cfg };
+    const protocol = typeof normalized.transport_protocol === "string"
+      ? runtimeTransportProtocol(normalized.transport_protocol)
+      : undefined;
+    if (protocol) normalized.transport_protocol = protocol;
+    this._rawModels[name] = normalized;
     this._presetModelNames.delete(name);
     this._models.delete(name);
   }

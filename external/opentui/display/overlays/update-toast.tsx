@@ -4,6 +4,7 @@ import React from "react";
 import { createTextAttributes } from "@opentui/core";
 import type { DisplayTheme } from "../theme/index.js";
 import { ToastFrame } from "./toast-frame.js";
+import { ErrorMessage } from "../primitives/error-message.js";
 
 const ATTRS_BOLD = createTextAttributes({ bold: true });
 
@@ -59,9 +60,9 @@ export function UpdateToast({
         { text: "dismiss ", color: colors.accent, onClick: onDismiss },
       ]}
     >
-      <text fg={colors.text} content={bodyLine1} />
+      {isFailed ? <ErrorMessage text={bodyLine1} colors={colors} /> : <text fg={colors.text} content={bodyLine1} />}
       {bodyLine2 ? <text fg={colors.text} content={bodyLine2} /> : null}
-      {isFailed && error ? <text fg={colors.dim} content={error} /> : null}
+      {isFailed && error ? <ErrorMessage text={error} colors={colors} /> : null}
       {isReady ? (
         <box flexDirection="row">
           <text

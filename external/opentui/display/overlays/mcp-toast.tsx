@@ -3,6 +3,7 @@
 import React from "react";
 import type { DisplayTheme } from "../theme/index.js";
 import { ToastFrame } from "./toast-frame.js";
+import { ErrorMessage } from "../primitives/error-message.js";
 
 export interface McpFailure {
   name: string;
@@ -23,10 +24,10 @@ export function McpToast({ failures, theme }: McpToastProps): React.ReactNode {
   const lines: string[] = [];
   for (const f of failures.slice(0, 3)) {
     const err = f.error ? `: ${f.error.slice(0, 40)}` : "";
-    lines.push(`  ✗ ${f.name}${err}`);
+    lines.push(`${f.name}${err}`);
   }
   if (failures.length > 3) {
-    lines.push(`  … and ${failures.length - 3} more`);
+    lines.push(`… and ${failures.length - 3} more`);
   }
 
   return (
@@ -36,12 +37,12 @@ export function McpToast({ failures, theme }: McpToastProps): React.ReactNode {
       borderColor={colors.errorStatus ?? colors.dim}
       theme={theme}
     >
-      <text
-        fg={colors.text}
-        content={`${failures.length} server${failures.length > 1 ? "s" : ""} failed to connect:`}
+      <ErrorMessage
+        text={`${failures.length} server${failures.length > 1 ? "s" : ""} failed to connect:`}
+        colors={colors}
       />
       {lines.map((line, i) => (
-        <text key={i} fg={colors.dim} content={line} />
+        <ErrorMessage key={i} text={line} colors={colors} />
       ))}
     </ToastFrame>
   );

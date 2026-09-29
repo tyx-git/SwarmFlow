@@ -9,6 +9,7 @@ import type { PresentationEntry } from "../../presentation/types.js";
 import type { ConversationPalette } from "../conversation-types.js";
 import type { DisplayTheme } from "../../display/theme/index.js";
 import { getSystemEntryColor } from "../../display/entries/entry-variants.js";
+import { ErrorMessage } from "../../display/primitives/error-message.js";
 
 const NO_REPLY_LABEL = "NO REPLY";
 
@@ -57,14 +58,14 @@ function SystemEntryInner(
     case "error":
       return (
         <box paddingTop={1} width="100%">
-          <text fg={fg} attributes={ATTRS_BOLD} content={`[!] ${text}`} />
+          <ErrorMessage text={text} colors={colors} />
         </box>
       );
 
     case "interrupted":
       return (
-        <box width="100%">
-          <text fg={fg} content={text} />
+        <box width="100%" paddingTop={1}>
+          <ErrorMessage text={text} colors={colors} />
         </box>
       );
 

@@ -4,28 +4,28 @@ import React from "react";
 
 import type { PresentationEntry } from "../../presentation/types.js";
 import type { ConversationPalette } from "../conversation-types.js";
+import { ErrorMessage } from "../../display/primitives/error-message.js";
 
 interface TurnSummaryEntryProps {
   entry: PresentationEntry;
   colors: ConversationPalette;
-  contentWidth: number;
+  interruptionText: string;
 }
 
 function TurnSummaryEntryInner(
-  { entry, colors, contentWidth }: TurnSummaryEntryProps,
+  { entry, colors, interruptionText }: TurnSummaryEntryProps,
 ): React.ReactNode {
-  const text = entry.turnSummaryText ?? "";
   const interrupted = entry.turnSummaryInterrupted ?? false;
   const hints = entry.turnSummaryHints ?? [];
-  const label = ` ${text} `;
-  const totalDashes = Math.max(0, contentWidth - label.length - 1);
-  const leftDashes = Math.max(0, Math.floor((totalDashes - 1) / 2));
-  const rightDashes = totalDashes - leftDashes;
-  const line = " " + "─".repeat(leftDashes) + label + "─".repeat(rightDashes);
-  const lineColor = interrupted ? colors.waitingStatus : colors.dim;
+
+  // The composer already shows the completed turn's "Worked for ..." status.
+  // Keep interruption details in the transcript, but avoid duplicating the
+  // normal completion status as a full-width divider.
+  if (!interrupted) return null;
 
   return (
     <box flexDirection="column" width="100%" paddingTop={1} gap={0}>
+      <ErrorMessage text={interruptionText} colors={colors} />
       {hints.length > 0 ? (
         <box flexDirection="column" paddingLeft={2} gap={0}>
           {hints.map((hint, idx) => (
@@ -33,7 +33,6 @@ function TurnSummaryEntryInner(
           ))}
         </box>
       ) : null}
-      <text fg={lineColor} content={line} />
     </box>
   );
 }
@@ -43,5 +42,5 @@ export const TurnSummaryEntry = React.memo(
   (prev, next) =>
     prev.entry === next.entry
     && prev.colors === next.colors
-    && prev.contentWidth === next.contentWidth,
+    && prev.interruptionText === next.interruptionText,
 );

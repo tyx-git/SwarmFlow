@@ -14,6 +14,7 @@ import { InlineResult } from "./inline-result.js";
 import { FileModifyBody } from "./file-modify-body.js";
 import { ClickablePath } from "./clickable-path.js";
 import type { DisplayTheme } from "../../display/theme/index.js";
+import { ErrorMessage } from "../../display/primitives/error-message.js";
 
 const TOOL_STREAM_MAX_LINES = 10;
 const PATH_TOOL_NAMES = new Set(["Read", "Edit", "Write", "List"]);
@@ -215,8 +216,8 @@ function ToolOperationEntryInner(
                 ) : null}
               </box>
             ) : showInlineResult ? (
-              entry.toolInlineResult!.text.startsWith("[Interrupted]") ? (
-                <text fg={colors.dim} content={entry.toolInlineResult!.text} />
+              entry.state === "error" ? (
+                <ErrorMessage text={entry.toolInlineResult!.text} colors={colors} />
               ) : (
                 <InlineResult
                   data={entry.toolInlineResult!}

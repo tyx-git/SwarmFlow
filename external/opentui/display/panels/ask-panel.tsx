@@ -6,6 +6,7 @@ import type { AgentQuestionItem } from "../../../../src/ask.js";
 import type { DisplayTheme } from "../theme/index.js";
 import type { AskPanelProps } from "../types.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
+import { ErrorMessage } from "../primitives/error-message.js";
 import { countWrappedDisplayLines } from "../utils/format.js";
 
 function formatAskSource(ask: AskPanelProps["ask"]): string {
@@ -72,7 +73,7 @@ export function AskPanelView({
           );
         })}
         <text fg={theme.colors.dim} content="Use ↑/↓ to select, Enter to confirm." />
-        {error ? <text fg={theme.colors.red} content={error} /> : null}
+        {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
       </PanelSurface>
     );
   }
@@ -80,9 +81,9 @@ export function AskPanelView({
   if (ask.kind !== "agent_question") {
     return (
       <PanelSurface colors={theme.colors} spacing={theme.spacing}>
-        <text fg={theme.colors.red} content={`Unsupported ask kind: ${ask.kind}`} />
+        <ErrorMessage text={`Unsupported ask kind: ${ask.kind}`} colors={theme.colors} />
         <text content={ask.summary} />
-        {error ? <text fg={theme.colors.red} content={error} /> : null}
+        {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
       </PanelSurface>
     );
   }
@@ -125,7 +126,7 @@ export function AskPanelView({
           );
         })}
         <text fg={theme.colors.dim} content="Enter to submit. Esc to go back." />
-        {error ? <text fg={theme.colors.red} content={error} /> : null}
+        {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
       </PanelSurface>
     );
   }
@@ -134,7 +135,7 @@ export function AskPanelView({
   if (!question) {
     return (
       <PanelSurface colors={theme.colors} spacing={theme.spacing}>
-        <text fg={theme.colors.red} content="Question index out of range." />
+        <ErrorMessage text="Question index out of range." colors={theme.colors} />
       </PanelSurface>
     );
   }
@@ -195,7 +196,7 @@ export function AskPanelView({
         fg={theme.colors.dim}
         content={`Use ↑/↓ to select, ←/→ to navigate questions, Enter to confirm.${agentOptionCount > 0 && selectedIndex < agentOptionCount ? " Tab to add note." : ""}`}
       />
-      {error ? <text fg={theme.colors.red} content={error} /> : null}
+      {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
     </PanelSurface>
   );
 }

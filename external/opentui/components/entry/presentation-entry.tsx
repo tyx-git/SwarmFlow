@@ -14,7 +14,7 @@ import { TurnSummaryEntry } from "./turn-summary-entry.js";
 function PresentationEntryInner(
   props: PresentationEntryItemProps,
 ): React.ReactNode {
-  const { entry, colors, theme, contentWidth, markdownMode, diffDisplayMode, markdownStyle, onEntryClick, onAgentClick } = props;
+  const { entry, colors, interruptionText, theme, contentWidth, markdownMode, diffDisplayMode, markdownStyle, onEntryClick, onAgentClick } = props;
 
   const renderers = {
     user: () => <UserEntry entry={entry} colors={colors} />,
@@ -51,7 +51,7 @@ function PresentationEntryInner(
       <TurnSummaryEntry
         entry={entry}
         colors={colors}
-        contentWidth={contentWidth}
+        interruptionText={interruptionText}
       />
     ),
   } satisfies Record<PresentationEntryItemProps["entry"]["kind"], () => React.ReactNode>;
@@ -67,6 +67,7 @@ export const PresentationEntryComponent = React.memo(
     && prev.diffDisplayMode === next.diffDisplayMode
     && prev.markdownStyle === next.markdownStyle
     && prev.colors === next.colors
+    && prev.interruptionText === next.interruptionText
     && prev.theme === next.theme
     && prev.contentWidth === next.contentWidth
   ),
