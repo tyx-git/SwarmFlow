@@ -7,6 +7,7 @@ import type {
 import type { PromptChoice } from "../../../src/providers/credential-flow.js";
 import type { OAuthTokens } from "../../../src/auth/openai-oauth.js";
 import type { GitHubOAuthTokens } from "../../../src/auth/github-copilot-oauth.js";
+import type { InputAreaPickerConfig } from "../../../src/ui/picker.js";
 
 export type OAuthProviderId = "codex" | "copilot";
 
@@ -27,7 +28,7 @@ export interface CommandOverlayState {
   selected: number;
 }
 
-export interface PromptSelectState {
+export interface PromptSelectState extends InputAreaPickerConfig {
   message: string;
   options: PromptChoice[];
   selected: number;

@@ -8,6 +8,7 @@ import {
 } from "../config/managed-provider-credentials.js";
 import { findProviderPreset } from "../providers/presets.js";
 import { loadGlobalSettings, saveGlobalSettingsPatch } from "../config/persistence.js";
+import type { InputAreaPickerConfig } from "../ui/picker.js";
 
 export interface PromptChoice {
   label: string;
@@ -15,7 +16,7 @@ export interface PromptChoice {
   description?: string;
 }
 
-export interface PromptSelectRequest {
+export interface PromptSelectRequest extends InputAreaPickerConfig {
   message: string;
   options: PromptChoice[];
 }

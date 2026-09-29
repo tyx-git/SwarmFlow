@@ -30,6 +30,7 @@ import type {
   PromptSecretRequest,
   PromptSelectRequest,
 } from "../../src/providers/credential-flow.js";
+import type { CommandPickerPresentation } from "../../src/ui/picker.js";
 import {
   acceptCommandPickerSelection,
   createCommandPicker,
@@ -1251,6 +1252,7 @@ export function OpenTuiApp({
       message: "Background shells",
       options,
       selected: 0,
+      inputArea: true,
       footerHint: "x stop · enter open · esc close",
       actionKeys: {
         x: (option) => {
@@ -1375,16 +1377,18 @@ export function OpenTuiApp({
     if (options.length === 0) return false;
     const canonicalCommandName = command?.name ?? cmdName;
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
-    if (command?.checkboxMode) {
+    const pickerPresentation = command?.picker;
+    if (pickerPresentation?.mode === "checkbox") {
       setCheckboxPicker(
         createCheckboxPicker(
-          canonicalCommandName,
+          pickerPresentation.title ?? canonicalCommandName,
           options.map((option) => ({
             label: option.label,
             value: option.value,
             checked: option.checked !== false,
           })),
           Math.min(pickerMaxVisible, options.length),
+          pickerPresentation?.inputArea ?? false,
         ),
       );
       return true;
@@ -1394,9 +1398,9 @@ export function OpenTuiApp({
         canonicalCommandName,
         options,
         pickerMaxVisible,
-        command?.pickerTitle,
-        false,
-        command?.inputAreaPicker ?? false,
+        pickerPresentation?.title,
+        pickerPresentation?.allowNote ?? false,
+        pickerPresentation?.inputArea ?? false,
       ),
     );
     return true;
@@ -1682,10 +1686,11 @@ export function OpenTuiApp({
             message: request.message,
             options: request.options,
             selected: 0,
+            inputArea: request.inputArea ?? true,
           });
         });
       },
-      promptCommandPicker: async (options: CommandOption[], config?: { title?: string; allowNote?: boolean; inputArea?: boolean }) => {
+      promptCommandPicker: async (options: CommandOption[], config?: CommandPickerPresentation) => {
         resolvePromptSelect(undefined);
         resolvePromptSecret(undefined);
         return await new Promise<CommandPickerResult | undefined>((resolve) => {
@@ -1695,7 +1700,14 @@ export function OpenTuiApp({
           setCheckboxPicker(null);
           setPickerNoteValue("");
           setCommandPicker(
-            createCommandPicker("", options, pickerMaxVisible, config?.title, config?.allowNote, config?.inputArea),
+            createCommandPicker(
+              "",
+              options,
+              pickerMaxVisible,
+              config?.title,
+              config?.allowNote,
+              config?.inputArea ?? true,
+            ),
           );
         });
       },

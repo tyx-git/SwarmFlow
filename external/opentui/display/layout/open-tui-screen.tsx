@@ -317,7 +317,7 @@ export function OpenTuiScreen({
     ),
   );
 
-  const inlineCommandPicker = commandPicker?.inputArea ? (
+  const inlinePicker = commandPicker?.inputArea ? (
     <CommandPickerView
       picker={commandPicker}
       theme={theme}
@@ -328,6 +328,21 @@ export function OpenTuiScreen({
       noteInputRef={pickerNoteInputRef}
       noteValue={pickerNoteValue}
       onNoteInput={onPickerNoteInput}
+    />
+  ) : checkboxPicker?.inputArea ? (
+    <CheckboxPickerView
+      picker={checkboxPicker}
+      theme={theme}
+      contentWidth={inlinePickerContentWidth}
+      onItemClick={onCheckboxPickerItemClick}
+    />
+  ) : promptSelect?.inputArea ? (
+    <PromptSelectView
+      prompt={promptSelect}
+      theme={theme}
+      contentWidth={inlinePickerContentWidth}
+      maxVisible={pickerMaxVisible}
+      onItemClick={onPromptSelectItemClick}
     />
   ) : undefined;
 
@@ -367,7 +382,7 @@ export function OpenTuiScreen({
       archivedAgentCount={archivedAgentCount}
       commandOverlayVisible={commandOverlay.visible}
       commandPicker={Boolean(commandPicker)}
-      inlineCommandPicker={inlineCommandPicker}
+      inlinePicker={inlinePicker}
       checkboxPicker={Boolean(checkboxPicker)}
       promptSelect={Boolean(promptSelect)}
       promptSecret={Boolean(promptSecret)}
@@ -428,13 +443,13 @@ export function OpenTuiScreen({
         />
       ) : null}
       <CheckboxPickerView
-        picker={checkboxPicker}
+        picker={checkboxPicker?.inputArea ? null : checkboxPicker}
         theme={theme}
         contentWidth={pickerContentWidth}
         onItemClick={onCheckboxPickerItemClick}
       />
       <PromptSelectView
-        prompt={promptSelect}
+        prompt={promptSelect?.inputArea ? null : promptSelect}
         theme={theme}
         contentWidth={pickerContentWidth}
         maxVisible={pickerMaxVisible}

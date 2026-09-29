@@ -81,9 +81,19 @@ describe("/model command", () => {
     const model = registry.lookup("/model");
 
     expect(model).toBeTruthy();
-    expect(model?.inputAreaPicker).toBe(true);
+    expect(model?.picker?.inputArea).toBe(true);
     expect(registry.lookup("/effort")).toBeUndefined();
     expect(registry.getAll().some((command) => command.name === "/effort")).toBe(false);
+  });
+
+  it("registers every option command with the shared input-area picker", () => {
+    const registry = buildDefaultRegistry();
+    const optionCommands = registry.getAll().filter((command) => command.options);
+
+    expect(optionCommands.length).toBeGreaterThan(0);
+    expect(optionCommands.every((command) => command.picker?.inputArea === true)).toBe(true);
+    expect(registry.lookup("/skills")?.picker?.mode).toBe("checkbox");
+    expect(registry.lookup("/model")?.picker?.mode).toBe("single");
   });
 
   it("opens thinking depth as an inline picker after switching models", async () => {

@@ -63,8 +63,8 @@ interface InputAreaProps {
   onPermissionClick?: () => void;
   commandOverlayVisible: boolean;
   commandPicker: boolean;
-  /** Model / thinking picker rendered in the composer's input slot. */
-  inlineCommandPicker?: React.ReactNode;
+  /** Any command picker rendered in the composer's input slot. */
+  inlinePicker?: React.ReactNode;
   checkboxPicker: boolean;
   promptSelect: boolean;
   promptSecret: boolean;
@@ -143,7 +143,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     onPermissionClick,
     commandOverlayVisible,
     commandPicker,
-    inlineCommandPicker,
+    inlinePicker,
     checkboxPicker,
     promptSelect,
     promptSecret,
@@ -184,7 +184,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     <text fg="#616161" content={workedStatus} />
   ) : null;
 
-  if (inlineCommandPicker) {
+  if (inlinePicker) {
     return (
       <box flexDirection="column" gap={0} flexShrink={0}>
         <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1}>
@@ -197,7 +197,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
         </box>
         <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
         <box flexDirection="row" width="100%">
-          <box flexGrow={1} flexDirection="column">{inlineCommandPicker}</box>
+          <box flexGrow={1} flexDirection="column">{inlinePicker}</box>
         </box>
         <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
       </box>

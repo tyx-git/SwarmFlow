@@ -1,4 +1,7 @@
+import type { InputAreaPickerConfig } from "./picker.js";
 import type { CommandOption } from "../commands/commands.js";
+
+export type { CommandPickerPresentation, InputAreaPickerConfig } from "./picker.js";
 
 export interface CommandPickerLevel {
   label: string;
@@ -7,9 +10,8 @@ export interface CommandPickerLevel {
   visibleStart: number;
 }
 
-export interface CommandPickerState {
+export interface CommandPickerState extends InputAreaPickerConfig {
   commandName: string;
-  title?: string;
   maxVisible: number;
   stack: CommandPickerLevel[];
   note: string;
@@ -22,8 +24,6 @@ export interface CommandPickerState {
   customInputLabel?: string;
   /** 自定义输入字段内部的占位文本（来自触发选项的 inputPlaceholder）。 */
   customInputPlaceholder?: string;
-  /** Render in the composer slot instead of the floating footer overlay. */
-  inputArea?: boolean;
 }
 
 export type CommandPickerAcceptResult =

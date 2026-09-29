@@ -17,6 +17,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
+import type { CommandPickerPresentation } from "../ui/picker.js";
 import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
 import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
 import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
@@ -154,7 +155,7 @@ export interface CommandContext {
    */
   promptCommandPicker?: (
     options: CommandOption[],
-    config?: { title?: string; allowNote?: boolean; inputArea?: boolean },
+    config?: CommandPickerPresentation,
   ) => Promise<CommandPickerResult | undefined>;
 
   /**
@@ -174,7 +175,7 @@ export interface CommandContext {
 export type SemanticColor = "success" | "error" | "muted";
 
 export interface CommandOption {
-  /* 显示标签显示在覆盖。 */
+  /* 显示在统一选择器中的标签。 */
   label: string;
   /**
    * Rich label segments with optional per-segment color.
@@ -219,21 +220,16 @@ export interface SlashCommand {
   /* 执行命令时调用的异步处理程序。 */
   handler: (ctx: CommandContext, args: string) => Promise<void>;
   /**
-   * Optional callback that returns dynamic overlay options for this command.
-   * When present, typing the command shows an option picker overlay.
-   * Receives session/store context so it can compute dynamic picker options.
+   * Optional callback that returns dynamic picker options for this command.
+   * Receives session/store context so it can compute the current options.
    */
   options?: (ctx: CommandOptionsContext) => CommandOption[];
-  /* 当为true时，TUI使用复选框多选择选择器而不是单选择。 */
-  checkboxMode?: boolean;
   /* 在搜索过程中也匹配的备选名称。 */
   aliases?: string[];
   /* /help分类显示。 */
   category?: CommandCategory;
-  /* 选择器的可选显示标题；仍然提交命令名。 */
-  pickerTitle?: string;
-  /** 将选择列表放入输入框区域，替代文本输入框。 */
-  inputAreaPicker?: boolean;
+  /** Shared picker presentation contract for command-owned selectors. */
+  picker?: CommandPickerPresentation;
 }
 
 export class CommandExitSignal extends Error {
@@ -263,7 +259,19 @@ export class CommandRegistry {
 
   /* 注册命令。覆盖任何具有相同名称的现有命令。 */
   register(cmd: SlashCommand): void {
-    this._commands.set(cmd.name, cmd);
+    // Every command that exposes options uses the shared composer picker by
+    // default. Commands can opt out explicitly for non-interactive clients.
+    const picker = cmd.options || cmd.picker
+      ? {
+        inputArea: true,
+        mode: "single" as const,
+        ...cmd.picker,
+      }
+      : undefined;
+    this._commands.set(cmd.name, {
+      ...cmd,
+      picker,
+    });
   }
 
   /* 按命令的确切名称删除命令。如果存在则返回true。 */
@@ -2796,8 +2804,8 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/usage", description: "Show provider usage", handler: cmdUsage, category: "Session" });
   registry.register({ name: "/stat", description: "Show session statistics", handler: cmdStat, category: "Session" });
   registry.register({ name: "/new", description: "Start a new session", handler: cmdNew, category: "Session" });
-  registry.register({ name: "/resume", description: "Resume a previous session", handler: cmdResume, options: resumeOptions, pickerTitle: "Sessions", category: "Session" });
-  registry.register({ name: "/session", description: "Resume a previous session (alias)", handler: cmdResume, options: resumeOptions, pickerTitle: "Sessions", category: "Session" });
+  registry.register({ name: "/resume", description: "Resume a previous session", handler: cmdResume, options: resumeOptions, picker: { title: "Sessions", inputArea: true }, category: "Session" });
+  registry.register({ name: "/session", description: "Resume a previous session (alias)", handler: cmdResume, options: resumeOptions, picker: { title: "Sessions", inputArea: true }, category: "Session" });
   registry.register({ name: "/quit", description: "Exit the application", handler: cmdQuit, category: "Session" });
   registry.register({ name: "/exit", description: "Exit the application (alias)", handler: cmdQuit, category: "Session" });
   registry.register({ name: "/rename", description: "Rename current session", handler: cmdRename, category: "Session" });
@@ -2815,26 +2823,26 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/plan", description: "Enter planning discussion mode", handler: cmdPlan, category: "Workflow" });
   registry.register({ name: "/goal", description: "Set or view current session goal", handler: cmdGoal, category: "Workflow" });
   registry.register({ name: "/fix", description: "Reproduce, fix, and verify a known bug", handler: cmdFix, category: "Workflow" });
-  registry.register({ name: "/reviewer", description: "Review the project or a natural-language scope", handler: cmdReviewer, options: reviewOptions, pickerTitle: "Reviewer", category: "Workflow" });
+  registry.register({ name: "/reviewer", description: "Review the project or a natural-language scope", handler: cmdReviewer, options: reviewOptions, picker: { title: "Reviewer", inputArea: true }, category: "Workflow" });
   registry.register({ name: "/diff", description: "View current git and per-turn diffs", handler: cmdDiff, category: "Workflow" });
 
-  registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, pickerTitle: "Providers", category: "Provider and Model" });
-  registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, pickerTitle: "API keys", category: "Provider and Model" });
-  registry.register({ name: "/model", description: "Select the current session model and thinking depth", handler: cmdModel, options: modelOptions, inputAreaPicker: true, category: "Provider and Model" });
-  registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions, category: "Provider and Model" });
-  registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, category: "Provider and Model" });
-  registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, category: "Provider and Model" });
-  registry.register({ name: "/copilot", description: "Manage GitHub Copilot login", handler: cmdCopilot, options: copilotOptions, category: "Provider and Model" });
+  registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
+  registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, picker: { title: "API keys", inputArea: true }, category: "Provider and Model" });
+  registry.register({ name: "/model", description: "Select the current session model and thinking depth", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
+  registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions, picker: { inputArea: true }, category: "Provider and Model" });
+  registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
+  registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, picker: { inputArea: true }, category: "Provider and Model" });
+  registry.register({ name: "/copilot", description: "Manage GitHub Copilot login", handler: cmdCopilot, options: copilotOptions, picker: { inputArea: true }, category: "Provider and Model" });
 
-  registry.register({ name: "/skills", description: "View and enable/disable skills globally", handler: cmdSkills, options: skillsOptions, checkboxMode: true, category: "Ecosystem" });
-  registry.register({ name: "/mcp", description: "View, enable/disable, and reconnect MCP servers", handler: cmdMcp, options: mcpOptions, pickerTitle: "MCP Servers", category: "Ecosystem" });
-  registry.register({ name: "/hooks", description: "View hook configuration and status", handler: cmdHooks, options: hooksOptions, pickerTitle: "Hooks", category: "Ecosystem" });
+  registry.register({ name: "/skills", description: "View and enable/disable skills globally", handler: cmdSkills, options: skillsOptions, picker: { inputArea: true, mode: "checkbox" }, category: "Ecosystem" });
+  registry.register({ name: "/mcp", description: "View, enable/disable, and reconnect MCP servers", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
+  registry.register({ name: "/hooks", description: "View hook configuration and status", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
   registry.register({ name: "/memory", description: "Inspect and correct current session context", handler: cmdMemory, category: "Ecosystem" });
   registry.register({ name: "/rules", description: "View or update project .rules", handler: cmdRules, category: "Project Configuration" });
-  registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, category: "UI" });
-  registry.register({ name: "/language", description: "Switch UI language (Chinese / English)", handler: cmdLanguage, options: languageOptions, category: "UI" });
-  registry.register({ name: "/autoupdate", description: "Configure automatic update checks", handler: cmdAutoUpdate, options: autoUpdateOptions, category: "Project Configuration" });
-  registry.register({ name: "/rewind", description: "Rewind conversation and file changes", handler: cmdRewind, options: rewindOptions, pickerTitle: "Rewind", category: "Context" });
+  registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, category: "UI" });
+  registry.register({ name: "/language", description: "Switch UI language (Chinese / English)", handler: cmdLanguage, options: languageOptions, picker: { inputArea: true }, category: "UI" });
+  registry.register({ name: "/autoupdate", description: "Configure automatic update checks", handler: cmdAutoUpdate, options: autoUpdateOptions, picker: { inputArea: true }, category: "Project Configuration" });
+  registry.register({ name: "/rewind", description: "Rewind conversation and file changes", handler: cmdRewind, options: rewindOptions, picker: { title: "Rewind", inputArea: true }, category: "Context" });
   return registry;
 }
 

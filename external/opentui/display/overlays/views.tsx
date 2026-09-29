@@ -265,7 +265,9 @@ export function CommandPickerView(
       : (modelPickerHasBranches ? "Select provider:" : "Select model:")
     : picker.title?.toLowerCase() === "thinking depth"
       ? language === "zh" ? "选择思考深度:" : "Select thinking depth:"
-      : title;
+      : picker.inputArea && !title
+        ? language === "zh" ? "选择:" : "Select:"
+        : title;
 
   // Compute max detail width for column alignment
   const hasAnyDetail = visibleOptions.some(o => o.detail !== undefined);
@@ -347,7 +349,7 @@ export function CheckboxPickerView(
 
   const { start, end } = getCheckboxPickerVisibleRange(picker);
   const visibleItems = picker.items.slice(start, end);
-  const pickerHeight = 1 + visibleItems.length + 1;
+  const pickerHeight = 1 + visibleItems.length + (picker.inputArea ? 0 : 1);
 
   return (
     <OverlayFrame theme={theme} height={pickerHeight}>
@@ -366,7 +368,7 @@ export function CheckboxPickerView(
           />
         );
       })}
-      <text fg={theme.colors.dim} content={truncateToWidth("Space toggle · Enter confirm · Esc cancel", contentWidth)} />
+      {!picker.inputArea ? <text fg={theme.colors.dim} content={truncateToWidth("Space toggle · Enter confirm · Esc cancel", contentWidth)} /> : null}
     </OverlayFrame>
   );
 }
@@ -397,7 +399,7 @@ export function PromptSelectView(
   const selectedOption = prompt.options[Math.max(0, Math.min(prompt.selected, prompt.options.length - 1))];
   const description = selectedOption?.description?.trim();
   const footerHint = prompt.footerHint?.trim();
-  const promptHeight = 1 + visibleOptions.length + (description ? 1 : 0) + (footerHint ? 1 : 0);
+  const promptHeight = 1 + visibleOptions.length + (description ? 1 : 0) + (footerHint && !prompt.inputArea ? 1 : 0);
 
   return (
     <OverlayFrame theme={theme} height={promptHeight}>
@@ -416,7 +418,7 @@ export function PromptSelectView(
         );
       })}
       {description ? <text fg={theme.colors.dim} content={truncateToWidth(description, contentWidth)} /> : null}
-      {footerHint ? <text fg={theme.colors.dim} content={truncateToWidth(footerHint, contentWidth)} /> : null}
+      {footerHint && !prompt.inputArea ? <text fg={theme.colors.dim} content={truncateToWidth(footerHint, contentWidth)} /> : null}
     </OverlayFrame>
   );
 }

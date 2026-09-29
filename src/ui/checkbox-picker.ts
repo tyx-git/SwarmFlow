@@ -1,10 +1,12 @@
-﻿export interface CheckboxPickerItem {
+﻿import type { InputAreaPickerConfig } from "./picker.js";
+
+export interface CheckboxPickerItem {
   label: string;
   value: string;
   checked: boolean;
 }
 
-export interface CheckboxPickerState {
+export interface CheckboxPickerState extends InputAreaPickerConfig {
   title: string;
   items: CheckboxPickerItem[];
   selected: number;
@@ -36,6 +38,7 @@ export function createCheckboxPicker(
   title: string,
   items: CheckboxPickerItem[],
   maxVisible = items.length,
+  inputArea = false,
 ): CheckboxPickerState {
   return {
     title,
@@ -43,6 +46,7 @@ export function createCheckboxPicker(
     selected: 0,
     visibleStart: 0,
     maxVisible,
+    inputArea,
   };
 }
 
