@@ -1,5 +1,8 @@
 import type { DisplayThemeLayoutTokens } from "../theme/index.js";
 
+/** Maximum number of rows shown by any slash-command selector. */
+export const MAX_COMMAND_LIST_VISIBLE = 5;
+
 /**
  * Convert an untrusted layout value to a finite number.
  *

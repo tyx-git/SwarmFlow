@@ -27,6 +27,7 @@ import { truncateToWidth } from "../utils/format.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { ErrorMessage } from "../primitives/error-message.js";
+import { MAX_COMMAND_LIST_VISIBLE } from "../layout/metrics.js";
 
 interface OverlayFrameProps {
   theme: DisplayTheme;
@@ -189,7 +190,7 @@ export function CommandOverlayView(
   // File completion keeps the layout-derived limit because paths can be
   // numerous and the existing picker height is useful there.
   const visibleLimit = overlay.mode === "command"
-    ? Math.min(maxVisible, 5)
+    ? Math.min(maxVisible, MAX_COMMAND_LIST_VISIBLE)
     : maxVisible;
   const start = Math.max(0, Math.min(
     overlay.selected - Math.floor(visibleLimit / 2),
@@ -242,7 +243,7 @@ export function CommandPickerView(
 ): React.ReactNode {
   if (!isCommandPickerActive(pickerProp)) return null;
 
-  const picker = { ...pickerProp, maxVisible };
+  const picker = { ...pickerProp, maxVisible: Math.min(maxVisible, MAX_COMMAND_LIST_VISIBLE) };
   const level = getCommandPickerLevel(picker);
   const path = getCommandPickerPath(picker);
   const { start, end } = getCommandPickerVisibleRange(picker);
@@ -347,7 +348,9 @@ export function CheckboxPickerView(
 ): React.ReactNode {
   if (!isCheckboxPickerActive(picker)) return null;
 
-  const { start, end } = getCheckboxPickerVisibleRange(picker);
+  const visibleLimit = Math.min(picker.maxVisible, MAX_COMMAND_LIST_VISIBLE);
+  const visiblePicker = visibleLimit === picker.maxVisible ? picker : { ...picker, maxVisible: visibleLimit };
+  const { start, end } = getCheckboxPickerVisibleRange(visiblePicker);
   const visibleItems = picker.items.slice(start, end);
   const pickerHeight = 1 + visibleItems.length + (picker.inputArea ? 0 : 1);
 
@@ -544,7 +547,6 @@ const HELP_SHORTCUTS: Array<{ key: string; action: string }> = [
   { key: "Option+Enter", action: "Insert newline" },
   { key: "Ctrl+C", action: "Cancel / Exit" },
   { key: "Ctrl+G", action: "Toggle markdown raw view" },
-  { key: "Ctrl+Q", action: "Cycle permission mode" },
   { key: "Ctrl+V / Ctrl+Y", action: "Paste image (Ctrl+Y for Windows Terminal)" },
   { key: "Ctrl+X", action: "Kill all sub-agents" },
   { key: "Ctrl+K", action: "Kill all background shells" },

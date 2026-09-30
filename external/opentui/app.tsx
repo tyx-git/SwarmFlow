@@ -9,7 +9,7 @@ import type {
 } from "../../src/ui/contracts.js";
 import type { SessionStore } from "../../src/config/persistence.js";
 import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
-import { saveGlobalSettingsPatch, saveLog } from "../../src/config/persistence.js";
+import { saveLog } from "../../src/config/persistence.js";
 import { projectQueuedInputs } from "../../src/context/log-projection.js";
 import { isCommandExitSignal } from "../../src/commands/commands.js";
 import { ProgressReporter, type ProgressEvent } from "../../src/lib/progress.js";
@@ -124,7 +124,7 @@ import {
   type QuestionAnswerState,
   EMPTY_COMMAND_OVERLAY,
 } from "./display/types.js";
-import { clamp, computePickerMaxVisible } from "./display/layout/metrics.js";
+import { clamp, computePickerMaxVisible, MAX_COMMAND_LIST_VISIBLE } from "./display/layout/metrics.js";
 import { OpenTuiScreen } from "./display/layout/open-tui-screen.js";
 import { resolveModelNameColor } from "./display/utils/model.js";
 import { createUiText, getUiLanguage, normalizeUiLanguage, resolveCommandEchoDisplay, type UiLanguage, type UiText } from "../../src/lib/ui-text.js";
@@ -760,18 +760,6 @@ export function OpenTuiApp({
       }
     }
   }, [autoSave, session]);
-  const cyclePermissionMode = useCallback(() => {
-    const modes = ["read_only", "reversible", "yolo"] as const;
-    const current = session.permissionMode ?? "reversible";
-    const idx = modes.indexOf(current as any);
-    const next = modes[(idx + 1) % modes.length];
-    session.permissionMode = next;
-    setPermissionModeState(next);
-    try {
-      saveGlobalSettingsPatch({ permission_mode: next });
-    } catch { /* ignore */ }
-    autoSave();
-  }, [autoSave, session]);
   const getAskQuestions = useCallback((): AgentQuestionItem[] => {
     if (!pendingAsk || pendingAsk.kind !== "agent_question") return [];
     return (pendingAsk.payload["questions"] as AgentQuestionItem[]) ?? [];
@@ -1371,6 +1359,7 @@ export function OpenTuiApp({
     });
   }, [commandRegistry, session, store]);
   const pickerMaxVisible = computePickerMaxVisible(terminal.height, theme.layout);
+  const commandListMaxVisible = Math.min(pickerMaxVisible, MAX_COMMAND_LIST_VISIBLE);
   const startCommandPicker = useCallback((cmdName: string): boolean => {
     const command = commandRegistry.lookup(cmdName);
     const options = buildCommandOptions(cmdName);
@@ -1387,7 +1376,7 @@ export function OpenTuiApp({
             value: option.value,
             checked: option.checked !== false,
           })),
-          Math.min(pickerMaxVisible, options.length),
+          Math.min(commandListMaxVisible, options.length),
           pickerPresentation?.inputArea ?? false,
         ),
       );
@@ -1397,14 +1386,14 @@ export function OpenTuiApp({
       createCommandPicker(
         canonicalCommandName,
         options,
-        pickerMaxVisible,
+        commandListMaxVisible,
         pickerPresentation?.title,
         pickerPresentation?.allowNote ?? false,
         pickerPresentation?.inputArea ?? false,
       ),
     );
     return true;
-  }, [buildCommandOptions, commandRegistry, pickerMaxVisible]);
+  }, [buildCommandOptions, commandRegistry, commandListMaxVisible]);
   const updateInputOverlay = useCallback((value: string, cursorOffset: number) => {
     if (commandPicker || checkboxPicker || promptSelect || promptSecret) return;
     const livePrefix = inputRef.current ? inputRef.current.getTextRange(0, cursorOffset) : value;
@@ -2691,13 +2680,6 @@ export function OpenTuiApp({
       event.stopPropagation();
       return;
     }
-    // Ctrl+Q: cycle permission mode (when no overlay is active)
-    if (event.name === "q" && event.ctrl && !shouldHandleInputOverlay) {
-      cyclePermissionMode();
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     // Ctrl+L: dismiss transient update and MCP failure toasts.
     if (event.name === "l" && event.ctrl) {
       setUpdateToast(null);
@@ -3254,7 +3236,6 @@ export function OpenTuiApp({
         }
         void handleSubmit("/model");
       }}
-      onPermissionClick={cyclePermissionMode}
       runningAgentCount={runningAgentCount}
       idleAgentCount={idleAgentCount}
       archivedAgentCount={archivedAgentCount}

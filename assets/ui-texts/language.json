@@ -52,7 +52,17 @@
         "echo": "自动更新切换为"
       },
       "/permission": {
-        "echo": "权限模式切换为"
+        "echo": "权限模式切换为",
+        "usage": "用法：/permission {mode}",
+        "readOnly": "只读",
+        "autoApprove": "自动审批",
+        "fullAccess": "完全访问",
+        "readOnlyDescription": "仅自动审批读取操作，所有写入都需要确认。",
+        "autoApproveDescription": "自动审批读取和可逆写入，其他修改需要确认。",
+        "fullAccessDescription": "自动审批所有操作，但灾难性操作仍需确认。",
+        "current": "当前权限模式：{mode}",
+        "set": "权限模式已设置为：{mode}",
+        "invalid": "未知权限模式“{mode}”。可选：{modes}"
       },
       "/sidebar": {
         "echo": "侧栏切换为"
@@ -87,9 +97,9 @@
         "default": "输入消息或 /命令"
       },
       "permission": {
-        "yolo": "全自动",
+        "yolo": "完全访问",
         "readOnly": "只读",
-        "reversible": "可回退"
+        "reversible": "自动审批"
       },
       "indicators": {
         "agents": " 子代理（{parts}） ",
@@ -249,7 +259,17 @@
         "echo": "Auto-update switched to"
       },
       "/permission": {
-        "echo": "Permission mode switched to"
+        "echo": "Permission mode switched to",
+        "usage": "Usage: /permission {mode}",
+        "readOnly": "Read-only",
+        "autoApprove": "Auto-approve",
+        "fullAccess": "Full access",
+        "readOnlyDescription": "Only read operations are auto-approved; all writes require confirmation.",
+        "autoApproveDescription": "Read and reversible writes are auto-approved; other mutations require confirmation.",
+        "fullAccessDescription": "All operations are auto-approved, except catastrophic commands.",
+        "current": "Current permission mode: {mode}",
+        "set": "Permission mode set to: {mode}",
+        "invalid": "Unknown permission mode \"{mode}\". Valid: {modes}"
       },
       "/sidebar": {
         "echo": "Sidebar switched to"
@@ -284,9 +304,9 @@
         "default": "message or /command"
       },
       "permission": {
-        "yolo": "Full auto",
+        "yolo": "Full access",
         "readOnly": "Read-only",
-        "reversible": "Reversible"
+        "reversible": "Auto-approve"
       },
       "indicators": {
         "agents": " Agents ({parts}) ",

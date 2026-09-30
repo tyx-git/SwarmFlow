@@ -61,7 +61,7 @@ import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth
 import { launchDesignHelper } from "../browser/index.js";
 import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme.js";
 import { THINKING_LEVEL_LIST } from "../config/thinking.js";
-import { createUiText, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
+import { createUiText, getUiLanguage, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -3325,23 +3325,34 @@ export function reRegisterSkillCommands(
 // ------------------------------------------------------------------
 
 const PERMISSION_MODES = ["read_only", "reversible", "yolo"] as const;
-const PERMISSION_DESCRIPTIONS: Record<string, string> = {
-  read_only: "Only read tools auto-allowed. All writes require approval.",
-  reversible: "Read + reversible writes (edit_file, write_file) auto-allowed. Bash and other mutations require approval.",
-  yolo: "Everything auto-allowed except catastrophic commands.",
-};
+
+function permissionText(homeDir?: string): UiText {
+  return createUiText(getUiLanguage(homeDir));
+}
+
+function permissionLabel(mode: typeof PERMISSION_MODES[number], t: UiText): string {
+  const key = mode === "read_only" ? "readOnly" : mode === "reversible" ? "autoApprove" : "fullAccess";
+  return t.get(["Commands", "/permission", key]);
+}
+
+function permissionDescription(mode: typeof PERMISSION_MODES[number], t: UiText): string {
+  const key = mode === "read_only" ? "readOnlyDescription" : mode === "reversible" ? "autoApproveDescription" : "fullAccessDescription";
+  return t.get(["Commands", "/permission", key]);
+}
 
 function permissionOptions(ctx: CommandOptionsContext): CommandOption[] {
   const session = ctx.session;
+  const t = permissionText();
   const current = typeof session.permissionMode === "string" ? session.permissionMode : "reversible";
   return PERMISSION_MODES.map((mode) => ({
-    label: `${mode}${mode === current ? " (current)" : ""} — ${PERMISSION_DESCRIPTIONS[mode]}`,
+    label: `${permissionLabel(mode, t)}${mode === current ? ` (${t.get(["Common", "current"])})` : ""} — ${permissionDescription(mode, t)}`,
     value: mode,
   }));
 }
 
 async function cmdPermission(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;
+  const t = permissionText(ctx.swarmflowHomeDir);
   let mode = args.trim().toLowerCase();
 
   if (!mode) {
@@ -3352,22 +3363,27 @@ async function cmdPermission(ctx: CommandContext, args: string): Promise<void> {
     } else {
       const current = session.permissionMode ?? "reversible";
       ctx.showMessage(
-        `Current permission mode: ${current}\n\n` +
-        `Usage: /permission <mode>\n` +
-        PERMISSION_MODES.map((m) => `  ${m} — ${PERMISSION_DESCRIPTIONS[m]}`).join("\n"),
+        t.get(["Commands", "/permission", "current"], { mode: permissionLabel(current as typeof PERMISSION_MODES[number], t) }) + "\n\n" +
+        t.get(["Commands", "/permission", "usage"], { mode: `${permissionLabel("read_only", t)} | ${permissionLabel("reversible", t)} | ${permissionLabel("yolo", t)}` }) + "\n" +
+        PERMISSION_MODES.map((m) => `  ${permissionLabel(m, t)} — ${permissionDescription(m, t)}`).join("\n"),
       );
       return;
     }
   }
 
   if (!PERMISSION_MODES.includes(mode as any)) {
-    ctx.showMessage(`Unknown mode "${mode}". Valid: ${PERMISSION_MODES.join(", ")}`);
+    ctx.showMessage(t.get(["Commands", "/permission", "invalid"], {
+      mode,
+      modes: PERMISSION_MODES.map((item) => permissionLabel(item, t)).join(", "),
+    }));
     return;
   }
 
   session.permissionMode = mode;
   persistPermissionMode(ctx);
-  ctx.showMessage(`Permission mode set to: ${mode}`);
+  ctx.showMessage(t.get(["Commands", "/permission", "set"], {
+    mode: permissionLabel(mode as typeof PERMISSION_MODES[number], t),
+  }));
 }
 
 function persistPermissionMode(ctx: CommandContext): void {

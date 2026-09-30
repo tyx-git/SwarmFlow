@@ -121,7 +121,6 @@ export interface OpenTuiScreenProps {
   keyBindings: readonly KeyBinding[];
   onSubmit: () => void;
   onModelClick: () => void;
-  onPermissionClick?: () => void;
   runningAgentCount?: number;
   idleAgentCount?: number;
   archivedAgentCount?: number;
@@ -237,7 +236,6 @@ export function OpenTuiScreen({
   keyBindings,
   onSubmit,
   onModelClick,
-  onPermissionClick,
   runningAgentCount,
   idleAgentCount,
   archivedAgentCount,
@@ -378,7 +376,6 @@ export function OpenTuiScreen({
       keyBindings={keyBindings}
       onSubmit={onSubmit}
       onModelClick={onModelClick}
-      onPermissionClick={onPermissionClick}
       runningAgentCount={runningAgentCount}
       idleAgentCount={idleAgentCount}
       archivedAgentCount={archivedAgentCount}

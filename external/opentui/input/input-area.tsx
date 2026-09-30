@@ -64,7 +64,6 @@ interface InputAreaProps {
   keyBindings: readonly KeyBinding[];
   onSubmit: () => void;
   onModelClick: () => void;
-  onPermissionClick?: () => void;
   commandOverlayVisible: boolean;
   commandPicker: boolean;
   /** Any command picker rendered in the composer's input slot. */
@@ -147,7 +146,6 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     keyBindings,
     onSubmit,
     onModelClick,
-    onPermissionClick,
     commandOverlayVisible,
     commandPicker,
     inlinePicker,
@@ -312,8 +310,6 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
           <box
             flexShrink={1}
             flexGrow={0}
-            cursor={!hint && onPermissionClick ? "pointer" : undefined}
-            onMouseDown={!hint && onPermissionClick ? (e: any) => { e.stopPropagation(); e.preventDefault(); onPermissionClick(); } : undefined}
           >
             {hint ? (
               <text fg={colors.dim} content={hint} truncate />
