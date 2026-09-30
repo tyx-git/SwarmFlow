@@ -134,6 +134,38 @@ export function taskViewportHeight(taskCount: number): number {
   return Math.min(Math.max(0, taskCount), MAX_VISIBLE_TASKS);
 }
 
+function TaskTitle({
+  text,
+  colors,
+  onToggle,
+}: {
+  text: string;
+  colors: ConversationPalette;
+  onToggle: () => void;
+}): React.ReactNode {
+  const [hovered, setHovered] = React.useState(false);
+
+  return (
+    <box
+      width="auto"
+      alignSelf="flex-start"
+      flexDirection="row"
+      flexShrink={0}
+      cursor="pointer"
+      backgroundColor={hovered ? colors.border : undefined}
+      onMouseOver={() => setHovered(true)}
+      onMouseOut={() => setHovered(false)}
+      onMouseDown={(event: any) => {
+        event.stopPropagation();
+        event.preventDefault();
+        onToggle();
+      }}
+    >
+      <text fg={colors.badgeTodoFg} content={text} />
+    </box>
+  );
+}
+
 const MARK_BLOCKED = "›";
 
 /** 任务行的字形与配色：完成 ✔（成功色+删除线）、进行中旋转星标、待办 ◻。 */
@@ -266,6 +298,7 @@ function StatusPanelInner({
   const openTasks = tasks.filter((task) => task.status !== "completed");
   const runningCount = agents.filter((a) => a.lifecycle === "running" || a.lifecycle === "blocked").length;
   const [spinnerFrame, setSpinnerFrame] = React.useState(0);
+  const [tasksCollapsed, setTasksCollapsed] = React.useState(false);
 
   React.useEffect(() => {
     if (tasks.every((task) => task.status !== "in_progress")) {
@@ -290,8 +323,17 @@ function StatusPanelInner({
   const agentTitle = `Agents (${agentParts.join(", ")})`;
 
   // pi-tasks 风格的单行标题，不绘制包围容器或横线。
-  const todoTitle = `● ${tasks.length} tasks (${openTasks.length} open)`;
+  const expandedTodoTitle = `● ${tasks.length} tasks (${openTasks.length} open)`;
+  const collapsedTodoTitle = `○ ${tasks.length} tasks (${openTasks.length} open)`;
+  const todoTitle = tasksCollapsed ? collapsedTodoTitle : expandedTodoTitle;
   const taskContentHeight = taskViewportHeight(tasks.length) + (taskPersistence === "memory" ? 1 : 0);
+  const taskTitle = (
+    <TaskTitle
+      text={todoTitle}
+      colors={colors}
+      onToggle={() => setTasksCollapsed((collapsed) => !collapsed)}
+    />
+  );
 
   if (hasAgents && hasTasks) {
     return (
@@ -308,15 +350,17 @@ function StatusPanelInner({
           </scrollbox>
         </box>
         <box flexGrow={1} flexShrink={0} flexDirection="column">
-          <text fg={colors.badgeTodoFg} content={todoTitle} />
-          <TaskList
-            tasks={tasks}
-            colors={colors}
-            taskPersistence={taskPersistence}
-            spinnerFrame={spinnerFrame}
-            taskContentHeight={taskContentHeight}
-            maxHeight={maxHeight}
-          />
+          {taskTitle}
+          {!tasksCollapsed ? (
+            <TaskList
+              tasks={tasks}
+              colors={colors}
+              taskPersistence={taskPersistence}
+              spinnerFrame={spinnerFrame}
+              taskContentHeight={taskContentHeight}
+              maxHeight={maxHeight}
+            />
+          ) : null}
         </box>
       </box>
     );
@@ -340,15 +384,17 @@ function StatusPanelInner({
 
   return (
     <box width="100%" flexShrink={0} flexDirection="column">
-      <text fg={colors.badgeTodoFg} content={todoTitle} />
-      <TaskList
-        tasks={tasks}
-        colors={colors}
-        taskPersistence={taskPersistence}
-        spinnerFrame={spinnerFrame}
-        taskContentHeight={taskContentHeight}
-        maxHeight={maxHeight}
-      />
+      {taskTitle}
+      {!tasksCollapsed ? (
+        <TaskList
+          tasks={tasks}
+          colors={colors}
+          taskPersistence={taskPersistence}
+          spinnerFrame={spinnerFrame}
+          taskContentHeight={taskContentHeight}
+          maxHeight={maxHeight}
+        />
+      ) : null}
     </box>
   );
 }
