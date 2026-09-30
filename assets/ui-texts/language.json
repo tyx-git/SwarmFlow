@@ -127,6 +127,20 @@
         "restored": "已恢复排队消息",
         "sending": "排队消息正在发送",
         "queued": "消息已排队"
+      },
+      "usage": {
+        "title": "会话用量",
+        "totalInput": "总输入",
+        "cacheHitRate": "缓存命中率",
+        "totalOutput": "总输出",
+        "context": "上下文",
+        "systemPrompt": "系统提示",
+        "tools": "工具",
+        "agentsMd": "AGENTS.md",
+        "skills": "技能",
+        "messages": "消息",
+        "calculating": "正在计算会话用量…",
+        "dismiss": "关闭"
       }
     },
     "Init": {
@@ -310,6 +324,20 @@
         "restored": "Queued message restored",
         "sending": "Queued message is already being sent",
         "queued": "Message queued"
+      },
+      "usage": {
+        "title": "Session Usage",
+        "totalInput": "Total Input",
+        "cacheHitRate": "Cache Hit Rate",
+        "totalOutput": "Total Output",
+        "context": "Context",
+        "systemPrompt": "System Prompt",
+        "tools": "Tools",
+        "agentsMd": "AGENTS.md",
+        "skills": "Skills",
+        "messages": "Messages",
+        "calculating": "Calculating session usage…",
+        "dismiss": "dismiss"
       }
     },
     "Init": {

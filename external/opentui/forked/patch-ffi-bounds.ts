@@ -37,17 +37,14 @@
  */
 import { TextBufferRenderable, TextBufferView } from "@opentui/core"
 import { writeOpenTuiDiag } from "./core/lib/diagnostic.js"
+import { clampInteger } from "../display/layout/metrics.js"
 
 /**
  * 坐标 / 偏移 / 滚动量：允许 0，下限由 min 指定。
  * NaN / Infinity / 小数 / 负数 / 超范围一律归一到合法 uint32。
  */
 function toU32(value: number, min: number): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return min
-  const floored = Math.floor(value)
-  if (floored < min) return min
-  if (floored > 0xffffffff) return 0xffffffff
-  return floored
+  return clampInteger(value, min, 0xffffffff)
 }
 
 /** 宽 / 高：至少为 1（与上游 updateFromLayout 的 Math.max(x, 1) 意图一致）。 */

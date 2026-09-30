@@ -3,6 +3,7 @@
 import React from "react";
 import { createTextAttributes } from "@opentui/core";
 import type { DisplayTheme } from "../theme/index.js";
+import { clampInteger, finiteInteger } from "../layout/metrics.js";
 
 /**
  * 统计类浮层（会话用量 / 全时段统计）的共享外壳。
@@ -40,18 +41,21 @@ export interface MetricRowProps {
   dim: string;
   /** 子项：缩进两格并弱化，不带加粗。 */
   indent?: boolean;
+  /** Optional color overrides for the value and percentage columns. */
+  valueFg?: string;
+  pctFg?: string;
 }
 
-export function MetricRow({ label, value, pct, fg, dim, indent }: MetricRowProps): React.ReactNode {
+export function MetricRow({ label, value, pct, fg, dim, indent, valueFg, pctFg }: MetricRowProps): React.ReactNode {
   const prefix = indent ? "  " : "";
   const paddedLabel = `${prefix}${label}`.padEnd(COL_LABEL);
   const paddedValue = value.padStart(COL_NUM);
   const paddedPct = pct ? `${pct}`.padStart(COL_PCT) : "".padEnd(COL_PCT);
   return (
-    <box flexDirection="row" width={ROW_WIDTH}>
-      <text fg={indent ? dim : fg} attributes={indent ? undefined : ATTRS_BOLD} content={paddedLabel} />
-      <text fg={fg} content={paddedValue} />
-      <text fg={dim} content={paddedPct} />
+    <box flexDirection="row" width={ROW_WIDTH} height={1} flexShrink={0}>
+      <text fg={indent ? dim : fg} attributes={indent ? undefined : ATTRS_BOLD} content={paddedLabel} wrapMode="none" flexShrink={0} />
+      <text fg={valueFg ?? fg} content={paddedValue} wrapMode="none" flexShrink={0} />
+      <text fg={pctFg ?? dim} content={paddedPct} wrapMode="none" flexShrink={0} />
     </box>
   );
 }
@@ -73,9 +77,21 @@ export function centeredPanelGeometry(
   terminalHeight: number,
   verticalHalfOffset: number,
 ): CenteredGeometry {
-  const width = Math.min(PANEL_WIDTH, terminalWidth - 4);
-  const left = Math.max(0, Math.floor((terminalWidth - width) / 2));
-  const top = Math.max(1, Math.floor(terminalHeight / 2) - verticalHalfOffset);
+  // Resize events can briefly report zero (or a negative value after the
+  // outer padding is applied). Never pass that transient geometry to Yoga:
+  // negative widths are converted to invalid native FFI arguments by the
+  // absolute panel's text children.
+  const safeTerminalWidth = Math.max(1, finiteInteger(terminalWidth, 1));
+  const safeTerminalHeight = Math.max(1, finiteInteger(terminalHeight, 1));
+  const width = Math.max(1, Math.min(PANEL_WIDTH, Math.max(1, safeTerminalWidth - 4)));
+  const left = Math.max(0, Math.min(
+    finiteInteger((safeTerminalWidth - width) / 2, 0),
+    Math.max(0, safeTerminalWidth - width),
+  ));
+  const top = Math.max(0, Math.min(
+    finiteInteger(safeTerminalHeight / 2, 0) - finiteInteger(verticalHalfOffset, 0),
+    Math.max(0, safeTerminalHeight - 1),
+  ));
   return { width, left, top };
 }
 
@@ -88,6 +104,10 @@ export interface MetricPanelProps {
   /** 从终端垂直中线向上偏移的行数，用于让不同高度的面板视觉居中。 */
   verticalHalfOffset: number;
   onDismiss: () => void;
+  /** Render as a flow panel attached to the composer instead of a centered modal. */
+  inline?: boolean;
+  /** Localized label for the dismiss action. */
+  dismissLabel?: string;
 }
 
 export function MetricPanel({
@@ -98,16 +118,58 @@ export function MetricPanel({
   terminalHeight,
   verticalHalfOffset,
   onDismiss,
+  inline = false,
+  dismissLabel = "dismiss",
 }: MetricPanelProps): React.ReactNode {
   const { colors } = theme;
+  if (inline) {
+    return (
+      <box width="100%" flexDirection="column" flexShrink={0}>
+        <box
+          border={["bottom"] as any}
+          borderColor={colors.dim}
+          width="100%"
+          flexDirection="column"
+          paddingLeft={1}
+          paddingRight={1}
+          paddingTop={0}
+          paddingBottom={0}
+        >
+          <text fg={colors.accent} attributes={ATTRS_BOLD} content={title.trim()} />
+          {body}
+          <box flexDirection="row" width="100%">
+            <box flexGrow={1} />
+            <text fg={colors.text} content=" Esc " />
+            <text
+              fg={colors.accent}
+              content={`${dismissLabel} `}
+              onMouseDown={(e: any) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onDismiss();
+              }}
+            />
+          </box>
+        </box>
+      </box>
+    );
+  }
+
   const { width, left, top } = centeredPanelGeometry(terminalWidth, terminalHeight, verticalHalfOffset);
+
+  // Keep the overlay's geometry inside the terminal even when OpenTUI reports
+  // a transiently small terminal during a resize. A zero/negative Yoga width
+  // can otherwise reach the native text buffer FFI and terminate the process.
+  const safeWidth = Math.max(1, finiteInteger(width, 1));
+  const safeLeft = clampInteger(left, 0, Math.max(0, finiteInteger(terminalWidth, 1) - safeWidth));
+  const safeTop = clampInteger(top, 0, Math.max(0, finiteInteger(terminalHeight, 1) - 1));
 
   return (
     <box
       position="absolute"
-      top={top}
-      left={left}
-      width={width}
+      top={safeTop}
+      left={safeLeft}
+      width={safeWidth}
       zIndex={98}
       flexDirection="column"
     >
@@ -130,7 +192,7 @@ export function MetricPanel({
         <text fg={colors.text} content=" Esc " />
         <text
           fg={colors.accent}
-          content="dismiss "
+          content={`${dismissLabel} `}
           onMouseDown={(e: any) => {
             e.stopPropagation();
             e.preventDefault();

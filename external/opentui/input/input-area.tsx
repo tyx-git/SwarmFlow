@@ -69,6 +69,8 @@ interface InputAreaProps {
   commandPicker: boolean;
   /** Any command picker rendered in the composer's input slot. */
   inlinePicker?: React.ReactNode;
+  /** Session usage panel attached to the input area's lower edge. */
+  usagePanel?: React.ReactNode;
   checkboxPicker: boolean;
   promptSelect: boolean;
   promptSecret: boolean;
@@ -149,6 +151,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     commandOverlayVisible,
     commandPicker,
     inlinePicker,
+    usagePanel,
     checkboxPicker,
     promptSelect,
     promptSecret,
@@ -300,6 +303,8 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
         </box>
         <text fg={colors.dim} content={"─".repeat(Math.max(1, contentWidth))} />
       </box>
+
+      {usagePanel}
 
       {/* Bottom row: permission/hint (left, mutually exclusive) + usage + context (right) */}
       {!commandOverlayVisible && !commandPicker && !checkboxPicker && !promptSelect && !promptSecret && !pendingAsk ? (

@@ -42,7 +42,7 @@ import {
   PromptSelectView,
 } from "../overlays/views.js";
 import { RightSidebar, type SidebarMode } from "../../sidebar/right-sidebar.js";
-import { computePickerMaxVisible, getSidebarWidth } from "./metrics.js";
+import { computePickerMaxVisible, finiteInteger, getSidebarWidth } from "./metrics.js";
 import { HorizontalTabBar } from "./horizontal-tab-bar.js";
 import { shortenPath } from "../utils/format.js";
 import { UpdateToast } from "../overlays/update-toast.js";
@@ -266,9 +266,11 @@ export function OpenTuiScreen({
   statData,
   onStatDismiss,
 }: OpenTuiScreenProps): React.ReactNode {
-  const conversationColumnWidth = terminal.width - 1;
+  const terminalWidth = Math.max(1, finiteInteger(terminal.width, 1));
+  const terminalHeight = Math.max(1, finiteInteger(terminal.height, 1));
+  const conversationColumnWidth = terminalWidth - 1;
   const conversationContentWidth = Math.max(20, conversationColumnWidth - 6);
-  const pickerMaxVisible = computePickerMaxVisible(terminal.height, theme.layout);
+  const pickerMaxVisible = computePickerMaxVisible(terminalHeight, theme.layout);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const isDetailTab = activeTab?.kind === "detail-tool" || activeTab?.kind === "detail-shell";
   // Detail entry lookup: live entries → frozenEntry fallback
@@ -282,11 +284,11 @@ export function OpenTuiScreen({
   const isChildPage = selectedChildId !== null;
   const sidebarVisible = !isChildPage && (
     sidebarMode === "open" ||
-    (sidebarMode === "auto" && terminal.width >= theme.layout.minTerminalWidthForSidebar)
+    (sidebarMode === "auto" && terminalWidth >= theme.layout.minTerminalWidthForSidebar)
   );
-  const sidebarWidth = getSidebarWidth(terminal.width, theme.layout);
+  const sidebarWidth = getSidebarWidth(terminalWidth, theme.layout);
   const effectiveSidebarWidth = sidebarVisible ? sidebarWidth : 0;
-  const pickerContentWidth = terminal.width - effectiveSidebarWidth - 10;
+  const pickerContentWidth = terminalWidth - effectiveSidebarWidth - 10;
   const inputContentWidth = Math.max(20, conversationColumnWidth - effectiveSidebarWidth);
   // The inline picker lives inside a PanelSurface with one cell of horizontal
   // padding on each side, so reserve those cells when calculating truncation.
@@ -312,8 +314,8 @@ export function OpenTuiScreen({
   const welcomeTop = Math.max(
     1,
     Math.min(
-      Math.round(terminal.height * 0.4) - Math.floor(welcomeStageHeight / 2),
-      terminal.height - welcomeStageHeight - 6,
+      Math.round(terminalHeight * 0.4) - Math.floor(welcomeStageHeight / 2),
+      terminalHeight - welcomeStageHeight - 6,
     ),
   );
 
@@ -383,6 +385,17 @@ export function OpenTuiScreen({
       commandOverlayVisible={commandOverlay.visible}
       commandPicker={Boolean(commandPicker)}
       inlinePicker={inlinePicker}
+      usagePanel={usagePanel && onUsageDismiss ? (
+        <UsagePanel
+          data={usageData ?? null}
+          theme={theme}
+          terminalWidth={terminalWidth}
+          terminalHeight={terminalHeight}
+          onDismiss={onUsageDismiss}
+          inline
+          uiText={uiText}
+        />
+      ) : undefined}
       checkboxPicker={Boolean(checkboxPicker)}
       promptSelect={Boolean(promptSelect)}
       promptSecret={Boolean(promptSecret)}
@@ -438,7 +451,7 @@ export function OpenTuiScreen({
           onInput={onAskInput}
           onSubmit={onAskSubmit}
           theme={theme}
-          terminalHeight={terminal.height}
+          terminalHeight={terminalHeight}
           contentWidth={Math.max(20, conversationColumnWidth - effectiveSidebarWidth)}
         />
       ) : null}
@@ -586,7 +599,7 @@ export function OpenTuiScreen({
       {commandOverlayBlock}
       {inputAreaElement}
 
-      <ToastStack terminalWidth={terminal.width}>
+      <ToastStack terminalWidth={terminalWidth}>
         {updateToast && onUpdateRestart && onUpdateDismiss ? (
           <UpdateToast
             phase={updateToast.phase}
@@ -604,22 +617,12 @@ export function OpenTuiScreen({
 
       </ToastStack>
 
-      {usagePanel && onUsageDismiss ? (
-        <UsagePanel
-          data={usageData ?? null}
-          theme={theme}
-          terminalWidth={terminal.width}
-          terminalHeight={terminal.height}
-          onDismiss={onUsageDismiss}
-        />
-      ) : null}
-
       {statPanel && onStatDismiss ? (
         <StatPanel
           data={statData ?? null}
           theme={theme}
-          terminalWidth={terminal.width}
-          terminalHeight={terminal.height}
+          terminalWidth={terminalWidth}
+          terminalHeight={terminalHeight}
           onDismiss={onStatDismiss}
         />
       ) : null}
@@ -637,7 +640,7 @@ export function OpenTuiScreen({
           position="absolute"
           top={welcomeTop}
           left={0}
-          width={terminal.width}
+          width={terminalWidth}
           zIndex={5}
           flexDirection="column"
           alignItems="center"
