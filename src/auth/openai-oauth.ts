@@ -15,6 +15,7 @@ import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { confirm, select } from "@inquirer/prompts";
 import { browser } from "../platform/index.js";
+import { getUiCommonColors } from "../config/ui-colors.js";
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import {
   deviceCodeLoginCLI as copilotDeviceCodeLoginCLI,
@@ -348,12 +349,13 @@ function waitForCallback(
 
 /** OAuth 回调页面的简约 HTML。 */
 function callbackHtml(title: string, message: string): string {
+  const colors = getUiCommonColors().oauthCallback;
   return `<!DOCTYPE html><html><head><title>${title}</title>
 <style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;
-align-items:center;height:100vh;margin:0;background:#f9fafb}
-.card{text-align:center;padding:2rem;border-radius:12px;background:#fff;
-box-shadow:0 2px 8px rgba(0,0,0,.1)}h1{margin:0 0 .5rem;font-size:1.5rem}
-p{color:#666;margin:0}</style></head>
+align-items:center;height:100vh;margin:0;background:${colors.background}}
+.card{text-align:center;padding:2rem;border-radius:12px;background:${colors.surface};
+box-shadow:0 2px 8px ${colors.shadow}}h1{margin:0 0 .5rem;font-size:1.5rem}
+p{color:${colors.text};margin:0}</style></head>
 <body><div class="card"><h1>${title}</h1><p>${message}</p></div></body></html>`;
 }
 

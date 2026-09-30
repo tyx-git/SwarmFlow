@@ -24,6 +24,7 @@ import { parseMarkdownIncremental, type ParseState } from "./markdown-parser.js"
 import { createMarkdownSyntheticBlockHighlighter } from "./MarkdownHighlightContext.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { detectLinks } from "../lib/detect-links.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export type MarkdownTableStyle = "grid" | "columns"
 
@@ -718,7 +719,7 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private getBlockquoteBorderColor(): ColorInput {
-    return this.getStyle("conceal")?.fg ?? this.getStyle("default")?.fg ?? this._fg ?? "#FFFFFF"
+    return this.getStyle("conceal")?.fg ?? this.getStyle("default")?.fg ?? this._fg ?? OPEN_TUI_CORE_COLORS.white
   }
 
   private createBlockquoteRenderable(token: MarkedToken, id: string, marginBottom: number = 0): BoxRenderable {
@@ -1004,7 +1005,7 @@ export class MarkdownRenderable extends Renderable {
       width: "100%",
       height: 1,
       border: ["top"],
-      borderColor: this.getStyle("conceal")?.fg ?? this._fg ?? "#888888",
+      borderColor: this.getStyle("conceal")?.fg ?? this._fg ?? OPEN_TUI_CORE_COLORS.lineNumber,
       flexShrink: 0,
       marginBottom,
     })
@@ -1419,7 +1420,7 @@ export class MarkdownRenderable extends Renderable {
       outerBorder: this._tableOptions?.outerBorder ?? borders,
       showBorders: borders,
       borderStyle: this._tableOptions?.borderStyle ?? "single",
-      borderColor: this._tableOptions?.borderColor ?? this.getStyle("conceal")?.fg ?? "#888888",
+      borderColor: this._tableOptions?.borderColor ?? this.getStyle("conceal")?.fg ?? OPEN_TUI_CORE_COLORS.lineNumber,
       selectable: this._tableOptions?.selectable ?? true,
     }
   }

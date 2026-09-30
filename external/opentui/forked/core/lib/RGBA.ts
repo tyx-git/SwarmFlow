@@ -1,9 +1,20 @@
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
+
 export type RGBTriplet = readonly [number, number, number]
 export type ColorIntent = "rgb" | "indexed" | "default"
 export type ColorInput = string | RGBA
 
-export const DEFAULT_FOREGROUND_RGB: RGBTriplet = [255, 255, 255]
-export const DEFAULT_BACKGROUND_RGB: RGBTriplet = [0, 0, 0]
+function hexToRgbTriplet(hex: string): RGBTriplet {
+  const normalized = hex.replace(/^#/, "")
+  return [
+    parseInt(normalized.slice(0, 2), 16),
+    parseInt(normalized.slice(2, 4), 16),
+    parseInt(normalized.slice(4, 6), 16),
+  ]
+}
+
+export const DEFAULT_FOREGROUND_RGB: RGBTriplet = hexToRgbTriplet(OPEN_TUI_CORE_COLORS.white)
+export const DEFAULT_BACKGROUND_RGB: RGBTriplet = hexToRgbTriplet(OPEN_TUI_CORE_COLORS.black)
 
 const INTENT_RGB = 0
 const INTENT_INDEXED = 1
@@ -230,7 +241,7 @@ export function hexToRgb(hex: string): RGBA {
 
   if (!/^[0-9A-Fa-f]{6}$/.test(hex) && !/^[0-9A-Fa-f]{8}$/.test(hex)) {
     console.warn(`Invalid hex color: ${hex}, defaulting to magenta`)
-    return RGBA.fromValues(1, 0, 1, 1)
+    return RGBA.fromHex(OPEN_TUI_CORE_COLORS.invalidColor)
   }
 
   const r = parseInt(hex.substring(0, 2), 16)
@@ -294,43 +305,14 @@ export function hsvToRgb(h: number, s: number, v: number): RGBA {
   return RGBA.fromValues(r, g, b, 1)
 }
 
-const CSS_COLOR_NAMES: Record<string, string> = {
-  black: "#000000",
-  white: "#FFFFFF",
-  red: "#FF0000",
-  green: "#008000",
-  blue: "#0000FF",
-  yellow: "#FFFF00",
-  cyan: "#00FFFF",
-  magenta: "#FF00FF",
-  silver: "#C0C0C0",
-  gray: "#808080",
-  grey: "#808080",
-  maroon: "#800000",
-  olive: "#808000",
-  lime: "#00FF00",
-  aqua: "#00FFFF",
-  teal: "#008080",
-  navy: "#000080",
-  fuchsia: "#FF00FF",
-  purple: "#800080",
-  orange: "#FFA500",
-  brightblack: "#666666",
-  brightred: "#FF6666",
-  brightgreen: "#66FF66",
-  brightblue: "#6666FF",
-  brightyellow: "#FFFF66",
-  brightcyan: "#66FFFF",
-  brightmagenta: "#FF66FF",
-  brightwhite: "#FFFFFF",
-}
+const CSS_COLOR_NAMES: Record<string, string> = OPEN_TUI_CORE_COLORS.namedColors
 
 export function parseColor(color: ColorInput): RGBA {
   if (typeof color === "string") {
     const lowerColor = color.toLowerCase()
 
     if (lowerColor === "transparent") {
-      return RGBA.fromValues(0, 0, 0, 0)
+      return RGBA.fromHex(OPEN_TUI_CORE_COLORS.transparent)
     }
 
     if (CSS_COLOR_NAMES[lowerColor]) {

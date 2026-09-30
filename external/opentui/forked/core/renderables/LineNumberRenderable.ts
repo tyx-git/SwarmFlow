@@ -4,6 +4,7 @@ import type { RenderContext, LineInfoProvider } from "../types.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import { stringWidth } from "../platform/runtime.js"
 import { MeasureMode } from "../yoga.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export interface LineSign {
   before?: string
@@ -31,8 +32,8 @@ export interface LineNumberOptions extends RenderableOptions<LineNumberRenderabl
   showLineNumbers?: boolean
 }
 
-const DEFAULT_GUTTER_FG = "#888888"
-const DEFAULT_GUTTER_BG = "transparent"
+const DEFAULT_GUTTER_FG = OPEN_TUI_CORE_COLORS.lineNumber
+const DEFAULT_GUTTER_BG = OPEN_TUI_CORE_COLORS.transparent
 
 class GutterRenderable extends Renderable {
   private target: Renderable & LineInfoProvider

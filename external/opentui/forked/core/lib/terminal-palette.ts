@@ -1,6 +1,7 @@
 import { RGBA, DEFAULT_BACKGROUND_RGB, DEFAULT_FOREGROUND_RGB, ansi256IndexToRgb } from "./RGBA.js"
 import { SystemClock, type Clock, type TimerHandle } from "./clock.js"
 import { env, registerEnvVar } from "./env.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 type Hex = string | null
 
@@ -76,7 +77,7 @@ function scaleComponent(comp: string): string {
 function toHex(r?: string, g?: string, b?: string, hex6?: string): string {
   if (hex6) return `#${hex6.toLowerCase()}`
   if (r && g && b) return `#${scaleComponent(r)}${scaleComponent(g)}${scaleComponent(b)}`
-  return "#000000"
+  return OPEN_TUI_CORE_COLORS.black
 }
 
 /**

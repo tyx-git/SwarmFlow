@@ -2,6 +2,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import { parseColor, RGBA, type ColorInput } from "../lib/RGBA.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export interface TimeToFirstDrawOptions extends RenderableOptions<TimeToFirstDrawRenderable> {
   fg?: ColorInput
@@ -24,7 +25,7 @@ export class TimeToFirstDrawRenderable extends Renderable {
       ...options,
     })
 
-    this.textColor = parseColor(options.fg ?? "#AAAAAA")
+    this.textColor = parseColor(options.fg ?? OPEN_TUI_CORE_COLORS.timeToFirstDraw)
     this.label = options.label ?? "Time to first draw"
     this.precision = this.normalizePrecision(options.precision ?? 2)
   }

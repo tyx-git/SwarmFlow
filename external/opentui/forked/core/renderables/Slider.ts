@@ -2,9 +2,10 @@ import { type RenderableOptions, Renderable } from "../Renderable.js"
 import { type RenderContext } from "../types.js"
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { OptimizedBuffer } from "../buffer.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
-const defaultThumbBackgroundColor = RGBA.fromHex("#9a9ea3")
-const defaultTrackBackgroundColor = RGBA.fromHex("#252527")
+const defaultThumbBackgroundColor = RGBA.fromHex(OPEN_TUI_CORE_COLORS.sliderThumb)
+const defaultTrackBackgroundColor = RGBA.fromHex(OPEN_TUI_CORE_COLORS.sliderTrack)
 const verticalUnitsPerCell = 8
 const verticalEighthBlocks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"] as const
 

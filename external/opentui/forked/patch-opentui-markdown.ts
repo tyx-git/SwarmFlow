@@ -17,6 +17,7 @@ import { createMarkdownSyntheticBlockHighlighter } from "./core/renderables/Mark
 import { clipboard } from "../../../src/platform/index.js";
 import type { DisplayTheme } from "../display/theme/types.js";
 import { isShikiReady, setShikiTheme, shikiHighlightToChunks } from "./shiki-highlighter.js";
+import { getUiCommonColors } from "../../../src/config/ui-colors.js";
 
 /**
  * When `true`, `highlightToChunks` uses Shiki (TextMate grammars, VS Code
@@ -45,7 +46,8 @@ const ANY_MARKDOWN_BLOCK_BREAK_RE = /(?:\r?\n){2,}/;
 // Runtime-mutable theme bound by `applyMarkdownTheme`. The patched render
 // closures read these on every call, so swapping the theme reflects on the
 // next render. Defaults to inert values until applyMarkdownTheme is called.
-const FALLBACK_FG = RGBA.fromHex("#a0a8b4");
+const CORE_COLORS = getUiCommonColors().openTuiCore;
+const FALLBACK_FG = RGBA.fromHex(CORE_COLORS.markdownFallback);
 const currentMarkdownTheme: {
   codeBorder: string;
   codeBorderHover: string;
@@ -55,11 +57,11 @@ const currentMarkdownTheme: {
   codeFg: RGBA;
   hljs: Record<string, RGBA>;
 } = {
-  codeBorder: "#2a2630",
-  codeBorderHover: "#504860",
-  codeLabelFg: "#636a76",
-  codeCopyFg: "#454a54",
-  codeCopyFlash: "#8ab4f8",
+  codeBorder: CORE_COLORS.markdownBorder,
+  codeBorderHover: CORE_COLORS.markdownBorderHover,
+  codeLabelFg: CORE_COLORS.markdownLabel,
+  codeCopyFg: CORE_COLORS.markdownCopy,
+  codeCopyFlash: CORE_COLORS.markdownCopyFlash,
   codeFg: FALLBACK_FG,
   hljs: {},
 };

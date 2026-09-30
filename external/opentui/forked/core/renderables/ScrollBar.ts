@@ -6,6 +6,7 @@ import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext, Timeout } from "../types.js"
 import { type BoxOptions } from "./Box.js"
 import { SliderRenderable, type SliderOptions } from "./Slider.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export interface ScrollBarOptions extends RenderableOptions<ScrollBarRenderable> {
   orientation: "vertical" | "horizontal"
@@ -338,8 +339,8 @@ export class ArrowRenderable extends Renderable {
   constructor(ctx: RenderContext, options: ArrowOptions) {
     super(ctx, options)
     this._direction = options.direction
-    this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : RGBA.fromValues(1, 1, 1, 1)
-    this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : RGBA.fromValues(0, 0, 0, 0)
+    this._foregroundColor = options.foregroundColor ? parseColor(options.foregroundColor) : parseColor(OPEN_TUI_CORE_COLORS.white)
+    this._backgroundColor = options.backgroundColor ? parseColor(options.backgroundColor) : parseColor(OPEN_TUI_CORE_COLORS.transparent)
     this._attributes = options.attributes ?? 0
 
     this._arrowChars = {

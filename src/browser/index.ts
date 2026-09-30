@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { startServer } from "./server.js";
 import { browser } from "../platform/index.js";
+import { getUiCommonColors } from "../config/ui-colors.js";
 
 export { stopServer } from "./server.js";
 
@@ -53,6 +54,7 @@ export async function launchDesignHelper(options: DesignHelperOptions): Promise<
 }
 
 function generateDesignHelperHtml(goal: string): string {
+  const colors = getUiCommonColors().browserDesign;
   const escapedGoal = goal
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -68,8 +70,8 @@ function generateDesignHelperHtml(goal: string): string {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: "Segoe UI", system-ui, sans-serif;
-    background: #1e1e2e;
-    color: #cdd6f4;
+    background: ${colors.background};
+    color: ${colors.text};
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -77,10 +79,10 @@ function generateDesignHelperHtml(goal: string): string {
     min-height: 100vh;
     padding: 40px;
   }
-  h1 { color: #cba6f7; margin-bottom: 12px; }
+  h1 { color: ${colors.heading}; margin-bottom: 12px; }
   .goal {
-    background: #313244;
-    border: 1px solid #45475a;
+    background: ${colors.surface};
+    border: 1px solid ${colors.border};
     border-radius: 8px;
     padding: 16px 24px;
     margin: 16px 0;
@@ -88,16 +90,16 @@ function generateDesignHelperHtml(goal: string): string {
     font-size: 15px;
     line-height: 1.6;
   }
-  .goal strong { color: #89b4fa; }
+  .goal strong { color: ${colors.goalStrong}; }
   .note {
-    color: #6c7086;
+    color: ${colors.note};
     font-size: 13px;
     margin-top: 16px;
   }
   .beta {
     font-size: 11px;
-    background: #7c3aed;
-    color: #cdd6f4;
+    background: ${colors.badge};
+    color: ${colors.text};
     padding: 2px 8px;
     border-radius: 10px;
     vertical-align: middle;

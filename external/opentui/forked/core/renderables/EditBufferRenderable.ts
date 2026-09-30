@@ -8,6 +8,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "../yoga.js"
 import type { SyntaxStyle } from "../syntax-style.js"
 import { stringWidth } from "../platform/runtime.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 const BrandedEditBufferRenderable: unique symbol = Symbol.for("@opentui/core/EditBufferRenderable")
 
@@ -139,8 +140,8 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   public readonly editorView: EditorView
 
   protected _defaultOptions = {
-    textColor: RGBA.fromValues(1, 1, 1, 1),
-    backgroundColor: "transparent",
+    textColor: OPEN_TUI_CORE_COLORS.white,
+    backgroundColor: OPEN_TUI_CORE_COLORS.transparent,
     selectionBg: undefined,
     selectionFg: undefined,
     selectable: true,
@@ -149,7 +150,7 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     scrollMargin: 0.2,
     scrollSpeed: 16,
     showCursor: true,
-    cursorColor: RGBA.fromValues(1, 1, 1, 1),
+    cursorColor: OPEN_TUI_CORE_COLORS.white,
     cursorStyle: {
       style: "block",
       blinking: true,

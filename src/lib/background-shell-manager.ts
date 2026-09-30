@@ -643,7 +643,7 @@ export class BackgroundShellManager {
       const timer = setTimeout(() => {
         entry.process.removeListener("close", onClose);
         BackgroundShellManager._killGroup(entry, "SIGKILL");
-        const escalated = `'${id}': SIGKILL after ${KILL_WAIT_MS}ms (initial ${signal} did not exit).`;
+        const escalated = `'${id}': killed (SIGKILL after ${KILL_WAIT_MS}ms; initial ${signal} did not exit).`;
         entry.process.once("close", () => resolve(escalated));
         setTimeout(() => resolve(escalated), KILL_FALLBACK_MS); // 如果 close 永不触发则回退
       }, KILL_WAIT_MS);

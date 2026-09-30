@@ -4,6 +4,7 @@ import type { KeyEvent } from "../lib/KeyHandler.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -91,15 +92,15 @@ export class SelectRenderable extends Renderable {
   private _keyBindings: SelectKeyBinding[]
 
   protected _defaultOptions = {
-    backgroundColor: "transparent",
-    textColor: "#FFFFFF",
-    focusedBackgroundColor: "#1a1a1a",
-    focusedTextColor: "#FFFFFF",
-    selectedBackgroundColor: "#334455",
-    selectedTextColor: "#FFFF00",
+    backgroundColor: OPEN_TUI_CORE_COLORS.transparent,
+    textColor: OPEN_TUI_CORE_COLORS.white,
+    focusedBackgroundColor: OPEN_TUI_CORE_COLORS.selectFocusedBackground,
+    focusedTextColor: OPEN_TUI_CORE_COLORS.white,
+    selectedBackgroundColor: OPEN_TUI_CORE_COLORS.selectSelectedBackground,
+    selectedTextColor: OPEN_TUI_CORE_COLORS.selectSelectedText,
     selectedIndex: 0,
-    descriptionColor: "#888888",
-    selectedDescriptionColor: "#CCCCCC",
+    descriptionColor: OPEN_TUI_CORE_COLORS.selectDescription,
+    selectedDescriptionColor: OPEN_TUI_CORE_COLORS.selectSelectedDescription,
     showScrollIndicator: false,
     wrapSelection: false,
     showDescription: true,
@@ -237,7 +238,7 @@ export class SelectRenderable extends Renderable {
     const indicatorY = contentY + 1 + Math.floor(scrollPercent * indicatorHeight)
     const indicatorX = contentX + contentWidth - 1
 
-    this.frameBuffer.drawText("█", indicatorX, indicatorY, parseColor("#666666"))
+    this.frameBuffer.drawText("█", indicatorX, indicatorY, parseColor(OPEN_TUI_CORE_COLORS.selectIndicator))
   }
 
   public get options(): SelectOption[] {

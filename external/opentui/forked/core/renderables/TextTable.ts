@@ -9,6 +9,7 @@ import { SyntaxStyle } from "../syntax-style.js"
 import { type TextChunk, TextBuffer } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import type { RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 // Large sentinel height for text measurement. The Zig measure path currently
 // ignores height, but we pass an effectively unbounded value so if height-aware
@@ -147,11 +148,11 @@ export class TextTableRenderable extends Renderable {
     selectionBg: undefined as ColorInput | undefined,
     selectionFg: undefined as ColorInput | undefined,
     borderStyle: "single" as BorderStyle,
-    borderColor: "#FFFFFF",
-    borderBackgroundColor: "transparent",
-    backgroundColor: "transparent",
-    fg: "#FFFFFF",
-    bg: "transparent",
+    borderColor: OPEN_TUI_CORE_COLORS.white,
+    borderBackgroundColor: OPEN_TUI_CORE_COLORS.transparent,
+    backgroundColor: OPEN_TUI_CORE_COLORS.transparent,
+    fg: OPEN_TUI_CORE_COLORS.white,
+    bg: OPEN_TUI_CORE_COLORS.transparent,
     attributes: 0,
   } satisfies Partial<TextTableOptions>
 

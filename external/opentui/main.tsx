@@ -12,6 +12,9 @@ import {
 } from "./forked/core/lib/diagnostic.js";
 import type { OpenTuiRuntime } from "./bootstrap.js";
 import { rotateLogFile } from "../../src/lib/log-rotation.js";
+import { getUiCommonColors } from "../../src/config/ui-colors.js";
+
+const TRANSPARENT = getUiCommonColors().transparent;
 // 必须在任何 renderable 创建之前装上：它给 @opentui/core 预编译产物补上
 // FFI 数字参数边界，否则 Yoga 给出 NaN/小数尺寸时会直接抛
 // ERR_INVALID_ARG_TYPE，整个 TUI 被 uncaughtException 终结。
@@ -206,7 +209,7 @@ export async function launchTui(): Promise<void> {
     autoFocus: false,
     openConsoleOnError: false,
     consoleMode: "disabled",
-    backgroundColor: "transparent",
+    backgroundColor: TRANSPARENT,
     useThread,
   });
 

@@ -8,6 +8,7 @@ import type { ChildSessionSnapshot } from "../../../../src/session-tree-types.js
 import type { ConversationPalette } from "../../components/conversation-types.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { formatCompactTokensShort } from "../utils/format.js";
+import { getCommonColors } from "../theme/color-config.js";
 
 const ATTRS_STRIKE = createTextAttributes({ strikethrough: true });
 
@@ -16,10 +17,11 @@ const MARK_DONE = "✔";
 const MARK_PENDING = "□";
 const TASK_SPINNER_FRAMES = ["✳", "✴", "✵", "✶", "✷", "✸", "✹", "✺", "✻", "✼", "✽"] as const;
 const TASK_SPINNER_INTERVAL_MS = 150;
-const TASK_OPEN_TEXT = "#CCCCCC";
-const TASK_ACTIVE_TEXT = "#8ABEB7";
-const TASK_DONE_TEXT = "#535354";
-const TASK_ID_TEXT = "#535354";
+const COMMON_COLORS = getCommonColors();
+const TASK_OPEN_TEXT = COMMON_COLORS.taskOpenText;
+const TASK_ACTIVE_TEXT = COMMON_COLORS.taskActiveText;
+const TASK_DONE_TEXT = COMMON_COLORS.taskDoneText;
+const TASK_ID_TEXT = COMMON_COLORS.taskIdText;
 /** Header starts with "● "; indent row glyphs by those two display columns. */
 const TASK_ROW_STATUS_INDENT = "  ";
 

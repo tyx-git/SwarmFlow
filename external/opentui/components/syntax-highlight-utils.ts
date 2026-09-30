@@ -11,6 +11,9 @@ import { extname } from "node:path";
 
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
 import { displayWidthWithNewlines } from "../composer-token-logic.js";
+import { getUiCommonColors } from "../../../src/config/ui-colors.js";
+
+const COMMENT_EXEMPT_COLOR_VALUES = getUiCommonColors().syntaxCommentExempt;
 
 // ------------------------------------------------------------------
 // Language inference
@@ -128,16 +131,7 @@ export const DIFF_BRIGHTNESS_CONTEXT = 0.45;
 // Comment/meta color exemptions
 // ------------------------------------------------------------------
 
-export const COMMENT_EXEMPT_COLORS = [
-  // highlight.js comment / meta
-  RGBA.fromHex("#5a5565"),
-  RGBA.fromHex("#636a76"),
-  // Shiki theme comments
-  RGBA.fromHex("#51597D"),  // tokyo-night
-  RGBA.fromHex("#5A6673"),  // ayu-dark
-  RGBA.fromHex("#6272A4"),  // muted comment / metadata
-  RGBA.fromHex("#6A9955"),  // dark-plus
-];
+export const COMMENT_EXEMPT_COLORS = COMMENT_EXEMPT_COLOR_VALUES.map((color) => RGBA.fromHex(color));
 
 export function isCommentColor(color: RGBA | undefined): boolean {
   if (!color) return false;

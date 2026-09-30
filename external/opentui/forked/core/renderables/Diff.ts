@@ -1,5 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 import { CodeRenderable, type CodeOptions } from "./Code.js"
 import { LineNumberRenderable, type LineSign, type LineColorConfig } from "./LineNumberRenderable.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
@@ -136,20 +137,20 @@ export class DiffRenderable extends Renderable {
 
     // LineNumberRenderable options
     this._showLineNumbers = options.showLineNumbers ?? true
-    this._lineNumberFg = parseColor(options.lineNumberFg ?? "#888888")
-    this._lineNumberBg = parseColor(options.lineNumberBg ?? "transparent")
+    this._lineNumberFg = parseColor(options.lineNumberFg ?? OPEN_TUI_CORE_COLORS.lineNumber)
+    this._lineNumberBg = parseColor(options.lineNumberBg ?? OPEN_TUI_CORE_COLORS.transparent)
 
     // Diff styling
-    this._addedBg = parseColor(options.addedBg ?? "#1a4d1a")
-    this._removedBg = parseColor(options.removedBg ?? "#4d1a1a")
-    this._contextBg = parseColor(options.contextBg ?? "transparent")
+    this._addedBg = parseColor(options.addedBg ?? OPEN_TUI_CORE_COLORS.diffAddedBackground)
+    this._removedBg = parseColor(options.removedBg ?? OPEN_TUI_CORE_COLORS.diffRemovedBackground)
+    this._contextBg = parseColor(options.contextBg ?? OPEN_TUI_CORE_COLORS.transparent)
     this._addedContentBg = options.addedContentBg ? parseColor(options.addedContentBg) : null
     this._removedContentBg = options.removedContentBg ? parseColor(options.removedContentBg) : null
     this._contextContentBg = options.contextContentBg ? parseColor(options.contextContentBg) : null
-    this._addedSignColor = parseColor(options.addedSignColor ?? "#22c55e")
-    this._removedSignColor = parseColor(options.removedSignColor ?? "#ef4444")
-    this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? "transparent")
-    this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? "transparent")
+    this._addedSignColor = parseColor(options.addedSignColor ?? OPEN_TUI_CORE_COLORS.diffAddedSign)
+    this._removedSignColor = parseColor(options.removedSignColor ?? OPEN_TUI_CORE_COLORS.diffRemovedSign)
+    this._addedLineNumberBg = parseColor(options.addedLineNumberBg ?? OPEN_TUI_CORE_COLORS.transparent)
+    this._removedLineNumberBg = parseColor(options.removedLineNumberBg ?? OPEN_TUI_CORE_COLORS.transparent)
 
     if (this._diff) {
       this.parseDiff()
@@ -336,7 +337,7 @@ export class DiffRenderable extends Renderable {
       this.errorTextRenderable = new TextRenderable(this.ctx, {
         id: this.id ? `${this.id}-error-text` : undefined,
         content: errorMessage,
-        fg: "#ef4444",
+        fg: OPEN_TUI_CORE_COLORS.error,
         width: "100%",
         flexShrink: 0,
       })

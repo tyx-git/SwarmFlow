@@ -25,11 +25,12 @@ describe("task status panel layout and presentation", () => {
   it("renders task rows without protocol-style hash IDs and keeps completed feedback", () => {
     const source = readFileSync("external/opentui/display/panels/status-panel.tsx", "utf8");
     expect(source).toContain('const MARK_DONE = "✔";');
-    expect(source).toContain('const TASK_OPEN_TEXT = "#CCCCCC";');
-    expect(source).toContain('const TASK_ACTIVE_TEXT = "#8ABEB7";');
+    expect(source).toContain("getCommonColors");
+    expect(source).toContain("COMMON_COLORS.taskOpenText");
+    expect(source).toContain("COMMON_COLORS.taskActiveText");
     expect(source).toContain('const MARK_PENDING = "□";');
-    expect(source).toContain('const TASK_DONE_TEXT = "#535354";');
-    expect(source).toContain('const TASK_ID_TEXT = "#535354";');
+    expect(source).toContain("COMMON_COLORS.taskDoneText");
+    expect(source).toContain("COMMON_COLORS.taskIdText");
     expect(source).toContain("chunks.push(chunk(`#${task.id} `, idColor))");
     expect(source).toContain("ATTRS_STRIKE");
     expect(source).toContain("TASK_SPINNER_INTERVAL_MS = 150");

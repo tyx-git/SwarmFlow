@@ -3,6 +3,7 @@ import { OptimizedBuffer } from "../buffer.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import type { KeyEvent } from "../lib/KeyHandler.js"
 import type { RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
@@ -100,10 +101,10 @@ export class TabSelectRenderable extends Renderable {
 
     super(ctx, { ...options, height: calculatedHeight, buffered: true })
 
-    this._backgroundColor = parseColor(options.backgroundColor || "transparent")
-    this._textColor = parseColor(options.textColor || "#FFFFFF")
-    this._focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || "#1a1a1a")
-    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || "#FFFFFF")
+    this._backgroundColor = parseColor(options.backgroundColor || OPEN_TUI_CORE_COLORS.transparent)
+    this._textColor = parseColor(options.textColor || OPEN_TUI_CORE_COLORS.white)
+    this._focusedBackgroundColor = parseColor(options.focusedBackgroundColor || options.backgroundColor || OPEN_TUI_CORE_COLORS.selectFocusedBackground)
+    this._focusedTextColor = parseColor(options.focusedTextColor || options.textColor || OPEN_TUI_CORE_COLORS.white)
     this._options = options.options || []
     this._tabWidth = options.tabWidth || 20
     this._showDescription = options.showDescription ?? true
@@ -113,9 +114,9 @@ export class TabSelectRenderable extends Renderable {
 
     this.maxVisibleTabs = Math.max(1, Math.floor(this.width / this._tabWidth))
 
-    this._selectedBackgroundColor = parseColor(options.selectedBackgroundColor || "#334455")
-    this._selectedTextColor = parseColor(options.selectedTextColor || "#FFFF00")
-    this._selectedDescriptionColor = parseColor(options.selectedDescriptionColor || "#CCCCCC")
+    this._selectedBackgroundColor = parseColor(options.selectedBackgroundColor || OPEN_TUI_CORE_COLORS.selectSelectedBackground)
+    this._selectedTextColor = parseColor(options.selectedTextColor || OPEN_TUI_CORE_COLORS.selectSelectedText)
+    this._selectedDescriptionColor = parseColor(options.selectedDescriptionColor || OPEN_TUI_CORE_COLORS.selectSelectedDescription)
 
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
     this._keyBindings = options.keyBindings || []
@@ -208,11 +209,11 @@ export class TabSelectRenderable extends Renderable {
     const hasMoreRight = this.scrollOffset + this.maxVisibleTabs < this._options.length
 
     if (hasMoreLeft) {
-      this.frameBuffer.drawText("‹", contentX, contentY, parseColor("#AAAAAA"))
+      this.frameBuffer.drawText("‹", contentX, contentY, parseColor(OPEN_TUI_CORE_COLORS.tabArrow))
     }
 
     if (hasMoreRight) {
-      this.frameBuffer.drawText("›", contentX + contentWidth - 1, contentY, parseColor("#AAAAAA"))
+      this.frameBuffer.drawText("›", contentX + contentWidth - 1, contentY, parseColor(OPEN_TUI_CORE_COLORS.tabArrow))
     }
   }
 

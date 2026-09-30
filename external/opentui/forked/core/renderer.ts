@@ -15,7 +15,8 @@ import {
 } from "./types.js"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import { sleep } from "./platform/runtime.js"
-import { OptimizedBuffer } from "./buffer.js"
+import { OptimizedBuffer } from "./buffer.js"
+import { OPEN_TUI_TRANSPARENT } from "./ui-colors.js"
 import {
   resolveRenderLib,
   type NativeBufferedOutput,
@@ -317,7 +318,7 @@ export interface SplitFooterReplayResetOptions {
 
 const DEFAULT_FOOTER_HEIGHT = 12
 const MAX_SCROLLBACK_SURFACE_HEIGHT_PASSES = 4
-const TRANSPARENT_RGBA = RGBA.fromValues(0, 0, 0, 0)
+const TRANSPARENT_RGBA = parseColor(OPEN_TUI_TRANSPARENT)
 
 let scrollbackSurfaceCounter = 0
 
@@ -1923,7 +1924,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       width: renderer.width,
       height: "auto",
       border: false,
-      backgroundColor: "transparent",
+      backgroundColor: OPEN_TUI_TRANSPARENT,
       shouldFill: false,
       flexDirection: "column",
     })

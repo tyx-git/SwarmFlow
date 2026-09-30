@@ -3,30 +3,9 @@ import { describe, expect, it } from "bun:test";
 import { buildLineDescriptors, materializeDescriptors } from "./file-modify-body.js";
 import type { ConversationPalette } from "../conversation-types.js";
 import type { FileModifyDisplayData, DiffHunk } from "../../../../src/lib/diff-hunk.js";
+import { getThemeColors } from "../../display/theme/color-config.js";
 
-// Minimal palette — only dim/red/green/text are read by the builders.
-const COLORS = {
-  background: "transparent",
-  panel: "transparent",
-  userBg: "#1f1c26",
-  border: "#2a2630",
-  separator: "#2a2630",
-  scrollbarThumb: "#d0d6e0",
-  scrollbarTrack: "#2a263044",
-  text: "#d0d6e0",
-  dim: "#636a76",
-  muted: "#454a54",
-  accent: "#ffb703",
-  orange: "#fb8500",
-  red: "#f05030",
-  magenta: "#e81860",
-  purple: "#a010a0",
-  yellow: "#e8c468",
-  green: "#73a942",
-  cyan: "#9cd4cc",
-  thinking: "#454a54",
-  toolTime: "#8a8078",
-} as unknown as ConversationPalette;
+const COLORS = getThemeColors("dark").colors as ConversationPalette;
 
 const WIDTH = 80;
 

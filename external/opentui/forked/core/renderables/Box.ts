@@ -13,6 +13,7 @@ import {
 import { type ColorInput, RGBA, parseColor } from "../lib/RGBA.js"
 import { isValidPercentage } from "../lib/renderable.validations.js"
 import type { RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export interface BoxOptions<TRenderable extends Renderable = BoxRenderable> extends RenderableOptions<TRenderable> {
   backgroundColor?: string | RGBA
@@ -72,14 +73,14 @@ export class BoxRenderable extends Renderable {
   protected _dividerTitleColor?: RGBA
 
   protected _defaultOptions = {
-    backgroundColor: "transparent",
+    backgroundColor: OPEN_TUI_CORE_COLORS.transparent,
     borderStyle: "single",
     border: false,
-    borderColor: "#FFFFFF",
+    borderColor: OPEN_TUI_CORE_COLORS.white,
     shouldFill: true,
     titleAlignment: "left",
     bottomTitleAlignment: "left",
-    focusedBorderColor: "#00AAFF",
+    focusedBorderColor: OPEN_TUI_CORE_COLORS.focusBorder,
   } satisfies Partial<BoxOptions>
 
   constructor(ctx: RenderContext, options: BoxOptions) {
@@ -319,7 +320,7 @@ export class BoxRenderable extends Renderable {
     const screenY = this._screenY
 
     if (hasTransparentFill) {
-      const transparent = RGBA.fromValues(0, 0, 0, 0)
+      const transparent = parseColor(OPEN_TUI_CORE_COLORS.transparent)
       const x0 = Math.max(0, screenX)
       const y0 = Math.max(0, screenY)
       const x1 = Math.min(buffer.width, screenX + this.width)

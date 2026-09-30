@@ -5,6 +5,7 @@ import { type BorderStyle, type BorderSides, BorderCharArrays, BorderChars, pars
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
+import { OPEN_TUI_CORE_COLORS } from "./ui-colors.js"
 
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment, bits 7-8: bottomTitleAlignment
@@ -225,7 +226,7 @@ export class OptimizedBuffer {
     return lines
   }
 
-  public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
+  public clear(bg: RGBA = RGBA.fromHex(OPEN_TUI_CORE_COLORS.black)): void {
     this.guard()
     this.lib.bufferClear(this.bufferPtr, bg)
   }
@@ -271,8 +272,8 @@ export class OptimizedBuffer {
       selectionBg = selection.bgColor
       selectionFg = selection.fgColor || fg
     } else {
-      const defaultBg = bg || RGBA.fromValues(0, 0, 0, 0)
-      selectionFg = defaultBg.a > 0 ? defaultBg : RGBA.fromValues(0, 0, 0, 1)
+      const defaultBg = bg || RGBA.fromHex(OPEN_TUI_CORE_COLORS.transparent)
+      selectionFg = defaultBg.a > 0 ? defaultBg : RGBA.fromHex(OPEN_TUI_CORE_COLORS.black)
       selectionBg = fg
     }
 

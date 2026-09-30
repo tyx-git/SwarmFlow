@@ -11,6 +11,7 @@ import { Capture, CapturedWritableStream } from "./lib/output.capture.js"
 import { parseColor, RGBA } from "./lib/RGBA.js"
 import { singleton } from "./lib/singleton.js"
 import { env, registerEnvVar } from "./lib/env.js"
+import { OPEN_TUI_CORE_COLORS } from "./ui-colors.js"
 import type { KeyEvent } from "./lib/KeyHandler.js"
 import {
   type KeyBinding as BaseKeyBinding,
@@ -289,24 +290,24 @@ const DEFAULT_CONSOLE_OPTIONS: Required<
   position: ConsolePosition.BOTTOM,
   sizePercent: 30,
   zIndex: Infinity,
-  colorInfo: "#00FFFF", // Cyan
-  colorWarn: "#FFFF00", // Yellow
-  colorError: "#FF0000", // Red
-  colorDebug: "#808080", // Gray
-  colorDefault: "#FFFFFF", // White
-  backgroundColor: RGBA.fromValues(0.1, 0.1, 0.1, 0.7),
+  colorInfo: OPEN_TUI_CORE_COLORS.console.info,
+  colorWarn: OPEN_TUI_CORE_COLORS.console.warning,
+  colorError: OPEN_TUI_CORE_COLORS.console.error,
+  colorDebug: OPEN_TUI_CORE_COLORS.console.debug,
+  colorDefault: OPEN_TUI_CORE_COLORS.console.default,
+  backgroundColor: OPEN_TUI_CORE_COLORS.console.background,
   startInDebugMode: false,
   title: "Console",
-  titleBarColor: RGBA.fromValues(0.05, 0.05, 0.05, 0.7),
-  titleBarTextColor: "#FFFFFF",
-  cursorColor: "#00A0FF",
+  titleBarColor: OPEN_TUI_CORE_COLORS.console.titleBar,
+  titleBarTextColor: OPEN_TUI_CORE_COLORS.console.titleBarText,
+  cursorColor: OPEN_TUI_CORE_COLORS.console.cursor,
   maxStoredLogs: 2000,
   maxDisplayLines: 3000,
   onCopySelection: undefined,
   keyBindings: undefined,
   keyAliasMap: undefined,
-  selectionColor: RGBA.fromValues(0.3, 0.5, 0.8, 0.5),
-  copyButtonColor: "#00A0FF",
+  selectionColor: OPEN_TUI_CORE_COLORS.console.selection,
+  copyButtonColor: OPEN_TUI_CORE_COLORS.console.copyButton,
 }
 
 const INDENT_WIDTH = 2

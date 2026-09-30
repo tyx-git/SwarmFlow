@@ -2,6 +2,7 @@ import type { KeyEvent, PasteEvent } from "../lib/KeyHandler.js"
 import { decodePasteBytes, stripAnsiSequences } from "../lib/paste.js"
 import { RGBA, parseColor, type ColorInput } from "../lib/RGBA.js"
 import { type RenderContext } from "../types.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 import { EditBufferRenderable, type EditBufferOptions } from "./EditBufferRenderable.js"
 import {
   type KeyBinding as BaseKeyBinding,
@@ -157,12 +158,12 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _submitListener: ((event: SubmitEvent) => void) | undefined = undefined
 
   private static readonly defaults = {
-    backgroundColor: "transparent",
-    textColor: "#FFFFFF",
-    focusedBackgroundColor: "transparent",
-    focusedTextColor: "#FFFFFF",
+    backgroundColor: OPEN_TUI_CORE_COLORS.transparent,
+    textColor: OPEN_TUI_CORE_COLORS.white,
+    focusedBackgroundColor: OPEN_TUI_CORE_COLORS.transparent,
+    focusedTextColor: OPEN_TUI_CORE_COLORS.white,
     placeholder: null,
-    placeholderColor: "#666666",
+    placeholderColor: OPEN_TUI_CORE_COLORS.placeholder,
   } satisfies Partial<TextareaOptions>
 
   constructor(ctx: RenderContext, options: TextareaOptions) {

@@ -4,6 +4,9 @@ import React from "react";
 
 import type { ConversationPalette } from "../components/conversation-types.js";
 import { SelectableRow } from "../display/primitives/selectable-row.js";
+import { getUiCommonColors } from "../../../src/config/ui-colors.js";
+
+const TRANSPARENT = getUiCommonColors().transparent;
 
 export interface TabState {
   id: string;
@@ -47,7 +50,7 @@ function SidebarTabsInner(
             <box
               flexDirection="row"
               width="100%"
-              backgroundColor={isActive ? colors.border : "transparent"}
+              backgroundColor={isActive ? colors.border : TRANSPARENT}
             >
               <text
                 fg={isActive ? colors.accent : colors.dim}

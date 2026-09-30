@@ -3,8 +3,12 @@
 import React from "react";
 
 import { createTextAttributes, type KeyBinding, type TextareaRenderable } from "@opentui/core";
+import { getCommonColors } from "../display/theme/color-config.js";
 
 const ATTRS_BOLD = createTextAttributes({ bold: true });
+const COMMON_COLORS = getCommonColors();
+const WORKING_STATUS_COLOR = COMMON_COLORS.workingStatus;
+const WORKED_STATUS_COLOR = COMMON_COLORS.workedStatus;
 import type { ConversationPalette } from "../components/conversation-types.js";
 import type { ComposerTokenVisuals } from "../composer-tokens.js";
 import type { ActivityPhase } from "../display/types.js";
@@ -91,6 +95,7 @@ function getPhaseSpinnerConfig(phase: ActivityPhase): { frames: readonly string[
 
 function getPhaseColor(phase: ActivityPhase, colors: ConversationPalette): string {
   if (phase === "Asking") return colors.dim;
+  if (phase === "Working") return WORKING_STATUS_COLOR;
   return colors.workingStatus;
 }
 
@@ -181,7 +186,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
       ) : null}
     </box>
   ) : workedStatus ? (
-    <text fg="#616161" content={workedStatus} />
+    <text fg={WORKED_STATUS_COLOR} content={workedStatus} />
   ) : null;
 
   if (inlinePicker) {

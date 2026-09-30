@@ -1,38 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
 import { buildToolResultArtifacts, inferToolResultLanguage } from "./tool-result-artifacts.js";
+import { getThemeColors } from "../display/theme/color-config.js";
 
-const COLORS = {
-  background: "transparent",
-  panel: "transparent",
-  userBg: "#1f1c26",
-  border: "#2a2630",
-  separator: "#2a2630",
-  scrollbarThumb: "#d0d6e0",
-  scrollbarTrack: "#2a263044",
-  text: "#d0d6e0",
-  dim: "#636a76",
-  muted: "#454a54",
-  accent: "#ffb703",
-  orange: "#fb8500",
-  red: "#f05030",
-  magenta: "#e81860",
-  purple: "#a010a0",
-  yellow: "#e8c468",
-  green: "#73a942",
-  cyan: "#9cd4cc",
-  thinking: "#454a54",
-  toolTime: "#8a8078",
-  readyStatus: "#fb8500",
-  thinkingStatus: "#6e4890",
-  workingStatus: "#8ab4f8",
-  generatingStatus: "#ffb703",
-  waitingStatus: "#e8c468",
-  closingStatus: "#4d4843",
-  errorStatus: "#f05030",
-  diffAdditionBg: "#285438",
-  diffDeletionBg: "#6a3232",
-} as const;
+const COLORS = getThemeColors("dark").colors;
 
 describe("tool-result artifacts", () => {
   it("builds diff previews with full-row backgrounds for additions and deletions", () => {
@@ -102,7 +73,7 @@ describe("tool-result artifacts", () => {
 
   it("adds continuation diff prefixes when long changed lines wrap", () => {
     const artifacts = buildToolResultArtifacts({
-      text: ' 33 +            className="rounded-full border border-[color:var(--line)] px-3 py-1 text-xs font-medium text-slatepaper-300 transition hover:border-[color:var(--accent)] hover:text-[#fff0da]"',
+      text: ' 33 +            className="rounded-full border border-[color:var(--line)] px-3 py-1 text-xs font-medium text-slatepaper-300 transition hover:border-[color:var(--accent)] hover:text-[color:var(--highlight)]"',
       toolMetadata: {
         path: "/tmp/example.tsx",
         tui_preview: { kind: "diff" },

@@ -8,6 +8,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "../yoga.js"
 import type { LineInfo } from "../zig.js"
 import { SyntaxStyle } from "../syntax-style.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
   fg?: string | RGBA
@@ -53,8 +54,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _textBufferSyntaxStyle: SyntaxStyle
 
   protected _defaultOptions = {
-    fg: RGBA.fromValues(1, 1, 1, 1),
-    bg: RGBA.fromValues(0, 0, 0, 0),
+    fg: OPEN_TUI_CORE_COLORS.white,
+    bg: OPEN_TUI_CORE_COLORS.transparent,
     selectionBg: undefined,
     selectionFg: undefined,
     selectable: true,

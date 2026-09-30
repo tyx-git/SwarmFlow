@@ -88,17 +88,22 @@ $ExePath = Join-Path $ExeDir "SwarmFlow.exe"
 $IconScript = Join-Path $Root "scripts\set-exe-icon.ps1"
 if (-not $IcoPath) { $IcoPath = Join-Path $Root "icons\swarmflow.ico" }
 
+$ColorConfigPath = Join-Path $Root "assets\ui-colors\color.json"
+if (-not (Test-Path $ColorConfigPath)) { throw "颜色配置不存在：$ColorConfigPath" }
+$UiColors = (Get-Content -Raw -LiteralPath $ColorConfigPath | ConvertFrom-Json).Theme.Common.buildConsole
+if (-not $UiColors) { throw "颜色配置缺少 Theme.Common.buildConsole" }
+
 $MinimumNodeForDist = 22
 $MinimumNodeForExe = 26
 
 function Write-Head([string]$Text) {
     Write-Host ""
-    Write-Host ("=== " + $Text + " " + ("=" * [Math]::Max(0, 60 - $Text.Length))) -ForegroundColor Cyan
+    Write-Host ("=== " + $Text + " " + ("=" * [Math]::Max(0, 60 - $Text.Length))) -ForegroundColor $UiColors.header
 }
 
-function Write-Step([string]$Text) { Write-Host ("  -> " + $Text) -ForegroundColor Gray }
-function Write-Ok([string]$Text) { Write-Host ("  OK " + $Text) -ForegroundColor Green }
-function Write-Warn2([string]$Text) { Write-Host ("  !! " + $Text) -ForegroundColor Yellow }
+function Write-Step([string]$Text) { Write-Host ("  -> " + $Text) -ForegroundColor $UiColors.step }
+function Write-Ok([string]$Text) { Write-Host ("  OK " + $Text) -ForegroundColor $UiColors.success }
+function Write-Warn2([string]$Text) { Write-Host ("  !! " + $Text) -ForegroundColor $UiColors.warning }
 
 function Get-NodeMajor([string]$NodeExe) {
     $version = & $NodeExe -v 2>$null
@@ -303,7 +308,7 @@ $tasks = $tasks | Select-Object -Unique
 
 $started = Get-Date
 Write-Host ""
-Write-Host "SwarmFlow build" -ForegroundColor White
+Write-Host "SwarmFlow build" -ForegroundColor $UiColors.title
 Write-Host ("  root  : " + $Root)
 Write-Host ("  tasks : " + ($tasks -join ", "))
 
@@ -313,4 +318,4 @@ foreach ($name in $tasks) {
 
 $elapsed = [Math]::Round(((Get-Date) - $started).TotalSeconds, 1)
 Write-Host ""
-Write-Host ("全部完成（" + $elapsed + "s）：" + ($tasks -join ", ")) -ForegroundColor Green
+Write-Host ("全部完成（" + $elapsed + "s）：" + ($tasks -join ", ")) -ForegroundColor $UiColors.success

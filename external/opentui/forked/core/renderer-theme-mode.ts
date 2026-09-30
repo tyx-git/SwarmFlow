@@ -1,6 +1,7 @@
 import { parseColor } from "./lib/RGBA.js"
 import { type Clock, type TimerHandle } from "./lib/clock.js"
 import type { ThemeMode } from "./types.js"
+import { OPEN_TUI_CORE_COLORS } from "./ui-colors.js"
 
 const OSC_THEME_RESPONSE =
   /\x1b](10|11);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
@@ -22,7 +23,7 @@ function oscThemeColorToHex(r?: string, g?: string, b?: string, hex6?: string): 
     return `#${scaleOscThemeComponent(r)}${scaleOscThemeComponent(g)}${scaleOscThemeComponent(b)}`
   }
 
-  return "#000000"
+  return OPEN_TUI_CORE_COLORS.black
 }
 
 function inferThemeModeFromBackgroundColor(color: string): ThemeMode {

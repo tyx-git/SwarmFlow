@@ -16,7 +16,7 @@ import {
   parseThemeModePref,
 } from "../src/config/theme.js";
 import { THINKING_LEVEL_LIST } from "../src/config/thinking.js";
-import { createDisplayTheme } from "../external/opentui/display/theme/index.js";
+import { createDisplayTheme, getCommonColors, getThemeColors } from "../external/opentui/display/theme/index.js";
 
 const MODULES: UiTextModule[] = ["Common", "Error", "Commands", "Views", "Init"];
 
@@ -158,6 +158,13 @@ describe("init wizard texts", () => {
 // ------------------------------------------------------------------
 
 describe("theme modes", () => {
+  it("loads color tokens from assets/ui-colors/color.json", () => {
+    expect(getCommonColors().workingStatus).toMatch(/^#[0-9a-f]{6,8}$/i);
+    expect(getCommonColors().workedStatus).toMatch(/^#[0-9a-f]{6,8}$/i);
+    for (const mode of ["brief", "dark", "light"] as const) {
+      expect(getThemeColors(mode).colors.accent).toMatch(/^#[0-9a-f]{6,8}$/i);
+    }
+  });
   it("only exposes brief / dark / light", () => {
     expect([...THEME_MODES].sort()).toEqual(["brief", "dark", "light"]);
   });

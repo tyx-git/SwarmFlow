@@ -15,6 +15,7 @@ import {
 import type { RenderableOptions } from "../Renderable.js"
 import type { RenderContext } from "../types.js"
 import { FrameBufferRenderable, type FrameBufferOptions } from "./FrameBuffer.js"
+import { OPEN_TUI_CORE_COLORS } from "../ui-colors.js"
 
 export interface ASCIIFontOptions extends Omit<RenderableOptions<ASCIIFontRenderable>, "width" | "height"> {
   text?: string
@@ -32,8 +33,8 @@ export class ASCIIFontRenderable extends FrameBufferRenderable {
   protected static readonly _defaultOptions = {
     text: "",
     font: "tiny",
-    color: "#FFFFFF",
-    backgroundColor: "transparent",
+    color: OPEN_TUI_CORE_COLORS.white,
+    backgroundColor: OPEN_TUI_CORE_COLORS.transparent,
     selectionBg: undefined,
     selectionFg: undefined,
     selectable: true,
