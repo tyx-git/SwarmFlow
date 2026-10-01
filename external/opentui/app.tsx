@@ -394,6 +394,11 @@ export function OpenTuiApp({
       const end = entries[index];
       if (!end || end.discarded || end.type !== "work_end") continue;
       const endMeta = end.meta as Record<string, unknown>;
+      const status = endMeta.status === "completed"
+        || endMeta.status === "interrupted"
+        || endMeta.status === "error"
+        ? endMeta.status
+        : "error";
       const workId = typeof endMeta.workId === "string" ? endMeta.workId : undefined;
       let elapsedMs = typeof endMeta.elapsedMs === "number" && Number.isFinite(endMeta.elapsedMs)
         ? endMeta.elapsedMs
@@ -410,9 +415,15 @@ export function OpenTuiApp({
           break;
         }
       }
-      if (elapsedMs === undefined) continue;
+      // Returning a non-completed terminal status is intentional even when a
+      // corrupt/partial work_end has no duration: it prevents a previous
+      // successful turn from being shown as the current turn's Worked state.
+      if (elapsedMs === undefined) {
+        return { status, elapsed: 0, startedAt: null };
+      }
       const endedAt = Number.isFinite(end.timestamp) ? end.timestamp : Date.now();
       return {
+        status,
         elapsed: Math.max(0, elapsedMs / 1000),
         startedAt: startedAt ?? Math.max(0, endedAt - elapsedMs),
       };
@@ -3142,8 +3153,16 @@ export function OpenTuiApp({
       uiText={uiText}
       modelColor={effectiveModelColor}
       turnElapsed={effectiveElapsed}
-      lastWorkedElapsed={childSnapshot ? childSnapshot.turnElapsed : (lastWorkedStatus?.elapsed ?? turnTimer.lastElapsed)}
-      lastWorkedStartedAt={childSnapshot ? null : (lastWorkedStatus?.startedAt ?? turnTimer.lastStartedAt)}
+      lastWorkedElapsed={childSnapshot
+        ? childSnapshot.turnElapsed
+        : lastWorkedStatus
+          ? lastWorkedStatus.status === "completed" ? lastWorkedStatus.elapsed : 0
+          : turnTimer.lastElapsed}
+      lastWorkedStartedAt={childSnapshot
+        ? null
+        : lastWorkedStatus
+          ? lastWorkedStatus.status === "completed" ? lastWorkedStatus.startedAt : null
+          : turnTimer.lastStartedAt}
       hint={hint}
       composerTokenVisuals={composerTokenVisuals}
       keyBindings={COMPOSER_KEY_BINDINGS}

@@ -1329,7 +1329,7 @@ export async function asyncRunToolLoop(
             }
             throw e;
           }
-          if ((e as any)?.name === "AbortError" || signal?.aborted) {
+          if (signal?.aborted) {
             throw e;
           }
           console.error(`[${agentName}] 工具 '${toolName}' 抛出异常:`, e);
@@ -1496,7 +1496,7 @@ export async function asyncRunToolLoop(
         }
         break;
       } catch (netErr) {
-        if ((netErr as any)?.name === "AbortError" || signal?.aborted) {
+        if (signal?.aborted) {
           throw new DOMException("操作已被中止。", "AbortError");
         }
         if (!isRetryableNetworkError(netErr) || networkRetryCount >= MAX_NETWORK_RETRIES) {
@@ -1569,6 +1569,12 @@ export async function asyncRunToolLoop(
     if (!hasCommittedToolCalls) {
       // 无 tool call — 返回最终结果。
       // 调用方（Session）负责创建最终的 assistant_text / reasoning / no_reply 条目。
+      // Provider 流在网络断开或上游进程异常退出时，部分适配器可能只
+      // 正常结束迭代器而没有抛出异常。空响应不能被当作正常完成，否则
+      // Session 会写入 completed work_end，掩盖真实失败。
+      if (!resp.text.trim()) {
+        throw new Error("Provider returned an empty response; the turn did not complete.");
+      }
       return {
         text: resp.text,
         toolHistory,

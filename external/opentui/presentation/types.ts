@@ -95,6 +95,7 @@ export interface PresentationEntry {
   // kind=turn_summary
   turnSummaryText?: string;
   turnSummaryInterrupted?: boolean;
+  turnSummaryError?: boolean;
   turnSummaryHints?: string[];
 
   // Unified file-modify display data (replaces toolStreamSections for file-modify tools)

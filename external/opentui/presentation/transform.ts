@@ -129,18 +129,25 @@ function transformTurnEnd(entry: ReconciledConversationEntry): PresentationEntry
   const elapsedMs = typeof entry.entry.elapsedMs === "number" ? entry.entry.elapsedMs : 0;
   const interruptHints = Array.isArray(meta.interruptHints) ? meta.interruptHints as string[] : [];
   const elapsedStr = formatDuration(elapsedMs / 1000);
+  const interrupted = status === "interrupted";
+  // Unknown/missing terminal statuses are failures too. A malformed or
+  // partially persisted status must never fall through to Worked.
+  const failed = !interrupted && status !== "completed";
 
-  const text = status === "interrupted"
+  const text = interrupted
     ? `Interrupted · ${elapsedStr}`
-    : `Worked for ${elapsedStr}`;
+    : failed
+      ? `Failed · ${elapsedStr}`
+      : `Worked for ${elapsedStr}`;
 
   return {
     id: entry.id,
     contentVersion: entry.contentVersion,
     kind: "turn_summary",
-    state: "done",
+    state: failed ? "error" : "done",
     turnSummaryText: text,
-    turnSummaryInterrupted: status === "interrupted",
+    turnSummaryInterrupted: interrupted,
+    ...(failed ? { turnSummaryError: true } : {}),
     turnSummaryHints: interruptHints.length > 0 ? interruptHints : undefined,
   };
 }

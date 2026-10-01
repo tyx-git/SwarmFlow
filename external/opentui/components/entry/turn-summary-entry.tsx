@@ -16,16 +16,17 @@ function TurnSummaryEntryInner(
   { entry, colors, interruptionText }: TurnSummaryEntryProps,
 ): React.ReactNode {
   const interrupted = entry.turnSummaryInterrupted ?? false;
+  const failed = entry.turnSummaryError ?? false;
   const hints = entry.turnSummaryHints ?? [];
 
   // The composer already shows the completed turn's "Worked for ..." status.
   // Keep interruption details in the transcript, but avoid duplicating the
   // normal completion status as a full-width divider.
-  if (!interrupted) return null;
+  if (!interrupted && !failed) return null;
 
   return (
     <box flexDirection="column" width="100%" paddingTop={1} gap={0}>
-      <ErrorMessage text={interruptionText} colors={colors} />
+      <ErrorMessage text={failed ? (entry.turnSummaryText ?? "Turn failed") : interruptionText} colors={colors} />
       {hints.length > 0 ? (
         <box flexDirection="column" paddingLeft={2} gap={0}>
           {hints.map((hint, idx) => (

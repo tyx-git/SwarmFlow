@@ -2032,7 +2032,14 @@ async function toolBash(
       if (stderr) {
         parts.push(`STDERR:\n${truncateMiddle(stderr, BASH_MAX_OUTPUT_CHARS)}`);
       }
-      parts.push(`EXIT CODE: ${code ?? 1}`);
+      const exitCode = code ?? 1;
+      if (exitCode !== 0) {
+        // Keep the numeric exit code for the model, but make the result a
+        // first-class tool failure so the loop and TUI do not treat a command
+        // failure as an ordinary successful tool result.
+        parts.unshift(`ERROR: Command exited with code ${exitCode}`);
+      }
+      parts.push(`EXIT CODE: ${exitCode}`);
 
       // If output was truncated and a spill dir was provided, persist the
       // full output so the model can read_file the whole thing if needed.

@@ -42,6 +42,24 @@ function makeSession(projectRoot: string): Session {
 }
 
 describe("P4 shell governance", () => {
+  it("marks a non-zero shell exit as a tool error while preserving the exit code", async () => {
+    const root = makeTempDir("swarmflow-p4-bash-exit-proj-");
+    try {
+      const command = shell.kind === "pwsh" || shell.kind === "powershell"
+        ? "exit 7"
+        : "exit 7";
+      const result = await executeTool(
+        "bash",
+        { command, timeout: 30 },
+        { projectRoot: root },
+      );
+      expect(result.content).toContain("ERROR: Command exited with code 7");
+      expect(result.content).toContain("EXIT CODE: 7");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("filters inherited environment variables for bash tool", async () => {
     const prev = process.env["AGENTFLOW_TEST_SECRET"];
     process.env["AGENTFLOW_TEST_SECRET"] = "super-secret-value";

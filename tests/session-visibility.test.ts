@@ -46,6 +46,36 @@ describe("runtime-owned error entries", () => {
     }
   });
 
+  it("does not mark an empty provider response as a completed turn", async () => {
+    const h = makeScriptedSession({
+      rounds: [{ text: "" }],
+    });
+    try {
+      await expect(h.session.turn("hello")).rejects.toThrow("empty response");
+      const workEnds = h.session.log.filter((e) => e.type === "work_end" && !e.discarded);
+      expect(workEnds).toHaveLength(1);
+      expect((workEnds[0]!.meta as Record<string, unknown>).status).toBe("error");
+      expect(h.session.lastTurnEndStatus).toBe("error");
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("treats a bare provider AbortError as a failure when no signal was cancelled", async () => {
+    const h = makeScriptedSession({
+      rounds: [{ onCall: () => { throw new DOMException("socket closed", "AbortError"); } }],
+    });
+    try {
+      await expect(h.session.turn("hello")).rejects.toThrow("socket closed");
+      const workEnd = h.session.log.find((e) => e.type === "work_end" && !e.discarded);
+      expect((workEnd?.meta as Record<string, unknown> | undefined)?.status).toBe("error");
+      expect(h.session.lastTurnEndStatus).toBe("error");
+      expect(visibleErrors(h)[0]?.display).toContain("socket closed");
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("writes the entry exactly once even though multiple catch layers run", async () => {
     const h = makeScriptedSession({
       rounds: [{ onCall: () => { throw new Error("model 400: bad request"); } }],

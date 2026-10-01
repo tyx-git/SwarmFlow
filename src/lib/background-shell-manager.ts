@@ -574,9 +574,12 @@ export class BackgroundShellManager {
     const header = entry.status === "running"
       ? `# Shell Output`
       : `# Shell Output — TERMINATED`;
+    const failureNotice = entry.status === "failed"
+      ? `ERROR: Background shell '${entry.id}' exited with code ${entry.exitCode ?? 1}.\n`
+      : "";
     return new ToolResult({
       content:
-        `${header}\n` +
+        `${failureNotice}${header}\n` +
         `id: ${entry.id}\n` +
         `status: ${entry.status}\n` +
         `log: ${entry.logPath}\n\n` +

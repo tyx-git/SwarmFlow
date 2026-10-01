@@ -331,6 +331,22 @@ describe("background shell tools", () => {
     }
   });
 
+  it("marks failed background shell output as an error", async () => {
+    const root = makeTempDir("swarmflow-shell-failed-output-");
+    const session = makeSession(root);
+    try {
+      const sm = (session as any)._shellManager;
+      sm.execBashBackground({ id: "failed", command: isPowerShell ? "exit 7" : "exit 7" });
+      await waitForShellExit(sm, "failed");
+      const out = sm.execBashOutput({ id: "failed" }) as ToolResult;
+      expect(out.content).toContain("ERROR: Background shell 'failed' exited with code");
+      expect(out.content).toContain("status: failed");
+    } finally {
+      await session.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("truncates unread shell output and advances the unread cursor", async () => {
     const root = makeTempDir("swarmflow-shell-trunc-root-");
     const session = makeSession(root);

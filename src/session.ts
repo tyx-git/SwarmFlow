@@ -4125,7 +4125,7 @@ export class Session {
         this.onSaveRequest?.();
         this._finishCurrentWork("completed");
       } catch (err) {
-        if (turnSignalState.signal.aborted || (err as { name?: string })?.name === "AbortError") {
+        if (turnSignalState.signal.aborted || this._isCompactAbortError(err)) {
           for (let ci = logLenBeforeCompact; ci < this._log.length; ci++) {
             this._log[ci].discarded = true;
           }
@@ -4579,7 +4579,7 @@ export class Session {
             isError = resultContent.startsWith("ERROR:");
           }
         } catch (e) {
-          if ((e as any)?.name === "AbortError" || signal?.aborted) {
+          if (signal?.aborted) {
             return { kind: "interrupted" };
           }
           resultContent = `ERROR: ${e instanceof Error ? e.message : String(e)}`;
@@ -4723,7 +4723,7 @@ export class Session {
         try {
           result = await this._runActivation(activationTurnIndex, activeSignal, textAccumulator, reasoningAccumulator);
         } catch (err: unknown) {
-          if ((err as any)?.name === "AbortError" || activeSignal.aborted) {
+          if (activeSignal.aborted) {
             this._handleInterruption(logLenBeforeActivation, textAccumulator.text, {
               activationCompleted: false,
             });
@@ -4867,7 +4867,7 @@ export class Session {
           try {
             await this._doAutoCompact(result.compactScenario!, activeSignal);
           } catch (compactErr) {
-            if ((compactErr as any)?.name === "AbortError" || activeSignal.aborted) {
+            if (activeSignal.aborted || this._isCompactAbortError(compactErr)) {
               for (let ci = logLenBefore; ci < this._log.length; ci++) {
                 this._log[ci].discarded = true;
               }
@@ -4930,7 +4930,7 @@ export class Session {
       // compact, drain) end the turn as "error". The visible error log entry
       // is written exactly once per escape path by the entry-point catches
       // (_turnInner / _resumeActivationStage / manual summarize).
-      const aborted = (err as { name?: string })?.name === "AbortError" || activeSignal.aborted;
+      const aborted = activeSignal.aborted;
       if (!aborted) {
         loopError = err instanceof Error ? err.message : String(err);
         turnEndStatus = "error";
@@ -4940,6 +4940,19 @@ export class Session {
       this._restoreCurrentTurnSignal(turnSignalState);
       if (turnEndStatus === "interrupted" && this._hasActiveAgents()) {
         await this._waitForAllChildTurnsSettled();
+      }
+      // Never infer success from an incomplete state machine. A provider or
+      // executor may finish without throwing (for example, a stream can end
+      // unexpectedly), leaving no explicit terminal status. Treat that path
+      // as an error unless the signal was deliberately aborted.
+      if (!this._activeAsk && turnEndStatus === null) {
+        if (activeSignal.aborted) {
+          turnEndStatus = "interrupted";
+        } else {
+          turnEndStatus = "error";
+          loopError ??= "Turn ended without a terminal status.";
+          this._recordTurnErrorEntry(loopError);
+        }
       }
       // A suspended ask keeps the session in "waiting" (Q1): the turn has not
       // ended, it is parked on the user's answer. Input arriving now must
@@ -4984,7 +4997,7 @@ export class Session {
         turnIndex: this._turnCount,
         status: this._activeAsk
           ? "waiting"
-          : turnEndStatus ?? (activeSignal.aborted ? "interrupted" : "completed"),
+          : turnEndStatus ?? "error",
         ...(loopError !== null && !this._activeAsk ? { error: loopError } : {}),
       });
     }
@@ -5144,7 +5157,7 @@ export class Session {
           try {
             await this._doAutoCompact("before_turn", signal);
           } catch (compactErr) {
-            if ((compactErr as any)?.name === "AbortError" || signal?.aborted) {
+            if (signal?.aborted || this._isCompactAbortError(compactErr)) {
               for (let ci = logLenBefore; ci < this._log.length; ci++) {
                 this._log[ci].discarded = true;
               }
@@ -5193,7 +5206,21 @@ export class Session {
 
   /** True when the error is a user interrupt rather than a real failure. */
   private _isTurnAbortError(err: unknown, signal?: AbortSignal): boolean {
-    return (err as { name?: string })?.name === "AbortError" || signal?.aborted === true;
+    // Error names are provider/library conventions and are not proof of a
+    // user interrupt. Only the session's active signal identifies an actual
+    // cancellation; a bare AbortError from a broken network stream is a turn
+    // failure and must be surfaced as error.
+    return signal?.aborted === true || this._isCompactAbortError(err);
+  }
+
+  /**
+   * Internal compact code uses this exact message for a deliberate stop. A
+   * provider may also throw an AbortError, but without this marker it is a
+   * transport failure and must remain visible as an error.
+   */
+  private _isCompactAbortError(err: unknown): boolean {
+    return (err as { name?: unknown })?.name === "AbortError"
+      && (err as { message?: unknown })?.message === "Compact phase aborted.";
   }
 
   // Set while the current turn-lock execution has already written its error

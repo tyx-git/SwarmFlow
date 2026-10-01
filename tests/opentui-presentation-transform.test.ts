@@ -12,6 +12,44 @@ function reconciled(
 }
 
 describe("OpenTUI presentation transform", () => {
+  it("keeps failed turn summaries out of the normal Worked state", () => {
+    const result = presentationTransform([
+      reconciled("work-error", {
+        id: "work-error",
+        kind: "status",
+        text: "",
+        elapsedMs: 1200,
+        meta: { turnEndStatus: "error" },
+      }),
+    ], [], false, null);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      kind: "turn_summary",
+      turnSummaryError: true,
+      turnSummaryInterrupted: false,
+      turnSummaryText: "Failed · 1s",
+    });
+  });
+
+  it("treats an unknown turn status as a failure", () => {
+    const result = presentationTransform([
+      reconciled("work-unknown", {
+        id: "work-unknown",
+        kind: "status",
+        text: "",
+        elapsedMs: 0,
+        meta: { turnEndStatus: "unknown" },
+      }),
+    ], [], false, null);
+
+    expect(result[0]).toMatchObject({
+      state: "error",
+      turnSummaryError: true,
+      turnSummaryText: "Failed · 0s",
+    });
+  });
+
   it("does not keep a completed tool active just because activeEntryId still points at its tool_call", () => {
     const entries: ReconciledConversationEntry[] = [
       reconciled("tc-old", {
