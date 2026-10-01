@@ -96,6 +96,15 @@
         "queuedHint": "↑ 可编辑排队中的消息",
         "default": "输入消息或 /命令"
       },
+      "statusBar": {
+        "permission": "权限",
+        "cwd": "工作目录",
+        "session": "会话名称",
+        "cacheHit": "缓存命中",
+        "context": "上下文占用",
+        "cacheNull": "null",
+        "untitled": "未命名"
+      },
       "permission": {
         "yolo": "完全访问",
         "readOnly": "只读",
@@ -302,6 +311,15 @@
         "childActive": "Esc/^C close or interrupt · Opt+←→ switch tabs · Opt+↑ main",
         "queuedHint": "↑ to edit the queued message",
         "default": "message or /command"
+      },
+      "statusBar": {
+        "permission": "Permission",
+        "cwd": "Working directory",
+        "session": "Session name",
+        "cacheHit": "Cache hit",
+        "context": "Context",
+        "cacheNull": "null",
+        "untitled": "Untitled"
       },
       "permission": {
         "yolo": "Full access",

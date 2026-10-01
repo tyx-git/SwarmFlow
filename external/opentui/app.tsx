@@ -76,7 +76,6 @@ import type { TabState } from "./sidebar/sidebar-tabs.js";
 import { getCurrentModelDescriptor } from "../../src/models/presentation.js";
 import {
   UsagePoller,
-  formatUsageLine,
   type UsageSnapshot,
 } from "../../src/providers/usage.js";
 import {
@@ -358,10 +357,16 @@ export function OpenTuiApp({
   }, []);
   const [phase, setPhase] = useState<ActivityPhase>("idle");
   const [contextTokens, setContextTokens] = useState(0);
+  const [cacheInputTokens, setCacheInputTokens] = useState(0);
   const [cacheReadTokens, setCacheReadTokens] = useState(0);
-  const updateContextTokenState = useCallback((inputTokens: number | undefined, cacheTokens?: number) => {
-    if (typeof inputTokens !== "number" || !Number.isFinite(inputTokens) || inputTokens <= 0) return;
-    setContextTokens(inputTokens);
+  const updateContextTokenState = useCallback((totalTokens: number | undefined, cacheTokens?: number, inputTokens?: number) => {
+    if (typeof totalTokens !== "number" || !Number.isFinite(totalTokens) || totalTokens <= 0) return;
+    setContextTokens(totalTokens);
+    setCacheInputTokens(
+      typeof inputTokens === "number" && Number.isFinite(inputTokens) && inputTokens > 0
+        ? inputTokens
+        : totalTokens,
+    );
     setCacheReadTokens(cacheTokens ?? 0);
   }, []);
   // Usage snapshot for Codex or Copilot — only one is active at a time, based
@@ -740,7 +745,7 @@ export function OpenTuiApp({
     setPhase("Working");
     try {
       await session.resumePendingTurn({ signal: controller.signal });
-      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
+      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
       setPendingAsk(session.getPendingAsk?.() ?? null);
       autoSave();
     } catch (err) {
@@ -903,7 +908,7 @@ export function OpenTuiApp({
       setPendingAsk(session.getPendingAsk?.() ?? null);
       setPermissionModeState(session.permissionMode ?? "reversible");
       setRootLogRevision(session.getLogRevision?.() ?? 0);
-      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
+      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
     };
     syncFromLog();
     const unsubscribe = typeof session.subscribeLog === "function"
@@ -944,7 +949,7 @@ export function OpenTuiApp({
         session.appendStatusMessage?.("[No reply] The model chose not to reply.", "no_reply");
         break;
       case "agent_end":
-        updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
+        updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
         break;
       case "ask_requested":
         setPendingAsk(session.getPendingAsk?.() ?? null);
@@ -961,6 +966,7 @@ export function OpenTuiApp({
         updateContextTokenState(
           (event.extra["total_tokens"] as number | undefined) ?? (event.extra["input_tokens"] as number | undefined),
           event.extra["cache_read_tokens"] as number | undefined,
+          event.extra["input_tokens"] as number | undefined,
         );
         break;
     }
@@ -1620,7 +1626,7 @@ export function OpenTuiApp({
       resetUiState: () => {
         setProcessing(false);
         setPhase("idle");
-        updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
+        updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
         setPendingAsk(null);
         setAskError(null);
       },
@@ -1710,7 +1716,7 @@ export function OpenTuiApp({
     setPhase("Working");
     try {
       await session.turn(input, { signal: controller.signal, inlineImages });
-      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
+      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
       setPendingAsk(session.getPendingAsk?.() ?? null);
       autoSave();
     } catch {
@@ -1923,7 +1929,7 @@ export function OpenTuiApp({
     setPhase("Working");
     try {
       await s.runInjectedCommand(displayText, content, { signal: controller.signal });
-      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0);
+      updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
       setPendingAsk(session.getPendingAsk?.() ?? null);
       autoSave();
     } catch {
@@ -3147,11 +3153,13 @@ export function OpenTuiApp({
     };
   }, [statPanel, session]);
   const effectiveCacheReadTokens = childSnapshot ? childSnapshot.cacheReadTokens : cacheReadTokens;
+  const effectiveCacheSupported = childSnapshot ? false : Boolean(session.cacheSupported);
+  const sessionName = (typeof session.getDisplayName === "function" ? session.getDisplayName() : "").trim()
+    || uiText.get(["Views", "statusBar", "untitled"]);
   const effectiveProcessing = childSnapshot ? childSnapshot.running : processing;
   const effectiveEntries = presentationEntries;
   // One-line usage indicator shown in the input area's bottom row (left of
   // context). null when not logged in / unsupported provider / fetch pending.
-  const usageText = formatUsageLine(usageSnapshot);
   return (
     <OpenTuiScreen
       theme={theme}
@@ -3164,8 +3172,10 @@ export function OpenTuiApp({
       onToggleSidebar={() => setSidebarExpanded((value) => !value)}
       contextTokens={effectiveContextTokens}
       contextLimit={effectiveContextLimit}
+      cacheInputTokens={selectedChildId ? (childSnapshot?.inputTokens ?? effectiveContextTokens) : cacheInputTokens}
       cacheReadTokens={effectiveCacheReadTokens}
-      usageText={usageText}
+      cacheSupported={effectiveCacheSupported}
+      sessionName={sessionName}
       permissionMode={permissionModeState}
       presentationEntries={effectiveEntries}
       processing={effectiveProcessing}

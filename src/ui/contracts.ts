@@ -122,6 +122,8 @@ export interface Session {
   lastInputTokens: number;
   lastTotalTokens: number;
   lastCacheReadTokens?: number;
+  cacheSupported?: boolean;
+  getDisplayName?(): string;
   contextBudget: number;
   cumulativeInputTokens: number;
   cumulativeOutputTokens: number;

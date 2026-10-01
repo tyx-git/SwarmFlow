@@ -411,6 +411,7 @@ export class Session {
   private _lastInputTokens = 0;
   private _lastTotalTokens = 0;
   private _lastCacheReadTokens = 0;
+  private _cacheSupported = false;
 
   // Cumulative usage (Total Input/Output/Cached/Uncached + system prompt) is
   // DERIVED from the log's token_update entries, not kept as live counters:
@@ -1846,6 +1847,7 @@ export class Session {
     this._lastInputTokens = 0;
     this._lastTotalTokens = 0;
     this._lastCacheReadTokens = 0;
+    this._cacheSupported = false;
     this._usageStatsCache = null;
     this._promptSectionEstimates = null;
     this._compactInProgress = false;
@@ -2315,6 +2317,7 @@ export class Session {
     this._lastInputTokens = state.lastInputTokens;
     this._lastTotalTokens = state.lastTotalTokens;
     this._lastCacheReadTokens = state.lastCacheReadTokens;
+    this._cacheSupported = state.cacheSupported;
     this._lifetimeToolCallCount = state.signals.lifetimeToolCallCount;
     this._lastToolCallSummary = state.signals.lastToolCallSummary;
     this._recentSessionEvents = [...state.signals.recentSessionEvents];
@@ -3628,6 +3631,14 @@ export class Session {
   /** Cache-read tokens from the most recent provider response. */
   get lastCacheReadTokens(): number {
     return this._lastCacheReadTokens;
+  }
+
+  get cacheSupported(): boolean {
+    return this._cacheSupported;
+  }
+
+  set cacheSupported(value: boolean) {
+    this._cacheSupported = value;
   }
 
   set lastCacheReadTokens(value: number) {
@@ -5589,6 +5600,7 @@ export class Session {
       this._lastInputTokens = inputTokens;
       this._lastTotalTokens = usage?.totalTokens ?? inputTokens;
       this._lastCacheReadTokens = usage?.cacheReadTokens ?? 0;
+      this._cacheSupported = usage?.cacheSupported ?? false;
       // Cumulative stats are derived from the token_update entry appended below
       // (see _computeUsageStats), so there is nothing to accumulate here.
       this._appendEntry(
@@ -5599,6 +5611,7 @@ export class Session {
           usage?.cacheReadTokens,
           usage?.cacheCreationTokens,
           usage?.totalTokens,
+          usage?.cacheSupported,
         ),
         false,
       );

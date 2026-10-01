@@ -103,12 +103,15 @@ export class Usage {
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
+  /** Whether the provider response exposed a cache-read metric. */
+  cacheSupported: boolean;
 
-  constructor(inputTokens = 0, outputTokens = 0, cacheCreationTokens = 0, cacheReadTokens = 0) {
+  constructor(inputTokens = 0, outputTokens = 0, cacheCreationTokens = 0, cacheReadTokens = 0, cacheSupported = false) {
     this.inputTokens = inputTokens;
     this.outputTokens = outputTokens;
     this.cacheCreationTokens = cacheCreationTokens;
     this.cacheReadTokens = cacheReadTokens;
+    this.cacheSupported = cacheSupported || cacheCreationTokens > 0;
   }
 
   get totalTokens(): number {

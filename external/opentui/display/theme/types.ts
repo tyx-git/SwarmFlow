@@ -63,6 +63,14 @@ export interface DisplayThemeColorTokens {
   badgeTodoBgActive: string;
   /** 权限模式 read_only 的指示色（yolo 复用 red，其余复用 accent）。 */
   permissionReadOnly: string;
+  /** 输入框底部状态栏：工作目录、会话名、上下文占用。 */
+  statusCwd: string;
+  statusSession: string;
+  statusContext: string;
+  /** 缓存命中率状态颜色。 */
+  statusCacheLow: string;
+  statusCacheMedium: string;
+  statusCacheHigh: string;
   /** Todo 清单三态：已完成 / 进行中 / 未开始的标记符与文本。 */
   todoDoneMark: string;
   todoDoneText: string;

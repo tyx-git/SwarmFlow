@@ -430,6 +430,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
         (respUsage["output_tokens"] as number) || 0,
         0, // OpenAI 没有缓存创建
         inputDetails?.["cached_tokens"] ?? 0,
+        inputDetails !== undefined && Object.prototype.hasOwnProperty.call(inputDetails, "cached_tokens"),
       );
     }
 

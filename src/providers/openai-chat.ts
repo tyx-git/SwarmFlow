@@ -278,6 +278,7 @@ export class OpenAIChatProvider extends BaseProvider {
         resp.usage.completion_tokens ?? 0,
         0, // OpenAI 没有缓存创建
         promptDetails?.["cached_tokens"] ?? 0,
+        promptDetails !== undefined && Object.prototype.hasOwnProperty.call(promptDetails, "cached_tokens"),
       );
     }
 
@@ -600,6 +601,7 @@ export class OpenAIChatProvider extends BaseProvider {
             chunk.usage.completion_tokens ?? 0,
             0,
             pd?.["cached_tokens"] ?? 0,
+            pd !== undefined && Object.prototype.hasOwnProperty.call(pd, "cached_tokens"),
           );
         }
         continue;
@@ -771,6 +773,7 @@ export class OpenAIChatProvider extends BaseProvider {
           chunk.usage.completion_tokens ?? 0,
           0,
           promptDetails?.["cached_tokens"] ?? 0,
+          promptDetails !== undefined && Object.prototype.hasOwnProperty.call(promptDetails, "cached_tokens"),
         );
       }
     }

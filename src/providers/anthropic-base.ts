@@ -443,6 +443,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       resp.usage?.output_tokens ?? 0,
       cacheCreation,
       cacheRead,
+      respUsage !== undefined && Object.prototype.hasOwnProperty.call(respUsage, "cache_read_input_tokens"),
     );
 
     const storedReasoningState = effectiveThinkingEncryption(this._config) === "anthropic"
@@ -738,6 +739,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       response.usage?.output_tokens ?? 0,
       streamCacheCreation,
       streamCacheRead,
+      streamUsage !== undefined && Object.prototype.hasOwnProperty.call(streamUsage, "cache_read_input_tokens"),
     );
 
     const reasoningText = thinkingParts.length > 0 ? thinkingParts.join("") : "";

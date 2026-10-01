@@ -745,11 +745,13 @@ export function createTokenUpdate(
   cacheReadTokens?: number,
   cacheCreationTokens?: number,
   totalTokens?: number,
+  cacheSupported?: boolean,
 ): LogEntry {
   const meta: Record<string, unknown> = { inputTokens };
   if (cacheReadTokens !== undefined) meta.cacheReadTokens = cacheReadTokens;
   if (cacheCreationTokens !== undefined) meta.cacheCreationTokens = cacheCreationTokens;
   if (totalTokens !== undefined) meta.totalTokens = totalTokens;
+  if (cacheSupported !== undefined) meta.cacheSupported = cacheSupported;
   return baseEntry(id, "token_update", turnIndex, { meta });
 }
 

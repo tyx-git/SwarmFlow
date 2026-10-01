@@ -551,6 +551,7 @@ export interface RestoredSessionState {
   lastInputTokens: number;
   lastTotalTokens: number;
   lastCacheReadTokens: number;
+  cacheSupported: boolean;
   signals: RestoredRuntimeSignals;
   askHistory: AskAuditRecord[];
 }
@@ -591,6 +592,7 @@ export function parseRestoredState(
   let lastInputTokens = 0;
   let lastTotalTokens = 0;
   let lastCacheReadTokens = 0;
+  let cacheSupported = false;
   for (let i = entries.length - 1; i >= 0; i--) {
     if (entries[i].type === "token_update") {
       const inputTokens = (entries[i].meta as Record<string, unknown>)["inputTokens"] as number;
@@ -598,6 +600,7 @@ export function parseRestoredState(
       lastInputTokens = inputTokens;
       lastTotalTokens = ((entries[i].meta as Record<string, unknown>)["totalTokens"] as number) ?? inputTokens;
       lastCacheReadTokens = ((entries[i].meta as Record<string, unknown>)["cacheReadTokens"] as number) ?? 0;
+      cacheSupported = (entries[i].meta as Record<string, unknown>)["cacheSupported"] === true;
       break;
     }
   }
@@ -674,6 +677,7 @@ export function parseRestoredState(
     lastInputTokens,
     lastTotalTokens,
     lastCacheReadTokens,
+    cacheSupported,
     signals,
     askHistory,
   };

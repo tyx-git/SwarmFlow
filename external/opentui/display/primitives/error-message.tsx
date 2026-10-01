@@ -8,7 +8,9 @@ const ATTRS_BOLD = createTextAttributes({ bold: true });
 /** Add the shared error marker without duplicating it for already-formatted text. */
 export function formatErrorMessage(text: string): string {
   const normalized = text.trimStart();
-  return normalized.startsWith("[!]") ? normalized : `[!] ${normalized}`;
+  if (normalized.startsWith("■")) return normalized;
+  if (normalized.startsWith("[!]")) return `■${normalized.slice(3).trimStart()}`;
+  return `■ ${normalized}`;
 }
 
 /** Shared TUI error presentation: marker, bold emphasis, and the theme red. */

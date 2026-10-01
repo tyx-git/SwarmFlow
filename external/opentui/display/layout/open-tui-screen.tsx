@@ -62,9 +62,10 @@ export interface OpenTuiScreenProps {
   onToggleSidebar: () => void;
   contextTokens: number;
   contextLimit?: number;
+  cacheInputTokens?: number;
   cacheReadTokens?: number;
-  /** Pre-formatted usage line (e.g. "5h: 90% left | wk: 80% left" or "month: 300/300 left"); null to hide. */
-  usageText?: string | null;
+  cacheSupported?: boolean;
+  sessionName: string;
   permissionMode?: string;
   presentationEntries: readonly PresentationEntry[];
   processing: boolean;
@@ -179,8 +180,10 @@ export function OpenTuiScreen({
   onCloseTab,
   contextTokens,
   contextLimit,
+  cacheInputTokens,
   cacheReadTokens,
-  usageText,
+  cacheSupported = false,
+  sessionName,
   permissionMode,
   presentationEntries,
   processing,
@@ -366,8 +369,10 @@ export function OpenTuiScreen({
       hint={hint}
       contextTokens={contextTokens}
       contextLimit={contextLimit}
+      cacheInputTokens={cacheInputTokens ?? contextTokens}
       cacheReadTokens={cacheReadTokens ?? 0}
-      usageText={usageText ?? null}
+      cacheSupported={cacheSupported}
+      sessionName={sessionName}
       contentWidth={inputContentWidth}
       colors={theme.colors}
       maxInputLines={theme.layout.inputMaxVisibleLines}

@@ -47,13 +47,15 @@ interface InputAreaProps {
   hint: string | null;
   contextTokens: number;
   contextLimit: number | undefined;
+  cacheInputTokens: number;
   cacheReadTokens: number;
+  cacheSupported: boolean;
+  sessionName: string;
   /**
    * Pre-formatted one-line usage indicator (e.g. "5h: 90% left | wk: 80% left"
    * or "month: 300/300 left"). When null, the indicator is hidden entirely.
    * Only shown when cwd + usage + context all fit inside contentWidth.
    */
-  usageText: string | null;
   /** Width of the content column (terminal width minus screen padding). */
   contentWidth: number;
   colors: ConversationPalette;
@@ -107,17 +109,6 @@ function getPhaseColor(phase: ActivityPhase, colors: ConversationPalette): strin
  * (cwd + usage + context + separators) fit inside contentWidth, we show
  * the usage indicator; otherwise it's hidden entirely.
  */
-function shouldShowUsage(
-  contentWidth: number,
-  cwdLen: number,
-  usageLen: number,
-  contextLen: number,
-): boolean {
-  const inner = contentWidth - 2; // paddingLeft=1 + paddingRight=1
-  const fixedWidth = cwdLen + usageLen + contextLen + 4; // "  " × 2 separators
-  return inner >= fixedWidth;
-}
-
 function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const {
     inputRef,
@@ -136,8 +127,10 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     hint,
     contextTokens,
     contextLimit,
+    cacheInputTokens,
     cacheReadTokens,
-    usageText,
+    cacheSupported,
+    sessionName,
     contentWidth,
     colors,
     maxInputLines,
@@ -210,10 +203,17 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     );
   }
 
-  const cacheLabel = cacheReadTokens > 0 ? ` (${formatCompactTokensShort(cacheReadTokens)} cached)` : "";
+  const cacheRate = cacheInputTokens > 0 ? Math.max(0, Math.min(1, cacheReadTokens / cacheInputTokens)) : 0;
+  const cacheLabel = t.get(["Views", "statusBar", "cacheHit"]);
+  const cacheValue = cacheSupported ? `${(cacheRate * 100).toFixed(2)}%` : t.get(["Views", "statusBar", "cacheNull"]);
+  const cacheColor = !cacheSupported
+    ? colors.yellow
+    : cacheRate >= 0.95 ? colors.statusCacheHigh : cacheRate >= 0.5 ? colors.statusCacheMedium : colors.statusCacheLow;
   const contextText = contextLimit
-    ? `${formatCompactTokensShort(contextTokens)}/${formatCompactTokensShort(contextLimit)}${cacheLabel}`
-    : `${formatCompactTokensShort(contextTokens)}${cacheLabel}`;
+    ? `${formatCompactTokensShort(contextTokens)}/${formatCompactTokensShort(contextLimit)}`
+    : formatCompactTokensShort(contextTokens);
+  const cwdText = cwd;
+  const sessionText = sessionName.slice(0, 8);
 
   return (
     <box flexDirection="column" gap={0} flexShrink={0}>
@@ -304,13 +304,10 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
 
       {usagePanel}
 
-      {/* Bottom row: permission/hint (left, mutually exclusive) + usage + context (right) */}
+      {/* Bottom row: permission, cwd, session, cache hit, context usage. */}
       {!commandOverlayVisible && !commandPicker && !checkboxPicker && !promptSelect && !promptSecret && !pendingAsk ? (
-        <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1}>
-          <box
-            flexShrink={1}
-            flexGrow={0}
-          >
+        <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1} flexShrink={0}>
+          <box flexDirection="row" flexShrink={1} flexGrow={0}>
             {hint ? (
               <text fg={colors.dim} content={hint} truncate />
             ) : (
@@ -321,14 +318,16 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
                   : permissionMode === "read_only"
                     ? t.get(["Views", "permission", "readOnly"])
                     : t.get(["Views", "permission", "reversible"])}
+                flexShrink={0}
               />
             )}
+            <text fg={colors.statusCwd} content={`  ${cwdText}`} flexShrink={1} truncate />
+            <text fg={colors.statusSession} content={`  ${sessionText}`} flexShrink={0} truncate />
           </box>
           <box flexGrow={1} />
-          {usageText && shouldShowUsage(contentWidth, 11, usageText.length, contextText.length) ? (
-            <text fg={colors.dim} content={`  ${usageText}`} flexShrink={0} />
-          ) : null}
-          <text fg={colors.dim} content={`  ${contextText}`} flexShrink={0} />
+          <text fg={colors.statusContext} content={`${cacheLabel}: `} flexShrink={0} />
+          <text fg={cacheColor} content={cacheValue} flexShrink={0} />
+          <text fg={colors.statusContext} content={`  ${contextText}`} flexShrink={0} />
         </box>
       ) : null}
     </box>
