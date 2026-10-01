@@ -25,7 +25,7 @@ import { Config, resolveAssetPaths, getBundledAssetsDir } from "../config/config
 import { Agent } from "../agents/agent.js";
 import { Session } from "../session.js";
 import { loadTemplates } from "../templates/loader.js";
-import { loadSkillsMulti } from "../skills/loader.js";
+import { ensureBuiltinSkills, loadSkillsMulti } from "../skills/loader.js";
 import {
   SessionStore,
   loadGlobalSettings,
@@ -78,6 +78,9 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   // GUI 子进程希望其工作目录与项目匹配。
   // 这影响工具和 bash 中的相对路径解析。
   process.chdir(projectPath);
+
+  // Keep the protected workflow skills available even during first-run init.
+  ensureBuiltinSkills(join(homeDir, "skills"));
 
   const store = new SessionStore({ projectPath });
 

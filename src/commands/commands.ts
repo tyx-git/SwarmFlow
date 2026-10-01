@@ -177,6 +177,8 @@ export type SemanticColor = "success" | "error" | "muted";
 export interface CommandOption {
   /* 显示在统一选择器中的标签。 */
   label: string;
+  /** Optional fixed text rendered before the flexible label column. */
+  labelPrefix?: string;
   /**
    * Rich label segments with optional per-segment color.
    * When present, the label is rendered as concatenated colored segments
@@ -193,13 +195,11 @@ export interface CommandOption {
   disabled?: boolean;
   /* 分层选择的子选项（例如，提供者→模型）。 */
   children?: CommandOption[];
-  /* 复选框选择器模式的选中状态。 */
-  checked?: boolean;
   /* 当为true时，Enter打开一个内联文本输入，而不是立即提交。 */
   customInput?: boolean;
-  /* 标签显示在上面的内联文本输入（默认："您的指示："）。 */
+  /* Label shown above the inline text input. */
   inputLabel?: string;
-  /* 内嵌文本输入中的占位符（默认："键入您的指令"）。 */
+  /* Placeholder shown in the inline text input. */
   inputPlaceholder?: string;
 }
 
@@ -207,17 +207,19 @@ export interface CommandOption {
 export interface CommandOptionsContext {
   session: any;
   store?: SessionStore;
+  /** Active global SwarmFlow directory, when the UI supplies one. */
+  swarmflowHomeDir?: string;
 }
 
 /**
  * A single slash command.
  */
 export interface SlashCommand {
-  /* 命令名，例如："会话"。 */
+  /* Command name, for example "/session". */
   name: string;
-  /* /help输出中显示的简短描述。 */
+  /* Short description shown by /help. */
   description: string;
-  /* 执行命令时调用的异步处理程序。 */
+  /* Async handler invoked when the command runs. */
   handler: (ctx: CommandContext, args: string) => Promise<void>;
   /**
    * Optional callback that returns dynamic picker options for this command.
@@ -750,6 +752,7 @@ function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: strin
  */
 async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefined> {
   const session = ctx.session;
+  const t = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
   // Keep the final step uniform across registered and custom models. The
   // session/provider layer normalizes unsupported values for models whose
   // capabilities are not known locally.
@@ -766,12 +769,12 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
 
   const current = session.thinkingLevel ?? "";
   const options = availableLevels.map((level) => {
-    const currentMark = current === level ? "  (current)" : "";
+    const currentMark = current === level ? `  ${t.get(["Views", "commandPicker", "current"])}` : "";
     return { label: `${level}${currentMark}`, value: level };
   });
 
   const choice = (await ctx.promptCommandPicker(options, {
-    title: "Thinking depth",
+    title: t.get(["Views", "commandPicker", "thinkingTitle"]),
     inputArea: true,
   }))?.value;
   if (!choice) return undefined;
@@ -2834,7 +2837,8 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, picker: { inputArea: true }, category: "Provider and Model" });
   registry.register({ name: "/copilot", description: "Manage GitHub Copilot login", handler: cmdCopilot, options: copilotOptions, picker: { inputArea: true }, category: "Provider and Model" });
 
-  registry.register({ name: "/skills", description: "View and enable/disable skills globally", handler: cmdSkills, options: skillsOptions, picker: { inputArea: true, mode: "checkbox" }, category: "Ecosystem" });
+  registry.register({ name: "/skills", description: "Enable or disable installed skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, category: "Ecosystem" });
+  registry.register({ name: "/skills-creater", description: "Create a compatible Agent Skill", handler: cmdSkillsCreater, category: "Ecosystem" });
   registry.register({ name: "/mcp", description: "View, enable/disable, and reconnect MCP servers", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
   registry.register({ name: "/hooks", description: "View hook configuration and status", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
   registry.register({ name: "/memory", description: "Inspect and correct current session context", handler: cmdMemory, category: "Ecosystem" });
@@ -3178,84 +3182,124 @@ async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /技能命令
+// /skills — enable or disable installed skills
 // ------------------------------------------------------------------
+
+function skillText(ctx: CommandContext): UiText {
+  return createUiText(getUiLanguage(ctx.swarmflowHomeDir));
+}
 
 function skillsOptions(ctx: CommandOptionsContext): CommandOption[] {
   const session = ctx.session;
   if (!session?.getAllSkillNames) return [];
-  const allSkills = session.getAllSkillNames();
-  if (allSkills.length === 0) return [];
-
-  return allSkills.map((s: { name: string; description: string; enabled: boolean }) => ({
-    label: `${s.name}  ${s.description.length > 50 ? s.description.slice(0, 47) + "..." : s.description}`,
-    value: s.name,
-    checked: s.enabled,
-  }));
+  const t = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
+  return session
+    .getAllSkillNames()
+    .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name))
+    .map((skill: { name: string; description: string; enabled: boolean }) => ({
+      // The picker renders `label` as the flexible left/middle column and
+      // `detail` as the fixed right status column. Description truncation is
+      // therefore based on the actual terminal width, rather than a fixed
+      // character limit.
+      label: skill.description.trim(),
+      labelPrefix: skill.name,
+      value: skill.name,
+      detail: skill.enabled
+        ? t.get(["Commands", "/skills", "enabled"])
+        : t.get(["Commands", "/skills", "disabled"]),
+      detailColor: skill.enabled ? "success" : "error",
+    }));
 }
 
-async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
+function persistSkillAvailability(ctx: CommandContext, name: string, enabled: boolean): void {
   const session = ctx.session;
-  if (!session?.getAllSkillNames) {
-    ctx.showMessage("Skills system not available.");
-    return;
-  }
-
-  const trimmed = args.trim();
-  if (!trimmed) {
-    // 无参数-显示列表
-    const allSkills = session.getAllSkillNames();
-    if (allSkills.length === 0) {
-      ctx.showMessage("No skills installed.");
-      return;
-    }
-    const lines = ["Installed skills:"];
-    for (const s of allSkills) {
-      lines.push(`  ${s.enabled ? "[x]" : "[ ]"} ${s.name} — ${s.description}`);
-    }
-    ctx.showMessage(lines.join("\n"));
-    return;
-  }
-
-  // 复选框选择器提交以逗号分隔的启用技能名称
-  // 解析：所有项都已提交，启用的项在参数中
-  const enabledNames = new Set(trimmed.split(",").map((s: string) => s.trim()).filter(Boolean));
-  const allSkills = session.getAllSkillNames();
   const oldSkills = session.skills;
-  const enabledBefore = new Set(
-    allSkills
-      .filter((s: { enabled: boolean }) => s.enabled)
-      .map((s: { name: string }) => s.name),
-  );
-
-  for (const s of allSkills) {
-    session.setSkillEnabled(s.name, enabledNames.has(s.name));
-  }
+  session.setSkillEnabled(name, enabled);
   session.reloadSkills();
-  if (typeof session.notifySkillAvailabilityChanged === "function") {
-    const enabled = allSkills
-      .map((s: { name: string }) => s.name)
-      .filter((name: string) => enabledNames.has(name) && !enabledBefore.has(name));
-    const disabled = allSkills
-      .map((s: { name: string }) => s.name)
-      .filter((name: string) => !enabledNames.has(name) && enabledBefore.has(name));
-    session.notifySkillAvailabilityChanged({ enabled, disabled });
-  }
-
-  // 重新注册斜杠命令
   reRegisterSkillCommands(ctx.commandRegistry, oldSkills, session.skills);
-
-  const enabledCount = enabledNames.size;
-  const totalCount = allSkills.length;
-  ctx.showMessage(`Skills updated: ${enabledCount}/${totalCount} enabled.`);
-  // 将禁用的技能列表保存到settings.json中
+  if (typeof session.notifySkillAvailabilityChanged === "function") {
+    session.notifySkillAvailabilityChanged(enabled ? { enabled: [name] } : { disabled: [name] });
+  }
+  const allSkills = session.getAllSkillNames?.() ?? [];
   const disabledSkills = allSkills
-    .filter((s: { name: string }) => !enabledNames.has(s.name))
-    .map((s: { name: string }) => s.name);
+    .filter((skill: { enabled: boolean }) => !skill.enabled)
+    .map((skill: { name: string }) => skill.name);
   persistSettingsPatch(
     { disabled_skills: disabledSkills.length > 0 ? disabledSkills : undefined },
     ctx.swarmflowHomeDir,
   );
+}
+
+async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
+  const session = ctx.session;
+  const t = skillText(ctx);
+  if (!session?.getAllSkillNames) {
+    ctx.showMessage(t.get(["Commands", "/skills", "unavailable"]));
+    return;
+  }
+  const name = args.trim();
+  if (name) {
+    const skill = session.getAllSkillNames().find((item: { name: string }) => item.name === name);
+    if (!skill) {
+      ctx.showMessage(t.get(["Commands", "/skills", "unknown"], { name }));
+      return;
+    }
+    persistSkillAvailability(ctx, name, !skill.enabled);
+    (ctx.showHint ?? ctx.showMessage)(
+      `${name}: ${skill.enabled ? t.get(["Commands", "/skills", "disabled"]) : t.get(["Commands", "/skills", "enabled"])}`,
+    );
+    return;
+  }
+
+  const availableSkills = session.getAllSkillNames();
+  if (availableSkills.length === 0) {
+    ctx.showMessage(t.get(["Commands", "/skills", "empty"]));
+    return;
+  }
+
+  if (ctx.promptCommandPicker) {
+    for (;;) {
+      const picked = await ctx.promptCommandPicker(
+        skillsOptions({ session, store: ctx.store, swarmflowHomeDir: ctx.swarmflowHomeDir }),
+        {
+          title: t.get(["Commands", "/skills", "title"]),
+          inputArea: true,
+          mode: "toggle",
+        },
+      );
+      if (!picked) return;
+      const selected = session.getAllSkillNames().find((item: { name: string }) => item.name === picked.value);
+      if (!selected) return;
+      persistSkillAvailability(ctx, selected.name, !selected.enabled);
+    }
+  }
+
+  const allSkills = session.getAllSkillNames();
+  ctx.showMessage(allSkills.map((skill: { name: string; description: string; enabled: boolean }) =>
+    `${skill.name} ${skill.description.trim()} ${skill.enabled
+      ? t.get(["Commands", "/skills", "enabled"])
+      : t.get(["Commands", "/skills", "disabled"])}`,
+  ).join("\n"));
+}
+
+async function cmdSkillsCreater(ctx: CommandContext, args: string): Promise<void> {
+  const requirement = args.trim();
+  const prompt = [
+    "Act as the SwarmFlow skill creator.",
+    "Follow a plan-like clarification workflow: first understand the user's intended skill behavior before editing files.",
+    "Clarify purpose, trigger conditions, inputs, outputs, examples, tool constraints, compatibility with Codex and Claude Code, and the lowercase hyphenated skill name.",
+    "Present a concise SKILL.md draft and explicitly wait for the user's confirmation.",
+    "Only after explicit confirmation create ~/.swarmflow/skills/<skill-name>/SKILL.md. Do not overwrite an existing skill without permission.",
+    "After writing, report the exact path and ask the runtime to reload skills if needed.",
+    requirement ? `Initial user requirement: ${requirement}` : "The user has not supplied a requirement yet; ask for it.",
+  ].join("\n");
+  if (ctx.onInjectedTurnRequested) {
+    ctx.onInjectedTurnRequested(requirement ? `/skills-creater ${requirement}` : "/skills-creater", prompt);
+  } else if (ctx.onTurnRequested) {
+    ctx.onTurnRequested(prompt);
+  } else {
+    ctx.showMessage(prompt);
+  }
 }
 
 // ------------------------------------------------------------------
@@ -3272,7 +3316,6 @@ export function registerSkillCommands(
   registry: CommandRegistry,
   skills: ReadonlyMap<string, SkillMeta>,
 ): void {
-  const DOCUMENT_SKILLS = new Set(["pptx", "xlsx", "docx", "speaker"]);
   const sortedSkills = [...skills.values()].sort((a, b) => a.name.localeCompare(b.name));
   for (const skill of sortedSkills) {
     if (!skill.userInvocable) continue;
@@ -3288,7 +3331,7 @@ export function registerSkillCommands(
     registry.register({
       name: cmdName,
       description: captured.description,
-      category: DOCUMENT_SKILLS.has(captured.name) ? "Document Processing" as CommandCategory : "User Custom" as CommandCategory,
+      category: "User Custom" as CommandCategory,
       handler: async (ctx: CommandContext, args: string) => {
         const content = resolveSkillContent(captured, args);
         const tagged = `[SKILL: ${captured.name}]\n\n${content}`;
@@ -3315,7 +3358,11 @@ export function reRegisterSkillCommands(
   newSkills: ReadonlyMap<string, SkillMeta>,
 ): void {
   for (const skill of oldSkills.values()) {
-    registry.unregister("/" + skill.name);
+    if (!skill.userInvocable) continue;
+    const commandName = "/" + skill.name;
+    if (registry.lookup(commandName)?.category === "User Custom") {
+      registry.unregister(commandName);
+    }
   }
   registerSkillCommands(registry, newSkills);
 }

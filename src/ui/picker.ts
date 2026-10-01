@@ -8,8 +8,8 @@ export interface InputAreaPickerConfig {
 
 /** Registration metadata shared by slash-command picker implementations. */
 export interface CommandPickerPresentation extends InputAreaPickerConfig {
-  /** Single-level/hierarchical picker or multi-select checkbox picker. */
-  mode?: "single" | "checkbox";
+  /** Single-level/hierarchical picker or a one-item toggle picker. */
+  mode?: "single" | "toggle";
   /** Enable the optional note field on a command picker. */
   allowNote?: boolean;
 }

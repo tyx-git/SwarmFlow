@@ -11,18 +11,15 @@ import {
   isCommandPickerActive,
   isCommandPickerCustomInputOption,
 } from "../../../../src/ui/command-picker.js";
-import type { CheckboxPickerState } from "../../../../src/ui/checkbox-picker.js";
-import {
-  getCheckboxPickerVisibleRange,
-  isCheckboxPickerActive,
-} from "../../../../src/ui/checkbox-picker.js";
 import type { DisplayTheme } from "../theme/index.js";
+import { createUiText, type UiLanguage } from "../../../../src/lib/ui-text.js";
 import type {
   CommandOverlayState,
   OAuthOverlayState,
   PromptSecretState,
   PromptSelectState,
 } from "../types.js";
+import { stringWidth } from "../../forked/core/platform/runtime.js";
 import { truncateToWidth } from "../utils/format.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
@@ -57,11 +54,14 @@ type SemanticColor = "success" | "error" | "muted";
 interface OverlayOptionRowProps {
   theme: DisplayTheme;
   label: string;
+  labelPrefix?: string;
   labelParts?: Array<{ text: string; color?: SemanticColor }>;
   detail?: string;
   detailColor?: SemanticColor;
   /** Fixed column width for detail text (for cross-row alignment). */
   detailColumnWidth?: number;
+  /** Fixed column width for an optional left label prefix. */
+  labelPrefixColumnWidth?: number;
   selected: boolean;
   disabled?: boolean;
   width: number;
@@ -77,10 +77,12 @@ const SEMANTIC_COLOR_MAP: Record<string, (t: DisplayTheme) => string> = {
 function OverlayOptionRow({
   theme,
   label,
+  labelPrefix,
   labelParts,
   detail,
   detailColor,
   detailColumnWidth,
+  labelPrefixColumnWidth,
   selected,
   disabled = false,
   width,
@@ -89,6 +91,58 @@ function OverlayOptionRow({
   const isSelected = selected && !disabled;
   const fg = disabled ? theme.colors.muted : isSelected ? theme.colors.accent : theme.colors.dim;
   const prefix = isSelected ? "❯ " : "  ";
+
+  // Three-column rows (used by the skills picker): name on the left, a
+  // flexible description in the middle, and the enable state on the right.
+  // The description is truncated against the actual picker width.
+  if (labelPrefix !== undefined && detail !== undefined && detailColumnWidth) {
+    const gapWidth = 1;
+    const prefixWidth = Math.max(
+      stringWidth(`${prefix}${labelPrefix}`),
+      labelPrefixColumnWidth ?? 0,
+    );
+    const middleWidth = Math.max(1, width - prefixWidth - gapWidth * 2 - detailColumnWidth);
+    const detailFg = detailColor
+      ? SEMANTIC_COLOR_MAP[detailColor]?.(theme) ?? fg
+      : fg;
+
+    return (
+      <SelectableRow
+        hoverBackgroundColor={theme.colors.border}
+        onPress={disabled ? undefined : onPress}
+      >
+        <box flexDirection="row" width="100%">
+          <text
+            fg={fg}
+            content={truncateToWidth(`${prefix}${labelPrefix}`, prefixWidth)}
+            width={prefixWidth}
+            flexShrink={0}
+            wrapMode="none"
+            truncate
+          />
+          <box width={gapWidth} flexShrink={0} />
+          <text
+            fg={fg}
+            content={truncateToWidth(label, middleWidth)}
+            width={middleWidth}
+            flexGrow={1}
+            flexShrink={1}
+            wrapMode="none"
+            truncate
+          />
+          <box width={gapWidth} flexShrink={0} />
+          <text
+            fg={detailFg}
+            content={truncateToWidth(detail, detailColumnWidth)}
+            width={detailColumnWidth}
+            flexShrink={0}
+            wrapMode="none"
+            truncate
+          />
+        </box>
+      </SelectableRow>
+    );
+  }
 
   // Rich label: render as inline colored segments, no detail column
   if (labelParts && labelParts.length > 0) {
@@ -234,7 +288,7 @@ export function CommandPickerView(
     theme: DisplayTheme;
     contentWidth: number;
     maxVisible: number;
-    language?: "zh" | "en";
+    language?: UiLanguage;
     onItemClick: (index: number) => void;
     noteInputRef?: React.RefObject<InputRenderable | null>;
     noteValue?: string;
@@ -260,29 +314,34 @@ export function CommandPickerView(
   const modelPickerHasBranches = level.options.some((option) =>
     Array.isArray(option.children) && option.children.length > 0,
   );
+  const pickerText = createUiText(language);
   const inlineTitle = picker.commandName === "/model"
-    ? language === "zh"
-      ? (modelPickerHasBranches ? "选择供应商:" : "选择模型:")
-      : (modelPickerHasBranches ? "Select provider:" : "Select model:")
-    : picker.title?.toLowerCase() === "thinking depth"
-      ? language === "zh" ? "选择思考深度:" : "Select thinking depth:"
-      : picker.inputArea && !title
-        ? language === "zh" ? "选择:" : "Select:"
-        : title;
+    ? pickerText.get(["Views", "commandPicker", modelPickerHasBranches ? "selectProvider" : "selectModel"])
+    : picker.commandName === "/skills"
+      ? pickerText.get(["Views", "commandPicker", "skills"])
+      : picker.title === pickerText.get(["Views", "commandPicker", "thinkingTitle"])
+          ? pickerText.get(["Views", "commandPicker", "thinkingDepth"])
+          : picker.inputArea && !title
+            ? pickerText.get(["Views", "commandPicker", "select"])
+            : title;
 
   // Compute max detail width for column alignment
-  const hasAnyDetail = visibleOptions.some(o => o.detail !== undefined);
+  const hasAnyDetail = level.options.some(o => o.detail !== undefined);
   const detailColumnWidth = hasAnyDetail
-    ? Math.max(...visibleOptions.map(o => (o.detail ?? "").length))
+    ? Math.max(...level.options.map(o => stringWidth(o.detail ?? "")))
+    : 0;
+  const hasAnyLabelPrefix = level.options.some(o => o.labelPrefix !== undefined);
+  const labelPrefixColumnWidth = hasAnyLabelPrefix
+    ? Math.max(...level.options.map(o => stringWidth(o.labelPrefix ?? "") + 2))
     : 0;
 
   const isOnCustomInputOption = isCommandPickerCustomInputOption(picker);
   const showTabHint = picker.allowNote && !isOnCustomInputOption;
   const hintText = picker.noteEditing || picker.customInputMode
-    ? "Enter confirm · Esc cancel"
+    ? pickerText.get(["Views", "commandPicker", "confirmHint"])
     : showTabHint
-      ? "↑↓ navigate · Enter select · Tab add instructions · Esc cancel"
-      : "↑↓ navigate · Enter select · Esc cancel";
+      ? pickerText.get(["Views", "commandPicker", "navigateTabHint"])
+      : pickerText.get(["Views", "commandPicker", "navigateHint"]);
 
   return (
     <OverlayFrame theme={theme} height={pickerHeight}>
@@ -294,10 +353,12 @@ export function CommandPickerView(
             key={`picker-${picker.stack.length}-${actualIndex}`}
             theme={theme}
             label={item.label}
+            labelPrefix={item.labelPrefix}
             labelParts={item.labelParts}
             detail={item.detail}
             detailColor={item.detailColor}
             detailColumnWidth={detailColumnWidth}
+            labelPrefixColumnWidth={labelPrefixColumnWidth}
             selected={actualIndex === level.selected}
             disabled={item.disabled}
             width={rowContentWidth}
@@ -310,16 +371,16 @@ export function CommandPickerView(
           <text
             fg={theme.colors.accent}
             content={picker.customInputMode
-              ? (picker.customInputLabel ?? "Your instructions:")
-              : "Instructions:"}
+              ? (picker.customInputLabel ?? pickerText.get(["Views", "commandPicker", "yourInstructions"]))
+              : pickerText.get(["Views", "commandPicker", "instructions"])}
           />
           <input
             ref={(node) => { if (noteInputRef) (noteInputRef as React.MutableRefObject<InputRenderable | null>).current = node; }}
             value={noteValue ?? ""}
             focused={picker.noteEditing || picker.customInputMode}
             placeholder={picker.customInputMode
-              ? (picker.customInputPlaceholder ?? "Type your instructions")
-              : "Add review instructions..."}
+              ? (picker.customInputPlaceholder ?? pickerText.get(["Views", "commandPicker", "typeInstructions"]))
+              : pickerText.get(["Views", "commandPicker", "reviewInstructions"])}
             textColor={theme.colors.text}
             focusedTextColor={theme.colors.text}
             placeholderColor={theme.colors.dim}
@@ -329,49 +390,6 @@ export function CommandPickerView(
         </box>
       )}
       {!picker.inputArea ? <text fg={theme.colors.dim} content={truncateToWidth(hintText, contentWidth)} /> : null}
-    </OverlayFrame>
-  );
-}
-
-export function CheckboxPickerView(
-  {
-    picker,
-    theme,
-    contentWidth,
-    onItemClick,
-  }: {
-    picker: CheckboxPickerState | null;
-    theme: DisplayTheme;
-    contentWidth: number;
-    onItemClick: (index: number) => void;
-  },
-): React.ReactNode {
-  if (!isCheckboxPickerActive(picker)) return null;
-
-  const visibleLimit = Math.min(picker.maxVisible, MAX_COMMAND_LIST_VISIBLE);
-  const visiblePicker = visibleLimit === picker.maxVisible ? picker : { ...picker, maxVisible: visibleLimit };
-  const { start, end } = getCheckboxPickerVisibleRange(visiblePicker);
-  const visibleItems = picker.items.slice(start, end);
-  const pickerHeight = 1 + visibleItems.length + (picker.inputArea ? 0 : 1);
-
-  return (
-    <OverlayFrame theme={theme} height={pickerHeight}>
-      <text fg={theme.colors.accent} content={truncateToWidth(picker.title, contentWidth)} />
-      {visibleItems.map((item, index) => {
-        const actualIndex = start + index;
-        const checkbox = item.checked ? "[x]" : "[ ]";
-        return (
-          <OverlayOptionRow
-            key={`checkbox-${actualIndex}`}
-            theme={theme}
-            label={`${checkbox} ${item.label}`}
-            selected={actualIndex === picker.selected}
-            width={contentWidth}
-            onPress={() => onItemClick(actualIndex)}
-          />
-        );
-      })}
-      {!picker.inputArea ? <text fg={theme.colors.dim} content={truncateToWidth("Space toggle · Enter confirm · Esc cancel", contentWidth)} /> : null}
     </OverlayFrame>
   );
 }

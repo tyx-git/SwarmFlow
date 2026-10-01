@@ -92,7 +92,8 @@ describe("/model command", () => {
 
     expect(optionCommands.length).toBeGreaterThan(0);
     expect(optionCommands.every((command) => command.picker?.inputArea === true)).toBe(true);
-    expect(registry.lookup("/skills")?.picker?.mode).toBe("checkbox");
+    expect(registry.lookup("/skills")?.picker?.mode).toBe("toggle");
+    expect(registry.lookup("/skills-manager")).toBeUndefined();
     expect(registry.lookup("/model")?.picker?.mode).toBe("single");
   });
 

@@ -5,7 +5,7 @@ import { Config, resolveAssetPaths, getBundledAssetsDir } from "../../src/config
 import { Agent } from "../../src/agents/agent.js";
 import { Session } from "../../src/session.js";
 import { loadTemplates } from "../../src/templates/loader.js";
-import { loadSkillsMulti } from "../../src/skills/loader.js";
+import { ensureBuiltinSkills, loadSkillsMulti } from "../../src/skills/loader.js";
 import {
   SessionStore,
   loadGlobalSettings,
@@ -140,6 +140,9 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   const { providerEnvVars, localProviders, mcpServers } = settingsToConfigInputs(settings);
 
   // ── Build Config ──
+  // Materialize the protected workflow skills before resolving roots so a
+  // first-run home directory is included in the merged skill search path.
+  ensureBuiltinSkills(join(homeDir, "skills"));
   const paths = resolveAssetPaths({
     templatesFlag: opts?.templates,
     projectPath,

@@ -12,6 +12,8 @@ export interface CommandPickerLevel {
 
 export interface CommandPickerState extends InputAreaPickerConfig {
   commandName: string;
+  /** Picker behavior. Toggle pickers submit one item and remain open. */
+  mode: "single" | "toggle";
   maxVisible: number;
   stack: CommandPickerLevel[];
   note: string;
@@ -29,6 +31,7 @@ export interface CommandPickerState extends InputAreaPickerConfig {
 export type CommandPickerAcceptResult =
   | { kind: "drill_down"; picker: CommandPickerState }
   | { kind: "custom_input"; picker: CommandPickerState }
+  | { kind: "toggle"; command: string; value: string }
   | { kind: "submit"; command: string; note?: string };
 
 export interface CommandPickerResult {
@@ -68,10 +71,12 @@ export function createCommandPicker(
   title?: string,
   allowNote = false,
   inputArea = false,
+  mode: "single" | "toggle" = "single",
 ): CommandPickerState {
   const selected = firstSelectableIndex(options);
   return {
     commandName,
+    mode,
     title,
     maxVisible,
     stack: [{ label: commandName, options, selected, visibleStart: 0 }],
@@ -257,6 +262,14 @@ export function acceptCommandPickerSelection(
         customInputLabel: option.inputLabel,
         customInputPlaceholder: option.inputPlaceholder,
       },
+    };
+  }
+
+  if (picker.mode === "toggle") {
+    return {
+      kind: "toggle",
+      command: `${picker.commandName} ${option.value}`.trim(),
+      value: option.value,
     };
   }
 

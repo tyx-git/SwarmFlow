@@ -16,7 +16,7 @@
  *       +-- SKILL.md
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as yaml from "js-yaml";
 
@@ -37,6 +37,50 @@ export interface SkillMeta {
   dir: string;
   /** frontmatter 之后的 SKILL.md 正文（原始 markdown）。*/
   contentRaw: string;
+}
+
+/**
+ * Skill definition used by the built-in `/skills-creater` workflow.
+ *
+ * They are copied to the user's global skill directory on first startup so
+ * the workflow remains inspectable and compatible with other Agent Skills
+ * clients.  The files are only created when absent; user edits are preserved.
+ */
+export const BUILTIN_SKILL_DEFINITIONS: ReadonlyArray<{ name: string; content: string }> = [
+  {
+    name: "skills-creater",
+    content: `---
+name: skills-creater
+description: Guide the user through designing and creating a compatible Agent Skill.
+disable-model-invocation: true
+user-invocable: false
+---
+
+# Skill creator workflow
+
+Clarify the user's goal, triggers, inputs, outputs, examples, and constraints before writing anything. Present a concise SKILL.md draft and wait for explicit confirmation. After confirmation, create the skill under \`~/.swarmflow/skills/<skill-name>/SKILL.md\` with lowercase hyphenated naming and frontmatter compatible with Codex and Claude Code. Do not write the file before confirmation and do not overwrite an existing skill without permission.
+`,
+  },
+];
+
+/** Ensure the built-in skill creator workflow exists in a global skill directory. */
+export function ensureBuiltinSkills(globalSkillsRoot: string): void {
+  try {
+    mkdirSync(globalSkillsRoot, { recursive: true });
+    for (const definition of BUILTIN_SKILL_DEFINITIONS) {
+      const dir = join(globalSkillsRoot, definition.name);
+      const skillMd = join(dir, "SKILL.md");
+      if (existsSync(skillMd)) continue;
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(skillMd, definition.content, "utf-8");
+    }
+  } catch (error) {
+    // A read-only home should not prevent the runtime from starting; the
+    // protected commands remain available even without persisted skill files.
+    console.warn(
+      `Unable to initialize built-in skills: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 // ------------------------------------------------------------------

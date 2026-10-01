@@ -72,7 +72,6 @@ interface InputAreaProps {
   inlinePicker?: React.ReactNode;
   /** Session usage panel attached to the input area's lower edge. */
   usagePanel?: React.ReactNode;
-  checkboxPicker: boolean;
   promptSelect: boolean;
   promptSecret: boolean;
   /** Number of running child agents. */
@@ -143,7 +142,6 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     commandPicker,
     inlinePicker,
     usagePanel,
-    checkboxPicker,
     promptSelect,
     promptSecret,
     runningAgentCount = 0,
@@ -164,7 +162,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
         ? t.get(["Views", "input", "queuedHint"])
         : t.get(["Views", "input", "default"]);
 
-  const focused = phase !== "closing" && !pendingAsk && !commandPicker && !checkboxPicker && !promptSelect && !promptSecret && !selectedChildId;
+  const focused = phase !== "closing" && !pendingAsk && !commandPicker && !promptSelect && !promptSecret && !selectedChildId;
 
   const spinnerConfig = getPhaseSpinnerConfig(phase);
   const activeSpinner = useSpinner(spinnerConfig.frames, spinnerConfig.interval, processing);
@@ -305,7 +303,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
       {usagePanel}
 
       {/* Bottom row: permission, cwd, session, cache hit, context usage. */}
-      {!commandOverlayVisible && !commandPicker && !checkboxPicker && !promptSelect && !promptSecret && !pendingAsk ? (
+      {!commandOverlayVisible && !commandPicker && !promptSelect && !promptSecret && !pendingAsk ? (
         <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1} flexShrink={0}>
           <box flexDirection="row" flexShrink={1} flexGrow={0}>
             {hint ? (

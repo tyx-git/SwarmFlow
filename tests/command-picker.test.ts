@@ -104,4 +104,21 @@ describe("command picker", () => {
     expect(parent?.inputArea).toBe(true);
     expect(parent?.stack).toHaveLength(1);
   });
+
+  it("returns a toggle result for a toggle picker", () => {
+    const picker = createCommandPicker(
+      "/skills",
+      [{ label: "demo description enable", value: "demo" }],
+      5,
+      "Skills",
+      false,
+      true,
+      "toggle",
+    );
+    expect(acceptCommandPickerSelection(picker)).toEqual({
+      kind: "toggle",
+      command: "/skills demo",
+      value: "demo",
+    });
+  });
 });

@@ -74,7 +74,14 @@
         "echo": "MCP 切换为"
       },
       "/skills": {
-        "echo": "技能切换为"
+        "echo": "技能切换为",
+        "title": "技能",
+        "enabled": "启用",
+        "disabled": "未启用",
+        "empty": "没有已安装的 Skill。",
+        "unavailable": "技能系统不可用。",
+        "unknown": "未知 Skill：{name}",
+        "usage": "使用 /skills 管理 Skill，或使用 /skills-creater 创建 Skill。"
       },
       "/hooks": {
         "echo": "钩子切换为"
@@ -95,6 +102,22 @@
         "childActive": "Esc/^C 关闭或中断 · Opt+←→ 切换标签 · Opt+↑ 主会话",
         "queuedHint": "↑ 可编辑排队中的消息",
         "default": "输入消息或 /命令"
+      },
+      "commandPicker": {
+        "selectProvider": "选择供应商:",
+        "selectModel": "选择模型:",
+        "thinkingTitle": "思考深度",
+        "thinkingDepth": "选择思考深度:",
+        "skills": "技能:",
+        "select": "选择:",
+        "current": "（当前）",
+        "confirmHint": "回车确认 · Esc 取消",
+        "navigateHint": "↑↓ 移动 · 回车选择 · Esc 取消",
+        "navigateTabHint": "↑↓ 移动 · 回车选择 · Tab 添加说明 · Esc 取消",
+        "yourInstructions": "你的指示：",
+        "instructions": "说明：",
+        "typeInstructions": "输入你的说明",
+        "reviewInstructions": "添加审查说明…"
       },
       "statusBar": {
         "permission": "权限",
@@ -290,7 +313,14 @@
         "echo": "MCP switched to"
       },
       "/skills": {
-        "echo": "Skills switched to"
+        "echo": "Skills switched to",
+        "title": "Skills",
+        "enabled": "enable",
+        "disabled": "disable",
+        "empty": "No skills installed.",
+        "unavailable": "Skills system is not available.",
+        "unknown": "Unknown skill: {name}",
+        "usage": "Use /skills to manage skills or /skills-creater to create one."
       },
       "/hooks": {
         "echo": "Hooks switched to"
@@ -311,6 +341,22 @@
         "childActive": "Esc/^C close or interrupt · Opt+←→ switch tabs · Opt+↑ main",
         "queuedHint": "↑ to edit the queued message",
         "default": "message or /command"
+      },
+      "commandPicker": {
+        "selectProvider": "Select provider:",
+        "selectModel": "Select model:",
+        "thinkingTitle": "Thinking depth",
+        "thinkingDepth": "Select thinking depth:",
+        "skills": "Skills:",
+        "select": "Select:",
+        "current": "(current)",
+        "confirmHint": "Enter confirm · Esc cancel",
+        "navigateHint": "↑↓ navigate · Enter select · Esc cancel",
+        "navigateTabHint": "↑↓ navigate · Enter select · Tab add instructions · Esc cancel",
+        "yourInstructions": "Your instructions:",
+        "instructions": "Instructions:",
+        "typeInstructions": "Type your instructions",
+        "reviewInstructions": "Add review instructions…"
       },
       "statusBar": {
         "permission": "Permission",

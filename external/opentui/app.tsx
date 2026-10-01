@@ -43,18 +43,10 @@ import {
   setCommandPickerSelection,
   setCommandPickerNote,
   toggleCommandPickerNoteEditing,
+  type CommandPickerAcceptResult,
   type CommandPickerResult,
   type CommandPickerState,
 } from "../../src/ui/command-picker.js";
-import {
-  createCheckboxPicker,
-  isCheckboxPickerActive,
-  moveCheckboxSelection,
-  setCheckboxPickerSelection,
-  submitCheckboxPicker,
-  toggleCheckboxItem,
-  type CheckboxPickerState,
-} from "../../src/ui/checkbox-picker.js";
 import {
   type InputRenderable,
   type KeyBinding,
@@ -574,7 +566,6 @@ export function OpenTuiApp({
   const [commandOverlay, setCommandOverlay] = useState<CommandOverlayState>(EMPTY_COMMAND_OVERLAY);
   const [commandPicker, setCommandPicker] = useState<CommandPickerState | null>(null);
   const [modelUiRevision, setModelUiRevision] = useState(0);
-  const [checkboxPicker, setCheckboxPicker] = useState<CheckboxPickerState | null>(null);
   const [promptSelect, setPromptSelect] = useState<PromptSelectState | null>(null);
   const [helpPanel, setHelpPanel] = useState(false);
   const [promptSecret, setPromptSecret] = useState<PromptSecretState | null>(null);
@@ -1022,7 +1013,6 @@ export function OpenTuiApp({
     setDraftValue("");
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
     setCommandPicker(null);
-    setCheckboxPicker(null);
     if (inputRef.current) {
       inputRef.current.extmarks.clear();
       inputRef.current.setText("");
@@ -1241,7 +1231,6 @@ export function OpenTuiApp({
     };
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
     setCommandPicker(null);
-    setCheckboxPicker(null);
     setPromptSelect({
       message: "Background shells",
       options,
@@ -1350,7 +1339,6 @@ export function OpenTuiApp({
     setHint(null);
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
     setCommandPicker(null);
-    setCheckboxPicker(null);
     if (closingTimerRef.current) {
       clearTimeout(closingTimerRef.current);
     }
@@ -1362,6 +1350,7 @@ export function OpenTuiApp({
     return command.options({
       session,
       store: store ?? undefined,
+      swarmflowHomeDir: getSwarmflowHomeDir(),
     });
   }, [commandRegistry, session, store]);
   const pickerMaxVisible = computePickerMaxVisible(terminal.height, theme.layout);
@@ -1373,21 +1362,6 @@ export function OpenTuiApp({
     const canonicalCommandName = command?.name ?? cmdName;
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
     const pickerPresentation = command?.picker;
-    if (pickerPresentation?.mode === "checkbox") {
-      setCheckboxPicker(
-        createCheckboxPicker(
-          pickerPresentation.title ?? canonicalCommandName,
-          options.map((option) => ({
-            label: option.label,
-            value: option.value,
-            checked: option.checked !== false,
-          })),
-          Math.min(commandListMaxVisible, options.length),
-          pickerPresentation?.inputArea ?? false,
-        ),
-      );
-      return true;
-    }
     setCommandPicker(
       createCommandPicker(
         canonicalCommandName,
@@ -1396,12 +1370,13 @@ export function OpenTuiApp({
         pickerPresentation?.title,
         pickerPresentation?.allowNote ?? false,
         pickerPresentation?.inputArea ?? false,
+        pickerPresentation?.mode === "toggle" ? "toggle" : "single",
       ),
     );
     return true;
   }, [buildCommandOptions, commandRegistry, commandListMaxVisible]);
   const updateInputOverlay = useCallback((value: string, cursorOffset: number) => {
-    if (commandPicker || checkboxPicker || promptSelect || promptSecret) return;
+    if (commandPicker || promptSelect || promptSecret) return;
     const livePrefix = inputRef.current ? inputRef.current.getTextRange(0, cursorOffset) : value;
     if (isCommandOverlayEligible(livePrefix)) {
       const prefix = livePrefix.slice(1);
@@ -1440,7 +1415,7 @@ export function OpenTuiApp({
       }
     }
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
-  }, [checkboxPicker, commandPicker, commandRegistry, promptSecret, promptSelect]);
+  }, [commandPicker, commandRegistry, promptSecret, promptSelect]);
   updateInputOverlayRef.current = updateInputOverlay;
   const resetTurnPasteState = useCallback(() => {
     pasteCounterRef.current.reset();
@@ -1523,11 +1498,10 @@ export function OpenTuiApp({
       });
       return;
     }
-    if (!pendingAsk && !commandPicker && !checkboxPicker && !promptSelect) {
+    if (!pendingAsk && !commandPicker && !promptSelect) {
       focusComposerSoon();
     }
   }, [
-    checkboxPicker,
     commandPicker,
     customInputMode,
     focusComposerSoon,
@@ -1659,7 +1633,6 @@ export function OpenTuiApp({
           promptSecretResolverRef.current = resolve;
           setCommandOverlay(EMPTY_COMMAND_OVERLAY);
           setCommandPicker(null);
-          setCheckboxPicker(null);
           setPromptSecret({
             message: request.message,
             allowEmpty: request.allowEmpty ?? false,
@@ -1676,7 +1649,6 @@ export function OpenTuiApp({
           promptSelectResolverRef.current = resolve;
           setCommandOverlay(EMPTY_COMMAND_OVERLAY);
           setCommandPicker(null);
-          setCheckboxPicker(null);
           setPromptSelect({
             message: request.message,
             options: request.options,
@@ -1692,7 +1664,6 @@ export function OpenTuiApp({
           commandPickerResolverRef.current = resolve;
           setCommandOverlay(EMPTY_COMMAND_OVERLAY);
           setPromptSelect(null);
-          setCheckboxPicker(null);
           setPickerNoteValue("");
           setCommandPicker(
             createCommandPicker(
@@ -1702,6 +1673,7 @@ export function OpenTuiApp({
               config?.title,
               config?.allowNote,
               config?.inputArea ?? true,
+              config?.mode === "toggle" ? "toggle" : "single",
             ),
           );
         });
@@ -1789,7 +1761,7 @@ export function OpenTuiApp({
   // against turns via its turn lock, so they need no UI "Working" state. While
   // a turn is processing we only intercept them with a hint so they are not
   // queued to the LLM as a user message.
-  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/provider", "/model", "/permission", "/theme", "/hooks"]);
+  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/skills-creater", "/provider", "/model", "/permission", "/theme", "/hooks"]);
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;
@@ -2020,9 +1992,10 @@ export function OpenTuiApp({
     setComposerText(`${selectedValue} `);
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
   }, [acceptInputOverlaySelection, commandOverlay, setComposerText]);
-  const acceptCommandPickerSelectionLocal = useCallback(() => {
-    if (!commandPicker) return;
-    const result = acceptCommandPickerSelection(commandPicker);
+  const applyCommandPickerResult = useCallback((
+    result: CommandPickerAcceptResult | null,
+    sourcePicker: CommandPickerState,
+  ): void => {
     if (!result) {
       setCommandPicker(null);
       return;
@@ -2036,6 +2009,21 @@ export function OpenTuiApp({
       setCommandPicker(result.picker);
       return;
     }
+    if (result.kind === "toggle") {
+      const commandName = sourcePicker.commandName;
+      setCommandPicker(null);
+      setPickerNoteValue("");
+      const pickerResolver = commandPickerResolverRef.current;
+      if (pickerResolver) {
+        commandPickerResolverRef.current = null;
+        pickerResolver({ value: result.value });
+      } else {
+        void handleSubmit(result.command).finally(() => {
+          startCommandPicker(commandName);
+        });
+      }
+      return;
+    }
     setCommandPicker(null);
     setPickerNoteValue("");
     const pickerResolver = commandPickerResolverRef.current;
@@ -2047,43 +2035,18 @@ export function OpenTuiApp({
       return;
     }
     void handleSubmit(result.command);
-  }, [commandPicker, handleSubmit]);
+  }, [handleSubmit, startCommandPicker]);
+  const acceptCommandPickerSelectionLocal = useCallback(() => {
+    if (!commandPicker) return;
+    const result = acceptCommandPickerSelection(commandPicker);
+    applyCommandPickerResult(result, commandPicker);
+  }, [applyCommandPickerResult, commandPicker]);
   const clickCommandPickerItem = useCallback((index: number) => {
     if (!commandPicker) return;
     const withSelection = setCommandPickerSelection(commandPicker, index);
     const result = acceptCommandPickerSelection(withSelection);
-    if (!result) {
-      setCommandPicker(null);
-      return;
-    }
-    if (result.kind === "drill_down") {
-      setCommandPicker(result.picker);
-      return;
-    }
-    if (result.kind === "custom_input") {
-      setPickerNoteValue("");
-      setCommandPicker(result.picker);
-      return;
-    }
-    setCommandPicker(null);
-    setPickerNoteValue("");
-    const pickerResolver = commandPickerResolverRef.current;
-    if (pickerResolver) {
-      commandPickerResolverRef.current = null;
-      const spaceIdx = result.command.indexOf(" ");
-      const value = spaceIdx >= 0 ? result.command.slice(spaceIdx + 1) : result.command;
-      pickerResolver({ value, note: result.note });
-      return;
-    }
-    void handleSubmit(result.command);
-  }, [commandPicker, handleSubmit]);
-  const clickCheckboxPickerItem = useCallback((index: number) => {
-    setCheckboxPicker((current) => {
-      if (!current) return current;
-      const withSelection = setCheckboxPickerSelection(current, index);
-      return toggleCheckboxItem(withSelection);
-    });
-  }, []);
+    applyCommandPickerResult(result, withSelection);
+  }, [applyCommandPickerResult, commandPicker]);
   const clickOverlayItem = useCallback((index: number) => {
     const selectedValue = commandOverlay.values[index];
     if (!selectedValue) {
@@ -2115,15 +2078,6 @@ export function OpenTuiApp({
     const option = promptSelect.options[clamp(index, 0, promptSelect.options.length - 1)];
     resolvePromptSelect(option?.value);
   }, [promptSelect, resolvePromptSelect]);
-  const submitCheckboxPickerSelection = useCallback(async () => {
-    if (!checkboxPicker) return;
-    const result = submitCheckboxPicker(checkboxPicker);
-    if (result.kind !== "submit") return;
-    const enabled = result.items.filter((item) => item.checked).map((item) => item.value);
-    const args = enabled.length > 0 ? enabled.join(",") : ",";
-    setCheckboxPicker(null);
-    await handleSubmit(`/skills ${args}`);
-  }, [checkboxPicker, handleSubmit]);
   const deleteToVisualLineStart = useCallback(() => {
     const composer = inputRef.current;
     if (!composer) return;
@@ -2490,38 +2444,6 @@ export function OpenTuiApp({
         }
       }
     }
-    if (isCheckboxPickerActive(checkboxPicker)) {
-      if (event.name === "up" || (event.name === "tab" && event.shift)) {
-        setCheckboxPicker((current) => current ? moveCheckboxSelection(current, -1) : current);
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      if (event.name === "down" || event.name === "tab") {
-        setCheckboxPicker((current) => current ? moveCheckboxSelection(current, 1) : current);
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      if (event.name === "space") {
-        setCheckboxPicker((current) => current ? toggleCheckboxItem(current) : current);
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      if (event.name === "return") {
-        event.preventDefault();
-        event.stopPropagation();
-        void submitCheckboxPickerSelection();
-        return;
-      }
-      if (event.name === "escape") {
-        setCheckboxPicker(null);
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-    }
     if (isCommandPickerActive(commandPicker)) {
       if (commandPicker.noteEditing) {
         if (event.name === "return") {
@@ -2853,11 +2775,6 @@ export function OpenTuiApp({
       // 1. Close overlays first
       if (commandPicker) {
         setCommandPicker(null);
-        setCommandOverlay(EMPTY_COMMAND_OVERLAY);
-        return;
-      }
-      if (checkboxPicker) {
-        setCheckboxPicker(null);
         setCommandOverlay(EMPTY_COMMAND_OVERLAY);
         return;
       }
@@ -3209,7 +3126,6 @@ export function OpenTuiApp({
         setPickerNoteValue(value);
         setCommandPicker((current) => current ? setCommandPickerNote(current, value) : current);
       }}
-      checkboxPicker={checkboxPicker}
       promptSelect={promptSelect}
       promptSecret={promptSecret}
       promptSecretInputRef={promptSecretInputRef}
@@ -3217,7 +3133,6 @@ export function OpenTuiApp({
       helpPanel={helpPanel}
       onOverlayItemClick={clickOverlayItem}
       onCommandPickerItemClick={clickCommandPickerItem}
-      onCheckboxPickerItemClick={clickCheckboxPickerItem}
       onPromptSelectItemClick={clickPromptSelectItem}
       onPromptSecretSubmit={submitPromptSecret}
       inputRef={inputRef}
@@ -3313,7 +3228,6 @@ export function OpenTuiApp({
       onBackgroundMouseDown={() => {
         if (commandOverlay.visible) setCommandOverlay(EMPTY_COMMAND_OVERLAY);
         if (commandPicker) setCommandPicker(null);
-        if (checkboxPicker) setCheckboxPicker(null);
       }}
     />
   );

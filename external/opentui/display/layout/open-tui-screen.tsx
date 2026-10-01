@@ -6,7 +6,6 @@ import type { InputRenderable, KeyBinding, ScrollBoxRenderable, TextareaRenderab
 import type { PendingAskUi } from "../../../../src/ask.js";
 import type { AgentQuestionItem } from "../../../../src/ask.js";
 import type { CommandPickerState } from "../../../../src/ui/command-picker.js";
-import type { CheckboxPickerState } from "../../../../src/ui/checkbox-picker.js";
 import type { PresentationEntry } from "../../presentation/types.js";
 import type { ComposerTokenVisuals } from "../../composer-tokens.js";
 import type { UiText } from "../../../../src/lib/ui-text.js";
@@ -33,7 +32,6 @@ import type {
 } from "../types.js";
 import { AskPanelView } from "../panels/ask-panel.js";
 import {
-  CheckboxPickerView,
   CommandOverlayView,
   CommandPickerView,
   OAuthOverlayView,
@@ -96,7 +94,6 @@ export interface OpenTuiScreenProps {
   pickerNoteInputRef: React.RefObject<InputRenderable | null>;
   pickerNoteValue: string;
   onPickerNoteInput: (value: string) => void;
-  checkboxPicker: CheckboxPickerState | null;
   promptSelect: PromptSelectState | null;
   promptSecret: PromptSecretState | null;
   promptSecretInputRef: React.RefObject<InputRenderable | null>;
@@ -104,7 +101,6 @@ export interface OpenTuiScreenProps {
   helpPanel: boolean;
   onOverlayItemClick: (index: number) => void;
   onCommandPickerItemClick: (index: number) => void;
-  onCheckboxPickerItemClick: (index: number) => void;
   onPromptSelectItemClick: (index: number) => void;
   onPromptSecretSubmit: (value: string) => void;
   inputRef: React.RefObject<TextareaRenderable | null>;
@@ -214,7 +210,6 @@ export function OpenTuiScreen({
   pickerNoteInputRef,
   pickerNoteValue,
   onPickerNoteInput,
-  checkboxPicker,
   promptSelect,
   promptSecret,
   promptSecretInputRef,
@@ -222,7 +217,6 @@ export function OpenTuiScreen({
   helpPanel,
   onOverlayItemClick,
   onCommandPickerItemClick,
-  onCheckboxPickerItemClick,
   onPromptSelectItemClick,
   onPromptSecretSubmit,
   inputRef,
@@ -332,13 +326,6 @@ export function OpenTuiScreen({
       noteValue={pickerNoteValue}
       onNoteInput={onPickerNoteInput}
     />
-  ) : checkboxPicker?.inputArea ? (
-    <CheckboxPickerView
-      picker={checkboxPicker}
-      theme={theme}
-      contentWidth={inlinePickerContentWidth}
-      onItemClick={onCheckboxPickerItemClick}
-    />
   ) : promptSelect?.inputArea ? (
     <PromptSelectView
       prompt={promptSelect}
@@ -398,7 +385,6 @@ export function OpenTuiScreen({
           uiText={uiText}
         />
       ) : undefined}
-      checkboxPicker={Boolean(checkboxPicker)}
       promptSelect={Boolean(promptSelect)}
       promptSecret={Boolean(promptSecret)}
       agentsPanelOpen={agentsPanelOpen}
@@ -457,12 +443,6 @@ export function OpenTuiScreen({
           contentWidth={Math.max(20, conversationColumnWidth - effectiveSidebarWidth)}
         />
       ) : null}
-      <CheckboxPickerView
-        picker={checkboxPicker?.inputArea ? null : checkboxPicker}
-        theme={theme}
-        contentWidth={pickerContentWidth}
-        onItemClick={onCheckboxPickerItemClick}
-      />
       <PromptSelectView
         prompt={promptSelect?.inputArea ? null : promptSelect}
         theme={theme}
