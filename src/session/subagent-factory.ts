@@ -2,7 +2,7 @@
  * SubAgentFactory —— 为子会话构建 Agent 实例（P2.4a）。
  *
  * 拥有模板查找（预定义 + 磁盘）、模型解析
- *（agent_models pin > model_level tier > 父模型）、comm 工具剥离、
+ *（agent_models pin > model_level tier > session default > 父模型）、comm 工具剥离、
  * 以及子会话 system-prompt 分层。模型条目解析和状态回退
  * 通过 deps 闭包回调 Session。
  */
@@ -41,6 +41,7 @@ export interface SubAgentFactoryDeps {
   resolveTierModel(tier: ModelTierEntry): ResolvedSubAgentModel;
   /** 追加状态条目到会话日志（模型回退通知）。 */
   appendStatus(message: string, statusType: string): void;
+  getSubagentDefaultModel?(): ResolvedSubAgentModel | undefined;
 }
 
 /**
@@ -48,7 +49,7 @@ export interface SubAgentFactoryDeps {
  *
  * 职责：
  * - 模板查找：预定义模板（从 prompts/templates/）或磁盘模板
- * - 模型解析优先级：agent_models pin > model_level tier > 父模型
+ * - 模型解析优先级：agent_models pin > model_level tier > session default > 父模型
  * - 工具约束：剥离 comm 工具、剥离不可继承的 MCP 工具
  * - System prompt 分层：模板 prompt + 模式 prompt（oneshot/persistent）
  */
@@ -192,7 +193,7 @@ export class SubAgentFactory {
 
   /**
    * 解析预定义子 Agent 模板的模型。
-   * 优先级：agent_models pin > model_level tier > 父模型。
+   * 优先级：agent_models pin > model_level tier > session default > 父模型。
    */
   private _resolveSubAgentModel(templateName: string, modelLevel?: string): ResolvedSubAgentModel {
     // 优先级 1：agent_models[templateName]——静默忽略 model_level
@@ -208,7 +209,7 @@ export class SubAgentFactory {
       return { modelConfig: this.deps.getParentModelConfig() };
     }
 
-    // 优先级 2+3：tier 或父模型
+    // 显式 tier 优先于 /agents 保存的当前会话默认值。
     return this._getSubAgentModelConfig(modelLevel);
   }
 
@@ -227,6 +228,8 @@ export class SubAgentFactory {
         return { modelConfig: this.deps.getParentModelConfig() };
       }
     }
+    const configuredDefault = this.deps.getSubagentDefaultModel?.();
+    if (configuredDefault) return configuredDefault;
     return { modelConfig: this.deps.getParentModelConfig() };
   }
 

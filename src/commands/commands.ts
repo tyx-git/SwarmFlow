@@ -62,6 +62,7 @@ import { launchDesignHelper } from "../browser/index.js";
 import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme.js";
 import { THINKING_LEVEL_LIST } from "../config/thinking.js";
 import { createUiText, getUiLanguage, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
+import type { SubagentDefaultModel } from "../session/subagent-settings.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -750,7 +751,10 @@ function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: strin
  *
  * Returns the selected level string, or undefined if the user cancelled.
  */
-async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefined> {
+async function promptThinkingLevel(
+  ctx: CommandContext,
+  config?: { current?: string; applyToSession?: boolean },
+): Promise<string | undefined> {
   const session = ctx.session;
   const t = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
   // Keep the final step uniform across registered and custom models. The
@@ -767,19 +771,19 @@ async function promptThinkingLevel(ctx: CommandContext): Promise<string | undefi
     return undefined;
   }
 
-  const current = session.thinkingLevel ?? "";
-  const options = availableLevels.map((level) => {
+  const current = config?.current ?? session.thinkingLevel ?? "";
+  const pickerOptions = availableLevels.map((level) => {
     const currentMark = current === level ? `  ${t.get(["Views", "commandPicker", "current"])}` : "";
     return { label: `${level}${currentMark}`, value: level };
   });
 
-  const choice = (await ctx.promptCommandPicker(options, {
+  const choice = (await ctx.promptCommandPicker(pickerOptions, {
     title: t.get(["Views", "commandPicker", "thinkingTitle"]),
     inputArea: true,
   }))?.value;
   if (!choice) return undefined;
 
-  session.thinkingLevel = choice;
+  if (config?.applyToSession !== false) session.thinkingLevel = choice;
   return choice;
 }
 
@@ -835,6 +839,18 @@ export function resolveModelSelection(
  */
 function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
   return modelOptionsWithTree(ctx);
+}
+
+function subagentModelOptions(ctx: CommandOptionsContext): CommandOption[] {
+  const saved = ctx.session.getSubagentDefaultModelSettings?.();
+  return modelOptionsWithTree(ctx, saved ? {
+    currentSelection: {
+      configName: saved.config_name,
+      provider: saved.provider,
+      selectionKey: saved.selection_key,
+      modelId: saved.model_id,
+    },
+  } : undefined);
 }
 
 type ModelPickerOverrides = Omit<ModelPickerTreeContext, "session">;
@@ -1039,6 +1055,58 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
     ctx.autoSave();
   } catch (e) {
     ctx.showMessage(`Failed to switch model: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/** 配置当前会话中新建子代理使用的默认模型与思考深度。 */
+async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
+  const session = ctx.session;
+  const target = args.trim();
+  const current = session.getSubagentDefaultModelSettings?.() as SubagentDefaultModel | undefined;
+
+  if (!target && !ctx.promptCommandPicker) {
+    if (current) {
+      ctx.showMessage(`Sub-agent default: ${current.provider}/${current.model_id} ${current.thinking_level}`);
+    } else {
+      ctx.showMessage("Sub-agents inherit the current session model and thinking depth.");
+    }
+    return;
+  }
+
+  try {
+    const resolved = await pickResolvedModelSelection(ctx, {
+      initialTarget: target,
+      flatMessage: "Select sub-agent model",
+    });
+    if (!resolved) {
+      ctx.showMessage("Sub-agent model configuration cancelled.");
+      return;
+    }
+
+    const thinkingLevel = await promptThinkingLevel(ctx, {
+      current: current?.thinking_level ?? "off",
+      applyToSession: false,
+    });
+    if (!thinkingLevel) {
+      ctx.showMessage("Sub-agent model configuration cancelled.");
+      return;
+    }
+
+    const settings: SubagentDefaultModel = {
+      config_name: resolved.selectedConfigName,
+      provider: resolved.modelProvider,
+      selection_key: resolved.modelSelectionKey,
+      model_id: resolved.modelId,
+      thinking_level: thinkingLevel,
+    };
+    if (typeof session.setSubagentDefaultModelSettings !== "function") {
+      throw new Error("Sub-agent model settings are not available in this session.");
+    }
+    session.setSubagentDefaultModelSettings(settings);
+    ctx.showHint?.(`Sub-agent default set: ${resolved.modelProvider}/${resolved.modelId} ${thinkingLevel}`);
+    ctx.autoSave();
+  } catch (error) {
+    ctx.showMessage(`Failed to configure sub-agent model: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -2832,6 +2900,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
   registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, picker: { title: "API keys", inputArea: true }, category: "Provider and Model" });
   registry.register({ name: "/model", description: "Select the current session model and thinking depth", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
+  registry.register({ name: "/agents", description: "Select the default model and thinking depth for sub-agents", handler: cmdAgents, options: subagentModelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
   registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions, picker: { inputArea: true }, category: "Provider and Model" });
   registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
   registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, picker: { inputArea: true }, category: "Provider and Model" });

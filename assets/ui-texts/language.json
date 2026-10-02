@@ -134,10 +134,7 @@
         "reversible": "自动审批"
       },
       "indicators": {
-        "shells": " 后台 Shell（{count} 运行中） ",
-        "tasks": " 任务（{parts}） ",
-        "tasksPending": "{count} 待办",
-        "tasksDone": "{count} 已完成"
+        "shells": " 后台 Shell（{count} 运行中） "
       },
       "markdownRaw": {
         "on": "Markdown 原文：开",
@@ -370,10 +367,7 @@
         "reversible": "Auto-approve"
       },
       "indicators": {
-        "shells": " Shells ({count} running) ",
-        "tasks": " Tasks ({parts}) ",
-        "tasksPending": "{count} pending",
-        "tasksDone": "{count} done"
+        "shells": " Shells ({count} running) "
       },
       "markdownRaw": {
         "on": "Markdown raw: ON",

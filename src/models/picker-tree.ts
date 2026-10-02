@@ -54,6 +54,12 @@ export interface ModelPickerTreeNode {
 
 export interface ModelPickerTreeContext {
   session: any;
+  currentSelection?: {
+    configName?: string;
+    provider: string;
+    selectionKey: string;
+    modelId: string;
+  };
   allowedProviderIds?: Iterable<string>;
   includeAddProviderAction?: boolean;
   includeLocalDiscoverActions?: boolean;
@@ -98,6 +104,7 @@ function modelCredentialInfo(providerId: string, providerHasKey: Map<string, boo
 
 function isCurrentSelection(
   session: any,
+  currentConfigName: string,
   providerId: string,
   selectionKey: string,
   modelId: string,
@@ -106,8 +113,8 @@ function isCurrentSelection(
 ): boolean {
   const stableSelectionName = `${providerId}:${selectionKey}`;
   const runtimeSelectionName = runtimeModelName(providerId, selectionKey);
-  return session.currentModelConfigName === stableSelectionName
-    || session.currentModelConfigName === runtimeSelectionName
+  return currentConfigName === stableSelectionName
+    || currentConfigName === runtimeSelectionName
     || (
       selectionKey === modelId
       && providerId === currentProvider
@@ -162,8 +169,9 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
 
   const allEntries = readModelEntries(config);
   const entries = allEntries.filter((entry) => !entry.isPreset);
-  const currentProvider = String(session.primaryAgent?.modelConfig?.provider ?? "");
-  const currentModel = String(session.primaryAgent?.modelConfig?.model ?? "");
+  const currentProvider = String(ctx.currentSelection?.provider ?? session.primaryAgent?.modelConfig?.provider ?? "");
+  const currentModel = String(ctx.currentSelection?.modelId ?? session.primaryAgent?.modelConfig?.model ?? "");
+  const currentConfigName = String(ctx.currentSelection?.configName ?? session.currentModelConfigName ?? "");
 
   // ── Build providerHasKey FIRST (before adding models) ──
   const providerHasKey = new Map<string, boolean>();
@@ -238,6 +246,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
         });
         const current = isCurrentSelection(
           session,
+          currentConfigName,
           providerId,
           selectionKey,
           item.modelId,

@@ -54,6 +54,12 @@ import { SessionLog, type TurnListing } from "./session/session-log.js";
 import { ContextManager } from "./session/context-manager.js";
 import { SubAgentFactory } from "./session/subagent-factory.js";
 import {
+  loadSubagentDefaultModel,
+  saveSubagentDefaultModel,
+  subagentSettingsPath,
+  type SubagentDefaultModel,
+} from "./session/subagent-settings.js";
+import {
   COMPACT_PROMPT_OUTPUT,
   COMPACT_PROMPT_TOOLCALL,
   appendManualInstruction,
@@ -3610,6 +3616,22 @@ export class Session {
     });
   }
 
+  /** 当前会话的子代理默认模型配置；未配置时返回 undefined。 */
+  getSubagentDefaultModelSettings(): SubagentDefaultModel | undefined {
+    const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
+    if (!sessionDir) return undefined;
+    return loadSubagentDefaultModel(subagentSettingsPath(this._projectRoot, sessionDir));
+  }
+
+  /** 保存当前会话的子代理默认模型配置。 */
+  setSubagentDefaultModelSettings(settings: SubagentDefaultModel): void {
+    this._ensureSessionStorageReady();
+    const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
+    if (!sessionDir) throw new Error("Session directory is unavailable.");
+    saveSubagentDefaultModel(subagentSettingsPath(this._projectRoot, sessionDir), settings);
+    this.onSaveRequest?.();
+  }
+
   /** Input tokens from the most recent provider response. */
   get lastInputTokens(): number {
     return this._lastInputTokens;
@@ -6906,6 +6928,30 @@ export class Session {
       resolveTierModel: (tier) => {
         const resolved = resolveModelTierEntry(this, tier);
         return { modelConfig: resolved.modelConfig, thinkingLevel: resolved.thinkingLevel };
+      },
+      getSubagentDefaultModel: () => {
+        const saved = this.getSubagentDefaultModelSettings();
+        if (!saved) return undefined;
+        try {
+          const resolved = resolvePersistedModelSelection(this, {
+            modelConfigName: saved.config_name,
+            modelProvider: saved.provider,
+            modelSelectionKey: saved.selection_key,
+            modelId: saved.model_id,
+          });
+          return {
+            modelConfig: this.config.getModel(resolved.selectedConfigName),
+            thinkingLevel: saved.thinking_level,
+          };
+        } catch (error) {
+          this._appendEntry(createStatus(
+            this._nextLogId("status"),
+            this._turnCount,
+            `Sub-agent default model unavailable: ${error instanceof Error ? error.message : String(error)}. Using parent model.`,
+            "agent_model_fallback",
+          ));
+          return undefined;
+        }
       },
       appendStatus: (message, statusType) => {
         this._appendEntry(createStatus(this._nextLogId("status"), this._turnCount, message, statusType));

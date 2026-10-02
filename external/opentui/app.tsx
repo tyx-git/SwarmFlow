@@ -1532,16 +1532,13 @@ export function OpenTuiApp({
       commandRegistry,
       autoSave,
       showMessage: (message: string) => {
-        // Intercept magic messages from /raw and /agents commands
+        // Intercept magic messages from UI-only commands
         if (message === "__toggle_markdown_raw__") {
           setMarkdownMode((current) => {
             const next = current === "rendered" ? "raw" : "rendered";
             showHint(t.get(["Views", "markdownRaw", next === "raw" ? "on" : "off"]));
             return next;
           });
-          return;
-        }
-        if (message === "__open_agent_list__") {
           return;
         }
         if (message === "__toggle_todo_panel__") {
@@ -1762,7 +1759,7 @@ export function OpenTuiApp({
   // against turns via its turn lock, so they need no UI "Working" state. While
   // a turn is processing we only intercept them with a hint so they are not
   // queued to the LLM as a user message.
-  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/skills-creater", "/provider", "/model", "/permission", "/theme", "/hooks"]);
+  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/skills-creater", "/provider", "/model", "/agents", "/permission", "/theme", "/hooks"]);
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;

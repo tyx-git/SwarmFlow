@@ -84,6 +84,55 @@ describe("/model command", () => {
     expect(model?.picker?.inputArea).toBe(true);
     expect(registry.lookup("/effort")).toBeUndefined();
     expect(registry.getAll().some((command) => command.name === "/effort")).toBe(false);
+    expect(registry.lookup("/agents")?.picker?.inputArea).toBe(true);
+    expect(registry.lookup("/agents")?.picker?.mode).toBe("single");
+  });
+
+  it("saves /agents model and thinking depth without changing the primary session", async () => {
+    process.env["OPENAI_API_KEY"] = "sk-openai";
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/agents");
+    expect(cmd).toBeTruthy();
+
+    const save = vi.fn();
+    const promptCommandPicker = vi.fn(async () => ({ value: "high" }));
+    const session: any = {
+      config: {
+        modelNames: ["my-openai"],
+        getModel: () => ({
+          name: "my-openai",
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKey: "sk-openai",
+        }),
+        listModelEntries: () => ([{
+          name: "my-openai",
+          provider: "openai",
+          model: "gpt-5.4",
+          apiKeyRaw: "sk-openai",
+          hasResolvedApiKey: true,
+        }]),
+      },
+      primaryAgent: { modelConfig: { name: "primary", provider: "anthropic", model: "claude" } },
+      thinkingLevel: "medium",
+      getSubagentDefaultModelSettings: () => undefined,
+      setSubagentDefaultModelSettings: save,
+    };
+
+    await cmd!.handler({
+      ...makeContext(registry, session),
+      promptCommandPicker,
+    }, "my-openai");
+
+    expect(promptCommandPicker).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith({
+      config_name: "my-openai",
+      provider: "openai",
+      selection_key: "gpt-5.4",
+      model_id: "gpt-5.4",
+      thinking_level: "high",
+    });
+    expect(session.primaryAgent.modelConfig.provider).toBe("anthropic");
   });
 
   it("registers every option command with the shared input-area picker", () => {
