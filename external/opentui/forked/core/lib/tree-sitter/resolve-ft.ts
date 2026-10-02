@@ -100,6 +100,22 @@ export const extensionToFiletype: Map<string, string> = new Map([
 ])
 
 export const basenameToFiletype: Map<string, string> = new Map([
+  ["bash", "bash"],
+  ["sh", "bash"],
+  ["shell", "bash"],
+  ["zsh", "bash"],
+  ["ksh", "bash"],
+  ["console", "bash"],
+  ["terminal", "bash"],
+  ["shell-session", "bash"],
+  ["command", "bash"],
+  ["python", "python"],
+  ["python3", "python"],
+  ["py", "python"],
+  ["powershell", "powershell"],
+  ["pwsh", "powershell"],
+  ["ps1", "powershell"],
+  ["ps", "powershell"],
   [".bash_aliases", "bash"],
   [".bash_logout", "bash"],
   [".bash_profile", "bash"],
@@ -186,4 +202,48 @@ export function infoStringToFiletype(infoString: string): string | undefined {
     extToFiletype(normalizedToken) ??
     normalizedToken
   )
+}
+
+/**
+ * Markdown fenced code 没有 info string 时推断其语言。
+ * 显式语言始终优先，只覆盖编码助手常见的命令和代码形式。
+ */
+export function inferCodeFiletype(content: string, infoString = ""): string | undefined {
+  const explicit = infoStringToFiletype(infoString)
+  if (explicit) return explicit
+
+  const text = content.trim()
+  if (!text) return undefined
+
+  if (
+    /^(?:PS(?: [^>]+)?>|Get-|Set-|New-|Remove-|Write-|Start-|Stop-|Test-|Invoke-)/m.test(text)
+    || /^\s*\$[A-Za-z_][\w-]*\s*=/.test(text)
+  ) {
+    return "powershell"
+  }
+
+  if (
+    /^(?:\$\s+|sudo\s+|(?:npm|pnpm|yarn|bun|node|npx|git|rg|grep|find|sed|awk|cd|ls|pwd|mkdir|rm|cp|mv|cat|echo|printf|curl|wget|chmod|make|cargo|docker|python3?|pip3?|pytest)\b)/m.test(text)
+    || /(?:^|\s)(?:&&|\|\||>>?|<)\s*/.test(text)
+    || /^\s*(?:for|while|until)\b.*\b(?:do|done)\b/m.test(text)
+  ) {
+    return "bash"
+  }
+
+  if (
+    /^(?:import|from|def|class|async\s+def|if|elif|else|for|while|try|except|with)\b/m.test(text)
+    || /^\s*(?:print|yield|return)\s*\(/m.test(text)
+  ) {
+    return "python"
+  }
+
+  if (
+    /^(?:import|export|const|let|var|function|class|interface|type|enum)\b/m.test(text)
+    || /\b(?:console\.log|require\s*\(|document\.|window\.)/.test(text)
+    || /=>/.test(text)
+  ) {
+    return "typescript"
+  }
+
+  return undefined
 }

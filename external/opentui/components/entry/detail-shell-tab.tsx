@@ -6,6 +6,7 @@ import type { ConversationPalette } from "../conversation-types.js";
 import { ScrollViewport } from "../../display/primitives/scroll-viewport.js";
 import { SectionHeader } from "../../display/primitives/section-header.js";
 import { formatDuration } from "../../display/utils/format.js";
+import { CommandText } from "./command-text.js";
 
 /** Live data for the shell detail tab (mirrors Session.getBackgroundShellDetail). */
 export interface ShellDetailData {
@@ -46,7 +47,9 @@ function DetailShellTabInner(
 
   return (
     <box flexDirection="column" flexGrow={1} width="100%">
-      <SectionHeader label={`❯ ${detail.command}`} color={colors.dim} paddingLeft={2} paddingBottom={0} />
+      <box paddingLeft={2} paddingBottom={0}>
+        <CommandText text={`❯ ${detail.command}`} colors={colors} mode="command" wrapMode="char" />
+      </box>
       <box flexDirection="row" paddingLeft={2} paddingBottom={1} gap={1}>
         <text
           fg={running ? colors.green : colors.muted}
@@ -67,7 +70,7 @@ function DetailShellTabInner(
           {detail.logTruncated ? (
             <text fg={colors.dim} content={`[Tail only — earlier output omitted. Full log: ${detail.logPath}]`} />
           ) : null}
-          <text fg={colors.text} content={detail.logTail || "(no output yet)"} wrapMode="char" />
+          <CommandText text={detail.logTail || "(no output yet)"} colors={colors} mode="output" wrapMode="char" />
         </box>
       </ScrollViewport>
     </box>

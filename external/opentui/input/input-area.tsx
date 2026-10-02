@@ -74,20 +74,10 @@ interface InputAreaProps {
   usagePanel?: React.ReactNode;
   promptSelect: boolean;
   promptSecret: boolean;
-  /** Number of running child agents. */
-  runningAgentCount?: number;
-  /** Number of idle child agents. */
-  idleAgentCount?: number;
-  /** Number of archived child agents. */
-  archivedAgentCount?: number;
   /** Number of RUNNING background shells (async only — sync bash never shows here). */
   shellRunningCount?: number;
   /** Open the shells picker. */
   onShellsClick?: () => void;
-  /** Whether the agents panel is currently expanded. */
-  agentsPanelOpen?: boolean;
-  /** Toggle the agents panel. */
-  onAgentsPanelClick?: () => void;
 }
 
 function getPhaseSpinnerConfig(phase: ActivityPhase): { frames: readonly string[]; interval: number } {
@@ -144,11 +134,6 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     usagePanel,
     promptSelect,
     promptSecret,
-    runningAgentCount = 0,
-    idleAgentCount = 0,
-    archivedAgentCount = 0,
-    agentsPanelOpen = false,
-    onAgentsPanelClick,
     shellRunningCount = 0,
     onShellsClick,
   } = props;
@@ -219,32 +204,10 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
       <box flexDirection="row" width="100%" paddingLeft={1} paddingRight={1}>
         {activityStatus}
 
-        {/* Agent indicator: show whenever agents exist */}
-        {(runningAgentCount + idleAgentCount + archivedAgentCount) > 0 && !selectedChildId ? (
-          <>
-          {processing ? <box width={2} /> : null}
-          <box
-            flexDirection="row"
-            flexShrink={0}
-            cursor="pointer"
-            backgroundColor={agentsPanelOpen ? colors.badgeAgentBgActive : colors.badgeAgentBg}
-            onMouseDown={(e: any) => { e.stopPropagation(); e.preventDefault(); onAgentsPanelClick?.(); }}
-          >
-            <text fg={colors.badgeAgentFg} content={(() => {
-              const parts: string[] = [];
-              if (runningAgentCount > 0) parts.push(t.get(["Views", "indicators", "agentsRunning"], { count: runningAgentCount }));
-              const doneAgents = idleAgentCount + archivedAgentCount;
-              if (doneAgents > 0) parts.push(t.get(["Views", "indicators", "agentsDone"], { count: doneAgents }));
-              return t.get(["Views", "indicators", "agents"], { parts: parts.join(", ") });
-            })()} />
-          </box>
-          </>
-        ) : null}
-
         {/* Shells indicator: running background shells only (sync bash never appears here) */}
         {shellRunningCount > 0 && !selectedChildId ? (
           <>
-          {((runningAgentCount + idleAgentCount + archivedAgentCount) > 0 || processing) ? <box width={1} /> : null}
+          {processing ? <box width={1} /> : null}
           <box
             flexDirection="row"
             flexShrink={0}

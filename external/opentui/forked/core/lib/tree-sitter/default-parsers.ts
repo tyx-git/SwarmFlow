@@ -36,6 +36,36 @@ async function loadParsers(): Promise<FiletypeParserOptions[]> {
     "./assets/typescript/tree-sitter-typescript.wasm",
     import.meta.url,
   )
+  const python_highlights = await resolveBundledFilePath(
+    () => import("./assets/python/highlights.scm" as string, { with: { type: "file" } }),
+    "./assets/python/highlights.scm",
+    import.meta.url,
+  )
+  const python_language = await resolveBundledFilePath(
+    () => import("./assets/python/tree-sitter-python.wasm" as string, { with: { type: "file" } }),
+    "./assets/python/tree-sitter-python.wasm",
+    import.meta.url,
+  )
+  const bash_highlights = await resolveBundledFilePath(
+    () => import("./assets/bash/highlights.scm" as string, { with: { type: "file" } }),
+    "./assets/bash/highlights.scm",
+    import.meta.url,
+  )
+  const bash_language = await resolveBundledFilePath(
+    () => import("./assets/bash/tree-sitter-bash.wasm" as string, { with: { type: "file" } }),
+    "./assets/bash/tree-sitter-bash.wasm",
+    import.meta.url,
+  )
+  const powershell_highlights = await resolveBundledFilePath(
+    () => import("./assets/powershell/highlights.scm" as string, { with: { type: "file" } }),
+    "./assets/powershell/highlights.scm",
+    import.meta.url,
+  )
+  const powershell_language = await resolveBundledFilePath(
+    () => import("./assets/powershell/tree-sitter-powershell.wasm" as string, { with: { type: "file" } }),
+    "./assets/powershell/tree-sitter-powershell.wasm",
+    import.meta.url,
+  )
   const markdown_highlights = await resolveBundledFilePath(
     () => import("./assets/markdown/highlights.scm" as string, { with: { type: "file" } }),
     "./assets/markdown/highlights.scm",
@@ -90,6 +120,30 @@ async function loadParsers(): Promise<FiletypeParserOptions[]> {
         wasm: typescript_language,
       },
       {
+        filetype: "python",
+        aliases: ["python3", "py"],
+        queries: {
+          highlights: [python_highlights],
+        },
+        wasm: python_language,
+      },
+      {
+        filetype: "bash",
+        aliases: ["sh", "shell", "zsh", "ksh", "console", "terminal", "shell-session", "command"],
+        queries: {
+          highlights: [bash_highlights],
+        },
+        wasm: bash_language,
+      },
+      {
+        filetype: "powershell",
+        aliases: ["pwsh", "ps1", "ps"],
+        queries: {
+          highlights: [powershell_highlights],
+        },
+        wasm: powershell_language,
+      },
+      {
         filetype: "markdown",
         queries: {
           highlights: [markdown_highlights],
@@ -97,23 +151,39 @@ async function loadParsers(): Promise<FiletypeParserOptions[]> {
         },
         wasm: markdown_language,
         injectionMapping: {
-          "nodeTypes": {
-                    "inline": "markdown_inline",
-                    "pipe_table_cell": "markdown_inline"
+          nodeTypes: {
+            inline: "markdown_inline",
+            pipe_table_cell: "markdown_inline",
           },
-          "infoStringMap": {
-                    "javascript": "javascript",
-                    "js": "javascript",
-                    "jsx": "javascriptreact",
-                    "javascriptreact": "javascriptreact",
-                    "typescript": "typescript",
-                    "ts": "typescript",
-                    "tsx": "typescriptreact",
-                    "typescriptreact": "typescriptreact",
-                    "markdown": "markdown",
-                    "md": "markdown"
-          }
-},
+          infoStringMap: {
+            javascript: "javascript",
+            js: "javascript",
+            jsx: "javascriptreact",
+            javascriptreact: "javascriptreact",
+            typescript: "typescript",
+            ts: "typescript",
+            tsx: "typescriptreact",
+            typescriptreact: "typescriptreact",
+            python: "python",
+            python3: "python",
+            py: "python",
+            bash: "bash",
+            sh: "bash",
+            shell: "bash",
+            zsh: "bash",
+            ksh: "bash",
+            console: "bash",
+            terminal: "bash",
+            "shell-session": "bash",
+            command: "bash",
+            powershell: "powershell",
+            pwsh: "powershell",
+            ps1: "powershell",
+            ps: "powershell",
+            markdown: "markdown",
+            md: "markdown",
+          },
+        },
       },
       {
         filetype: "markdown_inline",

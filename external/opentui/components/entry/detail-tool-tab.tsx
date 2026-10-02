@@ -8,6 +8,7 @@ import type { ConversationPalette } from "../conversation-types.js";
 import { FileModifyBody } from "./file-modify-body.js";
 import { ScrollViewport } from "../../display/primitives/scroll-viewport.js";
 import { SectionHeader } from "../../display/primitives/section-header.js";
+import { CommandText } from "./command-text.js";
 
 interface DetailToolTabProps {
   entry: PresentationEntry;
@@ -82,7 +83,13 @@ function DetailToolTabInner(
             {streamSections.map((section) => (
               <box key={section.key} flexDirection="column" paddingBottom={1}>
                 <text fg={colors.dim} content={`${section.label}${section.complete ? "" : " (streaming)"}`} />
-                <text fg={colors.text} content={section.text} wrapMode="char" />
+                <CommandText
+                  text={section.text}
+                  colors={colors}
+                  mode="output"
+                  language={entry.toolStreamLanguage}
+                  wrapMode="char"
+                />
               </box>
             ))}
             {entry.toolRepairedFromPartial ? (
@@ -91,7 +98,13 @@ function DetailToolTabInner(
           </box>
         ) : (
           <box paddingLeft={2} paddingRight={2}>
-            <text fg={colors.text} content={text} />
+            <CommandText
+              text={text}
+              colors={colors}
+              mode="output"
+              language={entry.toolStreamLanguage}
+              wrapMode="char"
+            />
           </box>
         )}
       </ScrollViewport>

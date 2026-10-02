@@ -118,9 +118,6 @@ export interface OpenTuiScreenProps {
   keyBindings: readonly KeyBinding[];
   onSubmit: () => void;
   onModelClick: () => void;
-  runningAgentCount?: number;
-  idleAgentCount?: number;
-  archivedAgentCount?: number;
   onBackgroundMouseDown: () => void;
   sidebarMode?: SidebarMode;
   activeShells?: Array<{ id: string; command: string; status: string }>;
@@ -134,8 +131,6 @@ export interface OpenTuiScreenProps {
   sidebarContextSection?: React.ReactNode;
   /** Pre-rendered codex usage card for sidebar */
   sidebarCodexSection?: React.ReactNode;
-  agentsPanelOpen?: boolean;
-  onAgentsPanelClick?: () => void;
   /** Number of RUNNING background shells (badge above the input box). */
   shellRunningCount?: number;
   /** Open the shells picker. */
@@ -233,9 +228,6 @@ export function OpenTuiScreen({
   keyBindings,
   onSubmit,
   onModelClick,
-  runningAgentCount,
-  idleAgentCount,
-  archivedAgentCount,
   onBackgroundMouseDown,
   sidebarMode = "close",
   activeShells = [],
@@ -244,8 +236,6 @@ export function OpenTuiScreen({
   sidebarPlanSection,
   sidebarContextSection,
   sidebarCodexSection,
-  agentsPanelOpen,
-  onAgentsPanelClick,
   shellRunningCount,
   onShellsClick,
   activeShellDetail,
@@ -368,9 +358,6 @@ export function OpenTuiScreen({
       keyBindings={keyBindings}
       onSubmit={onSubmit}
       onModelClick={onModelClick}
-      runningAgentCount={runningAgentCount}
-      idleAgentCount={idleAgentCount}
-      archivedAgentCount={archivedAgentCount}
       commandOverlayVisible={commandOverlay.visible}
       commandPicker={Boolean(commandPicker)}
       inlinePicker={inlinePicker}
@@ -387,8 +374,6 @@ export function OpenTuiScreen({
       ) : undefined}
       promptSelect={Boolean(promptSelect)}
       promptSecret={Boolean(promptSecret)}
-      agentsPanelOpen={agentsPanelOpen}
-      onAgentsPanelClick={onAgentsPanelClick}
       shellRunningCount={shellRunningCount}
       onShellsClick={onShellsClick}
     />

@@ -15,6 +15,7 @@ import { FileModifyBody } from "./file-modify-body.js";
 import { ClickablePath } from "./clickable-path.js";
 import type { DisplayTheme } from "../../display/theme/index.js";
 import { ErrorMessage } from "../../display/primitives/error-message.js";
+import { CommandText } from "./command-text.js";
 
 const TOOL_STREAM_MAX_LINES = 10;
 const PATH_TOOL_NAMES = new Set(["Read", "Edit", "Write", "List"]);
@@ -162,7 +163,12 @@ function ToolOperationEntryInner(
         ) : null}
         <text content="  " flexShrink={0} />
         {isAwaitEvent && active ? (
-          <text fg={argColor} content={`${awaitElapsed}s  Timeout: ${toolText} (Send a message to interrupt)`} flexShrink={0} />
+          <CommandText
+            text={`${awaitElapsed}s  Timeout: ${toolText} (Send a message to interrupt)`}
+            colors={colors}
+            mode="output"
+            flexShrink={0}
+          />
         ) : entry.toolAgentName && !active ? (
           <ClickableAgentName
             text={entry.toolAgentName}
@@ -172,6 +178,15 @@ function ToolOperationEntryInner(
           />
         ) : PATH_TOOL_NAMES.has(displayName) && toolText && !active ? (
           <ClickablePath text={toolText} baseColor={argColor} hoverBg={colors.border} />
+        ) : displayName === "Run" && toolText ? (
+          <CommandText
+            text={toolText}
+            colors={colors}
+            mode="command"
+            wrapMode="char"
+            flexGrow={1}
+            flexShrink={1}
+          />
         ) : (
           <text fg={argColor} content={toolText} wrapMode="char" flexGrow={1} flexShrink={1} />
         )}
@@ -204,7 +219,13 @@ function ToolOperationEntryInner(
                   return (
                     <box key={section.key} flexDirection="column" width="100%" paddingBottom={1}>
                       <text fg={colors.dim} content={`${section.label}${section.complete ? "" : " (streaming)"}`} />
-                      <text fg={resultColor} content={preview.text} wrapMode="char" />
+                      <CommandText
+                        text={preview.text}
+                        colors={colors}
+                        mode="output"
+                        language={entry.toolStreamLanguage}
+                        wrapMode="char"
+                      />
                       {preview.truncated ? (
                         <text fg={colors.dim} content="(... more lines, click to open)" />
                       ) : null}
@@ -223,6 +244,8 @@ function ToolOperationEntryInner(
                   data={entry.toolInlineResult!}
                   colors={colors}
                   contentWidth={contentWidth - 6}
+                  language={entry.toolInlineResult!.language}
+                  syntaxMode={entry.toolInlineResult!.syntaxMode}
                   onOpenDetail={onEntryClick ? () => onEntryClick(entry) : undefined}
                 />
               )

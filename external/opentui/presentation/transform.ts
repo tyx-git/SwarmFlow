@@ -236,6 +236,8 @@ function buildToolOperation(
   const toolRepairedFromPartial = callMeta.repairedFromPartial === true;
   const toolStreamLanguage = typeof callMeta.toolStreamLanguage === "string"
     ? callMeta.toolStreamLanguage : undefined;
+  const effectiveToolStreamLanguage = toolStreamLanguage
+    ?? (toolName === "bash" || toolName === "bash_background" || toolName === "bash_output" ? "bash" : undefined);
   const toolStreamMode = typeof callMeta.toolStreamMode === "string"
     ? callMeta.toolStreamMode as PresentationEntry["toolStreamMode"] : undefined;
   const execFinished = toolExecState === "completed" || toolExecState === "failed";
@@ -321,6 +323,12 @@ function buildToolOperation(
         maxLines,
         toolMetadata: resultMeta,
         noDiffBackground: noDiffBackground || undefined,
+        language: effectiveToolStreamLanguage,
+        syntaxMode: toolName === "bash"
+          || toolName === "bash_background"
+          || toolName === "bash_output"
+          ? "output"
+          : undefined,
       };
     }
   }
@@ -351,7 +359,7 @@ function buildToolOperation(
     toolRepairedFromPartial,
     toolExecState,
     toolStreamState,
-    toolStreamLanguage,
+    toolStreamLanguage: effectiveToolStreamLanguage,
     toolStreamMode,
     fileModifyData,
   };
@@ -547,7 +555,9 @@ export function presentationTransform(
         const isLastAssistant = processing && !entries.slice(i + 1).some(
           (e) => e.entry.kind === "assistant" || e.entry.kind === "tool_call" || e.entry.kind === "reasoning",
         );
-        result.push(transformAssistant(entry, isLastAssistant));
+        // active log id 会随每个流式文本 chunk 更新；即使 React 的 processing
+        // 状态晚一帧，也要保持该条目处于流式状态。
+        result.push(transformAssistant(entry, isLastAssistant || activeEntryId === entry.id));
         i++;
         break;
       }

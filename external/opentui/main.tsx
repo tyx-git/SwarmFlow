@@ -109,6 +109,7 @@ export async function launchTui(): Promise<void> {
 
   const React = await import("react");
   const { createCliRenderer } = await import("@opentui/core");
+  const { registerSwarmFlowTreeSitterParsers } = await import("./tree-sitter-parsers.js");
   const { createRoot } = await import("@opentui/react");
   const { bootstrapOpenTuiRuntime } = await import("./bootstrap.js");
   const { OpenTuiApp } = await import("./app.js");
@@ -116,6 +117,7 @@ export async function launchTui(): Promise<void> {
 
   process.env.OPENTUI_FORCE_EXPLICIT_WIDTH = "false";
   const args = parseArgs(process.argv.slice(2));
+  await registerSwarmFlowTreeSitterParsers();
   // Validate -c overrides before bootstrap so a bad value fails with aconfig/
   // clean stderr line rather than a fatal stack trace from inside bootstrap.
   try {

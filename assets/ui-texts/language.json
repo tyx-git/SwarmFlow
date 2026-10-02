@@ -134,9 +134,6 @@
         "reversible": "自动审批"
       },
       "indicators": {
-        "agents": " 子代理（{parts}） ",
-        "agentsRunning": "{count} 运行中",
-        "agentsDone": "{count} 已完成",
         "shells": " 后台 Shell（{count} 运行中） ",
         "tasks": " 任务（{parts}） ",
         "tasksPending": "{count} 待办",
@@ -373,9 +370,6 @@
         "reversible": "Auto-approve"
       },
       "indicators": {
-        "agents": " Agents ({parts}) ",
-        "agentsRunning": "{count} running",
-        "agentsDone": "{count} done",
         "shells": " Shells ({count} running) ",
         "tasks": " Tasks ({parts}) ",
         "tasksPending": "{count} pending",

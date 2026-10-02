@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { createRequire } from "node:module";
 import {
   BoxRenderable,
   CodeRenderable,
@@ -14,6 +15,7 @@ import {
   writeOpenTuiDiag,
 } from "./core/lib/diagnostic.js";
 import { createMarkdownSyntheticBlockHighlighter } from "./core/renderables/MarkdownHighlightContext.js";
+import { inferCodeFiletype } from "./core/lib/tree-sitter/resolve-ft.js";
 import { clipboard } from "../../../src/platform/index.js";
 import type { DisplayTheme } from "../display/theme/types.js";
 import { isShikiReady, setShikiTheme, shikiHighlightToChunks } from "./shiki-highlighter.js";
@@ -34,7 +36,7 @@ export function setUseShikiHighlighter(value: boolean): void {
 }
 
 const PATCH_FLAG = Symbol.for("swarmflow.opentui.markdown.patch.v5");
-const INNER_TEXT = Symbol.for("swarmflow.codeblock.text");
+const INNER_TEXT = Symbol.for("swarmflow.codeblock.renderable");
 const LABEL_REF = Symbol.for("swarmflow.codeblock.label");
 const COPY_REF = Symbol.for("swarmflow.codeblock.copy");
 const CODE_CONTENT = Symbol.for("swarmflow.codeblock.rawcontent");
@@ -42,6 +44,7 @@ const COALESCED_MARGIN_TOP = Symbol.for("swarmflow.opentui.markdown.coalesced.ma
 const TRAILING_MARKDOWN_BLOCK_BREAKS_RE = /(?:\r?\n){2,}$/;
 const TRAILING_MARKDOWN_BLOCK_NEWLINES_RE = /(?:\r?\n)+$/;
 const ANY_MARKDOWN_BLOCK_BREAK_RE = /(?:\r?\n){2,}/;
+const FRONT_MATTER_OPENER_RE = /^(?:---|\+\+\+)(?:[ \t]*(?:\r?\n|$))/;
 
 // Runtime-mutable theme bound by `applyMarkdownTheme`. The patched render
 // closures read these on every call, so swapping the theme reflects on the
@@ -77,6 +80,9 @@ export function applyMarkdownTheme(theme: DisplayTheme): void {
   currentMarkdownTheme.hljs = Object.fromEntries(
     Object.entries(theme.markdown.hljs).map(([key, value]) => [key, RGBA.fromHex(value)]),
   ) as Record<string, RGBA>;
+  for (const wrapper of CODE_BLOCK_WRAPPERS) {
+    if (!wrapper.isDestroyed) refreshCodeBlockTheme(wrapper);
+  }
   // Keep the shiki highlighter (TextMate path used for fenced code blocks) in
   // sync with the same mode, so dark/light terminals get readable code.
   setShikiTheme(theme.mode);
@@ -86,18 +92,18 @@ export function applyMarkdownTheme(theme: DisplayTheme): void {
 
 let hljs: any = null;
 let hljsLoadAttempted = false;
+const requireModule = createRequire(import.meta.url);
 
 function getHljs(): any {
   if (hljsLoadAttempted) return hljs;
   hljsLoadAttempted = true;
   try {
-    // pnpm strict mode: resolve highlight.js through marked-terminal's dependency chain
-    const { createRequire } = require("module");
-    const req = createRequire(require.resolve("marked-terminal"));
+    // 优先沿 marked-terminal 的依赖链解析 highlight.js。
+    const req = createRequire(requireModule.resolve("marked-terminal"));
     hljs = req("highlight.js");
   } catch {
     try {
-      hljs = require("highlight.js");
+      hljs = requireModule("highlight.js");
     } catch {
       // not available
     }
@@ -192,6 +198,23 @@ export function highlightToChunks(code: string, lang: string | undefined): TextC
   }
 }
 
+/**
+ * Tree-sitter 有捕获结果时优先使用它；本地没有解析器的语言继续走
+ * Shiki/highlight.js fallback，避免整个 fenced block 降级为纯文本。
+ */
+function fallbackCodeChunks(
+  chunks: TextChunk[],
+  context: { content: string; filetype: string; highlights: unknown[] },
+): TextChunk[] {
+  if (context.highlights.length > 0) return chunks;
+  const language = context.filetype === "typescriptreact"
+    ? "typescript"
+    : context.filetype === "javascriptreact"
+      ? "javascript"
+      : context.filetype;
+  return highlightToChunks(context.content, language) ?? chunks;
+}
+
 // ── Markdown prototype patches ──────────────────────────────────────────────
 
 type MarkdownRenderablePatched = InstanceType<typeof MarkdownRenderable> & {
@@ -206,17 +229,29 @@ type MarkdownRenderablePatched = InstanceType<typeof MarkdownRenderable> & {
   createMarkdownBlockToken: (raw: string, marginTop?: number) => MarkedToken;
   shouldRenderSeparately: (token: MarkedToken) => boolean;
   normalizeMarkdownBlockRaw: (raw: string) => string;
-};
+}
 
 type CoalescedLayoutToken = MarkedToken & {
   [COALESCED_MARGIN_TOP]?: number;
 };
 
 type WrappedBox = InstanceType<typeof BoxRenderable> & {
-  [INNER_TEXT]?: InstanceType<typeof TextRenderable>;
+  [INNER_TEXT]?: InstanceType<typeof CodeRenderable>;
   [LABEL_REF]?: InstanceType<typeof TextRenderable>;
   [COPY_REF]?: InstanceType<typeof TextRenderable>;
   [CODE_CONTENT]?: string;
+};
+
+const CODE_BLOCK_WRAPPERS = new Set<WrappedBox>();
+
+function refreshCodeBlockTheme(wrapper: WrappedBox): void {
+  wrapper.borderColor = currentMarkdownTheme.codeBorder;
+  const code = wrapper[INNER_TEXT];
+  if (code) code.fg = currentMarkdownTheme.codeFg;
+  const label = wrapper[LABEL_REF];
+  if (label) label.fg = currentMarkdownTheme.codeLabelFg;
+  const copy = wrapper[COPY_REF];
+  if (copy) copy.fg = currentMarkdownTheme.codeCopyFg;
 };
 
 const proto = MarkdownRenderable.prototype as MarkdownRenderablePatched & Record<PropertyKey, unknown>;
@@ -342,26 +377,33 @@ if (isMarkdownPatchDisabled()) {
       reserveHeightWhileStreaming: this._reserveHeightWhileStreaming ?? this._streaming,
       initialStyledText,
       baseHighlight,
-      onHighlight: createMarkdownSyntheticBlockHighlighter(() => this._treeSitterClient),
-      onChunks,
+      // front matter 需要原有的偏移高亮查询；普通 Markdown 同步返回，
+      // 避免每个流式 token 都等待 synthetic Promise。
+      onHighlight: (() => {
+        const synthetic = createMarkdownSyntheticBlockHighlighter(() => this._treeSitterClient);
+        return (highlights: any, context: any) =>
+          FRONT_MATTER_OPENER_RE.test(context.content) ? synthetic(highlights, context) : undefined;
+      })(),
+      onChunks: (chunks: TextChunk[], context: any) => {
+        // OpenTUI 的链接检测当前是同步的；如果后续 fork 返回 Promise，
+        // 仍保留 Tree-sitter chunks，避免某一帧被清空。
+        try {
+          const transformed = onChunks(chunks, context);
+          if (transformed && typeof transformed.then === "function") return chunks;
+          return transformed ?? chunks;
+        } catch {
+          return chunks;
+        }
+      },
       treeSitterClient: this._treeSitterClient as any,
       width: "100%",
       marginBottom,
     });
   };
 
-  // ── Code block: TextRenderable with hljs-colored StyledText ──
-
-  function createStyledCode(code: string, lang: string | undefined): StyledText {
-    const chunks = highlightToChunks(code, lang);
-    if (chunks && chunks.length > 0) return new StyledText(chunks);
-    // Fallback: single chunk with code fg
-    return new StyledText([{ __isChunk: true, text: code, fg: currentMarkdownTheme.codeFg }]);
-  }
-
   function buildCodeBlockWrapper(
     ctx: any,
-    codeText: InstanceType<typeof TextRenderable>,
+    codeText: InstanceType<typeof CodeRenderable>,
     rawContent: string,
     lang: string,
     marginBottom: number,
@@ -374,6 +416,8 @@ if (isMarkdownPatchDisabled()) {
       borderStyle: "rounded",
       marginBottom,
     }) as WrappedBox;
+    CODE_BLOCK_WRAPPERS.add(wrapper);
+    wrapper.on("destroyed", () => CODE_BLOCK_WRAPPERS.delete(wrapper));
 
     const header = new BoxRenderable(ctx, {
       flexDirection: "row",
@@ -444,11 +488,29 @@ if (isMarkdownPatchDisabled()) {
     id: string,
     marginBottom: number = 0,
   ) {
-    const styled = createStyledCode(token.text, token.lang);
-    const codeText = new TextRenderable(this.ctx, {
+    const filetype = inferCodeFiletype(token.text, token.lang ?? "");
+    const initialChunks = filetype ? fallbackCodeChunks([], {
+      content: token.text,
+      filetype,
+      highlights: [],
+    }) : null;
+    const initialStyledText = initialChunks && initialChunks.length > 0
+      ? new StyledText(initialChunks)
+      : undefined;
+    const codeText = new CodeRenderable(this.ctx, {
       id,
-      content: styled,
-      fg: currentMarkdownTheme.codeFg,
+      content: token.text,
+      filetype,
+      syntaxStyle: this._syntaxStyle as any,
+      fg: this._fg,
+      bg: this._bg,
+      conceal: this._concealCode,
+      // 首帧使用同步快照；收到后续 token 后清除快照，Tree-sitter 处理期间保留上一份 styled buffer。
+      drawUnstyledText: true,
+      initialStyledText,
+      streaming: this._streaming,
+      onChunks: fallbackCodeChunks,
+      treeSitterClient: this._treeSitterClient as any,
       width: "100%",
     });
 
@@ -456,7 +518,7 @@ if (isMarkdownPatchDisabled()) {
       this.ctx,
       codeText,
       token.text,
-      token.lang || "text",
+      filetype || token.lang || "text",
       marginBottom,
     );
   };
@@ -482,6 +544,19 @@ if (isMarkdownPatchDisabled()) {
     renderable.reserveHeightWhileStreaming = this._reserveHeightWhileStreaming ?? this._streaming;
     renderable.streaming = true;
     renderable.baseHighlight = baseHighlight;
+    const synthetic = createMarkdownSyntheticBlockHighlighter(() => this._treeSitterClient);
+    renderable.onHighlight = (highlights: any, context: any) =>
+      FRONT_MATTER_OPENER_RE.test(context.content) ? synthetic(highlights, context) : undefined;
+    renderable.onChunks = (chunks: TextChunk[], context: any) => {
+      try {
+        const transformed = this._linkifyMarkdownChunks(chunks, context);
+        if (transformed && typeof transformed.then === "function") return chunks;
+        return transformed ?? chunks;
+      } catch {
+        return chunks;
+      }
+    };
+    renderable.treeSitterClient = this._treeSitterClient as any;
     renderable.marginBottom = marginBottom;
   };
 
@@ -490,17 +565,30 @@ if (isMarkdownPatchDisabled()) {
     token: Tokens.Code,
     marginBottom: number,
   ): void {
-    const inner: InstanceType<typeof TextRenderable> | undefined = renderable[INNER_TEXT];
+    refreshCodeBlockTheme(renderable);
+    const inner: InstanceType<typeof CodeRenderable> | undefined = renderable[INNER_TEXT];
     if (inner) {
-      const styled = createStyledCode(token.text, token.lang);
-      inner.content = styled;
+      inner.initialStyledText = undefined;
+      inner.filetype = inferCodeFiletype(token.text, token.lang ?? "");
+      inner.syntaxStyle = this._syntaxStyle as any;
+      inner.fg = this._fg;
+      inner.bg = this._bg;
+      inner.conceal = this._concealCode;
+      inner.drawUnstyledText = !this._streaming;
+      inner.streaming = this._streaming;
+      inner.onChunks = fallbackCodeChunks;
+      inner.treeSitterClient = this._treeSitterClient as any;
+      inner.content = token.text;
       renderable[CODE_CONTENT] = token.text;
     }
 
     const label: InstanceType<typeof TextRenderable> | undefined = renderable[LABEL_REF];
     if (label) {
-      label.content = (token.lang || "text").toUpperCase();
+      label.content = (inferCodeFiletype(token.text, token.lang ?? "") || token.lang || "text").toUpperCase();
     }
+
+    const copy: InstanceType<typeof TextRenderable> | undefined = renderable[COPY_REF];
+    if (copy) copy.fg = currentMarkdownTheme.codeCopyFg;
 
     renderable.marginBottom = marginBottom;
   };

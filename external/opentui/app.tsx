@@ -374,7 +374,6 @@ export function OpenTuiApp({
   const turnTimer = useTurnTimer(phase);
   const turnElapsed = turnTimer.elapsed;
   const tasks = useTasks(session);
-  const [agentsPanelOpen, setAgentsPanelOpen] = useState(false);
   const [rootLogRevision, setRootLogRevision] = useState(session.getLogRevision?.() ?? 0);
   const queuedInputs = useMemo(() => {
     if (selectedChildId !== null) return [];
@@ -430,14 +429,6 @@ export function OpenTuiApp({
     }
     return null;
   }, [rootLogRevision, session]);
-  // Auto-open panels on first appearance (once per session)
-  const hasAutoOpenedAgents = useRef(false);
-  useEffect(() => {
-    if (childSessions.length > 0 && !hasAutoOpenedAgents.current) {
-      hasAutoOpenedAgents.current = true;
-      setAgentsPanelOpen(true);
-    }
-  }, [childSessions.length]);
   // Frozen child view — protects display when viewed child becomes archived
   const [frozenChildView, setFrozenChildView] = useState<{
     snapshot: ChildSessionSnapshot;
@@ -1551,7 +1542,6 @@ export function OpenTuiApp({
           return;
         }
         if (message === "__open_agent_list__") {
-          setAgentsPanelOpen((p) => !p);
           return;
         }
         if (message === "__toggle_todo_panel__") {
@@ -2999,10 +2989,6 @@ export function OpenTuiApp({
     if (thinkingLevel === "off") return "off";                 // 显式关闭
     return thinkingLevel;                                      // low/medium/high/xhigh/max
   })();
-  // Agent counts for indicator — all 3 states
-  const runningAgentCount = childSessions.filter((s) => s.lifecycle === "running" || s.lifecycle === "blocked").length;
-  const idleAgentCount = childSessions.filter((s) => s.lifecycle === "idle").length;
-  const archivedAgentCount = childSessions.filter((s) => s.lifecycle === "archived").length;
   const enterChildSession = useCallback((agentId: string) => {
     setSelectedChildId(agentId);
     // Create temporary child tab
@@ -3180,12 +3166,9 @@ export function OpenTuiApp({
         }
         void handleSubmit("/model");
       }}
-      runningAgentCount={runningAgentCount}
-      idleAgentCount={idleAgentCount}
-      archivedAgentCount={archivedAgentCount}
       sidebarMode={sidebarMode}
       statusPanel={(() => {
-        const showAgents = agentsPanelOpen && childSessions.length > 0;
+        const showAgents = childSessions.length > 0;
         const showTasks = tasks.length > 0;
         if (!showAgents && !showTasks) return undefined;
         return (
@@ -3218,8 +3201,6 @@ export function OpenTuiApp({
       activeShells={shellSnapshots.map(({ id, command, status }) => ({ id, command, status }))}
       activeShellDetail={activeShellDetail}
       onStopShell={stopShellFromUi}
-      agentsPanelOpen={agentsPanelOpen}
-      onAgentsPanelClick={() => setAgentsPanelOpen((p) => !p)}
       sidebarPlanSection={undefined}
       sidebarContextSection={
         <ContextUsageCard

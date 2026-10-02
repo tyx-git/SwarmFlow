@@ -27,6 +27,30 @@ export default {
       },
     },
     {
+      filetype: "python",
+      aliases: ["python3", "py"],
+      wasm: "./assets/python/tree-sitter-python.wasm",
+      queries: {
+        highlights: ["./assets/python/highlights.scm"],
+      },
+    },
+    {
+      filetype: "bash",
+      aliases: ["sh", "shell", "zsh", "ksh", "console", "terminal", "shell-session", "command"],
+      wasm: "./assets/bash/tree-sitter-bash.wasm",
+      queries: {
+        highlights: ["./assets/bash/highlights.scm"],
+      },
+    },
+    {
+      filetype: "powershell",
+      aliases: ["pwsh", "ps1", "ps"],
+      wasm: "./assets/powershell/tree-sitter-powershell.wasm",
+      queries: {
+        highlights: ["./assets/powershell/highlights.scm"],
+      },
+    },
+    {
       filetype: "markdown",
       wasm: "https://github.com/tree-sitter-grammars/tree-sitter-markdown/releases/download/v0.5.1/tree-sitter-markdown.wasm",
       queries: {
@@ -52,6 +76,22 @@ export default {
           ts: "typescript",
           tsx: "typescriptreact",
           typescriptreact: "typescriptreact",
+          python: "python",
+          python3: "python",
+          py: "python",
+          bash: "bash",
+          sh: "bash",
+          shell: "bash",
+          zsh: "bash",
+          ksh: "bash",
+          console: "bash",
+          terminal: "bash",
+          "shell-session": "bash",
+          command: "bash",
+          powershell: "powershell",
+          pwsh: "powershell",
+          ps1: "powershell",
+          ps: "powershell",
           markdown: "markdown",
           md: "markdown",
         },

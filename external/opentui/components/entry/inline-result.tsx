@@ -8,6 +8,7 @@ import type { ConversationPalette } from "../conversation-types.js";
 import { buildToolResultArtifacts, type ToolResultLineArtifact } from "../tool-result-artifacts.js";
 import { SelectableRow } from "../../display/primitives/selectable-row.js";
 import { chunkDisplayWidth, createChunk } from "../syntax-highlight-utils.js";
+import { CommandText } from "./command-text.js";
 
 /** Clickable fold indicator with hover highlight. */
 function FoldIndicator(
@@ -27,6 +28,8 @@ interface InlineResultProps {
   data: InlineResultData;
   colors: ConversationPalette;
   contentWidth: number;
+  language?: string;
+  syntaxMode?: "command" | "output";
   onOpenDetail?: () => void;
 }
 
@@ -134,7 +137,7 @@ function splitIntoHunks(artifacts: ToolResultLineArtifact[]): Hunk[] {
 }
 
 function InlineResultInner(
-  { data, colors, contentWidth, onOpenDetail }: InlineResultProps,
+  { data, colors, contentWidth, language, syntaxMode, onOpenDetail }: InlineResultProps,
 ): React.ReactNode {
   const artifacts = useMemo(() => {
     if (data.toolMetadata) {
@@ -158,6 +161,38 @@ function InlineResultInner(
       : null),
     [artifacts],
   );
+
+  // 命令和源码输出预览需要绕过通用 metadata/diff 分支，
+  // 否则工具结果的弱化样式会覆盖语法高亮文本。
+  if (language || syntaxMode) {
+    const lines = data.text.split("\n");
+    const visibleLines = data.maxLines === Number.POSITIVE_INFINITY
+      ? lines
+      : lines.slice(0, data.maxLines);
+    const hiddenCount = Math.max(0, lines.length - visibleLines.length);
+    return (
+      <box flexDirection="column" gap={0}>
+        {visibleLines.map((line, idx) => (
+          <CommandText
+            key={idx}
+            text={line}
+            colors={colors}
+            mode={syntaxMode ?? "output"}
+            language={language}
+            fallbackColor={data.dim ? colors.dim : colors.toolResultBody}
+            wrapMode="char"
+          />
+        ))}
+        {hiddenCount > 0 ? (
+          <FoldIndicator
+            text={`${LINE_PREFIX}... (${hiddenCount} more lines${onOpenDetail ? ", CLICK to open" : ""})`}
+            colors={colors}
+            onClick={onOpenDetail}
+          />
+        ) : null}
+      </box>
+    );
+  }
 
   if (artifacts) {
     if (hunks) {

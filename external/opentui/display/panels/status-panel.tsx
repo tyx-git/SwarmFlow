@@ -9,6 +9,7 @@ import type { ConversationPalette } from "../../components/conversation-types.js
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { formatCompactTokensShort } from "../utils/format.js";
 import { getCommonColors } from "../theme/color-config.js";
+import { useShimmer } from "../../presentation/use-shimmer.js";
 
 const ATTRS_STRIKE = createTextAttributes({ strikethrough: true });
 
@@ -24,6 +25,8 @@ const TASK_DONE_TEXT = COMMON_COLORS.taskDoneText;
 const TASK_ID_TEXT = COMMON_COLORS.taskIdText;
 /** Header starts with "● "; indent row glyphs by those two display columns. */
 const TASK_ROW_STATUS_INDENT = "  ";
+const STATUS_PANEL_TITLE_COLOR = COMMON_COLORS.workingStatus;
+const AGENT_ROW_HEIGHT = 2;
 
 export function taskSpinnerGlyph(frame: number): string {
   const index = ((frame % TASK_SPINNER_FRAMES.length) + TASK_SPINNER_FRAMES.length) % TASK_SPINNER_FRAMES.length;
@@ -53,70 +56,75 @@ export interface StatusPanelProps {
 
 // ── Agent rows (modal style) ────────────────────────────────
 
-function lifecycleIcon(lifecycle: string): string {
-  switch (lifecycle) {
-    case "running": return "●";
-    case "blocked": return "◐";
-    case "idle": return "○";
-    default: return "◌";
-  }
+function agentIsCompleted(agent: ChildSessionSnapshot): boolean {
+  return agent.status === "completed" || agent.outcome === "completed";
 }
 
-function lifecycleLabel(lifecycle: string): string {
-  switch (lifecycle) {
-    case "running": return "running";
-    case "blocked": return "waiting";
-    case "idle": return "idle";
-    default: return "done";
-  }
+function agentIsFailed(agent: ChildSessionSnapshot): boolean {
+  return agent.status === "error" || agent.status === "terminated" || agent.outcome === "error";
 }
 
-function agentStatusLabel(agent: ChildSessionSnapshot): string {
-  if (agent.pendingAskKind === "approval") return "approval";
-  if (agent.pendingAskKind === "agent_question") return "asking";
-  // 重启对账后所有子代理统一落成 fail：lifecycle 多为 idle/archived，必须按 status 展示，
-  // 否则会被 lifecycleLabel 显示成 "done"（误导）。
-  if (agent.status === "error") {
-    const resumable = agent.lifecycle === "idle";
-    return resumable ? "failed · resumable" : "failed";
-  }
-  return lifecycleLabel(agent.lifecycle);
+function agentIsInterrupted(agent: ChildSessionSnapshot): boolean {
+  return agent.status === "interrupted" || agent.outcome === "interrupted";
+}
+
+function AgentRow({
+  agent,
+  colors,
+  onAgentClick,
+}: {
+  agent: ChildSessionSnapshot;
+  colors: ConversationPalette;
+  onAgentClick?: (agentId: string) => void;
+}): React.ReactNode {
+  const isTerminalSuccess = agentIsCompleted(agent);
+  const isTerminalFailure = !isTerminalSuccess && (agentIsFailed(agent) || agentIsInterrupted(agent));
+  const isActive = !isTerminalSuccess && !isTerminalFailure && (agent.running || agent.lifecycle === "running");
+  const isWaitingForAsk = Boolean(agent.pendingAskKind) || agent.lifecycle === "blocked";
+  const statusColor = isTerminalSuccess
+    ? colors.green
+    : isTerminalFailure
+      ? colors.red
+      : isWaitingForAsk
+        ? colors.waitingStatus
+        : isActive
+          ? colors.workingStatus
+          : colors.textFaint;
+  const nameColor = isActive || isWaitingForAsk ? colors.text : colors.textSecondary;
+  const descColor = isActive || isWaitingForAsk ? colors.dim : colors.textFaint;
+  const shimmer = useShimmer("● ", RGBA.fromHex(statusColor), isActive);
+  const statsLine = `└ ${agent.lifetimeToolCallCount} tools, ${formatCompactTokensShort(agent.lastTotalTokens)} tokens`;
+
+  return (
+    <SelectableRow
+      key={agent.id}
+      hoverBackgroundColor={colors.border}
+      onPress={onAgentClick ? () => onAgentClick(agent.id) : undefined}
+    >
+      <box flexDirection="column" width="100%">
+        <box flexDirection="row" width="100%">
+          {isActive ? (
+            <text content={shimmer} flexShrink={0} />
+          ) : (
+            <text fg={statusColor} content={`${isWaitingForAsk ? "◐" : "●"} `} flexShrink={0} />
+          )}
+          <text fg={nameColor} content={agent.id} flexShrink={1} truncate />
+          <box flexGrow={1} />
+        </box>
+        <box flexDirection="row" width="100%" paddingLeft={2}>
+          <text fg={descColor} content={statsLine} truncate />
+        </box>
+      </box>
+    </SelectableRow>
+  );
 }
 
 function AgentRows({ agents, colors, onAgentClick }: { agents: readonly ChildSessionSnapshot[]; colors: ConversationPalette; onAgentClick?: (agentId: string) => void }): React.ReactNode {
   return (
     <>
-      {agents.map((agent) => {
-        const isActive = agent.lifecycle === "running";
-        const isBlocked = agent.lifecycle === "blocked";
-        const isWaitingForAsk = Boolean(agent.pendingAskKind);
-        const statusColor = isWaitingForAsk || isBlocked ? colors.waitingStatus : isActive ? colors.workingStatus : colors.textFaint;
-        const nameColor = isActive || isBlocked ? colors.text : colors.textSecondary;
-        const descColor = isActive || isBlocked ? colors.dim : colors.textFaint;
-        const icon = lifecycleIcon(agent.lifecycle);
-        const label = agentStatusLabel(agent);
-        const statsLine = `└ ${agent.lifetimeToolCallCount} tools, ${formatCompactTokensShort(agent.lastTotalTokens)} tokens`;
-
-        return (
-          <SelectableRow
-            key={agent.id}
-            hoverBackgroundColor={colors.border}
-            onPress={onAgentClick ? () => onAgentClick(agent.id) : undefined}
-          >
-            <box flexDirection="column" width="100%">
-              <box flexDirection="row" width="100%">
-                <text fg={statusColor} content={`${icon} `} flexShrink={0} />
-                <text fg={nameColor} content={agent.id} flexShrink={1} truncate />
-                <text fg={statusColor} content={` [${label}]`} flexShrink={0} />
-                <box flexGrow={1} />
-              </box>
-              <box flexDirection="row" width="100%" paddingLeft={2}>
-                <text fg={descColor} content={statsLine} truncate />
-              </box>
-            </box>
-          </SelectableRow>
-        );
-      })}
+      {agents.map((agent) => (
+        <AgentRow key={agent.id} agent={agent} colors={colors} onAgentClick={onAgentClick} />
+      ))}
     </>
   );
 }
@@ -129,12 +137,21 @@ function clampPanelHeight(terminalHeight: number): number {
 
 /** 任务滚动视口最多显示的行数；多余任务保留在滚动内容中。 */
 export const MAX_VISIBLE_TASKS = 4;
+export const MAX_VISIBLE_AGENTS = 3;
 
 export function taskViewportHeight(taskCount: number): number {
   return Math.min(Math.max(0, taskCount), MAX_VISIBLE_TASKS);
 }
 
-function TaskTitle({
+export function agentViewportHeight(agentCount: number): number {
+  return Math.min(Math.max(0, agentCount), MAX_VISIBLE_AGENTS) * AGENT_ROW_HEIGHT;
+}
+
+export function statusPanelBodyHeight(taskContentHeight: number, agentContentHeight: number, maxHeight: number): number {
+  return Math.min(Math.max(1, maxHeight), Math.max(taskContentHeight, agentContentHeight));
+}
+
+function StatusPanelTitle({
   text,
   colors,
   onToggle,
@@ -161,7 +178,7 @@ function TaskTitle({
         onToggle();
       }}
     >
-      <text fg={colors.badgeTodoFg} content={text} />
+      <text fg={STATUS_PANEL_TITLE_COLOR} content={text} />
     </box>
   );
 }
@@ -283,6 +300,39 @@ function TaskList({
   );
 }
 
+function AgentList({
+  agents,
+  colors,
+  onAgentClick,
+  collapsed,
+  contentHeight,
+  maxHeight,
+}: {
+  agents: readonly ChildSessionSnapshot[];
+  colors: ConversationPalette;
+  onAgentClick?: (agentId: string) => void;
+  collapsed: boolean;
+  contentHeight: number;
+  maxHeight: number;
+}): React.ReactNode {
+  if (collapsed) return null;
+  const rows = <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />;
+  if (agents.length <= MAX_VISIBLE_AGENTS) {
+    return <box flexDirection="column" width="100%" flexShrink={0}>{rows}</box>;
+  }
+  return (
+    <scrollbox
+      height={Math.max(1, contentHeight)}
+      maxHeight={maxHeight}
+      scrollY={true}
+      fitContent={true}
+      horizontalScrollbarOptions={{ visible: false }}
+    >
+      {rows}
+    </scrollbox>
+  );
+}
+
 // ── Main panel ──────────────────────────────────────────────
 
 function StatusPanelInner({
@@ -299,6 +349,7 @@ function StatusPanelInner({
   const runningCount = agents.filter((a) => a.lifecycle === "running" || a.lifecycle === "blocked").length;
   const [spinnerFrame, setSpinnerFrame] = React.useState(0);
   const [tasksCollapsed, setTasksCollapsed] = React.useState(false);
+  const [agentsCollapsed, setAgentsCollapsed] = React.useState(false);
 
   React.useEffect(() => {
     if (tasks.every((task) => task.status !== "in_progress")) {
@@ -327,40 +378,55 @@ function StatusPanelInner({
   const collapsedTodoTitle = `○ ${tasks.length} tasks (${openTasks.length} open)`;
   const todoTitle = tasksCollapsed ? collapsedTodoTitle : expandedTodoTitle;
   const taskContentHeight = taskViewportHeight(tasks.length) + (taskPersistence === "memory" ? 1 : 0);
+  const agentContentHeight = agentViewportHeight(agents.length);
+  const sharedBodyHeight = statusPanelBodyHeight(
+    tasksCollapsed ? 0 : 1 + taskContentHeight,
+    agentsCollapsed ? 0 : 1 + agentContentHeight,
+    maxHeight,
+  );
   const taskTitle = (
-    <TaskTitle
+    <StatusPanelTitle
       text={todoTitle}
       colors={colors}
       onToggle={() => setTasksCollapsed((collapsed) => !collapsed)}
     />
   );
+  const agentsTitle = (
+    <StatusPanelTitle
+      text={agentTitle}
+      colors={colors}
+      onToggle={() => setAgentsCollapsed((collapsed) => !collapsed)}
+    />
+  );
 
   if (hasAgents && hasTasks) {
     return (
-      <box width="100%" flexShrink={0} maxHeight={maxHeight + 1} flexDirection="row" gap={0}>
-        <box width="40%" flexShrink={0} flexDirection="column">
-          <text fg={colors.badgeAgentFg} content={agentTitle} />
-          <scrollbox
-            maxHeight={maxHeight}
-            scrollY={true}
-            fitContent={true}
-            horizontalScrollbarOptions={{ visible: false }}
-          >
-            <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
-          </scrollbox>
-        </box>
-        <box flexGrow={1} flexShrink={0} flexDirection="column">
-          {taskTitle}
-          {!tasksCollapsed ? (
-            <TaskList
-              tasks={tasks}
+      <box width="100%" flexShrink={0} flexDirection="column" paddingTop={1}>
+        <box width="100%" flexShrink={0} height={Math.max(1, sharedBodyHeight)} flexDirection="row" gap={0}>
+          <box width="60%" flexShrink={0} flexDirection="column">
+            {taskTitle}
+            {!tasksCollapsed ? (
+              <TaskList
+                tasks={tasks}
+                colors={colors}
+                taskPersistence={taskPersistence}
+                spinnerFrame={spinnerFrame}
+                taskContentHeight={taskContentHeight}
+                maxHeight={maxHeight}
+              />
+            ) : null}
+          </box>
+          <box flexGrow={1} flexShrink={0} flexDirection="column">
+            {agentsTitle}
+            <AgentList
+              agents={agents}
               colors={colors}
-              taskPersistence={taskPersistence}
-              spinnerFrame={spinnerFrame}
-              taskContentHeight={taskContentHeight}
+              onAgentClick={onAgentClick}
+              collapsed={agentsCollapsed}
+              contentHeight={agentContentHeight}
               maxHeight={maxHeight}
             />
-          ) : null}
+          </box>
         </box>
       </box>
     );
@@ -368,22 +434,22 @@ function StatusPanelInner({
 
   if (hasAgents) {
     return (
-      <box width="100%" flexShrink={0} flexDirection="column">
-        <text fg={colors.badgeAgentFg} content={agentTitle} />
-        <scrollbox
+      <box width="100%" flexShrink={0} flexDirection="column" paddingTop={1}>
+        {agentsTitle}
+        <AgentList
+          agents={agents}
+          colors={colors}
+          onAgentClick={onAgentClick}
+          collapsed={agentsCollapsed}
+          contentHeight={agentContentHeight}
           maxHeight={maxHeight}
-          scrollY={true}
-          fitContent={true}
-          horizontalScrollbarOptions={{ visible: false }}
-        >
-          <AgentRows agents={agents} colors={colors} onAgentClick={onAgentClick} />
-        </scrollbox>
+        />
       </box>
     );
   }
 
   return (
-    <box width="100%" flexShrink={0} flexDirection="column">
+    <box width="100%" flexShrink={0} flexDirection="column" paddingTop={1}>
       {taskTitle}
       {!tasksCollapsed ? (
         <TaskList

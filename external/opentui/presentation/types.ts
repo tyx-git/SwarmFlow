@@ -25,6 +25,10 @@ export interface InlineResultData {
   toolMetadata?: Record<string, unknown>;
   /** When true, diff lines are rendered without red/green background (for Create/Overwrite). */
   noDiffBackground?: boolean;
+  /** 命令或文件输出的可选语言提示。 */
+  language?: string;
+  /** 存在语言提示时按源码或命令文本渲染普通输出。 */
+  syntaxMode?: "command" | "output";
 }
 
 export interface ToolStreamSectionData {

@@ -12,6 +12,8 @@ import { extname } from "node:path";
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
 import { displayWidthWithNewlines } from "../composer-token-logic.js";
 import { getUiCommonColors } from "../../../src/config/ui-colors.js";
+import { highlightToChunks } from "../forked/patch-opentui-markdown.js";
+import { inferCodeFiletype } from "../forked/core/lib/tree-sitter/resolve-ft.js";
 
 const COMMENT_EXEMPT_COLOR_VALUES = getUiCommonColors().syntaxCommentExempt;
 
@@ -117,6 +119,108 @@ export const LANGUAGE_BY_EXTENSION: Record<string, string> = {
 /** Infer highlight.js language from a file path's extension. */
 export function inferLanguageFromPath(filePath: string): string | undefined {
   return LANGUAGE_BY_EXTENSION[extname(filePath).toLowerCase()];
+}
+
+// ripgrep/编译器常见的 `path:line[:column]:source` 输出；扩展名由语言表另行判断。
+const SOURCE_RESULT_RE = /^(.+?):(\d+)(?::(\d+))?:(.*)$/;
+
+export type SyntaxTextMode = "command" | "output";
+
+function stripCommandPrompt(line: string): string {
+  return line.replace(/^(?:❯\s*|>\s*|PS(?:\s+[^>]+)?>\s*)/i, "");
+}
+
+function splitCommandPrompt(line: string): { prompt: string; command: string } {
+  const match = line.match(/^(\s*(?:❯\s*|>\s*|PS(?:\s+[^>]+)?>\s*))/i);
+  if (!match) return { prompt: "", command: line };
+  return { prompt: match[1], command: line.slice(match[1].length) };
+}
+
+function styledChunksForLanguage(text: string, language: string, fallbackFg?: RGBA): TextChunk[] {
+  const highlighted = highlightToChunks(text, language);
+  if (!highlighted || highlighted.length === 0) {
+    return [createChunk(text || " ", { fg: fallbackFg })];
+  }
+  return highlighted.map((chunk) => ({ ...chunk, fg: chunk.fg ?? fallbackFg }));
+}
+
+function highlightCommandLines(
+  text: string,
+  language: string,
+  fallbackFg?: RGBA,
+): TextChunk[] {
+  const chunks: TextChunk[] = [];
+  const lines = text.split("\n");
+  lines.forEach((line, index) => {
+    const { prompt, command } = splitCommandPrompt(line);
+    const leading = command.match(/^\s*/)?.[0] ?? "";
+    const commandMatch = command.slice(leading.length).match(/^([^\s|;&]+)(.*)$/);
+    if (commandMatch) {
+      if (prompt) chunks.push(createChunk(prompt, { fg: fallbackFg }));
+      chunks.push(createChunk(leading, { fg: fallbackFg }));
+      chunks.push(...styledChunksForLanguage(`${commandMatch[1]}${commandMatch[2]}`, language, fallbackFg));
+    } else {
+      chunks.push(createChunk(line || " ", { fg: fallbackFg }));
+    }
+    if (index < lines.length - 1) chunks.push(createChunk("\n", { fg: fallbackFg }));
+  });
+  return chunks;
+}
+
+/**
+ * 高亮 shell 命令和 ripgrep 风格源码输出，同时保持普通日志为纯文本。
+ * `src/a.ts:12:const x` 会分别高亮路径、行号和源码片段。
+ */
+export function buildCommandStyledText(
+  text: string,
+  options: {
+    mode: SyntaxTextMode;
+    language?: string;
+    fallbackFg?: RGBA;
+    pathFg?: RGBA;
+    lineFg?: RGBA;
+    metadataFg?: RGBA;
+  },
+): StyledText {
+  const lines = text.split("\n");
+  const chunks: TextChunk[] = [];
+  const fallbackFg = options.fallbackFg;
+  const pathFg = options.pathFg ?? fallbackFg;
+  const lineFg = options.lineFg ?? fallbackFg;
+  const metadataFg = options.metadataFg ?? fallbackFg;
+
+  lines.forEach((line, index) => {
+    const sourceMatch = line.match(SOURCE_RESULT_RE);
+    const sourcePath = sourceMatch?.[1] ?? "";
+    const isSourceResult = Boolean(
+      sourceMatch
+      && (inferLanguageFromPath(sourcePath) !== undefined || /[\\/]/.test(sourcePath)),
+    );
+    if (sourceMatch && isSourceResult) {
+      const [, filePath, lineNumber, columnNumber, source] = sourceMatch;
+      chunks.push(createChunk(filePath, { fg: pathFg }));
+      chunks.push(createChunk(`:${lineNumber}${columnNumber ? `:${columnNumber}` : ""}:`, { fg: lineFg }));
+      const language = inferLanguageFromPath(filePath) ?? options.language;
+      if (language) chunks.push(...styledChunksForLanguage(source, language, fallbackFg));
+      else chunks.push(createChunk(source || " ", { fg: fallbackFg }));
+    } else {
+      const commandLine = stripCommandPrompt(line.trimStart());
+      const language = options.language ?? inferCodeFiletype(commandLine);
+      const shouldHighlight = options.mode === "command"
+        ? inferCodeFiletype(commandLine) !== undefined
+        : options.language !== undefined || inferCodeFiletype(commandLine) !== undefined;
+      if (shouldHighlight && language) {
+        chunks.push(...(options.mode === "command"
+          ? highlightCommandLines(line, language, fallbackFg)
+          : styledChunksForLanguage(line, language, fallbackFg)));
+      } else {
+        chunks.push(createChunk(line || " ", { fg: fallbackFg }));
+      }
+    }
+    if (index < lines.length - 1) chunks.push(createChunk("\n", { fg: metadataFg }));
+  });
+
+  return new StyledText(chunks);
 }
 
 // ------------------------------------------------------------------

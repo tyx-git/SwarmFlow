@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   MAX_VISIBLE_TASKS,
+  MAX_VISIBLE_AGENTS,
+  agentViewportHeight,
+  statusPanelBodyHeight,
   taskSpinnerGlyph,
   taskViewportHeight,
 } from "../external/opentui/display/panels/status-panel.js";
@@ -14,6 +17,16 @@ describe("task status panel layout and presentation", () => {
     expect(taskViewportHeight(3)).toBe(3);
     expect(taskViewportHeight(4)).toBe(4);
     expect(taskViewportHeight(7)).toBe(4);
+  });
+
+  it("sizes agent rows to three entries and shares the taller panel height", () => {
+    expect(MAX_VISIBLE_AGENTS).toBe(3);
+    expect(agentViewportHeight(0)).toBe(0);
+    expect(agentViewportHeight(1)).toBe(2);
+    expect(agentViewportHeight(3)).toBe(6);
+    expect(agentViewportHeight(8)).toBe(6);
+    expect(statusPanelBodyHeight(4, 6, 8)).toBe(6);
+    expect(statusPanelBodyHeight(9, 2, 8)).toBe(8);
   });
 
   it("rotates the active spinner frames and wraps at the end", () => {
@@ -53,6 +66,16 @@ describe("task status panel layout and presentation", () => {
     expect(source).toContain("height={Math.max(1, taskContentHeight)}");
     expect(source).toContain('const TASK_ROW_STATUS_INDENT = "  ";');
     expect(source).toContain("chunk(TASK_ROW_STATUS_INDENT)");
+    expect(source).toContain("const STATUS_PANEL_TITLE_COLOR = COMMON_COLORS.workingStatus;");
+    expect(source).toContain("useShimmer");
+    expect(source).toContain("agentIsCompleted");
+    expect(source).toContain("agentIsFailed");
+    expect(source).toContain("agentIsInterrupted");
+    expect(source).not.toContain("agentStatusLabel");
+    expect(source).not.toContain("lifecycleLabel");
+    expect(source).toContain("width=\"60%\"");
+    expect(source).toContain("<AgentList");
+    expect(source).toContain("paddingTop={1}");
   });
 });
 
