@@ -353,6 +353,60 @@ export function OpenTuiApp({
     _setProcessing(v);
   }, []);
   const [phase, setPhase] = useState<ActivityPhase>("idle");
+  // 网络重试状态只覆盖输入框中的活动文字，不改变 Working 阶段本身。
+  const [networkStatus, setNetworkStatus] = useState<string | null>(null);
+  const networkRetryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const networkRetryTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const networkRetryGenerationRef = useRef(0);
+  const clearNetworkStatus = useCallback(() => {
+    networkRetryGenerationRef.current += 1;
+    if (networkRetryTimerRef.current) {
+      clearInterval(networkRetryTimerRef.current);
+      networkRetryTimerRef.current = null;
+    }
+    if (networkRetryTransitionRef.current) {
+      clearTimeout(networkRetryTransitionRef.current);
+      networkRetryTransitionRef.current = null;
+    }
+    setNetworkStatus(null);
+  }, []);
+  const showNetworkRetryStatus = useCallback((attempt: number, maxRetries: number, delaySec: number) => {
+    clearNetworkStatus();
+    const generation = networkRetryGenerationRef.current;
+    const seconds = Math.max(0, Number.isFinite(delaySec) ? Math.floor(delaySec) : 0);
+    let remaining = seconds;
+    setNetworkStatus(`Network retry ${attempt}/${maxRetries} waiting ${seconds}s`);
+    if (seconds === 0) {
+      setNetworkStatus("Waiting for network 0s");
+      return;
+    }
+    // 短暂显示重试次数，再切换为简洁的倒计时状态。
+    networkRetryTransitionRef.current = setTimeout(() => {
+      networkRetryTransitionRef.current = null;
+      if (networkRetryGenerationRef.current !== generation) return;
+      setNetworkStatus(`Waiting for network ${remaining}s`);
+      networkRetryTimerRef.current = setInterval(() => {
+        if (networkRetryGenerationRef.current !== generation) return;
+        remaining -= 1;
+        if (remaining <= 0) {
+          if (networkRetryTimerRef.current) {
+            clearInterval(networkRetryTimerRef.current);
+            networkRetryTimerRef.current = null;
+          }
+          setNetworkStatus(null);
+          return;
+        }
+        setNetworkStatus(`Waiting for network ${remaining}s`);
+      }, 1000);
+    }, 250);
+  }, [clearNetworkStatus]);
+  useEffect(() => {
+    return () => {
+      networkRetryGenerationRef.current += 1;
+      if (networkRetryTimerRef.current) clearInterval(networkRetryTimerRef.current);
+      if (networkRetryTransitionRef.current) clearTimeout(networkRetryTransitionRef.current);
+    };
+  }, []);
   const [contextTokens, setContextTokens] = useState(0);
   const [cacheInputTokens, setCacheInputTokens] = useState(0);
   const [cacheReadTokens, setCacheReadTokens] = useState(0);
@@ -760,6 +814,7 @@ export function OpenTuiApp({
       }
     } finally {
       abortControllerRef.current = null;
+      clearNetworkStatus();
       const suspended = Boolean(session.getPendingAsk?.());
       if (suspended) {
         setPhase("Asking");
@@ -768,7 +823,7 @@ export function OpenTuiApp({
         setPhase("idle");
       }
     }
-  }, [autoSave, session]);
+  }, [autoSave, clearNetworkStatus, session]);
   const getAskQuestions = useCallback((): AgentQuestionItem[] => {
     if (!pendingAsk || pendingAsk.kind !== "agent_question") return [];
     return (pendingAsk.payload["questions"] as AgentQuestionItem[]) ?? [];
@@ -944,6 +999,22 @@ export function OpenTuiApp({
   handleProgressRef.current = (event) => {
     if (closingRef.current) return;
     switch (event.action) {
+      case "retry_attempt": {
+        const attempt = Number(event.extra["attempt"]);
+        const maxRetries = Number(event.extra["maxRetries"]);
+        const delaySec = Number(event.extra["delaySec"]);
+        showNetworkRetryStatus(
+          Number.isFinite(attempt) ? attempt : 0,
+          Number.isFinite(maxRetries) ? maxRetries : 0,
+          Number.isFinite(delaySec) ? delaySec : 0,
+        );
+        break;
+      }
+      case "retry_success":
+      case "retry_exhausted":
+        clearNetworkStatus();
+        if (event.action === "retry_success") setPhase("Working");
+        break;
       case "reasoning_chunk":
       case "text_chunk":
       case "tool_call":
@@ -1348,6 +1419,7 @@ export function OpenTuiApp({
   const beginClosing = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
+    clearNetworkStatus();
     setProcessing(false);
     setPhase("closing");
     setHint(null);
@@ -1357,7 +1429,7 @@ export function OpenTuiApp({
       clearTimeout(closingTimerRef.current);
     }
     void performExit();
-  }, [performExit]);
+  }, [clearNetworkStatus, performExit]);
   const buildCommandOptions = useCallback((cmdName: string) => {
     const command = commandRegistry.lookup(cmdName);
     if (!command?.options) return [];
@@ -1608,6 +1680,7 @@ export function OpenTuiApp({
         session.appendStatusMessage?.(message);
       },
       resetUiState: () => {
+        clearNetworkStatus();
         setProcessing(false);
         setPhase("idle");
         updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
@@ -1690,7 +1763,7 @@ export function OpenTuiApp({
       },
       requestOAuthLogin,
     };
-  }, [session, store, commandRegistry, autoSave, performExit, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState]);
+  }, [clearNetworkStatus, session, store, commandRegistry, autoSave, performExit, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState]);
   const runTurn = useCallback(async (input: string, inlineImages?: InlineImageInput[]) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -1706,6 +1779,7 @@ export function OpenTuiApp({
       // to add at the UI layer.
     } finally {
       abortControllerRef.current = null;
+      clearNetworkStatus();
       const suspended = Boolean(session.getPendingAsk?.());
       if (suspended) {
         setPhase("Asking");
@@ -1714,7 +1788,7 @@ export function OpenTuiApp({
         setPhase("idle");
       }
     }
-  }, [session, autoSave, updateContextTokenState]);
+  }, [clearNetworkStatus, session, autoSave, updateContextTokenState]);
   const runManualSummarize = useCallback(async (opts: { targetContextIds?: string[]; focusPrompt?: string }) => {
     if (typeof session.runManualSummarize !== "function") {
       session.appendStatusMessage?.("/summarize is not available in this session.");
@@ -1735,10 +1809,11 @@ export function OpenTuiApp({
       // Error log entry written by the runtime (runManualSummarize).
     } finally {
       abortControllerRef.current = null;
+      clearNetworkStatus();
       setProcessing(false);
       setPhase("idle");
     }
-  }, [session, autoSave]);
+  }, [clearNetworkStatus, session, autoSave]);
   const runManualCompact = useCallback(async (instruction: string) => {
     if (typeof session.runManualCompact !== "function") {
       session.appendStatusMessage?.("/compact is not available in this session.");
@@ -1755,10 +1830,11 @@ export function OpenTuiApp({
       // Error log entry written by the runtime (runManualCompact).
     } finally {
       abortControllerRef.current = null;
+      clearNetworkStatus();
       setProcessing(false);
       setPhase("idle");
     }
-  }, [session, autoSave]);
+  }, [clearNetworkStatus, session, autoSave]);
   const getSerializedComposerInput = useCallback((): string => {
     const composer = inputRef.current;
     if (!composer) return draftValue;
@@ -1922,6 +1998,7 @@ export function OpenTuiApp({
       // Error log entry written by the runtime (runInjectedCommand).
     } finally {
       abortControllerRef.current = null;
+      clearNetworkStatus();
       const suspended = Boolean(session.getPendingAsk?.());
       if (suspended) {
         setPhase("Asking");
@@ -1930,7 +2007,7 @@ export function OpenTuiApp({
         setPhase("idle");
       }
     }
-  }, [session, autoSave, handleSubmit, updateContextTokenState]);
+  }, [clearNetworkStatus, session, autoSave, handleSubmit, updateContextTokenState]);
   const acceptInputOverlaySelection = useCallback(() => {
     const selectedValue = commandOverlay.values[commandOverlay.selected];
     if (!selectedValue) {
@@ -3112,6 +3189,7 @@ export function OpenTuiApp({
       detailScrollRef={detailScrollRef}
       selectedChildId={selectedChildId}
       hasQueuedUserInput={queuedInputs.length > 0}
+      networkStatus={selectedChildId ? null : networkStatus}
       onEntryClick={openDetailTab}
       onAgentClick={enterChildSession}
       pendingAsk={pendingAsk}

@@ -5687,29 +5687,31 @@ export class Session {
     const agentName = this.primaryAgent.name;
     const emitRetryAttempt = (attempt: number, max: number, delaySec: number, errMsg: string) => {
       if (!this._compactInProgress) {
-        this._appendEntry(
-          createStatus(
-            this._nextLogId("status"),
-            activationTurnIndex,
-            `[Network retry ${attempt}/${max}] waiting ${delaySec}s: ${errMsg}`,
-            "retry_attempt",
-          ),
-          false,
+        // 重试过程只通过输入框状态栏显示，避免把短暂的网络状态写入主界面。
+        const entry = createStatus(
+          this._nextLogId("status"),
+          activationTurnIndex,
+          `[Network retry ${attempt}/${max}] waiting ${delaySec}s: ${errMsg}`,
+          "retry_attempt",
         );
+        entry.tuiVisible = false;
+        entry.displayKind = null;
+        this._appendEntry(entry, false);
       }
       this._progress?.onRetryAttempt(agentName, attempt, max, delaySec, errMsg);
     };
     const emitRetrySuccess = (attempt: number) => {
       if (!this._compactInProgress) {
-        this._appendEntry(
-          createStatus(
-            this._nextLogId("status"),
-            activationTurnIndex,
-            `[Network retry succeeded] attempt ${attempt}`,
-            "retry_success",
-          ),
-          false,
+        // 成功恢复后直接回到 Working，成功提示不占用对话记录。
+        const entry = createStatus(
+          this._nextLogId("status"),
+          activationTurnIndex,
+          `[Network retry succeeded] attempt ${attempt}`,
+          "retry_success",
         );
+        entry.tuiVisible = false;
+        entry.displayKind = null;
+        this._appendEntry(entry, false);
       }
       this._progress?.onRetrySuccess(agentName, attempt);
     };

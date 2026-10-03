@@ -58,6 +58,13 @@ function isProjectableTuiEntry(entry: LogEntry): boolean {
   if (entry.discarded) return false;
   if (entry.type === "input_received") return false;
   if (!entry.tuiVisible) return false;
+  // 网络重试过程显示在输入框状态栏；隐藏历史日志中的旧提示，避免恢复会话后再次刷屏。
+  if (
+    entry.type === "status" &&
+    (entry.meta["statusType"] === "retry_attempt" || entry.meta["statusType"] === "retry_success")
+  ) {
+    return false;
+  }
   if (
     entry.type === "sub_agent_start" ||
     entry.type === "sub_agent_tool_call" ||

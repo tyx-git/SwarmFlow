@@ -73,6 +73,8 @@ export interface OpenTuiScreenProps {
   detailScrollRef: React.RefObject<ScrollBoxRenderable | null>;
   selectedChildId: string | null;
   hasQueuedUserInput?: boolean;
+  /** Temporary network retry/waiting label shown in the activity row. */
+  networkStatus?: string | null;
   onEntryClick: (entry: PresentationEntry) => void;
   onAgentClick?: (agentId: string) => void;
   pendingAsk: PendingAskUi | null;
@@ -184,6 +186,7 @@ export function OpenTuiScreen({
   detailScrollRef,
   selectedChildId,
   hasQueuedUserInput = false,
+  networkStatus = null,
   onEntryClick,
   onAgentClick,
   pendingAsk,
@@ -335,6 +338,7 @@ export function OpenTuiScreen({
       selectedChildId={selectedChildId}
       hasQueuedUserInput={hasQueuedUserInput}
       phase={phase}
+      networkStatus={networkStatus}
       modelName={modelName}
       thinkingSuffix={thinkingSuffix}
       modelColor={modelColor}

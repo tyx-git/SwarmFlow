@@ -34,6 +34,8 @@ interface InputAreaProps {
   selectedChildId: string | null;
   hasQueuedUserInput?: boolean;
   phase: ActivityPhase;
+  /** Temporary network state shown in place of the regular activity label. */
+  networkStatus?: string | null;
   modelName: string;
   /** 思考深度后缀，显示在"供应商/模型"之后（暗色）。空串 = 隐藏。 */
   thinkingSuffix: string;
@@ -106,6 +108,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     selectedChildId,
     hasQueuedUserInput = false,
     phase,
+    networkStatus = null,
     modelName,
     modelColor,
     elapsed,
@@ -152,13 +155,19 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const spinnerConfig = getPhaseSpinnerConfig(phase);
   const activeSpinner = useSpinner(spinnerConfig.frames, spinnerConfig.interval, processing);
   const phaseColor = getPhaseColor(phase, colors);
+  const activityLabel = networkStatus ?? phase;
   const workedStatus = typeof lastWorkedElapsed === "number" && lastWorkedStartedAt !== null
     ? `Worked for ${formatWorkedDuration(lastWorkedElapsed)} · ${formatWorkedStartTime(lastWorkedStartedAt)}`
     : null;
   const activityStatus = processing ? (
-    <box flexDirection="row" flexShrink={0}>
-      <text fg={phaseColor} content={`${activeSpinner} ${phase}`} />
-      {elapsed > 0 ? (
+    <box flexDirection="row" flexShrink={networkStatus ? 1 : 0}>
+      <text
+        fg={phaseColor}
+        content={`${activeSpinner} ${activityLabel}`}
+        flexShrink={networkStatus ? 1 : 0}
+        truncate={Boolean(networkStatus)}
+      />
+      {elapsed > 0 && !networkStatus ? (
         <text fg={colors.dim} content={` ${formatElapsed(elapsed)}`} />
       ) : null}
     </box>
