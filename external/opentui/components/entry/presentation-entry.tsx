@@ -56,7 +56,11 @@ function PresentationEntryInner(
     ),
   } satisfies Record<PresentationEntryItemProps["entry"]["kind"], () => React.ReactNode>;
 
-  return renderers[entry.kind]?.() ?? <box />;
+  return (
+    <box width="100%" flexShrink={0}>
+      {renderers[entry.kind]?.() ?? <box />}
+    </box>
+  );
 }
 
 export const PresentationEntryComponent = React.memo(

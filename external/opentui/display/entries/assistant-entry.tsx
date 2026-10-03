@@ -23,7 +23,7 @@ export function AssistantEntry({
   const renderedStreaming = true;
   const reserveHeight = entry.assistantStreaming ?? false;
   return (
-    <box paddingTop={1}>
+    <box paddingTop={1} width="100%" flexShrink={0}>
       {markdownMode === "raw" ? (
         <text fg={colors.text} content={text} />
       ) : ASSISTANT_RENDERER_MODE === "code" ? (
@@ -49,6 +49,7 @@ export function AssistantEntry({
           concealCode={false}
           internalBlockMode="top-level"
           width="100%"
+          flexShrink={0}
           tableOptions={{
             widthMode: "content",
             borders: true,

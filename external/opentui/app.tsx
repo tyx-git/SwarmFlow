@@ -102,7 +102,12 @@ import {
 import { createDisplayTheme, type DisplayTheme, type DisplayThemeTokens, type DeepPartial, type ThemeMode } from "./display/theme/index.js";
 import { parseThemeModePref, normalizeThemeMode } from "../../src/config/theme.js";
 import { ContextUsageCard, CodexUsageCard } from "./display/panels/usage-cards.js";
-import { StatusPanel } from "./display/panels/status-panel.js";
+import {
+  StatusPanel,
+  dismissSettledAgentIds,
+  isSettledAgentSnapshot,
+  syncDismissedAgentIds,
+} from "./display/panels/status-panel.js";
 import { useTasks } from "./presentation/use-tasks.js";
 import {
   type ActivityPhase,
@@ -367,6 +372,12 @@ export function OpenTuiApp({
   const usagePollerRef = useRef<UsagePoller | null>(null);
   const usagePollerProviderRef = useRef<string | null>(null);
   const [childSessions, setChildSessions] = useState<ChildSessionSnapshot[]>([]);
+  const childSessionsRef = useRef(childSessions);
+  childSessionsRef.current = childSessions;
+  const [dismissedAgentIds, setDismissedAgentIds] = useState<ReadonlySet<string>>(() => new Set());
+  const dismissSettledAgents = useCallback(() => {
+    setDismissedAgentIds((previous) => dismissSettledAgentIds(previous, childSessionsRef.current));
+  }, []);
   const [shellSnapshots, setShellSnapshots] = useState<ShellSnapshotUi[]>([]);
   const [activeShellDetail, setActiveShellDetail] = useState<ShellDetailUi | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
@@ -893,6 +904,7 @@ export function OpenTuiApp({
   useEffect(() => {
     const syncFromLog = () => {
       const nextChildSessions = session.getChildSessionSnapshots?.() ?? [];
+      setDismissedAgentIds((previous) => syncDismissedAgentIds(previous, nextChildSessions));
       setChildSessions((previous) => sameChildSessionList(previous, nextChildSessions) ? previous : nextChildSessions);
       const nextShells = (session.getBackgroundShellSnapshots?.() ?? []) as ShellSnapshotUi[];
       setShellSnapshots((previous) => sameShellSnapshotList(previous, nextShells) ? previous : nextShells);
@@ -1826,6 +1838,7 @@ export function OpenTuiApp({
             : t.get(["Error", "alreadyQueued"]));
           return;
         }
+        if (!selectedChildId) dismissSettledAgents();
         appendPromptHistory(input);
         clearInput();
         showHint(t.get(["Views", "queue", "queued"]));
@@ -1872,12 +1885,14 @@ export function OpenTuiApp({
       setModelUiRevision((revision) => revision + 1);
       return;
     }
+    if (!selectedChildId) dismissSettledAgents();
     await runTurn(input, inlineImages);
   }, [
     askSelectionIndex,
     clearInput,
     pendingAsk,
     processing,
+    selectedChildId,
     resolveApproval,
     session,
     commandRegistry,
@@ -1885,6 +1900,7 @@ export function OpenTuiApp({
     buildCommandContext,
     performExit,
     runTurn,
+    dismissSettledAgents,
     showHint,
   ]);
   const runInjectedCommand = useCallback(async (displayText: string, content: string) => {
@@ -3165,12 +3181,14 @@ export function OpenTuiApp({
       }}
       sidebarMode={sidebarMode}
       statusPanel={(() => {
-        const showAgents = childSessions.length > 0;
+        const visibleAgents = childSessions.filter((agent) =>
+          !dismissedAgentIds.has(agent.id) || !isSettledAgentSnapshot(agent));
+        const showAgents = visibleAgents.length > 0;
         const showTasks = tasks.length > 0;
         if (!showAgents && !showTasks) return undefined;
         return (
           <StatusPanel
-            agents={childSessions}
+            agents={visibleAgents}
             showAgents={showAgents}
             tasks={tasks}
             showTasks={showTasks}

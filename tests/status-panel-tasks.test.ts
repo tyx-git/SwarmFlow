@@ -4,12 +4,69 @@ import {
   MAX_VISIBLE_TASKS,
   MAX_VISIBLE_AGENTS,
   agentViewportHeight,
+  dismissSettledAgentIds,
+  isSettledAgentSnapshot,
   statusPanelBodyHeight,
+  syncDismissedAgentIds,
   taskSpinnerGlyph,
   taskViewportHeight,
 } from "../external/opentui/display/panels/status-panel.js";
 
 describe("task status panel layout and presentation", () => {
+  const agentSnapshot = (overrides: Record<string, unknown> = {}) => ({
+    id: "worker-1",
+    numericId: 1,
+    logRevision: 0,
+    template: "explorer",
+    mode: "oneshot",
+    lifecycle: "idle",
+    phase: "idle",
+    status: "completed",
+    outcome: "completed",
+    running: false,
+    lifetimeToolCallCount: 0,
+    lastTotalTokens: 0,
+    lastToolCallSummary: "",
+    recentEvents: [],
+    pendingInboxCount: 0,
+    lastActivityAt: 0,
+    inputTokens: 0,
+    contextBudget: 0,
+    modelConfigName: "",
+    modelProvider: "",
+    pendingAskId: null,
+    pendingAskKind: null,
+    activeLogEntryId: null,
+    turnElapsed: 0,
+    cacheReadTokens: 0,
+    ...overrides,
+  }) as any;
+
+  it("hides settled agents on the next user turn but keeps active ones visible", () => {
+    const completed = agentSnapshot();
+    const active = agentSnapshot({
+      id: "worker-2",
+      lifecycle: "running",
+      status: "working",
+      outcome: "none",
+      running: true,
+    });
+
+    expect(isSettledAgentSnapshot(completed)).toBe(true);
+    expect(isSettledAgentSnapshot(active)).toBe(false);
+    expect(dismissSettledAgentIds(new Set(), [completed, active])).toEqual(new Set(["worker-1"]));
+  });
+
+  it("shows a dismissed agent again if it resumes and removes stale hidden IDs", () => {
+    const resumed = agentSnapshot({
+      lifecycle: "running",
+      status: "working",
+      outcome: "none",
+      running: true,
+    });
+    expect(syncDismissedAgentIds(new Set(["worker-1", "removed"]), [resumed])).toEqual(new Set());
+  });
+
   it("sizes the viewport to the task count and caps it at four rows", () => {
     expect(MAX_VISIBLE_TASKS).toBe(4);
     expect(taskViewportHeight(0)).toBe(0);

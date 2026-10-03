@@ -55,7 +55,7 @@ function PresentationPanelInner(
   void showLogoInScroll;
   void branding;
   return (
-    <box flexDirection="column" gap={0}>
+    <box flexDirection="column" width="100%" flexShrink={0} gap={0}>
       {selectedChildId ? (
         <box flexDirection="column" paddingLeft={2} paddingBottom={1}>
           <text fg={colors.accent} attributes={ATTRS_BOLD} content={`SUB-SESSION ${selectedChildId}`} />

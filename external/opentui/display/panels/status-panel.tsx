@@ -54,6 +54,48 @@ export interface StatusPanelProps {
   onAgentClick?: (agentId: string) => void;
 }
 
+export function isSettledAgentSnapshot(agent: ChildSessionSnapshot): boolean {
+  if (agent.running || agent.lifecycle === "running" || agent.lifecycle === "blocked" || agent.pendingAskKind) {
+    return false;
+  }
+  return agent.lifecycle === "archived"
+    || agent.outcome !== "none"
+    || agent.status === "completed"
+    || agent.status === "interrupted"
+    || agent.status === "error"
+    || agent.status === "terminated";
+}
+
+export function dismissSettledAgentIds(
+  dismissed: ReadonlySet<string>,
+  agents: readonly ChildSessionSnapshot[],
+): ReadonlySet<string> {
+  let next: Set<string> | undefined;
+  for (const agent of agents) {
+    if (!isSettledAgentSnapshot(agent) || dismissed.has(agent.id)) continue;
+    next ??= new Set(dismissed);
+    next.add(agent.id);
+  }
+  return next ?? dismissed;
+}
+
+export function syncDismissedAgentIds(
+  dismissed: ReadonlySet<string>,
+  agents: readonly ChildSessionSnapshot[],
+): ReadonlySet<string> {
+  const currentIds = new Set(agents.map((agent) => agent.id));
+  const visibleAgain = new Set(agents
+    .filter((agent) => agent.running || agent.lifecycle === "running" || agent.lifecycle === "blocked")
+    .map((agent) => agent.id));
+  let changed = false;
+  const next = new Set<string>();
+  for (const id of dismissed) {
+    if (currentIds.has(id) && !visibleAgain.has(id)) next.add(id);
+    else changed = true;
+  }
+  return changed ? next : dismissed;
+}
+
 // ── Agent rows (modal style) ────────────────────────────────
 
 function agentIsCompleted(agent: ChildSessionSnapshot): boolean {
