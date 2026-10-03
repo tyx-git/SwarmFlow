@@ -91,6 +91,17 @@ function transformUser(entry: ReconciledConversationEntry): PresentationEntry {
   };
 }
 
+function transformCommandEcho(entry: ReconciledConversationEntry): PresentationEntry {
+  return {
+    id: entry.id,
+    contentVersion: entry.contentVersion,
+    kind: "command_echo",
+    state: "done",
+    commandEchoText: entry.entry.text,
+    commandEchoTone: entry.entry.meta?.commandEchoTone === "worked" ? "worked" : undefined,
+  };
+}
+
 function transformThinking(entry: ReconciledConversationEntry, state: PresentationState): PresentationEntry {
   return {
     id: entry.id,
@@ -501,6 +512,12 @@ export function presentationTransform(
     switch (kind) {
       case "user": {
         result.push(transformUser(entry));
+        i++;
+        break;
+      }
+
+      case "command_echo": {
+        result.push(transformCommandEcho(entry));
         i++;
         break;
       }

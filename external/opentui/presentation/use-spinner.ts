@@ -5,6 +5,8 @@ export const WORKING_SPINNER_INTERVAL = 80;
 
 export const ASKING_SPINNER_FRAMES = ["◉", "◎"] as const;
 export const ASKING_SPINNER_INTERVAL = 700;
+export const COMPACTING_SPINNER_FRAMES = ["◦", "•"] as const;
+export const COMPACTING_SPINNER_INTERVAL = 500;
 
 export function useSpinner(
   frames: readonly string[],

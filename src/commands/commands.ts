@@ -79,6 +79,9 @@ export interface CommandContext {
   /* 在对话区域显示消息。 */
   showMessage: ShowMessageFn;
 
+  /** 成功执行切换类命令后回显命令名与参数。 */
+  appendSwitchCommandEcho?: (command: string, args: string) => void;
+
   /**
    * Brief, non-persistent UI hint shown in the input area's bottom-left
    * corner (TUI) — for short, no-copy-value confirmations like "Copied" or
@@ -1666,7 +1669,8 @@ async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
   if (trimmed) {
     session.setTitle?.(trimmed);
     ctx.autoSave();
-    ctx.showMessage(`Session renamed to: ${trimmed}`);
+    if (ctx.appendSwitchCommandEcho) ctx.appendSwitchCommandEcho("/rename", trimmed);
+    else ctx.showMessage(`Session renamed to: ${trimmed}`);
     return;
   }
 
@@ -1685,7 +1689,8 @@ async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
   if (value) {
     session.setTitle?.(value);
     ctx.autoSave();
-    ctx.showMessage(`Session renamed to: ${value}`);
+    if (ctx.appendSwitchCommandEcho) ctx.appendSwitchCommandEcho("/rename", value);
+    else ctx.showMessage(`Session renamed to: ${value}`);
   } else {
     session.setTitle?.("");
     ctx.autoSave();

@@ -106,9 +106,9 @@
       "/help": { "description": "显示命令帮助" },
       "/usage": { "description": "查看用量和统计" },
       "/new": { "description": "开始新会话" },
-      "/rename": { "description": "重命名当前会话" },
+      "/rename": { "description": "重命名当前会话", "echo": "会话已更名为:" },
       "/status": { "description": "查看当前会话状态" },
-      "/compact": { "description": "压缩当前上下文" },
+      "/compact": { "description": "压缩当前上下文", "compacted": "上下文已压缩" },
       "/clear": { "description": "清屏并重置后续上下文" },
       "/fork": { "description": "从当前会话创建分支" },
       "/ps": { "description": "查看后台进程" },
@@ -129,6 +129,9 @@
         "childActive": "Esc/^C 关闭或中断 · Opt+←→ 切换标签 · Opt+↑ 主会话",
         "queuedHint": "↑ 可编辑排队中的消息",
         "default": "输入消息或 /命令"
+      },
+      "activity": {
+        "compacting": "正在压缩上下文 {seconds}秒"
       },
       "commandPicker": {
         "selectProvider": "选择供应商:",
@@ -366,9 +369,9 @@
       "/help": { "description": "Show command help" },
       "/usage": { "description": "View usage and statistics" },
       "/new": { "description": "Start a new session" },
-      "/rename": { "description": "Rename the current session" },
+      "/rename": { "description": "Rename the current session", "echo": "Session renamed to:" },
       "/status": { "description": "View current session status" },
-      "/compact": { "description": "Compact the active context" },
+      "/compact": { "description": "Compact the active context", "compacted": "Context Compacted" },
       "/clear": { "description": "Clear the screen and future context" },
       "/fork": { "description": "Fork the current session" },
       "/ps": { "description": "View background processes" },
@@ -389,6 +392,9 @@
         "childActive": "Esc/^C close or interrupt · Opt+←→ switch tabs · Opt+↑ main",
         "queuedHint": "↑ to edit the queued message",
         "default": "message or /command"
+      },
+      "activity": {
+        "compacting": "Compacting context for {seconds}s"
       },
       "commandPicker": {
         "selectProvider": "Select provider:",

@@ -48,6 +48,7 @@ export type InputKind = "user" | "system" | "peer" | "compact";
 /** TUI 显示类型——决定条目在终端中的渲染方式 */
 export type TuiDisplayKind =
   | "user"
+  | "command_echo"
   | "agent_result"
   | "assistant"
   | "reasoning"
@@ -718,6 +719,36 @@ export function createUserInputDisplay(
     content: null,
     meta: { displayOnly: true },
   });
+}
+
+/** 创建切换类命令的简洁回显；不进入模型上下文。 */
+export function createSwitchCommandEcho(
+  id: string,
+  turnIndex: number,
+  display: string,
+  tone: "default" | "worked" = "default",
+): LogEntry {
+  return baseEntry(id, "user_message", turnIndex, {
+    tuiVisible: true,
+    displayKind: "command_echo",
+    display,
+    apiRole: null,
+    content: null,
+    meta: { displayOnly: true, commandEchoTone: tone },
+  });
+}
+
+/** 统一命令回显入口；注入类命令保持既有用户气泡样式。 */
+export function createCommandEcho(
+  id: string,
+  turnIndex: number,
+  display: string,
+  style: "switch" | "injected",
+  tone: "default" | "worked" = "default",
+): LogEntry {
+  return style === "switch"
+    ? createSwitchCommandEcho(id, turnIndex, display, tone)
+    : createUserInputDisplay(id, turnIndex, display);
 }
 
 /** 创建错误条目 */

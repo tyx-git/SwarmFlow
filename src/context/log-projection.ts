@@ -18,6 +18,7 @@ import { inferThinkingArtifact, normalizeThinkingArtifact } from "../lib/thinkin
 /** TUI 显示类型到对话条目类型的映射 */
 const DISPLAY_KIND_TO_ENTRY_KIND: Record<TuiDisplayKind, ConversationEntryKind> = {
   user: "user",
+  command_echo: "command_echo",
   agent_result: "agent_result",
   assistant: "assistant",
   reasoning: "reasoning",
@@ -183,6 +184,9 @@ function toConversationEntry(
     id: entry.id,
   };
   if (entry.meta["tuiDim"]) ce.dim = true;
+  if (entry.displayKind === "command_echo") {
+    ce.meta = { commandEchoTone: entry.meta["commandEchoTone"] ?? "default" };
+  }
   if (entry.type === "summary") {
     ce.meta ??= {};
     ce.meta.isSummary = true;

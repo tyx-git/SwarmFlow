@@ -8,6 +8,7 @@ import { ThinkingEntry } from "./thinking-entry.js";
 import { ToolOperationEntry } from "./tool-operation-entry.js";
 import { ToolGroupEntry } from "./tool-group-entry.js";
 import { UserEntry } from "./user-entry.js";
+import { CommandEchoEntry } from "./command-echo-entry.js";
 import { SystemEntry } from "./system-entry.js";
 import { TurnSummaryEntry } from "./turn-summary-entry.js";
 
@@ -18,6 +19,7 @@ function PresentationEntryInner(
 
   const renderers = {
     user: () => <UserEntry entry={entry} colors={colors} />,
+    command_echo: () => <CommandEchoEntry entry={entry} />,
     thinking: () => <ThinkingEntry entry={entry} colors={colors} />,
     tool_operation: () => (
       <ToolOperationEntry

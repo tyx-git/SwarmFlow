@@ -25,6 +25,8 @@ import {
   WORKING_SPINNER_INTERVAL,
   ASKING_SPINNER_FRAMES,
   ASKING_SPINNER_INTERVAL,
+  COMPACTING_SPINNER_FRAMES,
+  COMPACTING_SPINNER_INTERVAL,
 } from "../presentation/use-spinner.js";
 
 interface InputAreaProps {
@@ -84,11 +86,13 @@ interface InputAreaProps {
 
 function getPhaseSpinnerConfig(phase: ActivityPhase): { frames: readonly string[]; interval: number } {
   if (phase === "Asking") return { frames: ASKING_SPINNER_FRAMES, interval: ASKING_SPINNER_INTERVAL };
+  if (phase === "Compacting") return { frames: COMPACTING_SPINNER_FRAMES, interval: COMPACTING_SPINNER_INTERVAL };
   return { frames: WORKING_SPINNER_FRAMES, interval: WORKING_SPINNER_INTERVAL };
 }
 
 function getPhaseColor(phase: ActivityPhase, colors: ConversationPalette): string {
   if (phase === "Asking") return colors.dim;
+  if (phase === "Compacting") return WORKED_STATUS_COLOR;
   if (phase === "Working") return WORKING_STATUS_COLOR;
   return colors.workingStatus;
 }
@@ -155,7 +159,9 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const spinnerConfig = getPhaseSpinnerConfig(phase);
   const activeSpinner = useSpinner(spinnerConfig.frames, spinnerConfig.interval, processing);
   const phaseColor = getPhaseColor(phase, colors);
-  const activityLabel = networkStatus ?? phase;
+  const activityLabel = phase === "Compacting"
+    ? t.get(["Views", "activity", "compacting"], { seconds: Math.floor(elapsed) })
+    : networkStatus ?? phase;
   const workedStatus = typeof lastWorkedElapsed === "number" && lastWorkedStartedAt !== null
     ? `Worked for ${formatWorkedDuration(lastWorkedElapsed)} · ${formatWorkedStartTime(lastWorkedStartedAt)}`
     : null;
@@ -167,7 +173,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
         flexShrink={networkStatus ? 1 : 0}
         truncate={Boolean(networkStatus)}
       />
-      {elapsed > 0 && !networkStatus ? (
+      {elapsed > 0 && !networkStatus && phase !== "Compacting" ? (
         <text fg={colors.dim} content={` ${formatElapsed(elapsed)}`} />
       ) : null}
     </box>

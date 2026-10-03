@@ -4,6 +4,7 @@ import colorTable from "../../assets/ui-colors/color.json" with { type: "json" }
 export interface UiColorCommonTokens {
   workingStatus: string;
   workedStatus: string;
+  commandSwitchEchoText: string;
   taskOpenText: string;
   taskActiveText: string;
   taskDoneText: string;
@@ -90,6 +91,7 @@ const CONSOLE_COLOR = /^(?:Black|DarkBlue|DarkGreen|DarkCyan|DarkRed|DarkMagenta
 const REQUIRED_KEYS: Array<keyof UiColorCommonTokens> = [
   "workingStatus",
   "workedStatus",
+  "commandSwitchEchoText",
   "taskOpenText",
   "taskActiveText",
   "taskDoneText",

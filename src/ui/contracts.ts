@@ -157,7 +157,7 @@ export interface Session {
   rewindBoth?(toTurnIndex: number, plan: RewindPlan): Promise<RewindApplyResult & { removed: number }>;
   resumePendingTurn?(options?: { signal?: AbortSignal }): Promise<string>;
   hasPendingTurnToResume?(): boolean;
-  runManualCompact?(instruction?: string, options?: { signal?: AbortSignal }): Promise<void>;
+  runManualCompact?(instruction?: string, options?: { signal?: AbortSignal; completionDisplay?: string }): Promise<void>;
   getBackgroundShellSnapshots?(): Array<{
     id: string; command: string; cwd: string;
     status: "running" | "exited" | "failed" | "killed";
@@ -203,6 +203,7 @@ export interface Session {
   resetForNewSession?(newStore?: any): void;
   appendStatusMessage?(text: string, statusType?: string): void;
   appendErrorMessage?(text: string, errorType?: string): void;
+  appendCommandEcho?(text: string, style: "switch" | "injected", tone?: "default" | "worked"): void;
   appendUserInputDisplay?(text: string): void;
   getAllSkillNames?(): { name: string; description: string; enabled: boolean }[];
   setSkillEnabled?(name: string, enabled: boolean): void;
@@ -236,6 +237,7 @@ export interface Session {
 
 export type ConversationEntryKind =
   | "user"
+  | "command_echo"
   | "agent_result"
   | "assistant"
   | "interrupted_marker"

@@ -17,6 +17,7 @@ export type AnyOAuthTokens = OAuthTokens | GitHubOAuthTokens;
 export type ActivityPhase =
   | "idle"
   | "Working"
+  | "Compacting"
   | "Asking"
   | "closing";
 

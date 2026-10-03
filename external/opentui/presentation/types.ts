@@ -2,6 +2,7 @@ import type { FileModifyDisplayData } from "../../../src/lib/diff-hunk.js";
 
 export type PresentationKind =
   | "user"
+  | "command_echo"
   | "thinking"
   | "tool_operation"
   | "tool_group"
@@ -53,6 +54,10 @@ export interface PresentationEntry {
   userText?: string;
   userQueued?: boolean;
   userAttachments?: string[];
+
+  // kind=command_echo
+  commandEchoText?: string;
+  commandEchoTone?: "worked";
 
   // kind=thinking
   thinkingFullText?: string;

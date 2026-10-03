@@ -1654,6 +1654,13 @@ export function OpenTuiApp({
         }
         session.appendStatusMessage?.(message);
       },
+      appendSwitchCommandEcho: (command: string, args: string) => {
+        const input = args.trim() ? `${command} ${args.trim()}` : command;
+        const echo = resolveCommandEchoDisplay(input, uiText.language);
+        if (!echo) return;
+        if (session.appendCommandEcho) session.appendCommandEcho(echo, "switch");
+        else session.appendUserInputDisplay?.(echo);
+      },
       resetUiState: () => {
         clearNetworkStatus();
         setProcessing(false);
@@ -1734,7 +1741,7 @@ export function OpenTuiApp({
       },
       requestOAuthLogin,
     };
-  }, [clearNetworkStatus, session, store, commandRegistry, autoSave, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState]);
+  }, [clearNetworkStatus, session, store, commandRegistry, autoSave, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState, uiText]);
   const runTurn = useCallback(async (input: string, inlineImages?: InlineImageInput[]) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -1768,9 +1775,12 @@ export function OpenTuiApp({
     const controller = new AbortController();
     abortControllerRef.current = controller;
     setProcessing(true);
-    setPhase("Working");
+    setPhase("Compacting");
     try {
-      await session.runManualCompact(instruction, { signal: controller.signal });
+      await session.runManualCompact(instruction, {
+        signal: controller.signal,
+        completionDisplay: `• ${uiText.get(["Commands", "/compact", "compacted"])}`,
+      });
       autoSave();
     } catch {
       // Error log entry written by the runtime (runManualCompact).
@@ -1780,7 +1790,7 @@ export function OpenTuiApp({
       setProcessing(false);
       setPhase("idle");
     }
-  }, [clearNetworkStatus, session, autoSave]);
+  }, [clearNetworkStatus, session, autoSave, uiText]);
   const getSerializedComposerInput = useCallback((): string => {
     const composer = inputRef.current;
     if (!composer) return draftValue;
@@ -1788,18 +1798,15 @@ export function OpenTuiApp({
   }, [draftValue]);
   // Commands that run regardless of streaming state.
   const UI_ONLY_COMMANDS = new Set(["/new", "/clear", "/usage", "/status", "/memory", "/ps"]);
-  // Commands that mutate session runtime config (skills / MCP). They run as
-  // ordinary commands when idle — the Session serializes the actual reload
-  // against turns via its turn lock, so they need no UI "Working" state. While
-  // a turn is processing we only intercept them with a hint so they are not
-  // queued to the LLM as a user message.
-  const SESSION_CONFIG_COMMANDS = new Set(["/mcp", "/skills", "/skills-creater", "/provider", "/model", "/agents", "/permission", "/theme", "/hooks"]);
+  // These commands cannot be queued while a turn is active. `/compact` uses
+  // the same guard so it is never deferred and started after the turn ends.
+  const NON_QUEUEABLE_COMMANDS = new Set(["/mcp", "/skills", "/skills-creater", "/provider", "/model", "/agents", "/permission", "/theme", "/hooks", "/compact"]);
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;
     const cmdToken = input.startsWith("/") ? input.split(/\s/)[0] : "";
     const isUiOnlyCommand = Boolean(cmdToken && UI_ONLY_COMMANDS.has(cmdToken));
-    const isSessionConfigCommand = Boolean(cmdToken && SESSION_CONFIG_COMMANDS.has(cmdToken));
+    const isNonQueueableCommand = Boolean(cmdToken && NON_QUEUEABLE_COMMANDS.has(cmdToken));
     // UI-only commands: always intercept, even when processing
     if (isUiOnlyCommand) {
       appendPromptHistory(input);
@@ -1843,7 +1850,7 @@ export function OpenTuiApp({
     // re-create useCallback closures on every state change.
     const isProcessing = processingRef.current;
     if (isProcessing) {
-      if (isSessionConfigCommand) {
+      if (isNonQueueableCommand) {
         showHint(t.get(["Error", "waitForFinish"]));
         return;
       }
@@ -1891,9 +1898,15 @@ export function OpenTuiApp({
         session.appendErrorMessage?.(t.get(["Error", "unknownCommand"], { command: cmdName }), "command");
         return;
       }
-      // 切换类命令不显示原始命令字符，改显 language.json 里的中文/英文文案。
-      const echo = resolveCommandEchoDisplay(input, uiText.language);
-      session.appendUserInputDisplay?.(echo ?? input);
+      const deferredEcho = cmdName === "/rename" || cmdName === "/compact";
+      if (!deferredEcho) {
+        const echo = resolveCommandEchoDisplay(input, uiText.language);
+        if (session.appendCommandEcho) {
+          session.appendCommandEcho(echo ?? input, echo ? "switch" : "injected");
+        } else {
+          session.appendUserInputDisplay?.(echo ?? input);
+        }
+      }
       try {
         await command.handler(buildCommandContext(), args);
       } catch (err) {

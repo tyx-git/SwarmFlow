@@ -3,6 +3,7 @@
     "Common": {
       "workingStatus": "#FFAF5F",
       "workedStatus": "#616161",
+      "commandSwitchEchoText": "#666666",
       "taskOpenText": "#CCCCCC",
       "taskActiveText": "#8ABEB7",
       "taskDoneText": "#535354",

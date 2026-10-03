@@ -22,7 +22,7 @@ export function useTurnTimer(phase: ActivityPhase): TurnTimerState {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (phase === "Working") {
+    if (phase === "Working" || phase === "Compacting") {
       const now = Date.now();
       if (startedAtRef.current === null) startedAtRef.current = now;
       resumeAtRef.current = now;
