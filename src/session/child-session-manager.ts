@@ -159,8 +159,8 @@ export interface ChildSessionManagerDeps {
   getPrimaryAgent(): Agent;
   getAgentTemplates(): Record<string, Agent>;
   // 子代理工厂
-  createFromPredefined(templateName: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string };
-  createFromPath(templateDir: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string };
+  createFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string };
+  createFromPath(templateDir: string, taskId: string): { agent: Agent; thinkingLevel?: string };
   resolveTemplatePath(relPath: string): string;
   buildSubAgentSystemPrompt(basePrompt: string, persistent: boolean): string;
   /** 构造子 Session（打破 Session-Manager 导入循环）。 */
@@ -199,7 +199,7 @@ export class ChildSessionManager {
   clearTables(): void {
     this._handles = new Map();
     this._archived = new Map();
-    // 子 id（worker-1、explorer 等）跨会话重用——/new 或 /resume 时缓存若存活会提供前一会话的日志。
+    // 子 id（worker-1、explorer 等）跨会话重用——切换会话时缓存若存活会提供前一会话的日志。
     this._releasedLogCache = null;
   }
 
@@ -1077,7 +1077,6 @@ export class ChildSessionManager {
       const templatePath = ((spec["template_path"] as string) ?? "").trim();
       const taskDesc = ((spec["task"] as string) ?? "").trim();
       const modeRaw = ((spec["mode"] as string) ?? "").trim();
-      const modelLevel = typeof spec["model_level"] === "string" ? spec["model_level"].trim() : undefined;
 
       if (!taskId || !taskDesc) {
         errors.push("Skipped entry: missing 'id' or 'task'.");
@@ -1107,11 +1106,11 @@ export class ChildSessionManager {
       let templateLabel: string;
       try {
         if (templateName) {
-          ({ agent, thinkingLevel: tierThinkingLevel } = this.deps.createFromPredefined(templateName, taskId, modelLevel));
+          ({ agent, thinkingLevel: tierThinkingLevel } = this.deps.createFromPredefined(templateName, taskId));
           templateLabel = templateName;
         } else {
           const resolvedPath = this.deps.resolveTemplatePath(templatePath);
-          ({ agent, thinkingLevel: tierThinkingLevel } = this.deps.createFromPath(resolvedPath, taskId, modelLevel));
+          ({ agent, thinkingLevel: tierThinkingLevel } = this.deps.createFromPath(resolvedPath, taskId));
           templateLabel = templatePath;
         }
       } catch (e) {

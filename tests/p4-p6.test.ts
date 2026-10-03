@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 import { SessionStore } from "../src/config/persistence.js";
 import { Session } from "../src/session.js";
 import { executeTool } from "../src/tools/basic.js";
-import { ToolResult } from "../src/providers/base.js";
 import { createAssistantText, createReasoning, createUserMessage } from "../src/context/log-entry.js";
 import { shell } from "../src/platform/index.js";
 
@@ -123,35 +122,6 @@ describe("P4 shell governance", () => {
     }
   });
 });
-
-describe("P6 summarize_context behavior", () => {
-  it("summarize_context succeeds and hint state is preserved until next API call", () => {
-    const projectRoot = makeTempDir("swarmflow-p6-distill-hint-");
-    try {
-      const session = makeSession(projectRoot);
-      (session as any)._hintState = "level1_sent";
-      // Add a LogEntry so the projection has the right conversation
-      (session as any)._log.push(
-        createAssistantText("asst-001", 1, 0, "hello", "hello", "seed1"),
-      );
-
-      const success = (session as any)._execSummarizeContextTool({
-        operations: [{ from: "seed1", to: "seed1", content: "compressed" }],
-      }) as ToolResult;
-      expect(success.content).toContain("1 succeeded");
-      // Hint state is NOT reset by summarize_context itself —
-      // it's updated by _updateHintStateAfterApiCall based on actual inputTokens
-      expect((session as any)._hintState).toBe("level1_sent");
-
-      const fail = (session as any)._execSummarizeContextTool({
-        operations: [{ from: "missing", to: "missing", content: "will fail" }],
-      }) as ToolResult;
-      expect(fail.content).toContain("0 succeeded");
-      expect((session as any)._hintState).toBe("level1_sent");
-    } finally {
-      rmSync(projectRoot, { recursive: true, force: true });
-    }
-  });
 
   it("text-only final rounds keep their own context_id", () => {
     const projectRoot = makeTempDir("swarmflow-p6-round-retag-");

@@ -214,9 +214,7 @@ export interface RestoreResult {
  * 将会话日志加载到现有（ freshly bootstrapped）Session 中，
  * 交换其历史记录、模型、标题等。存储绑定到恢复的目录。
  *
- * 用于：
- *   —`/session <id>` 斜杠命令（通过 cmdResume）
- *   —`swarmflow --resume <id>` CLI 标志（通过 bootstrap 后的 main.tsx）
+ * 用于 `swarmflow --resume <id>` CLI 标志（通过 bootstrap 后的 main.tsx）。
  */
 export function applySessionRestore(
   session: Session,

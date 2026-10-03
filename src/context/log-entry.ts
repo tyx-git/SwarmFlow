@@ -40,10 +40,10 @@ export type LogEntryType =
   | "error"
   | "token_update";
 
-/** Turn 类型 */
+/** Turn 类型；summarize 仅用于识别旧会话日志。 */
 export type TurnKind = "user" | "summarize" | "compact";
-/** 输入来源类型 */
-export type InputKind = "user" | "system" | "peer" | "summarize" | "compact";
+/** 新写入的输入来源类型。旧日志中的 summarize 值只在读取时识别。 */
+export type InputKind = "user" | "system" | "peer" | "compact";
 
 /** TUI 显示类型——决定条目在终端中的渲染方式 */
 export type TuiDisplayKind =
@@ -313,7 +313,7 @@ export function createInputReceived(
   opts?: { tuiVisible?: boolean; sender?: string },
 ): LogEntry {
   const tuiVisible = opts?.tuiVisible ?? (
-    inputKind === "user" || inputKind === "summarize" || inputKind === "compact"
+    inputKind === "user" || inputKind === "compact"
   );
   const meta: Record<string, unknown> = { inputId, inputKind, contextId };
   if (opts?.sender) meta.sender = opts.sender;
@@ -592,7 +592,6 @@ export function createSummary(
   coveredContextIds: string[],
   summaryDepth: number,
   opts?: {
-    summaryOrigin?: "agent" | "manual";
     coveredTurnStart?: number;
     coveredTurnEnd?: number;
   },
@@ -601,7 +600,6 @@ export function createSummary(
     contextId,
     coveredContextIds,
     summaryDepth,
-    summaryOrigin: opts?.summaryOrigin ?? "agent",
   };
   if (opts?.coveredTurnStart !== undefined) meta.coveredTurnStart = opts.coveredTurnStart;
   if (opts?.coveredTurnEnd !== undefined) meta.coveredTurnEnd = opts.coveredTurnEnd;

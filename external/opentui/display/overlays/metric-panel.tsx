@@ -60,9 +60,9 @@ export function MetricRow({ label, value, pct, fg, dim, indent, valueFg, pctFg }
   );
 }
 
-/** 相对上下文总量的百分比串；总量为 0 时返回 "(0.0%)"。 */
+/** 相对上下文上限的百分比串；总量为 0 时返回 "0.0%"。 */
 export function formatSharePct(part: number, total: number): string {
-  return total > 0 ? `(${((part / total) * 100).toFixed(1)}%)` : "(0.0%)";
+  return total > 0 ? `${((part / total) * 100).toFixed(1)}%` : "0.0%";
 }
 
 interface CenteredGeometry {

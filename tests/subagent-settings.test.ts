@@ -63,7 +63,6 @@ describe("sub-agent default model settings", () => {
       getAgentTemplates: () => ({ explorer: template }),
       getConfig: () => ({
         agentModels: {},
-        modelTiers: {},
         subAgentInheritMcp: false,
       }) as any,
       getMcpManager: () => undefined,

@@ -38,11 +38,6 @@ export const SPAWN_TOOL: ToolDef = {
         enum: ["oneshot", "persistent"],
         description: "Agent mode: 'oneshot' (single turn) or 'persistent' (stays alive, receives messages via send).",
       },
-      model_level: {
-        type: "string",
-        enum: ["high", "medium", "low"],
-        description: "Model tier for this sub-agent. If omitted, the sub-agent inherits the parent model. Tiers must be configured by the user.",
-      },
     },
     required: ["id", "task", "mode"],
   },
@@ -101,69 +96,6 @@ export const ASK_TOOL: ToolDef = {
   },
   summaryTemplate: "{agent} is asking the user a question",
   tuiPolicy: { partialReveal: "closed" },
-};
-
-export const SHOW_CONTEXT_TOOL: ToolDef = {
-  name: "show_context",
-  description:
-    "Display the context distribution of the current active window. " +
-    "Returns a detailed Context Map showing all context groups with their sizes, types, and content previews.",
-  parameters: {
-    type: "object",
-    properties: {},
-    required: [],
-  },
-  summaryTemplate: "{agent} is inspecting context",
-  tuiPolicy: { partialReveal: "immediate" },
-};
-
-export const SUMMARIZE_CONTEXT_TOOL: ToolDef = {
-  name: "summarize_context",
-  description:
-    "Summarize a contiguous range of context groups —keep the valuable information, drop the rest. " +
-    "Specify the range with `from` and `to` context IDs (inclusive).\n\n" +
-    "Rules:\n" +
-    "- Never summarize the user's own messages on your own initiative —they anchor turns and must survive.\n" +
-    "- Keep each operation within a single turn. For a multi-turn span, submit one operation per turn in a single call —the effect is equivalent.\n" +
-    "- Summaries are ordinary context: they may be re-summarized and merged like any other group. When a summary contains <user-message> blocks (the user's original words), carry those blocks verbatim into the new summary.\n\n" +
-    "Targets specific ranges. For whole-window summarization, the system uses auto-compact (different mechanism).\n\n" +
-    "If you need to inspect the current context distribution first, call show_context.\n\n" +
-    "Example —single context group: from=\"a3f1\", to=\"a3f1\"\n" +
-    "Example —two non-adjacent groups: use TWO separate operations (one per group), NOT one operation spanning the gap.",
-  parameters: {
-    type: "object",
-    properties: {
-      operations: {
-        type: "array",
-        description: "Each operation summarizes a contiguous range of context groups into a preserved summary.",
-        items: {
-          type: "object",
-          properties: {
-            from: {
-              type: "string",
-              description: "Start context ID of the range (inclusive).",
-            },
-            to: {
-              type: "string",
-              description: "End context ID of the range (inclusive). Same as `from` for a single group.",
-            },
-            content: {
-              type: "string",
-              description: "Summary content preserving decisions, key facts, file paths, code references, and unresolved issues. Length should match the information density of the original —preserve everything you'd look back at.",
-            },
-            reason: {
-              type: "string",
-              description: "Brief reason for summarizing this group.",
-            },
-          },
-          required: ["from", "to", "content"],
-        },
-      },
-    },
-    required: ["operations"],
-  },
-  summaryTemplate: "{agent} is summarizing context",
-  tuiPolicy: { partialReveal: "immediate" },
 };
 
 export const CHECK_STATUS_TOOL: ToolDef = {

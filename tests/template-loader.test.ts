@@ -22,18 +22,14 @@ function makeConfig(): Config {
 }
 
 describe("template type validation", () => {
-  it("documents autonomous summarize user-message restrictions in the main tool prompt", () => {
+  it("keeps the main tool prompt focused on executable tools", () => {
     const toolsPrompt = readFileSync(
       join(process.cwd(), "prompts", "templates", "main", "tools.md"),
       "utf-8",
     );
 
-    expect(toolsPrompt).toContain("Never summarize context groups that contain the user's own messages.");
-    expect(toolsPrompt).toContain("never summarize ranges that contain user messages on your own initiative");
-    expect(toolsPrompt).toContain("<user-message>");
-    expect(toolsPrompt).not.toContain("<summarize-request>");
-    expect(toolsPrompt).not.toContain("user-requested mode");
-    expect(toolsPrompt).toContain("`summarize_context`");
+    expect(toolsPrompt).not.toContain("`show_context`");
+    expect(toolsPrompt).not.toContain("`summarize_context`");
   });
 
   it("rejects templates without type: agent", () => {

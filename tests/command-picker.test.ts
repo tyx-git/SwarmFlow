@@ -10,7 +10,7 @@ import {
 
 describe("command picker", () => {
   it("skips disabled heading rows for initial selection and submission", () => {
-    const picker = createCommandPicker("/session", [
+    const picker = createCommandPicker("/provider", [
       { label: "Created  Active  Title", value: "", disabled: true },
       { label: "2 days ago  1 day ago  Fix login", value: "session-a" },
       { label: "5 days ago  5 days ago  Refactor picker", value: "session-b" },
@@ -19,7 +19,7 @@ describe("command picker", () => {
     expect(picker.stack[0]?.selected).toBe(1);
     expect(acceptCommandPickerSelection(picker)).toEqual({
       kind: "submit",
-      command: "/session session-a",
+      command: "/provider session-a",
     });
 
     const unchanged = setCommandPickerSelection(picker, 0);
@@ -30,7 +30,7 @@ describe("command picker", () => {
   });
 
   it("custom-input options enter input mode once and submit on re-accept", () => {
-    const picker = createCommandPicker("/summarize_hint", [
+    const picker = createCommandPicker("/provider", [
       { label: "On", value: "on" },
       {
         label: "Level 1 (50%)",
@@ -56,7 +56,7 @@ describe("command picker", () => {
     const typed = { ...entered.picker, note: "40" };
     expect(acceptCommandPickerSelection(typed)).toEqual({
       kind: "submit",
-      command: "/summarize_hint level1",
+      command: "/provider level1",
       note: "40",
     });
   });

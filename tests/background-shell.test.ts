@@ -104,7 +104,7 @@ describe("background shell tools", () => {
 
       const waited = await (session as any)._execAwaitEvent({ seconds: 15 }) as ToolResult;
       // await_event wakes on system_notice (shell exit) and/or shell-state racers; shell lines use
-      // _buildShellReport() which does not prefix "# Shell" (that header is show_context only).
+      // _buildShellReport() contains the shell status without a separate banner.
       expect(waited.content).toMatch(/Waited for \d+s —/);
       expect(waited.content).toContain("[demo]");
       expect(waited.content).toContain("exited");
@@ -430,8 +430,8 @@ describe("background shell tools", () => {
       expect(notice?.wake).toBe(false);
       expect((session as any)._autoResumeScheduled).toBe(false);
 
-      // Ride-along messages must not block /summarize //compact.
-      expect((session as any)._getManualContextCommandBlocker("/summarize")).toBeNull();
+      // Ride-along messages must not block manual compaction.
+      expect((session as any)._getManualCompactBlocker()).toBeNull();
 
       // Stopping an already-dead shell performs nothing and adds no notice.
       const before = inbox.length;

@@ -476,7 +476,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
 
 // ------------------------------------------------------------------
 // 凭据端点树 — 叶节点是*端点*（密钥所在位置），不是模型。
-// 由 `/key` 命令和初始化向导共享。覆盖注册表提供者中的
+// 由 `/provider` 子流程和初始化向导共享。覆盖注册表提供者中的
 // `credential.kind: {env, managed}` 以及自定义提供者；
 // 不包括 OAuth 和本地。分组提供者（Kimi/GLM/Qwen/MiniMax）向下
 // 展开到各自的子提供者，每个都是一个独立的密钥槽。
@@ -489,8 +489,8 @@ export interface CredentialEndpointTreeContext {
 export interface CredentialEndpointTreeOptions {
   /**
    * 包含 OAuth 和本地服务器提供者作为可选叶节点。初始化
-   * 向导设置此项（您可以选择任何提供者类型作为您的模型）；`/key`
-   * 命令保持关闭（OAuth 使用 /codex /copilot；本地不需要密钥）。
+   * 向导设置此项（您可以选择任何提供者类型作为您的模型）；`/provider`
+   * 子流程保持关闭（OAuth 也从 /provider 进入；本地不需要密钥）。
    */
   includeOAuthAndLocal?: boolean;
 }

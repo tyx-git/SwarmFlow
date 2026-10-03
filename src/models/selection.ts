@@ -14,8 +14,8 @@ import {
 } from "../providers/presets.js";
 import { isManagedProvider } from "../config/managed-provider-credentials.js";
 import { describeModel } from "../models/presentation.js";
-import { getThinkingLevels, getTierEligibleThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
-import type { AgentModelEntry, ModelTierEntry } from "../config/persistence.js";
+import { getThinkingLevels, getSubAgentThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
+import type { AgentModelEntry } from "../config/persistence.js";
 
 /** 模型条目接口 */
 export type ModelEntryLike = {
@@ -194,14 +194,12 @@ export function toStableModelIdentity(
   };
 }
 
-/**
- * 创建模型层级条目。
- */
-export function createModelTierEntry(
+/** Create a per-template sub-agent model pin. */
+export function createAgentModelEntry(
   identity: StableModelIdentity,
   thinkingLevel: string,
-): ModelTierEntry {
-  validateThinkingLevelForModel(identity.modelId, thinkingLevel, "Tier entry");
+): AgentModelEntry {
+  validateThinkingLevelForModel(identity.modelId, thinkingLevel, "Agent model pin");
   return {
     provider: identity.provider,
     selection_key: identity.selectionKey,
@@ -265,13 +263,12 @@ export function resolveModelIdentity(
  *
  * 规则：
  *   - 非思考模型（无原生级别）：必须恰好是 "none"（哨兵）。
- *   - 有思考能力的模型：必须是 `getTierEligibleThinkingLevels(model)` 之一，
+ *   - 有思考能力的模型：必须是 `getSubAgentThinkingLevels(model)` 之一，
  *     即过滤掉 "off" / "none" 的原生列表。层级始终启用思考 —
  *     主代理关闭思考是一个单独的、仅主代理的选择。
  *
  * 源标签包含在错误中，以便调用者知道哪个入口点
- * 产生了坏值。用于 createModelTierEntry（保存路径）和
- * resolveModelTierEntry / resolveAgentModelEntry（解析路径）。
+ * 产生了坏值。用于 Agent model pin 的保存和解析路径。
  * 直接 settings.json 编辑在解析时捕获。
  */
 export function validateThinkingLevelForModel(modelId: string, thinkingLevel: string, source: string): void {
@@ -287,38 +284,13 @@ export function validateThinkingLevelForModel(modelId: string, thinkingLevel: st
     }
     return;
   }
-  const eligible = getTierEligibleThinkingLevels(modelId);
+  const eligible = getSubAgentThinkingLevels(modelId);
   if (!eligible.includes(thinkingLevel)) {
     throw new Error(
       `${source}: thinking_level '${thinkingLevel}' is not a valid sub-agent thinking level for model '${modelId}'. ` +
       `Valid: ${eligible.join(", ")}.`,
     );
   }
-}
-
-/**
- * 解析模型层级条目。
- */
-export function resolveModelTierEntry(
-  session: any,
-  entry: ModelTierEntry,
-): ResolvedRuntimeModel {
-  const resolved = resolveModelIdentity(session, {
-    provider: entry.provider,
-    selectionKey: entry.selection_key || entry.model_id,
-    modelId: entry.model_id,
-  });
-  const modelConfig = session.config.getModel(resolved.selectedConfigName);
-  validateThinkingLevelForModel(
-    modelConfig.model || entry.model_id,
-    entry.thinking_level,
-    `Model tier`,
-  );
-  return {
-    ...resolved,
-    modelConfig,
-    thinkingLevel: entry.thinking_level,
-  };
 }
 
 /**

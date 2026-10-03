@@ -111,7 +111,7 @@ describe("mergeConsecutiveSameRole", () => {
   });
 
   it("merges pure-text assistant into following assistant(tool_calls) to avoid consecutive model turns", () => {
-    // This scenario occurs after summarize_context inserts a summary (assistant)
+    // This scenario occurs after a historical summary entry is inserted (assistant)
     // followed by the next non-summarized assistant with tool_calls.
     const messages = [
       { role: "assistant", content: "[Summary of 1,2,3]" },

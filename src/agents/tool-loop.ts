@@ -126,9 +126,6 @@ export function generateToolCallDisplay(
   const name = compactDisplayValue(toolArgs["name"]);
   const id = compactDisplayValue(toolArgs["id"]);
   const shell = compactDisplayValue(toolArgs["shell"]);
-  const opsCount = Array.isArray(toolArgs["operations"])
-    ? `[${(toolArgs["operations"] as unknown[]).length} ops]`
-    : "";
   const ids = Array.isArray(toolArgs["ids"])
     ? `[${(toolArgs["ids"] as unknown[]).length} ids]`
     : "";
@@ -166,8 +163,6 @@ export function generateToolCallDisplay(
           : `${toolName} ${shell}`;
       }
       return toolArgs["seconds"] !== undefined ? `${toolName} ${String(toolArgs["seconds"])}s` : toolName;
-    case "summarize_context":
-      return opsCount ? `${toolName} ${opsCount}` : toolName;
     case "skill":
       return name ? `${toolName} ${name}` : toolName;
     default:

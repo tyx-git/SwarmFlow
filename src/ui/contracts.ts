@@ -157,9 +157,6 @@ export interface Session {
   rewindBoth?(toTurnIndex: number, plan: RewindPlan): Promise<RewindApplyResult & { removed: number }>;
   resumePendingTurn?(options?: { signal?: AbortSignal }): Promise<string>;
   hasPendingTurnToResume?(): boolean;
-  runManualSummarize?(options?: { signal?: AbortSignal; targetContextIds?: string[]; focusPrompt?: string }): Promise<string>;
-  getSummarizeTargets?(): Array<{ kind: "turn" | "summary"; turnIndex: number; preview: string; timestamp: number; contextId?: string }>;
-  getContextIdsForTurnRange?(startTurn: number, endTurn: number): string[];
   runManualCompact?(instruction?: string, options?: { signal?: AbortSignal }): Promise<void>;
   getBackgroundShellSnapshots?(): Array<{
     id: string; command: string; cwd: string;

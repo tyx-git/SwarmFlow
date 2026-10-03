@@ -17,7 +17,7 @@ import {
   MANAGED_PROVIDER_CREDENTIAL_SPECS,
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
-import type { AgentModelEntry, LocalProviderConfig, ModelTierEntry } from "../config/persistence.js";
+import type { AgentModelEntry, LocalProviderConfig } from "../config/persistence.js";
 import {
   type SealedSchema,
   type ThinkingEncryption,
@@ -172,7 +172,7 @@ export function getModelMaxOutputTokens(model: string): number | undefined {
 // 每个模型的思维链级别
 // ------------------------------------------------------------------
 
-/** 已知模型的思维链级别映射（用于子代理层级等兼容功能）。 */
+/** 已知模型的思考深度映射。 */
 export const KNOWN_THINKING_LEVELS: Record<string, string[]> = _MODEL_TABLES.thinkingLevels;
 
 /** 返回模型可用的思维链级别列表，非思维链模型返回空数组 */
@@ -183,13 +183,12 @@ export function getThinkingLevels(model: string): string[] {
 }
 
 /**
- * 子代理层级可用的思维链级别：过滤掉 "off" 的原生级别。
+ * 子代理专用思考深度列表：过滤掉 "off"。
  *
- * 子代理层级必须始终启用思维链——"off" 违背了为层级提供
- * 独立配置的目的。主代理流程仍可通过 getThinkingLevels 选择 "off"
+ * 子代理模型 pin 必须始终启用思维链。主代理流程仍可通过 getThinkingLevels 选择 "off"
  * （用户覆盖在那里的优先级最高）。
  */
-export function getTierEligibleThinkingLevels(model: string): string[] {
+export function getSubAgentThinkingLevels(model: string): string[] {
   return getThinkingLevels(model).filter((l) => l !== "off");
 }
 
@@ -567,7 +566,6 @@ export class Config {
   private _presetModelNames = new Set<string>();
   private _models: Map<string, ModelConfig> = new Map();
   private _mcpServers: MCPServerConfig[];
-  private _modelTiers: { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry } = {};
   private _agentModels: Record<string, AgentModelEntry> = {};
   private _subAgentInheritMcp: boolean;
   private _subAgentInheritHooks: boolean;
@@ -576,14 +574,12 @@ export class Config {
     providerEnvVars?: Record<string, string>;
     localProviders?: Record<string, LocalProviderConfig>;
     mcpServers?: MCPServerConfig[];
-    modelTiers?: { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry };
     agentModels?: Record<string, AgentModelEntry>;
     subAgentInheritMcp?: boolean;
     subAgentInheritHooks?: boolean;
   }) {
     this._mcpServers = opts.mcpServers ?? [];
     this._agentModels = opts.agentModels ?? {};
-    this._modelTiers = opts.modelTiers ?? {};
     this._subAgentInheritMcp = opts.subAgentInheritMcp ?? true;
     this._subAgentInheritHooks = opts.subAgentInheritHooks ?? true;
     this._populateFromPreferences(
@@ -901,17 +897,6 @@ export class Config {
   /** 获取所有 MCP 服务器配置 */
   get mcpServerConfigs(): MCPServerConfig[] {
     return this._mcpServers;
-  }
-
-  // -- 模型层级 --
-
-  get modelTiers(): { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry } {
-    return this._modelTiers;
-  }
-
-  /** 替换运行时层级映射（通过设置单独持久化） */
-  setModelTiers(tiers: { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry }): void {
-    this._modelTiers = tiers;
   }
 
   // -- 代理模型固定配置 --

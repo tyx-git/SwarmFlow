@@ -163,18 +163,6 @@ describe("runtime-owned error entries", () => {
     }
   });
 
-  it("manual summarize validation failures land in the log", async () => {
-    const h = makeScriptedSession({ rounds: [] });
-    try {
-      await expect(
-        h.session.runManualSummarize({ targetContextIds: [] }),
-      ).rejects.toThrow("requires selecting target turns");
-      expect(visibleErrors(h).length).toBe(1);
-      expect(visibleErrors(h)[0]!.display).toContain("requires selecting target turns");
-    } finally {
-      h.dispose();
-    }
-  });
 });
 
 describe("turn lock", () => {

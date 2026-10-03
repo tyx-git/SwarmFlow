@@ -11,7 +11,6 @@
 
 import type { RpcServer } from "./rpc-transport.js";
 import { InitService, type ModelSelection } from "../lifecycle/init-service.js";
-import type { ModelTierEntry } from "../config/persistence.js";
 
 export interface InitRpcOptions {
   readonly server: RpcServer;
@@ -99,7 +98,7 @@ export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {
     const modelId = expectString(p, "modelId", "init.getThinkingLevels");
     return {
       all: service.getThinkingLevels(modelId),
-      tierEligible: service.getTierEligibleThinkingLevels(modelId),
+      subAgentThinkingLevels: service.getSubAgentThinkingLevels(modelId),
     };
   });
 
@@ -120,9 +119,7 @@ export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {
 
     const modelSelection = p["modelSelection"] as ModelSelection | undefined;
     const thinkingLevel = optString(p, "thinkingLevel");
-    const tierConfig = p["tierConfig"] as Record<string, ModelTierEntry> | undefined;
-
-    service.saveConfiguration({ modelSelection, thinkingLevel, tierConfig });
+    service.saveConfiguration({ modelSelection, thinkingLevel });
 
     // 转换到 session 模式
     setImmediate(() => {

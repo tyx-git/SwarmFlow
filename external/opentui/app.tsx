@@ -11,13 +11,12 @@ import type { SessionStore } from "../../src/config/persistence.js";
 import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
 import { saveLog } from "../../src/config/persistence.js";
 import { projectQueuedInputs } from "../../src/context/log-projection.js";
-import { isCommandExitSignal } from "../../src/commands/commands.js";
 import { ProgressReporter, type ProgressEvent } from "../../src/lib/progress.js";
+import { getLocalizedCommandDescription } from "../../src/commands/commands.js";
 import { scanCandidates } from "../../src/lib/file-attach.js";
 import { classifyPastedText, TurnPasteCounter } from "../../src/ui/input/paste.js";
 import { readClipboardImage } from "../../src/lib/clipboard-image.js";
 import { processImage, type ProcessedImage } from "../../src/lib/image-compress.js";
-import { getUpdateState, triggerRelaunch } from "../../src/lifecycle/update-check.js";
 import type { InlineImageInput } from "../../src/ui/contracts.js";
 import type {
   PendingAskUi,
@@ -102,6 +101,7 @@ import {
 import { createDisplayTheme, type DisplayTheme, type DisplayThemeTokens, type DeepPartial, type ThemeMode } from "./display/theme/index.js";
 import { parseThemeModePref, normalizeThemeMode } from "../../src/config/theme.js";
 import { ContextUsageCard, CodexUsageCard } from "./display/panels/usage-cards.js";
+import type { SessionStatusData } from "./display/overlays/session-status-panel.js";
 import {
   StatusPanel,
   dismissSettledAgentIds,
@@ -608,12 +608,13 @@ export function OpenTuiApp({
     setActiveTabId(tabId);
   }, [selectedChildId, session, openShellDetailTab]);
   const [hint, setHint] = useState<string | null>(null);
-  const [updateToast, setUpdateToast] = useState<{ phase: import("./display/overlays/update-toast.js").UpdateToastPhase; version?: string; error?: string } | null>(null);
   const [mcpFailures, setMcpFailures] = useState<import("./display/overlays/mcp-toast.js").McpFailure[] | null>(null);
   const [usagePanel, setUsagePanel] = useState(false);
   const [usageData, setUsageData] = useState<import("./display/overlays/usage-panel.js").UsageData | null>(null);
-  const [statPanel, setStatPanel] = useState(false);
-  const [statData, setStatData] = useState<import("./display/overlays/stat-panel.js").StatData | null>(null);
+  const [usagePage, setUsagePage] = useState<"usage" | "stats">("usage");
+  const [usageStatsData, setUsageStatsData] = useState<import("./display/overlays/usage-panel.js").UsageStatsData | null>(null);
+  const [statusPanel, setStatusPanel] = useState(false);
+  const [memoryPanel, setMemoryPanel] = useState(false);
   const [markdownMode, setMarkdownMode] = useState<"rendered" | "raw">("rendered");
   const [permissionModeState, setPermissionModeState] = useState<string>(session.permissionMode ?? "reversible");
   const [pendingAsk, setPendingAsk] = useState<PendingAskUi | null>(
@@ -1374,43 +1375,6 @@ export function OpenTuiApp({
       }
     } catch { /* not on Windows or import unavailable */ }
   }, [showHint]);
-  // Poll for background update state and show toast when actionable.
-  useEffect(() => {
-    let stopped = false;
-    const tick = () => {
-      if (stopped) return;
-      const state = getUpdateState();
-      switch (state.phase) {
-        case "downloading":
-          setUpdateToast({ phase: "downloading", version: state.latestVersion! });
-          break;
-        case "staged":
-          setUpdateToast({ phase: "staged", version: state.latestVersion! });
-          stopped = true;
-          clearInterval(poll);
-          break;
-        case "available":
-          setUpdateToast({ phase: "available", version: state.latestVersion! });
-          stopped = true;
-          clearInterval(poll);
-          break;
-        case "failed":
-          // Surface the failure instead of leaving a stale "Downloading..."
-          // toast frozen on screen (the bug that masked a hung download).
-          setUpdateToast({ phase: "failed", version: state.latestVersion, error: state.error });
-          stopped = true;
-          clearInterval(poll);
-          break;
-        case "disabled":
-          setUpdateToast(null);
-          stopped = true;
-          clearInterval(poll);
-          break;
-      }
-    };
-    const poll = setInterval(tick, 2000);
-    return () => { stopped = true; clearInterval(poll); };
-  }, []);
   const performExit = useCallback(async () => {
     autoSave();
     const msg = GOODBYE_MESSAGES[Math.floor(Math.random() * GOODBYE_MESSAGES.length)]!;
@@ -1473,7 +1437,7 @@ export function OpenTuiApp({
         setCommandOverlay((current) => ({
           mode: "command",
           visible: true,
-          items: matches.map((command) => `${command.name.padEnd(20)}${command.description}`),
+          items: matches.map((command) => `${command.name.padEnd(20)}${getLocalizedCommandDescription(command, uiLanguage)}`),
           values: matches.map((command) => command.name),
           selected: current.mode === "command"
             ? clamp(current.selected, 0, Math.max(0, matches.length - 1))
@@ -1501,7 +1465,7 @@ export function OpenTuiApp({
       }
     }
     setCommandOverlay(EMPTY_COMMAND_OVERLAY);
-  }, [commandPicker, commandRegistry, promptSecret, promptSelect]);
+  }, [commandPicker, commandRegistry, promptSecret, promptSelect, uiLanguage]);
   updateInputOverlayRef.current = updateInputOverlay;
   const resetTurnPasteState = useCallback(() => {
     pasteCounterRef.current.reset();
@@ -1662,11 +1626,22 @@ export function OpenTuiApp({
           return;
         }
         if (message === "__usage_panel__") {
+          setUsagePage("usage");
           setUsagePanel((current) => !current);
+          setStatusPanel(false);
+          setMemoryPanel(false);
           return;
         }
-        if (message === "__stat_panel__") {
-          setStatPanel((current) => !current);
+        if (message === "__status_panel__") {
+          setStatusPanel((current) => !current);
+          setUsagePanel(false);
+          setMemoryPanel(false);
+          return;
+        }
+        if (message === "__memory_panel__") {
+          setMemoryPanel(true);
+          setUsagePanel(false);
+          setStatusPanel(false);
           return;
         }
         if (message === "__sidebar_toggle__") {
@@ -1691,15 +1666,11 @@ export function OpenTuiApp({
         renderer?.requestFullRepaint?.();
       },
       restartRuntimeForNewSession: onNewSession,
-      exit: performExit,
       onTurnRequested: (content: string) => {
         void handleSubmit(content);
       },
       onInjectedTurnRequested: (displayText: string, content: string) => {
         void runInjectedCommand(displayText, content);
-      },
-      onManualSummarizeRequested: (opts: { targetContextIds?: string[]; focusPrompt?: string }) => {
-        void runManualSummarize(opts);
       },
       onManualCompactRequested: (instruction: string) => {
         void runManualCompact(instruction);
@@ -1763,7 +1734,7 @@ export function OpenTuiApp({
       },
       requestOAuthLogin,
     };
-  }, [clearNetworkStatus, session, store, commandRegistry, autoSave, performExit, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState]);
+  }, [clearNetworkStatus, session, store, commandRegistry, autoSave, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState]);
   const runTurn = useCallback(async (input: string, inlineImages?: InlineImageInput[]) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -1789,31 +1760,6 @@ export function OpenTuiApp({
       }
     }
   }, [clearNetworkStatus, session, autoSave, updateContextTokenState]);
-  const runManualSummarize = useCallback(async (opts: { targetContextIds?: string[]; focusPrompt?: string }) => {
-    if (typeof session.runManualSummarize !== "function") {
-      session.appendStatusMessage?.("/summarize is not available in this session.");
-      return;
-    }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-    setProcessing(true);
-    setPhase("Working");
-    try {
-      await session.runManualSummarize({
-        signal: controller.signal,
-        targetContextIds: opts.targetContextIds,
-        focusPrompt: opts.focusPrompt,
-      });
-      autoSave();
-    } catch {
-      // Error log entry written by the runtime (runManualSummarize).
-    } finally {
-      abortControllerRef.current = null;
-      clearNetworkStatus();
-      setProcessing(false);
-      setPhase("idle");
-    }
-  }, [clearNetworkStatus, session, autoSave]);
   const runManualCompact = useCallback(async (instruction: string) => {
     if (typeof session.runManualCompact !== "function") {
       session.appendStatusMessage?.("/compact is not available in this session.");
@@ -1841,7 +1787,7 @@ export function OpenTuiApp({
     return serializeComposerText(composer, ensureComposerTokenType(composer));
   }, [draftValue]);
   // Commands that run regardless of streaming state.
-  const UI_ONLY_COMMANDS = new Set(["/new", "/clear"]);
+  const UI_ONLY_COMMANDS = new Set(["/new", "/clear", "/usage", "/status", "/memory", "/ps"]);
   // Commands that mutate session runtime config (skills / MCP). They run as
   // ordinary commands when idle — the Session serializes the actual reload
   // against turns via its turn lock, so they need no UI "Working" state. While
@@ -1951,10 +1897,6 @@ export function OpenTuiApp({
       try {
         await command.handler(buildCommandContext(), args);
       } catch (err) {
-        if (isCommandExitSignal(err)) {
-          await performExit();
-          return;
-        }
         const message = err instanceof Error ? err.message : String(err);
         session.appendErrorMessage?.(t.get(["Error", "commandFailed"], { command: cmdName, message }), "command");
       }
@@ -1974,7 +1916,6 @@ export function OpenTuiApp({
     commandRegistry,
     startCommandPicker,
     buildCommandContext,
-    performExit,
     runTurn,
     dismissSettledAgents,
     showHint,
@@ -2314,12 +2255,17 @@ export function OpenTuiApp({
         setUsagePanel(false);
         event.preventDefault();
         event.stopPropagation();
+      } else if (event.name === "left" || event.name === "right") {
+        setUsagePage(event.name === "left" ? "usage" : "stats");
+        event.preventDefault();
+        event.stopPropagation();
       }
       return;
     }
-    if (statPanel) {
+    if (statusPanel || memoryPanel) {
       if (event.name === "escape" || (event.name === "c" && event.ctrl)) {
-        setStatPanel(false);
+        setStatusPanel(false);
+        setMemoryPanel(false);
         event.preventDefault();
         event.stopPropagation();
       }
@@ -2701,7 +2647,6 @@ export function OpenTuiApp({
     }
     // Ctrl+L: dismiss transient update and MCP failure toasts.
     if (event.name === "l" && event.ctrl) {
-      setUpdateToast(null);
       setMcpFailures(null);
       event.preventDefault();
       event.stopPropagation();
@@ -3103,6 +3048,41 @@ export function OpenTuiApp({
     : modelNameColor;
   const effectiveContextTokens = childSnapshot ? childSnapshot.inputTokens : contextTokens;
   const effectiveContextLimit = childSnapshot ? childSnapshot.contextBudget : session.contextBudget;
+  const statusData = useMemo<SessionStatusData>(() => {
+    const taskState = session.getTaskState?.() ?? [];
+    const mcpStatuses = (session as any).mcpManager?.getServerStatuses?.() ?? [];
+    const skills = session.getAllSkillNames?.() ?? [];
+    return {
+      model: modelName,
+      provider: session.primaryAgent?.modelConfig?.provider ?? "unknown",
+      permission: session.permissionMode ?? "reversible",
+      openTasks: taskState.filter((task: { status: string }) => task.status !== "completed").length,
+      totalTasks: taskState.length,
+      mcpServers: mcpStatuses.length,
+      failedMcpServers: mcpStatuses.filter((status: { state?: string }) => status.state === "failed").length,
+      enabledSkills: skills.filter((skill: { enabled: boolean }) => skill.enabled).length,
+      totalSkills: skills.length,
+      lastTokens: session.lastTotalTokens ?? 0,
+      cacheReadTokens: session.lastCacheReadTokens ?? 0,
+    };
+  }, [modelName, session, rootLogRevision, permissionModeState]);
+  const memoryLines = useMemo(() => {
+    const log = Array.isArray(session.log) ? session.log : [];
+    const active = log.filter((entry: { discarded?: boolean }) => !entry.discarded);
+    const lines = [
+      "Current-session memory/context",
+      `Active log entries: ${active.length}`,
+      "",
+    ];
+    for (const entry of active.slice(-24)) {
+      const display = typeof entry.display === "string" ? entry.display.trim() : "";
+      if (!display) continue;
+      const firstLine = display.split("\n", 1)[0]?.trim();
+      if (firstLine) lines.push(firstLine);
+    }
+    if (lines.length === 3) lines.push("No visible memory entries.");
+    return lines;
+  }, [session, rootLogRevision]);
   // Usage panel data is computed off a deferred tick so the "Calculating…"
   // frame paints before the (potentially long) log scan runs — otherwise a big
   // conversation would freeze the panel's first render.
@@ -3133,8 +3113,8 @@ export function OpenTuiApp({
     };
   }, [usagePanel, session, effectiveContextTokens, effectiveContextLimit]);
   useEffect(() => {
-    if (!statPanel) {
-      setStatData(null);
+    if (!usagePanel || usagePage !== "stats") {
+      setUsageStatsData(null);
       return;
     }
     let cancelled = false;
@@ -3142,7 +3122,7 @@ export function OpenTuiApp({
       if (cancelled) return;
       const stats = session.computeGlobalTokenStats?.();
       if (stats) {
-        setStatData({
+        setUsageStatsData({
           cumulativeInput: stats.cumulativeInput,
           cumulativeCacheRead: stats.cumulativeCacheRead,
           cumulativeUncached: stats.cumulativeUncached,
@@ -3155,7 +3135,7 @@ export function OpenTuiApp({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [statPanel, session]);
+  }, [usagePanel, usagePage, session]);
   const effectiveCacheReadTokens = childSnapshot ? childSnapshot.cacheReadTokens : cacheReadTokens;
   const effectiveCacheSupported = childSnapshot ? false : Boolean(session.cacheSupported);
   const sessionName = (typeof session.getDisplayName === "function" ? session.getDisplayName() : "").trim()
@@ -3304,20 +3284,18 @@ export function OpenTuiApp({
         />
       }
       sidebarCodexSection={usageSnapshot ? <CodexUsageCard snapshot={usageSnapshot} theme={theme} /> : undefined}
-      updateToast={updateToast}
-      onUpdateRestart={() => {
-        triggerRelaunch();
-      }}
-      onUpdateDismiss={() => {
-        setUpdateToast(null);
-      }}
       mcpFailures={mcpFailures}
       usagePanel={usagePanel}
       usageData={usageData}
       onUsageDismiss={() => setUsagePanel(false)}
-      statPanel={statPanel}
-      statData={statData}
-      onStatDismiss={() => setStatPanel(false)}
+      usagePage={usagePage}
+      usageStatsData={usageStatsData}
+      statusPanelOverlay={statusPanel}
+      statusData={statusData}
+      onStatusDismiss={() => setStatusPanel(false)}
+      memoryPanel={memoryPanel}
+      memoryLines={memoryLines}
+      onMemoryDismiss={() => setMemoryPanel(false)}
       onBackgroundMouseDown={() => {
         if (commandOverlay.visible) setCommandOverlay(EMPTY_COMMAND_OVERLAY);
         if (commandPicker) setCommandPicker(null);

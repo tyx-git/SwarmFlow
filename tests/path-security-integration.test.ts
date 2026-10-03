@@ -19,7 +19,7 @@ function makeTemplateFactory(artifactsDir: string): SubAgentFactory {
   // deps are inert stubs.
   return new SubAgentFactory({
     getAgentTemplates: () => ({}),
-    getConfig: () => ({ agentModels: {}, modelTiers: {}, subAgentInheritMcp: false }) as never,
+    getConfig: () => ({ agentModels: {}, subAgentInheritMcp: false }) as never,
     getMcpManager: () => undefined,
     getPromptsDirs: () => undefined,
     resolveSessionArtifacts: () => artifactsDir,

@@ -469,7 +469,7 @@ export class SessionStore {
   /**
    * 扫描所有项目的每个会话的 log.json，汇总 token_update 条目。
    * 返回累计输入/输出/缓存/未缓存 token 数 + 会话数。
-   * 为 /stat 面板设计——优雅地容忍损坏/缺失的文件。
+   * 为用量统计页设计——优雅地容忍损坏/缺失的文件。
    */
   computeGlobalTokenStats(): GlobalTokenStats {
     const projectsDir = join(this._preferredBaseDir, "projects");
@@ -614,8 +614,8 @@ export interface LocalProviderConfig {
 // 新设置类型（替代 GlobalTuiPreferences）
 // ------------------------------------------------------------------
 
-/** 子代理模型层级条目：稳定的模型身份 + 思维链级别 */
-export interface ModelTierEntry {
+/** 每模板模型固定配置：稳定的模型身份 + 思维链级别 */
+export interface AgentModelEntry {
   /** 服务提供商 */
   provider: string;
   /** 选择键 */
@@ -626,20 +626,11 @@ export interface ModelTierEntry {
   thinking_level: string;
 }
 
-/** 每模板模型固定配置：将特定代理模板锁定到固定模型 */
-export type AgentModelEntry = ModelTierEntry;
-
 /** 用户可编辑的设置。存储在 settings.json（JSONC）中 */
 export interface SwarmflowSettings {
   // -- 模型 --
   /** 声明式默认模型。覆盖 state/model-selection.json */
   default_model?: string;
-  /** 子代理模型层级。每个级别映射到一个模型 + 可选思维链级别 */
-  model_tiers?: {
-    high?: ModelTierEntry;
-    medium?: ModelTierEntry;
-    low?: ModelTierEntry;
-  };
   /** 主代理的默认思维链级别 */
   thinking_level?: string;
   /** /model 最后一步显示的思考深度选项；不配置时使用内置默认列表 */
@@ -681,15 +672,6 @@ export interface SwarmflowSettings {
   // -- MCP 服务器（全局 + 本地合并）--
   mcp_servers?: Record<string, MCPServerSettingsEntry>;
 
-  // -- 更新 --
-  /**
-   * 后台更新行为。默认：true。
-   * - true：补丁/次版本自动下载 + 暂存；主版本仅通知
-   * - "notify"：所有版本仅通知，不自动下载
-   * - false：完全禁用更新检查
-   */
-  auto_update?: boolean | "notify";
-
   // -- 诊断 --
   /**
    * 详细诊断日志。默认：false。
@@ -700,19 +682,6 @@ export interface SwarmflowSettings {
    */
   diagnostics?: boolean;
 
-  // -- 摘要提示 --
-  /**
-   * 双层上下文摘要提示（主会话）。由 /summarize_hint 命令管理。
-   * 级别为整数，0 < level1 < level2 < 85。
-   */
-  summarize_hint?: {
-    /** 双层提示的主开关。默认：true */
-    enabled?: boolean;
-    /** 第一层触发器（有效上下文预算的百分比）。默认：50 */
-    level1?: number;
-    /** 第二层触发器（百分比）。默认：75 */
-    level2?: number;
-  };
 }
 
 /**
@@ -1343,32 +1312,6 @@ export function archiveWindow(
   }
 }
 
-/**
- * 将指定条目的内容归档到 `archive/<fileName>`，
- * 将每个条目的内容置空并标记为已归档（与 archiveWindow 相同的契约，
- * 但使用显式目标列表）。已归档或无内容的条目会被跳过。
- * 没有符合条件的条目时不写入文件；返回归档的条目数。
- * 先写入后剥离：如果写入抛出异常，每个条目都保留其内容。
- */
-export function archiveEntryContents(
-  dir: string,
-  fileName: string,
-  targets: LogEntry[],
-): number {
-  const archivable = targets.filter((e) => e.content !== null && !e.archived);
-  if (archivable.length === 0) return 0;
-  writeArchiveFile(
-    dir,
-    fileName,
-    archivable.map((e) => ({ id: e.id, content: e.content })),
-  );
-  for (const e of archivable) {
-    e.content = null;
-    e.archived = true;
-  }
-  return archivable.length;
-}
-
 /** 加载指定窗口索引的归档文件 */
 export function loadArchive(
   dir: string,
@@ -1596,7 +1539,7 @@ export function loadLocalSettings(projectPath: string, projectStoreDir?: string)
  *
  * 规则：
  * - 标量：本地覆盖全局
- * - 对象（model_tiers、mcp_servers）：按键合并（本地键覆盖）
+ * - 对象（mcp_servers）：按键合并（本地键覆盖）
  * - 数组（disabled_skills）：本地替换全局
  * - `providers`：仅全局——本地值被忽略
  */
@@ -1619,12 +1562,6 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
   if (local.disabled_skills !== undefined) merged.disabled_skills = local.disabled_skills;
 
   // 对象——按键合并
-  if (local.model_tiers) {
-    merged.model_tiers = { ...merged.model_tiers, ...local.model_tiers };
-  }
-  if (local.summarize_hint) {
-    merged.summarize_hint = { ...merged.summarize_hint, ...local.summarize_hint };
-  }
   if (local.mcp_servers) {
     merged.mcp_servers = { ...merged.mcp_servers, ...local.mcp_servers };
   }
@@ -1710,7 +1647,6 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   // 构建不含 undefined 值的干净对象
   const clean: Record<string, unknown> = {};
   if (settings.default_model !== undefined) clean.default_model = settings.default_model;
-  if (settings.model_tiers !== undefined) clean.model_tiers = settings.model_tiers;
   if (settings.thinking_level !== undefined) clean.thinking_level = settings.thinking_level;
   if (settings.thinking_levels !== undefined) clean.thinking_levels = settings.thinking_levels;
   if (settings.context_budget_percent !== undefined) clean.context_budget_percent = settings.context_budget_percent;
@@ -1725,8 +1661,6 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   if (settings.agent_models !== undefined) clean.agent_models = settings.agent_models;
   if (settings.sub_agent_inherit_mcp !== undefined) clean.sub_agent_inherit_mcp = settings.sub_agent_inherit_mcp;
   if (settings.sub_agent_inherit_hooks !== undefined) clean.sub_agent_inherit_hooks = settings.sub_agent_inherit_hooks;
-  if (settings.auto_update !== undefined) clean.auto_update = settings.auto_update;
-  if (settings.summarize_hint !== undefined) clean.summarize_hint = settings.summarize_hint;
   writeFileSync(tmp, JSON.stringify(clean, null, 2));
   renameSync(tmp, filePath);
 }

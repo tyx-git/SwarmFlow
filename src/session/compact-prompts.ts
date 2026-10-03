@@ -62,12 +62,12 @@ End the summary with a clear, imperative statement of what the next instance sho
 
 /**
  * 在压缩 prompt 基础上追加用户手动指定的补充指令。
- * 用于 /compact 或 /summarize 命令中用户附加的说明。
+ * 用于手动压缩中用户附加的说明。
  */
 export function appendManualInstruction(
   basePrompt: string,
   instruction: string | undefined,
-  kind: "summarize" | "compact",
+  kind: "compact",
 ): string {
   const trimmed = instruction?.trim();
   if (!trimmed) return basePrompt;

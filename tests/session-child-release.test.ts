@@ -97,7 +97,7 @@ describe("one-shot child release", () => {
       const log = h.session.getChildSessionLog("worker-1");
       expect(log!.length).toBeGreaterThan(0);
 
-      // Same id, different session dir (the /new / /resume shape) must not
+      // Same id, different session dir (the /new / session-restore shape) must not
       // serve the cached entries.
       const phantom = { ...handle, sessionDir: handle.sessionDir + "-elsewhere" };
       expect(manager._loadReleasedChildLog(phantom)).toEqual([]);

@@ -212,7 +212,7 @@ export function mergeConsecutiveSameRole(
     }
 
     if (role === "assistant" && msg["tool_calls"]) {
-      // 如果前一条消息是纯文本 assistant（例如 summarize_context 插入的摘要），
+      // 如果前一条消息是纯文本 assistant（例如历史摘要插入的内容），
       // 将其文本合并到此消息中，以避免违反严格角色交替要求的连续模型 turn。
       const prev = result.length > 0 ? result[result.length - 1] : null;
       if (

@@ -102,6 +102,7 @@ describe("command echo display", () => {
     const commands = uiTextKeys("zh", "Commands");
     for (const cmd of commands) {
       expect(uiTextKeys("en", "Commands")).toContain(cmd);
+      if (!hasUiText("zh", ["Commands", cmd, "echo"])) continue;
       expect(resolveCommandEchoDisplay(`${cmd} x`, "zh")).not.toBeNull();
       expect(resolveCommandEchoDisplay(`${cmd} x`, "en")).not.toBeNull();
     }

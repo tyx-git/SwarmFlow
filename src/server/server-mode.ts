@@ -126,7 +126,6 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     providerEnvVars,
     localProviders,
     mcpServers,
-    modelTiers: settings.model_tiers,
     agentModels: settings.agent_models,
     subAgentInheritMcp: settings.sub_agent_inherit_mcp,
     subAgentInheritHooks: settings.sub_agent_inherit_hooks,

@@ -9,10 +9,11 @@
  *   swarmflow --templates ./tpls    # 指定模板路径
  *   swarmflow --verbose             # 启用调试日志
  *   swarmflow --resume <id>         # 恢复指定会话
+ *   swarmflow --session             # 管理全局历史会话
  *   swarmflow --server              # 服务模式（Electron GUI 派生）
  */
 
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, readdirSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -30,7 +31,6 @@ import { loadDotenv } from "./lifecycle/dotenv.js";
 import { applySystemProxyToEnv } from "./lib/system-proxy.js";
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
 import { startBackgroundRegistryRefresh } from "./providers/registry-fetch.js";
-import { checkForUpdates, applyStaged, setUpdateStateGetter, setRelaunchCallback } from "./lifecycle/update-check.js";
 import { VERSION } from "./version.js";
 import { hasAnyManagedCredential } from "./config/managed-provider-credentials.js";
 import { findSessionById, findSessionByName, listSessionsForProject, formatSize } from "./session-resume.js";
@@ -72,16 +72,13 @@ export function ensureWindowsUtf8Console(): void {
 
 /**
  * main() 的依赖注入表面。
- * 允许测试替换各环节实现（loadDotenv、checkForUpdates 等）。
+ * 允许测试替换各环节实现（loadDotenv 等）。
  */
 export interface MainDeps {
   launchTui?: () => Promise<void>;
   homeDir?: string;
   loadDotenv?: (homeDir?: string) => void;
   loadGlobalSettings?: typeof loadGlobalSettings;
-  applyStaged?: typeof applyStaged;
-  checkForUpdates?: typeof checkForUpdates;
-  relaunchAfterUpdate?: (argv: string[]) => void;
   runInitWizard?: () => Promise<unknown>;
   /** 服务模式入口（Electron 主进程调用）。 */
   runServerMode?: (opts: {
@@ -109,18 +106,43 @@ const VALUE_FLAGS = new Set([
   "--agent",
 ]);
 
-/**
- * 用当前 Node 进程重新启动自身（用于更新后的热重启）。
- * 保留 Node 启动参数，避免 tsx 开发入口重启时丢失 loader。
- */
-function relaunchCurrentProcess(argv: string[]): void {
-  const entrypoint = argv[1] ?? process.argv[1];
-  const relaunchArgs = [...process.execArgv, entrypoint, ...argv.slice(2)];
-  const result = spawnSync(process.execPath, relaunchArgs, {
-    stdio: "inherit",
-    env: process.env,
-  });
-  process.exit(result.status ?? 0);
+interface GlobalSessionGroup {
+  projectDir: string;
+  projectPath: string;
+  sessions: Array<{ sessionId: string; path: string; title?: string; summary: string; lastActiveAt: string; turns: number; sizeBytes: number }>;
+}
+
+function listGlobalSessionGroups(homeDir: string): GlobalSessionGroup[] {
+  const projectsRoot = join(homeDir, "projects");
+  if (!existsSync(projectsRoot)) return [];
+  const groups: GlobalSessionGroup[] = [];
+  for (const name of readdirSync(projectsRoot).sort((a, b) => a.localeCompare(b))) {
+    const projectDir = join(projectsRoot, name);
+    try {
+      if (!statSync(projectDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    let projectPath = name;
+    try {
+      const meta = JSON.parse(readFileSync(join(projectDir, "project.json"), "utf8"));
+      if (typeof meta.original_path === "string" && meta.original_path.trim()) projectPath = meta.original_path.trim();
+    } catch { /* older project stores may not have project.json */ }
+    const sessions = listSessionsForProject(projectDir);
+    if (sessions.length > 0) groups.push({ projectDir, projectPath, sessions });
+  }
+  return groups;
+}
+
+function deleteGlobalSession(sessionDir: string, homeDir: string): boolean {
+  const root = resolve(join(homeDir, "projects"));
+  const target = resolve(sessionDir);
+  const relative = target.slice(root.length).replace(/^[\\/]+/, "");
+  const parts = relative.split(/[\\/]+/);
+  if (parts.length !== 2 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parts[1] ?? "")) return false;
+  if (!target.startsWith(`${root}${process.platform === "win32" ? "\\" : "/"}`)) return false;
+  rmSync(target, { recursive: true, force: true });
+  return true;
 }
 
 /**
@@ -438,6 +460,118 @@ async function interactiveSessionSelect(
   });
 }
 
+/** 全局历史会话管理器：两层树结构，当前仅支持删除会话。 */
+async function interactiveGlobalSessionManager(homeDir: string): Promise<void> {
+  const { stdin, stdout } = process;
+  if (!stdin.isTTY || typeof stdin.setRawMode !== "function") {
+    process.stderr.write("swarmflow --session requires an interactive terminal.\n");
+    return;
+  }
+  let groups = listGlobalSessionGroups(homeDir);
+  let projectIndex = 0;
+  let sessionIndex = 0;
+  let focus: "project" | "session" = "session";
+  let notice = "";
+
+  const selectedSession = () => groups[projectIndex]?.sessions[sessionIndex];
+  const render = () => {
+    stdout.write("\x1B[2J\x1B[H");
+    const width = stdout.columns || 80;
+    const line = "━".repeat(Math.max(20, width - 8));
+    stdout.write(`    \x1B[90m${line}\x1B[0m\n`);
+    stdout.write(`    \x1B[1;38;2;255;255;255m[ Sessions ]\x1B[0m\n`);
+    stdout.write(`    \x1B[90m${line}\x1B[0m\n\n`);
+    if (groups.length === 0) {
+      stdout.write("    No saved sessions.\n\n");
+    } else {
+      groups.forEach((group, pi) => {
+        const projectMark = focus === "project" && pi === projectIndex ? "❯ " : "  ";
+        stdout.write(`    ${projectMark}\x1B[1;36m${group.projectPath}\x1B[0m\n`);
+        group.sessions.forEach((session, si) => {
+          const selected = pi === projectIndex && si === sessionIndex;
+          const mark = selected ? "❯ " : "  ";
+          const title = session.title || session.summary.replace(/\s+/g, " ").slice(0, 48) || session.sessionId;
+          const suffix = `${session.turns} turns · ${formatSize(session.sizeBytes)}`;
+          stdout.write(`      ${mark}${selected ? "\x1B[1;37m" : "\x1B[37m"}${title}\x1B[0m  \x1B[90m${suffix}\x1B[0m\n`);
+        });
+      });
+      stdout.write("\n");
+    }
+    if (notice) stdout.write(`    \x1B[33m${notice}\x1B[0m\n`);
+    stdout.write("    \x1B[90m↑↓ select · Enter focus project/session · d delete · Esc exit\x1B[0m\n");
+  };
+
+  stdout.write("\x1B[?25l");
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.setEncoding("utf8");
+  render();
+
+  await new Promise<void>((resolvePromise) => {
+    let buffer = "";
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingDelete: string | undefined;
+    const cleanup = () => {
+      stdin.removeListener("data", onData);
+      if (stdin.isRaw) stdin.setRawMode(false);
+      stdout.write("\x1B[?25h\n");
+    };
+    const finish = () => { cleanup(); resolvePromise(); };
+    const onData = (key: string) => {
+      buffer += key;
+      if (timer) clearTimeout(timer);
+      if (buffer === "\x1B[A" || buffer === "\x1B[B") {
+        const direction = buffer === "\x1B[A" ? -1 : 1;
+        if (focus === "project") {
+          projectIndex = Math.max(0, Math.min(groups.length - 1, projectIndex + direction));
+          sessionIndex = Math.min(sessionIndex, Math.max(0, (groups[projectIndex]?.sessions.length ?? 1) - 1));
+        } else {
+          const sessions = groups[projectIndex]?.sessions ?? [];
+          sessionIndex = Math.max(0, Math.min(sessions.length - 1, sessionIndex + direction));
+        }
+        notice = "";
+        pendingDelete = undefined;
+        buffer = "";
+        render();
+        return;
+      }
+      if (buffer === "\x1B[D") { focus = "project"; buffer = ""; render(); return; }
+      if (buffer === "\x1B[C") { focus = "session"; buffer = ""; render(); return; }
+      if (buffer === "\x1B") {
+        timer = setTimeout(() => { buffer = ""; finish(); }, 40);
+        return;
+      }
+      if (buffer === "\r" || buffer === "\n") {
+        focus = focus === "project" ? "session" : "project";
+        buffer = "";
+        render();
+        return;
+      }
+      if (buffer.toLowerCase() === "d") {
+        const session = selectedSession();
+        if (!session) { buffer = ""; return; }
+        notice = `Delete '${session.title || session.sessionId}'? Press d again to confirm.`;
+        if (pendingDelete === session.path) {
+          if (deleteGlobalSession(session.path, homeDir)) {
+            groups = listGlobalSessionGroups(homeDir);
+            projectIndex = Math.min(projectIndex, Math.max(0, groups.length - 1));
+            sessionIndex = Math.min(sessionIndex, Math.max(0, (groups[projectIndex]?.sessions.length ?? 1) - 1));
+            notice = "Session deleted.";
+          }
+          pendingDelete = undefined;
+        } else {
+          pendingDelete = session.path;
+        }
+        buffer = "";
+        render();
+        return;
+      }
+      buffer = "";
+    };
+    stdin.on("data", onData);
+  });
+}
+
 /**
  * 提前验证 -c 配置覆盖，若输入错误则给出友好提示并退出。
  * parseSettingsOverrides 可能抛出原始 Error，不捕获会显示堆栈跟踪。
@@ -474,7 +608,7 @@ async function ensureProvidersConfigured(
   const hasConfiguredProvider = Object.keys(globalSettings.providers ?? {}).length > 0;
   const hasManagedCredential = (deps.hasAnyManagedCredential ?? hasAnyManagedCredential)();
 
-  // UI-only settings such as auto_update do not prove that initialization ran.
+  // UI-only settings do not prove that initialization ran.
   if (hasConfiguredProvider || hasManagedCredential) {
     return globalSettings;
   }
@@ -571,6 +705,13 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   // ─── --resume <id> 短路 ───
   // 在 Commander 解析前运行，以便会话解析的 cwd 对后续所有步骤生效。
   await maybeHandleResumeFlag(argv, deps.findSessionById);
+
+  // --session：管理全局历史会话，完成后退出，不启动 TUI。
+  if (argv.includes("--session")) {
+    process.stdout.write("\x1Bc");
+    await interactiveGlobalSessionManager(homeDir);
+    return;
+  }
 
   // ─── 服务模式短路 ───
   // GUI（Electron 主进程）以此参数派生进程。
@@ -688,22 +829,6 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       }
     });
 
-  // update：检查并安装更新
-  program
-    .command("update")
-    .description("Check for and install the latest version")
-    .option("--check", "Check for updates without installing")
-    .action(async (opts: { check?: boolean }) => {
-      ranSubcommand = true;
-      if (opts.check) {
-        const { runUpdateCheck } = await import("./lifecycle/update-check.js");
-        await runUpdateCheck(VERSION);
-      } else {
-        const { runUpdate } = await import("./lifecycle/update-check.js");
-        await runUpdate(VERSION);
-      }
-    });
-
   // 默认 action（防止无子命令时 Commander 显示帮助并退出）
   program.action(() => {});
 
@@ -729,37 +854,6 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   }>();
 
   parseConfigOverridesOrExit(opts.config ?? []);
-
-  // 应用后台下载的待生效更新
-  const applyResult = (deps.applyStaged ?? applyStaged)(homeDir);
-  if (applyResult.kind === "applied") {
-    if (deps.relaunchAfterUpdate) {
-      deps.relaunchAfterUpdate(argv);
-      return;
-    }
-    if (!deps.applyStaged) {
-      relaunchCurrentProcess(argv);
-      return;
-    }
-  }
-  const effectiveVersion = applyResult.kind === "applied"
-    ? (applyResult.version ?? VERSION)
-    : VERSION;
-
-  // 若启用，后台启动更新检查（非阻塞）
-  const loadSettings = deps.loadGlobalSettings ?? loadGlobalSettings;
-  const autoUpdateSetting = loadSettings(homeDir).auto_update ?? true;
-  if (autoUpdateSetting !== false) {
-    const getter = (deps.checkForUpdates ?? checkForUpdates)(effectiveVersion, homeDir, autoUpdateSetting);
-    setUpdateStateGetter(getter);
-  }
-  setRelaunchCallback(() => {
-    if (deps.relaunchAfterUpdate) {
-      deps.relaunchAfterUpdate(argv);
-    } else {
-      relaunchCurrentProcess(argv);
-    }
-  });
 
   // 调试日志
   if (opts.verbose) {

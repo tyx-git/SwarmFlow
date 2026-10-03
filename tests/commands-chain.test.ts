@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  CommandExitSignal,
   buildDefaultRegistry,
+  getLocalizedCommandDescription,
   type CommandContext,
 } from "../src/commands/commands.js";
+import { createUiText, hasUiText } from "../src/lib/ui-text.js";
 
 function baseContext(registry: ReturnType<typeof buildDefaultRegistry>): CommandContext {
   return {
@@ -30,33 +31,18 @@ describe("slash command chain", () => {
     expect(rendered).toBe("__help_panel__");
   });
 
-  it("/summarize delegates selected context to the manual summarize callback", async () => {
+  it("loads every built-in command description from both language tables", () => {
     const registry = buildDefaultRegistry();
-    const cmd = registry.lookup("/summarize");
-    expect(cmd).toBeTruthy();
-
-    const onManualSummarizeRequested = vi.fn();
-    const promptSelect = vi.fn(async () => "0");
-    const promptSecret = vi.fn(async () => "focus on old tool output");
-    const ctx: CommandContext = {
-      ...baseContext(registry),
-      session: {
-        getSummarizeTargets: () => [
-          { kind: "summary", turnIndex: 1, preview: "old output", timestamp: 1, contextId: "ctx-1" },
-        ],
-      },
-      onManualSummarizeRequested,
-      promptSelect,
-      promptSecret,
-    };
-
-    await cmd!.handler(ctx, "");
-
-    expect(promptSelect).toHaveBeenCalledTimes(2);
-    expect(onManualSummarizeRequested).toHaveBeenCalledWith({
-      targetContextIds: ["ctx-1"],
-      focusPrompt: "focus on old tool output",
-    });
+    for (const command of registry.getAll()) {
+      expect(hasUiText("zh", ["Commands", command.name, "description"]), command.name).toBe(true);
+      expect(hasUiText("en", ["Commands", command.name, "description"]), command.name).toBe(true);
+      expect(getLocalizedCommandDescription(command, "zh")).toBe(
+        createUiText("zh").get(["Commands", command.name, "description"]),
+      );
+      expect(getLocalizedCommandDescription(command, "en")).toBe(
+        createUiText("en").get(["Commands", command.name, "description"]),
+      );
+    }
   });
 
   it("/compact delegates to the manual compact callback with raw args", async () => {
@@ -157,48 +143,4 @@ describe("slash command chain", () => {
     expect(ctx.showMessage as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
-  it("/quit delegates to ctx.exit when provided (graceful path)", async () => {
-    const registry = buildDefaultRegistry();
-    const cmd = registry.lookup("/quit");
-    expect(cmd).toBeTruthy();
-
-    const session = { close: vi.fn() };
-    const exit = vi.fn(async () => {});
-    const ctx: CommandContext = {
-      ...baseContext(registry),
-      session,
-      exit,
-    };
-
-    await cmd!.handler(ctx, "");
-
-    expect(exit).toHaveBeenCalledTimes(1);
-    expect((ctx.autoSave as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
-    expect(session.close).not.toHaveBeenCalled();
-  });
-
-  it("/quit throws CommandExitSignal when ctx.exit is absent", async () => {
-    const registry = buildDefaultRegistry();
-    const cmd = registry.lookup("/quit");
-    expect(cmd).toBeTruthy();
-
-    const close = vi.fn(async () => {});
-    const ctx: CommandContext = {
-      ...baseContext(registry),
-      session: { close },
-    };
-
-    await expect(cmd!.handler(ctx, "")).rejects.toBeInstanceOf(CommandExitSignal);
-    expect((ctx.autoSave as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
-    expect(close).toHaveBeenCalledTimes(1);
-  });
-
-  it("/exit is an alias of /quit", () => {
-    const registry = buildDefaultRegistry();
-    const quit = registry.lookup("/quit");
-    const exitAlias = registry.lookup("/exit");
-    expect(quit).toBeTruthy();
-    expect(exitAlias).toBeTruthy();
-    expect(exitAlias!.handler).toBe(quit!.handler);
-  });
 });

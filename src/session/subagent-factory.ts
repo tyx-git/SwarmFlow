@@ -2,7 +2,7 @@
  * SubAgentFactory —— 为子会话构建 Agent 实例（P2.4a）。
  *
  * 拥有模板查找（预定义 + 磁盘）、模型解析
- *（agent_models pin > model_level tier > session default > 父模型）、comm 工具剥离、
+ *（agent_models pin > session default > 父模型）、comm 工具剥离、
  * 以及子会话 system-prompt 分层。模型条目解析和状态回退
  * 通过 deps 闭包回调 Session。
  */
@@ -13,13 +13,13 @@ import { join } from "node:path";
 import { Agent } from "../agents/agent.js";
 import type { Config, ModelConfig } from "../config/config.js";
 import type { MCPClientManager } from "../clients/mcp-client.js";
-import type { AgentModelEntry, ModelTierEntry } from "../config/persistence.js";
+import type { AgentModelEntry } from "../config/persistence.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
 
 /** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
 const COMM_TOOL_NAMES = new Set([
-  "spawn", "kill_agent", "check_status", "await_event", "show_context", "summarize_context", "ask", "skill",
+  "spawn", "kill_agent", "check_status", "await_event", "ask", "skill",
   "bash_background", "bash_output", "kill_shell", "send",
 ]);
 
@@ -37,8 +37,6 @@ export interface SubAgentFactoryDeps {
   getParentModelConfig(): ModelConfig;
   /** 包装 resolveAgentModelEntry(session, entry)。 */
   resolvePinnedModel(entry: AgentModelEntry): ResolvedSubAgentModel;
-  /** 包装 resolveModelTierEntry(session, tier)。 */
-  resolveTierModel(tier: ModelTierEntry): ResolvedSubAgentModel;
   /** 追加状态条目到会话日志（模型回退通知）。 */
   appendStatus(message: string, statusType: string): void;
   getSubagentDefaultModel?(): ResolvedSubAgentModel | undefined;
@@ -49,7 +47,7 @@ export interface SubAgentFactoryDeps {
  *
  * 职责：
  * - 模板查找：预定义模板（从 prompts/templates/）或磁盘模板
- * - 模型解析优先级：agent_models pin > model_level tier > session default > 父模型
+ * - 模型解析优先级：agent_models pin > /agents 默认模型 > 父模型
  * - 工具约束：剥离 comm 工具、剥离不可继承的 MCP 工具
  * - System prompt 分层：模板 prompt + 模式 prompt（oneshot/persistent）
  */
@@ -60,7 +58,7 @@ export class SubAgentFactory {
    * 从预定义模板创建子 Agent。
    * 模板从 getAgentTemplates() 获取（Session 初始化时加载）。
    */
-  createFromPredefined(templateName: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string } {
+  createFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
     const templates = this.deps.getAgentTemplates();
     // 优先精确匹配，再大小写不敏感回退
     let templateAgent = templates[templateName];
@@ -80,7 +78,7 @@ export class SubAgentFactory {
       );
     }
 
-    const { modelConfig, thinkingLevel } = this._resolveSubAgentModel(templateName, modelLevel);
+    const { modelConfig, thinkingLevel } = this._resolveSubAgentModel(templateName);
     const tools = [...templateAgent.tools]; // 使用模板的工具，非主 Agent 的
 
     const agent = new Agent({
@@ -101,7 +99,7 @@ export class SubAgentFactory {
    * 从磁盘模板路径创建子 Agent。
    * 模板路径必须位于 SESSION_ARTIFACTS 内（安全约束）。
    */
-  createFromPath(templateDir: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string } {
+  createFromPath(templateDir: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
     const templateAgent = loadTemplate(
       templateDir,
       this.deps.getConfig(),
@@ -109,7 +107,7 @@ export class SubAgentFactory {
       this.deps.getMcpManager(),
       this.deps.getPromptsDirs(),
     );
-    const { modelConfig, thinkingLevel } = this._getSubAgentModelConfig(modelLevel);
+    const { modelConfig, thinkingLevel } = this._getSubAgentModelConfig();
 
     const agent = new Agent({
       name: taskId,
@@ -193,10 +191,10 @@ export class SubAgentFactory {
 
   /**
    * 解析预定义子 Agent 模板的模型。
-   * 优先级：agent_models pin > model_level tier > session default > 父模型。
+   * 优先级：agent_models pin > /agents 默认模型 > 父模型。
    */
-  private _resolveSubAgentModel(templateName: string, modelLevel?: string): ResolvedSubAgentModel {
-    // 优先级 1：agent_models[templateName]——静默忽略 model_level
+  private _resolveSubAgentModel(templateName: string): ResolvedSubAgentModel {
+    // 优先级 1：agent_models[templateName]
     try {
       const pinnedEntry = this.deps.getConfig().agentModels[templateName];
       if (pinnedEntry) {
@@ -209,25 +207,10 @@ export class SubAgentFactory {
       return { modelConfig: this.deps.getParentModelConfig() };
     }
 
-    // 显式 tier 优先于 /agents 保存的当前会话默认值。
-    return this._getSubAgentModelConfig(modelLevel);
+    return this._getSubAgentModelConfig();
   }
 
-  /** 根据 modelLevel tier 解析模型配置。 */
-  private _getSubAgentModelConfig(modelLevel?: string): ResolvedSubAgentModel {
-    if (modelLevel && (modelLevel === "high" || modelLevel === "medium" || modelLevel === "low")) {
-      try {
-        const tier = this.deps.getConfig().modelTiers[modelLevel];
-        if (!tier) {
-          throw new Error(`Model tier '${modelLevel}' is not configured.`);
-        }
-        return this.deps.resolveTierModel(tier);
-      } catch (err) {
-        const msg = `Sub-agent requested model tier '${modelLevel}' but it failed: ${err instanceof Error ? err.message : String(err)}. Falling back to current model.`;
-        this.deps.appendStatus(msg, "tier_fallback");
-        return { modelConfig: this.deps.getParentModelConfig() };
-      }
-    }
+  private _getSubAgentModelConfig(): ResolvedSubAgentModel {
     const configuredDefault = this.deps.getSubagentDefaultModel?.();
     if (configuredDefault) return configuredDefault;
     return { modelConfig: this.deps.getParentModelConfig() };

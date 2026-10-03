@@ -20,7 +20,6 @@ import { setDotenvKey } from "../lifecycle/dotenv.js";
 import {
   type SwarmflowSettings,
   type ProviderEntry,
-  type ModelTierEntry,
   saveSettings,
   globalSettingsPath,
   saveModelSelectionState,
@@ -31,7 +30,7 @@ import {
   hasManagedCredential,
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
-import { Config, getThinkingLevels, getTierEligibleThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
+import { Config, getThinkingLevels, getSubAgentThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
 import {
   buildModelPickerTree,
   labelModelPickerNode,
@@ -233,8 +232,8 @@ export class InitService {
     return getThinkingLevels(modelId);
   }
 
-  getTierEligibleThinkingLevels(modelId: string): string[] {
-    return getTierEligibleThinkingLevels(modelId);
+  getSubAgentThinkingLevels(modelId: string): string[] {
+    return getSubAgentThinkingLevels(modelId);
   }
 
   // ── Web search ──
@@ -257,7 +256,6 @@ export class InitService {
   saveConfiguration(opts: {
     modelSelection?: ModelSelection;
     thinkingLevel?: string;
-    tierConfig?: Record<string, ModelTierEntry>;
   }): void {
     const providers: Record<string, ProviderEntry> = {};
     this.configuredProviders.forEach((entry, id) => {
@@ -270,7 +268,6 @@ export class InitService {
           ? opts.thinkingLevel
           : undefined,
       providers: Object.keys(providers).length > 0 ? providers : undefined,
-      model_tiers: opts.tierConfig,
     };
 
     saveSettings(settings, globalSettingsPath(this.homeDir));

@@ -23,7 +23,7 @@ describe("buildActiveContextView", () => {
         "s1",
         ["c1"],
         1,
-        { summaryOrigin: "manual", coveredTurnStart: 1, coveredTurnEnd: 1 },
+        { coveredTurnStart: 1, coveredTurnEnd: 1 },
       ),
     ];
 
@@ -42,7 +42,7 @@ describe("buildActiveContextView", () => {
         "s1",
         ["c1"],
         1,
-        { summaryOrigin: "manual", coveredTurnStart: 1, coveredTurnEnd: 1 },
+        { coveredTurnStart: 1, coveredTurnEnd: 1 },
       ),
       createAssistantText("asst-001", 5, 0, "compressed", "compressed", "s1"),
     ];
@@ -66,7 +66,7 @@ describe("buildActiveContextView", () => {
         "s1",
         ["c1"],
         1,
-        { summaryOrigin: "agent", coveredTurnStart: 1, coveredTurnEnd: 1 },
+        { coveredTurnStart: 1, coveredTurnEnd: 1 },
       ),
       createSummary(
         "sum-002",
@@ -76,7 +76,7 @@ describe("buildActiveContextView", () => {
         "s2",
         ["s1", "c2"],
         2,
-        { summaryOrigin: "agent", coveredTurnStart: 1, coveredTurnEnd: 1 },
+        { coveredTurnStart: 1, coveredTurnEnd: 1 },
       ),
     ];
 
@@ -97,7 +97,7 @@ describe("buildActiveContextView", () => {
         "s1",
         ["c1", "c2"],
         1,
-        { summaryOrigin: "manual", coveredTurnStart: 2, coveredTurnEnd: 2 },
+        { coveredTurnStart: 2, coveredTurnEnd: 2 },
       ),
     ];
 
@@ -124,7 +124,7 @@ describe("buildActiveContextView", () => {
         "s1",
         ["c1"],
         1,
-        { summaryOrigin: "manual", coveredTurnStart: 3, coveredTurnEnd: 3 },
+        { coveredTurnStart: 3, coveredTurnEnd: 3 },
       ),
     ];
 

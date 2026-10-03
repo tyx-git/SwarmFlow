@@ -43,11 +43,11 @@ import { RightSidebar, type SidebarMode } from "../../sidebar/right-sidebar.js";
 import { computePickerMaxVisible, finiteInteger, getSidebarWidth } from "./metrics.js";
 import { HorizontalTabBar } from "./horizontal-tab-bar.js";
 import { shortenPath } from "../utils/format.js";
-import { UpdateToast } from "../overlays/update-toast.js";
 import { McpToast } from "../overlays/mcp-toast.js";
 import { ToastStack } from "../overlays/toast-frame.js";
 import { UsagePanel } from "../overlays/usage-panel.js";
-import { StatPanel } from "../overlays/stat-panel.js";
+import { SessionStatusPanel, type SessionStatusData } from "../overlays/session-status-panel.js";
+import { MemoryPanel } from "../overlays/memory-panel.js";
 
 export interface OpenTuiScreenProps {
   theme: DisplayTheme;
@@ -141,27 +141,27 @@ export interface OpenTuiScreenProps {
   activeShellDetail?: import("../../components/entry/detail-shell-tab.js").ShellDetailData | null;
   /** Stop a background shell from the detail tab. */
   onStopShell?: (shellId: string) => void;
-  /** Update toast state — null means hidden. */
-  updateToast?: { phase: import("../overlays/update-toast.js").UpdateToastPhase; version?: string; error?: string } | null;
   /** MCP connection failures — null means hidden. Dismissal (manual via Ctrl+L
    * or auto-clear on recovery) is owned by the app; the screen just renders. */
   mcpFailures?: import("../overlays/mcp-toast.js").McpFailure[] | null;
-  /** Called when user clicks "Restart" in the update toast. */
-  onUpdateRestart?: () => void;
-  /** Called when user dismisses the update toast. */
-  onUpdateDismiss?: () => void;
-  /** Whether the usage panel overlay is visible. */
+  /** Whether the combined usage panel is visible. */
   usagePanel?: boolean;
   /** Usage data for the panel. */
   usageData?: import("../overlays/usage-panel.js").UsageData | null;
   /** Called when user dismisses the usage panel. */
   onUsageDismiss?: () => void;
-  /** Whether the stat panel overlay is visible. */
-  statPanel?: boolean;
-  /** Stat data for the panel. */
-  statData?: import("../overlays/stat-panel.js").StatData | null;
-  /** Called when user dismisses the stat panel. */
-  onStatDismiss?: () => void;
+  /** Current page of the combined usage panel. */
+  usagePage?: "usage" | "stats";
+  /** All-time statistics shown on the second usage page. */
+  usageStatsData?: import("../overlays/usage-panel.js").UsageStatsData | null;
+  /** Current session status panel. */
+  statusPanelOverlay?: boolean;
+  statusData?: SessionStatusData | null;
+  onStatusDismiss?: () => void;
+  /** Current-session memory panel. */
+  memoryPanel?: boolean;
+  memoryLines?: readonly string[];
+  onMemoryDismiss?: () => void;
 }
 
 export function OpenTuiScreen({
@@ -243,16 +243,18 @@ export function OpenTuiScreen({
   onShellsClick,
   activeShellDetail,
   onStopShell,
-  updateToast,
-  onUpdateRestart,
-  onUpdateDismiss,
   mcpFailures,
   usagePanel,
   usageData,
   onUsageDismiss,
-  statPanel,
-  statData,
-  onStatDismiss,
+  usagePage = "usage",
+  usageStatsData = null,
+  statusPanelOverlay = false,
+  statusData = null,
+  onStatusDismiss,
+  memoryPanel = false,
+  memoryLines = [],
+  onMemoryDismiss,
 }: OpenTuiScreenProps): React.ReactNode {
   const terminalWidth = Math.max(1, finiteInteger(terminal.width, 1));
   const terminalHeight = Math.max(1, finiteInteger(terminal.height, 1));
@@ -374,6 +376,8 @@ export function OpenTuiScreen({
           onDismiss={onUsageDismiss}
           inline
           uiText={uiText}
+          page={usagePage}
+          statsData={usageStatsData}
         />
       ) : undefined}
       promptSelect={Boolean(promptSelect)}
@@ -565,36 +569,34 @@ export function OpenTuiScreen({
         Fixed footer — input area stays visible while scrolling.
         Lifted out of the main scrollbox so it stays at the bottom.
       */}
-      {pendingMessages}
-      {statusPanel}
-      {commandOverlayBlock}
-      {inputAreaElement}
+      {!memoryPanel ? pendingMessages : null}
+      {!memoryPanel ? statusPanel : null}
+      {!memoryPanel ? commandOverlayBlock : null}
+      {!memoryPanel ? inputAreaElement : null}
 
       <ToastStack terminalWidth={terminalWidth}>
-        {updateToast && onUpdateRestart && onUpdateDismiss ? (
-          <UpdateToast
-            phase={updateToast.phase}
-            version={updateToast.version}
-            error={updateToast.error}
-            theme={theme}
-            onRestart={onUpdateRestart}
-            onDismiss={onUpdateDismiss}
-          />
-        ) : null}
-
         {mcpFailures && mcpFailures.length > 0 ? (
           <McpToast failures={mcpFailures} theme={theme} />
         ) : null}
 
       </ToastStack>
 
-      {statPanel && onStatDismiss ? (
-        <StatPanel
-          data={statData ?? null}
+      {statusPanelOverlay && onStatusDismiss && statusData ? (
+        <SessionStatusPanel
+          data={statusData}
           theme={theme}
           terminalWidth={terminalWidth}
           terminalHeight={terminalHeight}
-          onDismiss={onStatDismiss}
+          onDismiss={onStatusDismiss}
+        />
+      ) : null}
+      {memoryPanel && onMemoryDismiss ? (
+        <MemoryPanel
+          lines={memoryLines}
+          theme={theme}
+          terminalWidth={terminalWidth}
+          terminalHeight={terminalHeight}
+          onDismiss={onMemoryDismiss}
         />
       ) : null}
 

@@ -303,7 +303,7 @@ export async function ensureProviderCredential(
 export const ensureManagedProviderCredential = ensureProviderCredential;
 
 // ------------------------------------------------------------------
-// 完整的管理流程（`/key` 命令）：设置 / 替换 / 删除 / 导入。
+// 完整的管理流程（`/provider` 子流程）：设置 / 替换 / 删除 / 导入。
 // ------------------------------------------------------------------
 
 export interface ManageCredentialResult {

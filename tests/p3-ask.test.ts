@@ -108,66 +108,6 @@ describe("P3 ask behavior", () => {
     }
   });
 
-  it("updates summarize_context hint state and hint injection even when activation suspends on ask", async () => {
-    const root = makeTempDir("swarmflow-p3-ask-hint-");
-    try {
-      const s = makeSessionLike(root);
-      s._updateHintStateAfterApiCall = vi.fn();
-      s._checkAndInjectHint = vi.fn();
-      s._runActivation = vi.fn(async () => ({
-        text: "",
-        toolHistory: [],
-        totalUsage: { inputTokens: 120, outputTokens: 0 },
-        intermediateText: [],
-        lastInputTokens: 120,
-        lastTotalTokens: 120,
-        reasoningContent: "",
-        reasoningState: null,
-        compactNeeded: false,
-        textHandledInLog: false,
-        reasoningHandledInLog: false,
-        suspendedAsk: {
-          ask: {
-            id: "ask-1",
-            kind: "agent_question",
-            createdAt: new Date().toISOString(),
-            source: { agentId: "Primary" },
-            summary: "Ask pending",
-            payload: { questions: [], toolCallId: "ask-tool-1" },
-            options: [],
-          },
-          toolCallId: "ask-tool-1",
-          roundIndex: 0,
-        },
-      }));
-      s._log.push(createToolCall(
-        "tc-ask-001",
-        1,
-        0,
-        "ask",
-        { id: "ask-tool-1", name: "ask", arguments: { questions: [] } },
-        { toolCallId: "ask-tool-1", toolName: "ask", agentName: "Primary", contextId: "ask-ctx-1" },
-      ));
-
-      const out = await (Session.prototype as any)._runTurnActivationLoop.call(
-        s,
-        undefined,
-        { text: "" },
-        { text: "" },
-      );
-
-      expect(out).toBe("");
-      expect(s._lastInputTokens).toBe(120);
-      expect(s._lastTotalTokens).toBe(120);
-      expect(s._updateHintStateAfterApiCall).toHaveBeenCalledOnce();
-      expect(s._checkAndInjectHint).toHaveBeenCalledOnce();
-      const askReq = s._log.find((e: any) => e.type === "ask_request");
-      expect(askReq.meta.contextId).toBe("ask-ctx-1");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("supports explicit external @file attachments without session permission rules", async () => {
     const projectRoot = makeTempDir("swarmflow-p3-attach-proj-");
     const externalDir = makeTempDir("swarmflow-p3-attach-ext-");

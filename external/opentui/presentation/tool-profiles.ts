@@ -193,12 +193,6 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     },
     inlineResult: { maxLines: Number.POSITIVE_INFINITY },
   },
-  show_context: {
-    category: "observe",
-    displayName: "Context",
-    text: () => "",
-    inlineResult: false,
-  },
   check_status: {
     category: "observe",
     displayName: "Status",
@@ -225,15 +219,6 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
       return typeof s === "number" ? `${s}s` : "";
     },
     inlineResult: false,
-  },
-  summarize_context: {
-    category: "observe",
-    displayName: "Summarize",
-    text: (args) => {
-      const ops = args.operations;
-      return Array.isArray(ops) ? `${ops.length} ${ops.length === 1 ? "group" : "groups"}` : "";
-    },
-    inlineResult: { maxLines: 1 },
   },
 };
 

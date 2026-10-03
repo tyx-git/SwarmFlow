@@ -1,8 +1,5 @@
 ﻿import type { LogEntry } from "../context/log-entry.js";
 
-/** 摘要来源类型 */
-export type SummaryOrigin = "agent" | "manual";
-
 /** 活动上下文分组——将具有相同 contextId 的条目聚合在一起 */
 export interface ActiveContextGroup {
   /** 上下文 ID */
@@ -26,8 +23,6 @@ export interface ActiveContextGroup {
   assignedTurn: number;
   /** 是否为摘要条目 */
   isSummary: boolean;
-  /** 摘要来源 */
-  summaryOrigin?: SummaryOrigin;
   /** 摘要深度 */
   summaryDepth?: number;
   /** 此摘要覆盖的上下文 ID 列表 */
@@ -101,12 +96,6 @@ function getStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
-/** 从条目元数据中提取摘要来源 */
-function getSummaryOrigin(entry: LogEntry): SummaryOrigin | undefined {
-  const raw = (entry.meta as Record<string, unknown>)["summaryOrigin"];
-  return raw === "manual" || raw === "agent" ? raw : undefined;
-}
-
 /** 检查条目是否为用户自己的消息（受保护的用户上下文） */
 function isUserContextEntry(entry: LogEntry): boolean {
   // 只有用户自己的消息受保护。系统通知、对等消息和注入的命令提示
@@ -140,7 +129,6 @@ function buildGroup(ctxId: string, entry: LogEntry, index: number): ActiveContex
     hasUserMessage: isUserContextEntry(entry),
     assignedTurn: coveredTurnStart,
     isSummary: entry.type === "summary",
-    summaryOrigin: entry.type === "summary" ? getSummaryOrigin(entry) : undefined,
     summaryDepth: entry.type === "summary"
       ? Number(meta["summaryDepth"] ?? 1)
       : undefined,
@@ -163,7 +151,6 @@ function appendToGroup(group: ActiveContextGroup, entry: LogEntry, index: number
   }
   if (entry.type === "summary") {
     group.isSummary = true;
-    group.summaryOrigin = getSummaryOrigin(entry);
     group.summaryDepth = Number(meta["summaryDepth"] ?? 1);
     group.coveredContextIds = getStringArray(meta["coveredContextIds"]);
     if (typeof meta["coveredTurnStart"] === "number") {
@@ -300,24 +287,4 @@ export function flattenActiveContextEntries(view: ActiveContextView): LogEntry[]
     }
   }
   return out;
-}
-
-/** 展开上下文范围——返回从 from 到 to 之间的所有上下文 ID */
-export function expandContextRange(
-  from: string,
-  to: string,
-  view: ActiveContextView,
-): { contextIds: string[]; error?: string } {
-  const fromIdx = view.order.indexOf(from);
-  if (fromIdx < 0) {
-    return { contextIds: [], error: `"from" context_id "${from}" not found in the active context.` };
-  }
-  const toIdx = view.order.indexOf(to);
-  if (toIdx < 0) {
-    return { contextIds: [], error: `"to" context_id "${to}" not found in the active context.` };
-  }
-  if (fromIdx > toIdx) {
-    return { contextIds: [], error: `"from" ("${from}") appears after "to" ("${to}") in spatial order. Swap them or check show_context.` };
-  }
-  return { contextIds: view.order.slice(fromIdx, toIdx + 1) };
 }

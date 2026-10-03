@@ -8,9 +8,7 @@ import {
   KILL_AGENT_TOOL,
   RELOAD_TOOL,
   SEND_TOOL,
-  SHOW_CONTEXT_TOOL,
   SPAWN_TOOL,
-  SUMMARIZE_CONTEXT_TOOL,
 } from "../src/tools/comm.js";
 import { TASK_CONTROL_TOOLS, TASK_TOOLS } from "../src/tools/tasks.js";
 import { ensureTaskTools } from "../src/lib/tool-runtime.js";
@@ -25,8 +23,6 @@ describe("task tool definitions", () => {
       SPAWN_TOOL.name,
       KILL_AGENT_TOOL.name,
       ASK_TOOL.name,
-      SHOW_CONTEXT_TOOL.name,
-      SUMMARIZE_CONTEXT_TOOL.name,
       CHECK_STATUS_TOOL.name,
       AWAIT_EVENT_TOOL.name,
       SEND_TOOL.name,

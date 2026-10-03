@@ -8,7 +8,7 @@ import {
   getModelMaxOutputTokens,
   getMultimodalSupport,
   getThinkingLevels,
-  getTierEligibleThinkingLevels,
+  getSubAgentThinkingLevels,
   getWebSearchSupport,
   normalizeModelId,
 } from "../src/config/config.js";
@@ -46,7 +46,7 @@ describe("model/provider derivation characterization (Phase 0 baseline)", () => 
           webSearch: getWebSearchSupport(id, undefined, preset.id),
           extendedCache: getExtendedCacheSupport(id),
           thinkingLevels: getThinkingLevels(id),
-          tierThinkingLevels: getTierEligibleThinkingLevels(id),
+          tierThinkingLevels: getSubAgentThinkingLevels(id),
           highestThinkingLevel: getHighestThinkingLevel(id),
           transport: effectiveTransportProtocol({ provider: preset.id, model: id }),
           encryption: effectiveThinkingEncryption({ provider: preset.id, model: id }),

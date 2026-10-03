@@ -18,19 +18,13 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { CommandPickerPresentation } from "../ui/picker.js";
-import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry, ModelTierEntry } from "../config/persistence.js";
+import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry } from "../config/persistence.js";
 import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
 import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
-import { validateSummarizeHintLevels } from "../config/settings.js";
-import { VERSION } from "../version.js";
-import { applySessionRestore, findSessionById, findSessionByName } from "../session-resume.js";
+import { applySessionRestore } from "../session-resume.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
-import {
-  getThinkingLevels,
-  getTierEligibleThinkingLevels,
-  runtimeTransportProtocol,
-} from "../config/config.js";
+import { runtimeTransportProtocol } from "../config/config.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
@@ -38,7 +32,6 @@ import {
 import {
   resolveModelSelection as resolveModelSelectionCore,
   type ResolvedModelSelection,
-  createModelTierEntry,
   parseProviderModelTarget,
   runtimeModelName,
 } from "../models/selection.js";
@@ -55,13 +48,13 @@ import {
 } from "../providers/credential-flow.js";
 import { resolveSkillContent, type SkillMeta } from "../skills/loader.js";
 import { buildModelPickerTree, buildCredentialEndpointTree, toCommandPickerOptions, type ModelPickerTreeContext } from "../models/picker-tree.js";
-import { describeModel, getCurrentModelDescriptor } from "../models/presentation.js";
+import { getCurrentModelDescriptor } from "../models/presentation.js";
 import { hasOAuthTokens, isTokenExpiring, readOAuthAccessToken, clearOAuthTokens, ensureFreshToken } from "../auth/openai-oauth.js";
 import { hasGitHubTokens, clearGitHubTokens } from "../auth/github-copilot-oauth.js";
 import { launchDesignHelper } from "../browser/index.js";
 import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme.js";
 import { THINKING_LEVEL_LIST } from "../config/thinking.js";
-import { createUiText, getUiLanguage, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
+import { createUiText, getUiLanguage, hasUiText, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
 import type { SubagentDefaultModel } from "../session/subagent-settings.js";
 
 // ------------------------------------------------------------------
@@ -119,9 +112,6 @@ export interface CommandContext {
   /* 命令注册表本身，因此/help可以枚举命令。 */
   commandRegistry: CommandRegistry;
 
-  /* 请求gui层安全退出。 */
-  exit?: () => Promise<void> | void;
-
   /* 注入内容作为用户消息并触发新回合。 */
   onTurnRequested?: (content: string) => void;
 
@@ -131,9 +121,6 @@ export interface CommandContext {
    * clean while sending detailed prompts to the model.
    */
   onInjectedTurnRequested?: (displayText: string, content: string) => void;
-
-  /* 通过TUI转弯管道触发目标汇总请求。 */
-  onManualSummarizeRequested?: (opts: { targetContextIds?: string[]; focusPrompt?: string }) => void;
 
   /* 通过TUI执行管道触发手动压缩请求。 */
   onManualCompactRequested?: (instruction: string) => void;
@@ -216,7 +203,7 @@ export interface CommandOptionsContext {
  * A single slash command.
  */
 export interface SlashCommand {
-  /* Command name, for example "/session". */
+  /* Command name, for example "/provider". */
   name: string;
   /* Short description shown by /help. */
   description: string;
@@ -235,20 +222,28 @@ export interface SlashCommand {
   picker?: CommandPickerPresentation;
 }
 
-export class CommandExitSignal extends Error {
-  code: number;
-
-  constructor(code = 0) {
-    super(`Command requested exit (${code})`);
-    this.name = "CommandExitSignal";
-    this.code = code;
-  }
+/** Resolve an installed command description from language.json when available. */
+export function getLocalizedCommandDescription(
+  command: Pick<SlashCommand, "name" | "description">,
+  language: UiLanguage,
+): string {
+  const path = ["Commands", command.name, "description"] as const;
+  return hasUiText(language, path) ? createUiText(language).get(path) : command.description;
 }
 
-export function isCommandExitSignal(err: unknown): err is CommandExitSignal {
-  return err instanceof CommandExitSignal ||
-    ((err as { name?: unknown; code?: unknown } | null | undefined)?.name === "CommandExitSignal" &&
-      typeof (err as { code?: unknown } | null | undefined)?.code === "number");
+function builtinDescription(name: string): string {
+  const path = ["Commands", name, "description"] as const;
+  if (!hasUiText("en", path) || !hasUiText("zh", path)) {
+    throw new Error(`language.json: missing command description for ${name}`);
+  }
+  return createUiText("en").get(path);
+}
+
+function registerBuiltin(
+  registry: CommandRegistry,
+  command: Omit<SlashCommand, "description">,
+): void {
+  registry.register({ ...command, description: builtinDescription(command.name) });
 }
 
 // ------------------------------------------------------------------
@@ -320,10 +315,6 @@ async function cmdUsage(ctx: CommandContext, _args: string): Promise<void> {
   ctx.showMessage("__usage_panel__");
 }
 
-async function cmdStat(ctx: CommandContext, _args: string): Promise<void> {
-  ctx.showMessage("__stat_panel__");
-}
-
 async function cmdNew(ctx: CommandContext, _args: string): Promise<void> {
   if (ctx.restartRuntimeForNewSession) {
     await ctx.restartRuntimeForNewSession();
@@ -344,92 +335,6 @@ async function cmdNew(ctx: CommandContext, _args: string): Promise<void> {
   ctx.resetUiState();
 }
 
-function formatSummarizeLabel(t: { kind: string; turnIndex: number; preview: string }): string {
-  const prefix = t.kind === "summary" ? "(Summary)" : `Turn ${t.turnIndex}`;
-  return `${prefix}: ${t.preview}`;
-}
-
-async function cmdSummarize(ctx: CommandContext, _args: string): Promise<void> {
-  if (!ctx.onManualSummarizeRequested) {
-    ctx.showMessage("Manual summarize is not available in this UI.");
-    return;
-  }
-
-  const session = ctx.session;
-  const targets: Array<{ kind: "turn" | "summary"; turnIndex: number; preview: string; timestamp: number; contextId?: string }> =
-    session.getSummarizeTargets?.() ?? [];
-  if (targets.length === 0) {
-    ctx.showMessage("No turns available to summarize.");
-    return;
-  }
-
-  if (!ctx.promptSelect) {
-    ctx.showMessage("Interactive summarize is not available in this UI.");
-    return;
-  }
-
-  // 步骤1：选择范围开始
-  const startOptions = targets.map((t, i) => ({
-    label: formatSummarizeLabel(t),
-    value: String(i),
-  }));
-  const startPick = await ctx.promptSelect({
-    message: "Summarize from:",
-    options: startOptions,
-  });
-  if (!startPick) return;
-  const startIdx = parseInt(startPick, 10);
-
-  // 步骤2：选择范围结束（仅在开始或之后的项目）
-  const endOptions = targets.slice(startIdx).map((t, i) => ({
-    label: formatSummarizeLabel(t),
-    value: String(startIdx + i),
-  }));
-  const endPick = await ctx.promptSelect({
-    message: "Summarize to:",
-    options: endOptions,
-  });
-  if (!endPick) return;
-  const endIdx = parseInt(endPick, 10);
-
-  // 步骤3：可选焦点提示
-  let focusPrompt: string | undefined;
-  if (ctx.promptSecret) {
-    const input = await ctx.promptSecret({
-      message: "Focus prompt (optional, Enter to skip):",
-      allowEmpty: true,
-    });
-    if (input === undefined) return;
-    if (input?.trim()) {
-      focusPrompt = input.trim();
-    }
-  }
-
-  // 步骤4：从所选范围计算上下文id，保持空间顺序
-  const selected = targets.slice(startIdx, endIdx + 1);
-  const contextIds: string[] = [];
-  const seen = new Set<string>();
-
-  for (const t of selected) {
-    if (t.kind === "turn") {
-      const turnContextIds = session.getContextIdsForTurnRange?.(t.turnIndex, t.turnIndex) ?? [];
-      for (const id of turnContextIds) {
-        if (!seen.has(id)) { contextIds.push(id); seen.add(id); }
-      }
-    } else if (t.kind === "summary" && t.contextId && !seen.has(t.contextId)) {
-      contextIds.push(t.contextId);
-      seen.add(t.contextId);
-    }
-  }
-
-  if (contextIds.length === 0) {
-    ctx.showMessage("No context groups found in the selected range.");
-    return;
-  }
-
-  ctx.onManualSummarizeRequested({ targetContextIds: contextIds, focusPrompt });
-}
-
 async function cmdCompact(ctx: CommandContext, args: string): Promise<void> {
   if (!ctx.onManualCompactRequested) {
     ctx.showMessage("Manual compact is not available in this UI.");
@@ -440,264 +345,10 @@ async function cmdCompact(ctx: CommandContext, args: string): Promise<void> {
 
 async function cmdShells(ctx: CommandContext, _args: string): Promise<void> {
   if (!ctx.onShellsRequested) {
-    ctx.showMessage("The shells panel is not available in this UI.");
+    ctx.showMessage("The process panel is not available in this UI.");
     return;
   }
   ctx.onShellsRequested();
-}
-
-const SUMMARIZE_HINT_USAGE =
-  "Usage: /summarize_hint on | off | <level1> <level2>  (integers, 0 < level1 < level2 < 85)";
-
-function summarizeHintOptions(ctx: CommandOptionsContext): CommandOption[] {
-  const current = typeof ctx.session?.getSummarizeHintConfig === "function"
-    ? ctx.session.getSummarizeHintConfig() as { enabled: boolean; level1: number; level2: number }
-    : { enabled: true, level1: 50, level2: 75 };
-  return [
-    { label: current.enabled ? "On (current)" : "On", value: "on" },
-    { label: current.enabled ? "Off" : "Off (current)", value: "off" },
-    {
-      label: `Level 1 (${current.level1}%)`,
-      value: "level1",
-      customInput: true,
-      inputLabel: "Level 1 trigger %:",
-      inputPlaceholder: `integer 1-${current.level2 - 1} (below level 2: ${current.level2})`,
-    },
-    {
-      label: `Level 2 (${current.level2}%)`,
-      value: "level2",
-      customInput: true,
-      inputLabel: "Level 2 trigger %:",
-      inputPlaceholder: `integer ${current.level1 + 1}-84 (above level 1: ${current.level1})`,
-    },
-  ];
-}
-
-async function cmdSummarizeHint(ctx: CommandContext, args: string): Promise<void> {
-  const session = ctx.session;
-  const hint = ctx.showHint ?? ctx.showMessage;
-
-  const applyEnabled = (enabled: boolean): void => {
-    const current = session.getSummarizeHintConfig();
-    session.setSummarizeHintConfig({ enabled });
-    persistSettingsPatch({
-      summarize_hint: { enabled, level1: current.level1, level2: current.level2 },
-    }, ctx.swarmflowHomeDir);
-    hint(`Summarize hints: ${enabled ? "ON" : "OFF"}`);
-  };
-
-  const applyLevels = (level1: number, level2: number): boolean => {
-    const current = session.getSummarizeHintConfig();
-    const error = validateSummarizeHintLevels(level1, level2);
-    if (error) {
-      ctx.showMessage(`Invalid levels: ${error}\n${SUMMARIZE_HINT_USAGE}`);
-      return false;
-    }
-    session.setSummarizeHintConfig({ level1, level2 });
-    persistSettingsPatch({
-      summarize_hint: { enabled: current.enabled, level1, level2 },
-    }, ctx.swarmflowHomeDir);
-    hint(`Summarize hint levels: ${level1}% / ${level2}%`);
-    return true;
-  };
-
-  const input = args.trim();
-
-  // 交互路径：无参数→选择器。设置级别返回到
-  // 选择器（与刷新标签），所以两个级别可以调整在一个
-  // 访问;开/关适用并关闭。
-  if (!input && ctx.promptCommandPicker) {
-    for (;;) {
-      const picked = await ctx.promptCommandPicker(
-        summarizeHintOptions({ session: ctx.session, store: ctx.store }),
-        { title: "Summarize Hints" },
-      );
-      if (!picked) return;
-      if (picked.value === "on" || picked.value === "off") {
-        applyEnabled(picked.value === "on");
-        return;
-      }
-      const current = session.getSummarizeHintConfig();
-      const typed = Number((picked.note ?? "").trim());
-      if (picked.value === "level1") {
-        applyLevels(typed, current.level2);
-      } else if (picked.value === "level2") {
-        applyLevels(current.level1, typed);
-      }
-    }
-  }
-
-  // 内嵌快捷路径：on | off | "<level1> <level2>"。
-  if (input === "on" || input === "off") {
-    applyEnabled(input === "on");
-    return;
-  }
-
-  const parts = input.split(/\s+/);
-  if (parts.length === 2) {
-    applyLevels(Number(parts[0]), Number(parts[1]));
-    return;
-  }
-
-  const current = session.getSummarizeHintConfig();
-  ctx.showMessage(
-    `Summarize hints: ${current.enabled ? "on" : "off"} · level1 ${current.level1}% · level2 ${current.level2}%\n${SUMMARIZE_HINT_USAGE}`,
-  );
-}
-
-async function cmdResume(ctx: CommandContext, args: string): Promise<void> {
-  const store = ctx.store;
-  if (!store) {
-    ctx.showMessage("Session persistence not available.");
-    return;
-  }
-
-  const sessions = store.listSessions();
-  const trimmed = args.trim();
-
-  if (!trimmed) {
-    if (sessions.length === 0) {
-      ctx.showMessage("No previous sessions in this project.");
-      return;
-    }
-    const lines = ["Sessions", "", ...buildSessionTableRows(sessions)];
-    lines.push("", "Run /resume and choose a session from the picker, or run swarmflow --resume <number|name|uuid> from this project.");
-    ctx.showMessage(lines.join("\n"));
-    return;
-  }
-
-  // 解析当前项目中请求的会话。数字索引
-  // （1-based）作为选择器的快捷方式；否则按UUID匹配
-  // （它等于目录basename）；最后按名称（title/summary）匹配。
-  const numericIdx = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) - 1 : Number.NaN;
-  let target = Number.isInteger(numericIdx)
-    ? sessions[numericIdx]
-    : sessions.find((s) => s.sessionId === trimmed || basename(s.path) === trimmed);
-
-  // UUID/索引未匹配时，尝试按名称查找
-  if (!target && store.projectDir) {
-    const byName = findSessionByName(trimmed, store.projectDir);
-    if (byName) {
-      target = sessions.find((s) => s.sessionId === byName.sessionId);
-    }
-  }
-
-  if (!target) {
-    // 在这个项目中没有-检查它是否生活在其他地方，以便我们可以给出一个
-    // 可操作的提示，而不是简单的"未找到"。
-    const elsewhere = findSessionById(trimmed);
-    if (elsewhere && elsewhere.projectPath) {
-      ctx.showMessage(
-        `This session belongs to ${elsewhere.projectPath}. Exit and run:\n` +
-          `cd ${elsewhere.projectPath}\n` +
-          `swarmflow --resume ${trimmed}`,
-      );
-      return;
-    }
-    ctx.showMessage(`Session not found: ${trimmed}`);
-    return;
-  }
-
-  // 自动保存电流优先
-  ctx.autoSave();
-  ctx.resetUiState();
-
-  const result = applySessionRestore(ctx.session, store, target.path);
-  for (const w of result.warnings) ctx.showMessage(w);
-  if (!result.ok && result.error) {
-    ctx.showMessage(result.error);
-  }
-  if (result.ok) {
-    // 会话恢复将替换整个记录。渲染器的缓冲区是
-    // 重建，但物理终端保持原样；渐进式差异
-    // 不会修复这个漂移（它比较new-buffer和new-buffer）。迫使
-    // 全面重新粉刷，重新断言地面真相-相同的恢复终端
-    // 调整执行。
-    ctx.requestFullRepaint?.();
-  }
-}
-
-function formatRelativeTime(value: string | undefined, now: number): string {
-  const ms = value ? Date.parse(value) : Number.NaN;
-  if (!Number.isFinite(ms)) return "unknown";
-  const deltaSeconds = Math.max(0, Math.round((now - ms) / 1000));
-  if (deltaSeconds < 60) return deltaSeconds <= 1 ? "just now" : `${deltaSeconds}s ago`;
-  const minutes = Math.floor(deltaSeconds / 60);
-  if (minutes < 60) return minutes === 1 ? "1 min ago" : `${minutes} mins ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
-  const days = Math.floor(hours / 24);
-  return days === 1 ? "1 day ago" : `${days} days ago`;
-}
-
-function sessionTitle(session: {
-  sessionId?: string;
-  path: string;
-  title?: string;
-  summary?: string;
-}): string {
-  const customTitle = session.title?.trim();
-  if (customTitle) return customTitle;
-  const autoSummary = session.summary?.replace(/\s+/g, " ").trim();
-  if (autoSummary) return autoSummary;
-  return session.sessionId || basename(session.path);
-}
-
-function buildSessionTableRows(
-  sessions: Array<{ sessionId?: string; path: string; created?: string; lastActiveAt?: string; summary?: string; title?: string }>,
-): string[] {
-  const now = Date.now();
-  const createdValues = sessions.map((s) => formatRelativeTime(s.created, now));
-  const activeValues = sessions.map((s) => formatRelativeTime(s.lastActiveAt, now));
-  const createdHeader = "Created";
-  const activeHeader = "Active";
-  const titleHeader = "Title";
-  const createdWidth = Math.max(createdHeader.length, ...createdValues.map((v) => v.length));
-  const activeWidth = Math.max(activeHeader.length, ...activeValues.map((v) => v.length));
-  const gap = "  ";
-  const rows = [
-    `${createdHeader.padEnd(createdWidth)}${gap}${activeHeader.padEnd(activeWidth)}${gap}${titleHeader}`,
-  ];
-  for (let i = 0; i < sessions.length; i += 1) {
-    const s = sessions[i]!;
-    rows.push(
-      `${(createdValues[i] ?? "").padEnd(createdWidth)}${gap}${(activeValues[i] ?? "").padEnd(activeWidth)}${gap}${sessionTitle(s)}`,
-    );
-  }
-  return rows;
-}
-
-function resumeOptions(ctx: CommandOptionsContext): CommandOption[] {
-  const store = ctx.store;
-  if (!store) return [];
-  const sessions = store.listSessions();
-  if (sessions.length === 0) return [];
-  const rows = buildSessionTableRows(sessions);
-  return [
-    { label: rows[0] ?? "Created  Active  Title", value: "", disabled: true },
-    ...sessions.map((s, i) => ({
-      label: rows[i + 1] ?? sessionTitle(s),
-      value: s.sessionId,
-    })),
-  ];
-}
-
-async function cmdQuit(ctx: CommandContext, _args: string): Promise<void> {
-  if (ctx.exit) {
-    await ctx.exit();
-    return;
-  }
-
-  ctx.autoSave();
-  try {
-    if (typeof ctx.session.close === "function") {
-      await ctx.session.close();
-    }
-  } catch {
-    // 忽略
-  }
-  // 非tui调用方决定如何处理关机。
-  throw new CommandExitSignal(0);
 }
 
 function currentSessionModelDisplayName(session: any): string {
@@ -1111,7 +762,7 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
 }
 
 // ------------------------------------------------------------------
-// /key命令—管理提供程序API密钥（替换/删除/导入）
+// Provider 子流程——管理 API 密钥（替换/删除/导入）
 // ------------------------------------------------------------------
 
 function keyOptions(ctx: CommandOptionsContext): CommandOption[] {
@@ -1130,9 +781,8 @@ function applyCredentialChange(ctx: CommandContext, providerId: string): void {
 }
 
 /**
- * /key command: replace / remove / import the API key of a provider endpoint.
- * Covers env + managed registry providers and custom providers; OAuth and local
- * providers are excluded (OAuth uses /codex /copilot).
+ * Provider 子流程：替换、删除或导入提供商 API key。
+ * OAuth 和本地 provider 由同一个 /provider 入口管理。
  */
 async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
   const adapter = createCommandPromptAdapter(ctx);
@@ -1239,6 +889,16 @@ function commonProviderOptions(): CommandOption[] {
 function providerOptions(ctx: CommandOptionsContext, homeDir?: string): CommandOption[] {
   const options: CommandOption[] = [
     {
+      label: "OpenAI Codex login",
+      value: "__codex__",
+      children: codexOptions().map((option) => ({ ...option, value: `codex:${option.value}` })),
+    },
+    {
+      label: "GitHub Copilot login",
+      value: "__copilot__",
+      children: copilotOptions().map((option) => ({ ...option, value: `copilot:${option.value}` })),
+    },
+    {
       label: "Add custom provider by protocol",
       value: "__protocol__",
       children: WIRE_PROTOCOL_CHOICES.map((p) => ({ label: p.label, value: `protocol:${p.value}`, detail: p.detail })),
@@ -1308,6 +968,26 @@ async function cmdProvider(ctx: CommandContext, args: string): Promise<void> {
 
   if (action === "__keys__") {
     await cmdKey(ctx, "");
+    return;
+  }
+
+  if (action === "__codex__") {
+    await cmdCodex(ctx, "");
+    return;
+  }
+
+  if (action === "__copilot__") {
+    await cmdCopilot(ctx, "");
+    return;
+  }
+
+  if (action.startsWith("codex:")) {
+    await cmdCodex(ctx, action.slice("codex:".length));
+    return;
+  }
+
+  if (action.startsWith("copilot:")) {
+    await cmdCopilot(ctx, action.slice("copilot:".length));
     return;
   }
 
@@ -1972,51 +1652,6 @@ async function cmdLanguage(ctx: CommandContext, args: string): Promise<void> {
 
 
 // ------------------------------------------------------------------
-// /autoupdate -切换自动更新检查
-// ------------------------------------------------------------------
-
-function autoUpdateOptions(_ctx: CommandOptionsContext): CommandOption[] {
-  const current = loadGlobalSettings().auto_update !== false;
-  return [
-    { label: current ? "On (current)" : "On", value: "on" },
-    { label: current ? "Off" : "Off (current)", value: "off" },
-  ];
-}
-
-async function cmdAutoUpdate(ctx: CommandContext, args: string): Promise<void> {
-  const hint = ctx.showHint ?? ctx.showMessage;
-  let choice = args.trim().toLowerCase();
-
-  if (!choice && ctx.promptCommandPicker) {
-    const picked = await ctx.promptCommandPicker(
-      autoUpdateOptions({ session: ctx.session, store: ctx.store }),
-    );
-    if (!picked) return;
-    choice = picked.value;
-  }
-
-  if (choice === "on" || choice === "off") {
-    const enabled = choice === "on";
-    const wasEnabled = loadGlobalSettings(ctx.swarmflowHomeDir).auto_update !== false;
-    persistSettingsPatch({ auto_update: enabled }, ctx.swarmflowHomeDir);
-    hint(`Auto-update: ${enabled ? "ON" : "OFF"}`);
-    // 打开自动更新开关会立即启动背景调查——同样的
-    // 启用自动更新时在启动时运行的程序。TUI的更新
-    // Poll获取结果状态，如果存在更新，则显示toast。
-    if (enabled && !wasEnabled) {
-      try {
-        const { checkForUpdates, setUpdateStateGetter } = await import("../lifecycle/update-check.js");
-        setUpdateStateGetter(checkForUpdates(VERSION, ctx.swarmflowHomeDir, true));
-      } catch { /* 尽最大努力-设置已被保留 */ }
-    }
-    return;
-  }
-
-  const current = loadGlobalSettings().auto_update !== false;
-  ctx.showMessage(`Auto-update is ${current ? "ON" : "OFF"}.\nUsage: /autoupdate on | off`);
-}
-
-// ------------------------------------------------------------------
 // /rename -设置自定义会话标题
 // ------------------------------------------------------------------
 
@@ -2116,7 +1751,7 @@ async function cmdCodex(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  ctx.showMessage(`Unknown /codex subcommand: ${sub}`);
+  ctx.showMessage(`Unknown Codex login action: ${sub}`);
 }
 
 // ------------------------------------------------------------------
@@ -2178,186 +1813,9 @@ async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  ctx.showMessage(`Unknown /copilot subcommand: ${sub}`);
+  ctx.showMessage(`Unknown Copilot login action: ${sub}`);
 }
 
-// ------------------------------------------------------------------
-// /tier命令-配置子代理模型的分级
-// ------------------------------------------------------------------
-
-function describeTierModel(session: any, entry: ModelTierEntry): string {
-  const configName =
-    typeof session?.config?.findModelConfigName === "function"
-      ? session.config.findModelConfigName(entry.provider, entry.model_id)
-      : undefined;
-  const desc = describeModel({
-    providerId: entry.provider,
-    selectionKey: entry.selection_key,
-    modelId: entry.model_id,
-    configName: configName ?? `${entry.provider}:${entry.selection_key}`,
-  });
-  return desc.scopedDetailedLabel || `${entry.provider}:${entry.selection_key}`;
-}
-
-function tierOptions(ctx: CommandOptionsContext): CommandOption[] {
-  const tiers = ctx.session?.config?.modelTiers ?? {};
-  const levels: Array<"high" | "medium" | "low"> = ["high", "medium", "low"];
-  const opts: CommandOption[] = [];
-
-  for (const level of levels) {
-    const entry = tiers[level];
-    if (entry) {
-      const label = describeTierModel(ctx.session, entry);
-      const thinkingSuffix = entry.thinking_level ? ` [${entry.thinking_level}]` : "";
-      opts.push({
-        label: `${level}: ${label}${thinkingSuffix}`,
-        value: level,
-      });
-    } else {
-      opts.push({
-        label: `${level}: (inherits main model)`,
-        value: level,
-      });
-    }
-  }
-
-  opts.push({ label: "Clear all tiers", value: "clear" });
-  return opts;
-}
-
-async function cmdTier(ctx: CommandContext, args: string): Promise<void> {
-  const session = ctx.session;
-  const tiers: { high?: ModelTierEntry; medium?: ModelTierEntry; low?: ModelTierEntry } =
-    session.config?.modelTiers ?? {};
-  const trimmed = args.trim().toLowerCase();
-
-  if (!trimmed) {
-    // 没有参数显示当前等级
-    const levels: Array<"high" | "medium" | "low"> = ["high", "medium", "low"];
-    const lines = ["Model tiers:"];
-    for (const level of levels) {
-      const entry = tiers[level];
-      if (entry) {
-        const label = describeTierModel(session, entry);
-        const thinkingSuffix = entry.thinking_level ? ` [${entry.thinking_level}]` : "";
-        lines.push(`  ${level}: ${label}${thinkingSuffix}`);
-      } else {
-        lines.push(`  ${level}: (inherits main model)`);
-      }
-    }
-    lines.push("");
-    lines.push("Use /tier to configure a tier.");
-    ctx.showMessage(lines.join("\n"));
-    return;
-  }
-
-  // 处理"清除"-删除所有层
-  if (trimmed === "clear") {
-    persistSettingsPatch({ model_tiers: {} }, ctx.swarmflowHomeDir);
-    // 更新运行时配置
-    session.config?.setModelTiers?.({});
-    ctx.showMessage("All model tiers cleared. Sub-agents will inherit the main model.");
-    return;
-  }
-
-  // 处理层级别选择
-  const validLevels: Array<"high" | "medium" | "low"> = ["high", "medium", "low"];
-  if (!validLevels.includes(trimmed as any)) {
-    ctx.showMessage(`Invalid tier: "${trimmed}". Use high, medium, low, or clear.`);
-    return;
-  }
-  const level = trimmed as "high" | "medium" | "low";
-
-  // 操作提示：分配模型或清除此层
-  if (!ctx.promptSelect) {
-    ctx.showMessage("Interactive tier configuration is not available in this UI.");
-    return;
-  }
-
-  const currentEntry = tiers[level];
-  const actionOptions: CommandOption[] = [
-    { label: "Assign model...", value: "assign" },
-  ];
-  if (currentEntry) {
-    actionOptions.push({ label: "Clear this tier", value: "clear_one" });
-  }
-
-  const action = await ctx.promptSelect({
-    message: `${level} tier`,
-    options: actionOptions,
-  });
-  if (!action) return;
-
-  if (action === "clear_one") {
-    const updatedTiers = { ...tiers };
-    delete updatedTiers[level];
-    persistSettingsPatch({ model_tiers: updatedTiers }, ctx.swarmflowHomeDir);
-    session.config?.setModelTiers?.(updatedTiers);
-    ctx.showMessage(`Tier '${level}' cleared. Sub-agents at this level will inherit the main model.`);
-    return;
-  }
-
-  const resolvedSelection = await pickResolvedModelSelection(ctx, {
-    flatMessage: `Select model for ${level} tier`,
-  });
-  if (!resolvedSelection) {
-    ctx.showMessage(`Tier '${level}' configuration cancelled.`);
-    return;
-  }
-  const selectedConfigName = resolvedSelection.selectedConfigName;
-
-  // 获取已解析模型的实际模型ID，以进行思维级别检查
-  let resolvedModelId: string;
-  try {
-    const mc = session.config.getModel(selectedConfigName);
-    resolvedModelId = mc.model;
-  } catch {
-    resolvedModelId = selectedConfigName;
-  }
-
-  // 确定所选模型的思维水平。所需时的模型
-  // 支持思维;"没有"。Picker提供符合等级的关卡
-  // 只有（原生的"off"/"none"过滤掉了）。取消将中止保存。
-  let thinkingLevel: string;
-
-  if (getThinkingLevels(resolvedModelId).length === 0) {
-    thinkingLevel = "none";
-  } else {
-    const eligible = getTierEligibleThinkingLevels(resolvedModelId);
-    if (eligible.length === 0) {
-      ctx.showMessage(
-        `Tier '${level}' cancelled: model '${resolvedModelId}' has no eligible thinking levels (only off/none).`,
-      );
-      return;
-    }
-    const thinkingChoice = await ctx.promptSelect({
-      message: `Thinking level for ${level} tier (required)`,
-      options: eligible.map((l) => ({ label: l, value: l })),
-    });
-    if (!thinkingChoice) {
-      ctx.showMessage(`Tier '${level}' configuration cancelled (thinking level required).`);
-      return;
-    }
-    thinkingLevel = thinkingChoice;
-  }
-
-  // 构建层入口
-  const tierEntry = createModelTierEntry({
-    provider: resolvedSelection.modelProvider,
-    selectionKey: resolvedSelection.modelSelectionKey,
-    modelId: resolvedSelection.modelId,
-  }, thinkingLevel);
-
-  // 坚持
-  const updatedTiers = { ...tiers, [level]: tierEntry };
-  persistSettingsPatch({ model_tiers: updatedTiers }, ctx.swarmflowHomeDir);
-
-  // 更新运行时配置
-  session.config?.setModelTiers?.(updatedTiers);
-
-  const displayLabel = describeTierModel(session, tierEntry);
-  ctx.showMessage(`Tier '${level}' set to: ${displayLabel} [${thinkingLevel}]`);
-}
 
 // ------------------------------------------------------------------
 // /review——代码审查
@@ -2798,27 +2256,7 @@ async function cmdAsk(ctx: CommandContext, args: string): Promise<void> {
 }
 
 async function cmdStatus(ctx: CommandContext, _args: string): Promise<void> {
-  const session = ctx.session;
-  const model = currentSessionModelDisplayName(session) || session.currentModelConfigName || "unknown";
-  const provider = session.primaryAgent?.modelConfig?.provider ?? "unknown";
-  const permission = session.permissionMode ?? "reversible";
-  const taskState = session.getTaskState?.() ?? [];
-  const mcpStatuses = session.mcpManager?.getServerStatuses?.() ?? [];
-  const skills = session.getAllSkillNames?.() ?? [];
-  const enabledSkills = skills.filter((s: { enabled: boolean }) => s.enabled).length;
-  const lines = [
-    "Session status",
-    "",
-    `Model: ${model}`,
-    `Provider: ${provider}`,
-    `Permission: ${permission}`,
-    `Goal: not persisted yet`,
-    `Tasks: ${taskState.filter((task: { status: string }) => task.status !== "completed").length} open / ${taskState.length} total`,
-    `MCP: ${mcpStatuses.length} server(s)`,
-    `Skills: ${enabledSkills}/${skills.length} enabled`,
-    `Tokens: last ${session.lastTotalTokens ?? 0}, cache read ${session.lastCacheReadTokens ?? 0}, cumulative input ${session.cumulativeInputTokens ?? 0}, output ${session.cumulativeOutputTokens ?? 0}`,
-  ];
-  ctx.showMessage(lines.join("\n"));
+  ctx.showMessage("__status_panel__");
 }
 
 async function cmdClear(ctx: CommandContext, _args: string): Promise<void> {
@@ -2853,13 +2291,7 @@ async function cmdRules(ctx: CommandContext, args: string): Promise<void> {
 }
 
 async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
-  const log = Array.isArray(ctx.session.log) ? ctx.session.log : [];
-  const active = log.filter((entry: { discarded?: boolean }) => !entry.discarded).length;
-  ctx.showMessage(
-    "Current-session memory/context\n\n" +
-    `Active log entries: ${active}\n` +
-    "Detailed context correction UI is not wired yet; use /clear, /compact, or a natural-language correction in the current conversation.",
-  );
+  ctx.showMessage("__memory_panel__");
 }
 
 // ------------------------------------------------------------------
@@ -2871,51 +2303,39 @@ async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
  */
 export function buildDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-  registry.register({ name: "/help", description: "Show categorized command help", handler: cmdHelp, category: "Session" });
-  registry.register({ name: "/usage", description: "Show provider usage", handler: cmdUsage, category: "Session" });
-  registry.register({ name: "/stat", description: "Show session statistics", handler: cmdStat, category: "Session" });
-  registry.register({ name: "/new", description: "Start a new session", handler: cmdNew, category: "Session" });
-  registry.register({ name: "/resume", description: "Resume a previous session", handler: cmdResume, options: resumeOptions, picker: { title: "Sessions", inputArea: true }, category: "Session" });
-  registry.register({ name: "/session", description: "Resume a previous session (alias)", handler: cmdResume, options: resumeOptions, picker: { title: "Sessions", inputArea: true }, category: "Session" });
-  registry.register({ name: "/quit", description: "Exit the application", handler: cmdQuit, category: "Session" });
-  registry.register({ name: "/exit", description: "Exit the application (alias)", handler: cmdQuit, category: "Session" });
-  registry.register({ name: "/rename", description: "Rename current session", handler: cmdRename, category: "Session" });
-  registry.register({ name: "/status", description: "Show current session status summary", handler: cmdStatus, category: "Session" });
+  registerBuiltin(registry, { name: "/help", handler: cmdHelp, category: "Session" });
+  registerBuiltin(registry, { name: "/usage", handler: cmdUsage, category: "Session" });
+  registerBuiltin(registry, { name: "/new", handler: cmdNew, category: "Session" });
+  registerBuiltin(registry, { name: "/rename", handler: cmdRename, category: "Session" });
+  registerBuiltin(registry, { name: "/status", handler: cmdStatus, category: "Session" });
 
-  registry.register({ name: "/summarize", description: "Summarize selected context", handler: cmdSummarize, category: "Context" });
-  registry.register({ name: "/summarize_hint", description: "Configure summarization hints", handler: cmdSummarizeHint, category: "Context" });
-  registry.register({ name: "/compact", description: "Compact the active context", handler: cmdCompact, category: "Context" });
-  registry.register({ name: "/clear", description: "Clear screen and future model context", handler: cmdClear, category: "Context" });
-  registry.register({ name: "/fork", description: "Fork the current session into a branch", handler: cmdFork, category: "Context" });
-  registry.register({ name: "/shells", description: "Show tracked background shells", handler: cmdShells, category: "Context" });
-  registry.register({ name: "/ask", description: "Ask an isolated side question", handler: cmdAsk, category: "Context" });
+  registerBuiltin(registry, { name: "/compact", handler: cmdCompact, category: "Context" });
+  registerBuiltin(registry, { name: "/clear", handler: cmdClear, category: "Context" });
+  registerBuiltin(registry, { name: "/fork", handler: cmdFork, category: "Context" });
+  registerBuiltin(registry, { name: "/ps", handler: cmdShells, category: "Context" });
+  registerBuiltin(registry, { name: "/ask", handler: cmdAsk, category: "Context" });
 
-  registry.register({ name: "/init", description: "Explore project and draft AGENTS.md/.rules", handler: cmdInit, category: "Workflow" });
-  registry.register({ name: "/plan", description: "Enter planning discussion mode", handler: cmdPlan, category: "Workflow" });
-  registry.register({ name: "/goal", description: "Set or view current session goal", handler: cmdGoal, category: "Workflow" });
-  registry.register({ name: "/fix", description: "Reproduce, fix, and verify a known bug", handler: cmdFix, category: "Workflow" });
-  registry.register({ name: "/reviewer", description: "Review the project or a natural-language scope", handler: cmdReviewer, options: reviewOptions, picker: { title: "Reviewer", inputArea: true }, category: "Workflow" });
-  registry.register({ name: "/diff", description: "View current git and per-turn diffs", handler: cmdDiff, category: "Workflow" });
+  registerBuiltin(registry, { name: "/init", handler: cmdInit, category: "Workflow" });
+  registerBuiltin(registry, { name: "/plan", handler: cmdPlan, category: "Workflow" });
+  registerBuiltin(registry, { name: "/goal", handler: cmdGoal, category: "Workflow" });
+  registerBuiltin(registry, { name: "/fix", handler: cmdFix, category: "Workflow" });
+  registerBuiltin(registry, { name: "/reviewer", handler: cmdReviewer, options: reviewOptions, picker: { title: "Reviewer", inputArea: true }, category: "Workflow" });
+  registerBuiltin(registry, { name: "/diff", handler: cmdDiff, category: "Workflow" });
 
-  registry.register({ name: "/provider", description: "Manage providers, API keys, and registered models", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
-  registry.register({ name: "/key", description: "Manage provider API keys", handler: cmdKey, options: keyOptions, picker: { title: "API keys", inputArea: true }, category: "Provider and Model" });
-  registry.register({ name: "/model", description: "Select the current session model and thinking depth", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
-  registry.register({ name: "/agents", description: "Select the default model and thinking depth for sub-agents", handler: cmdAgents, options: subagentModelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
-  registry.register({ name: "/tier", description: "Configure sub-agent model tiers", handler: cmdTier, options: tierOptions, picker: { inputArea: true }, category: "Provider and Model" });
-  registry.register({ name: "/permission", description: "Set current session permission mode", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
-  registry.register({ name: "/codex", description: "Manage OpenAI Codex login", handler: cmdCodex, options: codexOptions, picker: { inputArea: true }, category: "Provider and Model" });
-  registry.register({ name: "/copilot", description: "Manage GitHub Copilot login", handler: cmdCopilot, options: copilotOptions, picker: { inputArea: true }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/model", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentModelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/permission", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
 
-  registry.register({ name: "/skills", description: "Enable or disable installed skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, category: "Ecosystem" });
-  registry.register({ name: "/skills-creater", description: "Create a compatible Agent Skill", handler: cmdSkillsCreater, category: "Ecosystem" });
-  registry.register({ name: "/mcp", description: "View, enable/disable, and reconnect MCP servers", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
-  registry.register({ name: "/hooks", description: "View hook configuration and status", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
-  registry.register({ name: "/memory", description: "Inspect and correct current session context", handler: cmdMemory, category: "Ecosystem" });
-  registry.register({ name: "/rules", description: "View or update project .rules", handler: cmdRules, category: "Project Configuration" });
-  registry.register({ name: "/theme", description: "Set global theme preference", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, category: "UI" });
-  registry.register({ name: "/language", description: "Switch UI language (Chinese / English)", handler: cmdLanguage, options: languageOptions, picker: { inputArea: true }, category: "UI" });
-  registry.register({ name: "/autoupdate", description: "Configure automatic update checks", handler: cmdAutoUpdate, options: autoUpdateOptions, picker: { inputArea: true }, category: "Project Configuration" });
-  registry.register({ name: "/rewind", description: "Rewind conversation and file changes", handler: cmdRewind, options: rewindOptions, picker: { title: "Rewind", inputArea: true }, category: "Context" });
+  registerBuiltin(registry, { name: "/skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/skills-creater", handler: cmdSkillsCreater, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/mcp", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/hooks", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/memory", handler: cmdMemory, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/rules", handler: cmdRules, category: "Project Configuration" });
+  registerBuiltin(registry, { name: "/theme", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, category: "UI" });
+  registerBuiltin(registry, { name: "/language", handler: cmdLanguage, options: languageOptions, picker: { inputArea: true }, category: "UI" });
+  registerBuiltin(registry, { name: "/rewind", handler: cmdRewind, options: rewindOptions, picker: { title: "Rewind", inputArea: true }, category: "Context" });
   return registry;
 }
 
@@ -3020,7 +2440,7 @@ async function cmdFork(ctx: CommandContext): Promise<void> {
   // 没有持久化到日志。saveLog过滤元数据。短暂的条目)。
   if (typeof session.appendStatusMessage === "function") {
     session.appendStatusMessage(
-      `To continue the original session, enter /resume ${origSessionId}`,
+      `To continue the original session, run swarmflow --resume ${origSessionId}`,
       "fork_origin",
       true,
     );

@@ -27,7 +27,7 @@ import type {
   ResolveToolCallVisibilityCallback,
 } from "./agents/tool-loop.js";
 import { allocateContextId, stripContextTags, ContextTagStripBuffer } from "./context/context-rendering.js";
-import { estimateEntryTokens, generateShowContext } from "./context/show-context.js";
+import { estimateEntryTokens } from "./context/token-estimate.js";
 import { type Config, type ModelConfig } from "./config/config.js";
 import type { MCPClientManager } from "./clients/mcp-client.js";
 import { type ProgressLevel, type ProgressReporter } from "./lib/progress.js";
@@ -64,8 +64,6 @@ import {
   COMPACT_PROMPT_TOOLCALL,
   appendManualInstruction,
 } from "./session/compact-prompts.js";
-import { buildActiveContextView } from "./context/active-context.js";
-import { execSummarizeContextOnLog } from "./context/summarize-context.js";
 import { resolveSkillContent, loadSkillsMulti, type SkillMeta } from "./skills/loader.js";
 import { toolBuiltinWebSearchPassthrough } from "./tools/web-search.js";
 import {
@@ -134,7 +132,6 @@ import {
   type LogEntry,
   createSystemPrompt,
   createInputReceived,
-  type TurnKind,
   createUserMessage as createUserMessageEntry,
   createAssistantText,
   createReasoning,
@@ -150,7 +147,6 @@ import {
 } from "./context/log-entry.js";
 import { projectToApiMessages } from "./context/log-projection.js";
 import {
-  archiveEntryContents,
   archiveWindow,
   createGlobalTuiPreferences,
   createLogSessionMeta,
@@ -184,14 +180,12 @@ import {
 } from "./session-tree-types.js";
 import {
   resolveAgentModelEntry,
-  resolveModelTierEntry,
   resolvePersistedModelSelection,
   type PersistedModelSelection,
 } from "./models/selection.js";
 import { describeModel } from "./models/presentation.js";
 import {
   type ContextThresholds,
-  validateSummarizeHintLevels,
 } from "./config/settings.js";
 import { encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
 // ------------------------------------------------------------------
@@ -434,29 +428,12 @@ export class Session {
   // Compact phase
   private _compactInProgress = false;
 
-  // Context-pressure state (thresholds, hint state machine, budget percent)
-  // lives in ContextManager (src/session/context-manager.ts); the accessors
-  // below keep Session-internal call sites stable.
+  // Context-pressure state (thresholds and budget percent) lives in ContextManager.
   private _contextManager!: ContextManager;
 
   private get _thresholds(): ContextThresholds {
     return this._contextManager.thresholds;
   }
-
-  private get _hintState(): "none" | "level1_sent" | "level2_sent" {
-    return this._contextManager.hintState;
-  }
-
-  private set _hintState(value: "none" | "level1_sent" | "level2_sent") {
-    this._contextManager.hintState = value;
-  }
-
-  // /summarize tool whitelist mode
-  private _summarizeToolWhitelist: Set<string> | null = null;
-  private _manualSummarizeExactRange: { from: string; to: string; contextIds: string[] } | null = null;
-
-  // Pending summary entries to flush after tool_result is appended
-  private _pendingSummaryEntries: LogEntry[] = [];
 
   // Skills
   private _skills = new Map<string, SkillMeta>();
@@ -477,7 +454,7 @@ export class Session {
   // Task list state ({SESSION_ARTIFACTS}/tasks.json 为权威；子会话纯内存)
   private _taskStoreScope: "session" | "memory" = "session";
   private _taskStoreRef: TaskStore | undefined;
-  /** 已绑定的 tasks.json 路径：变化时重建 store（/new、/resume、/fork 会切换目录）。 */
+  /** 已绑定的 tasks.json 路径：变化时重建 store（/new、会话恢复、/fork 会切换目录）。 */
   private _taskStoreKey: string | undefined;
   private _taskListeners: (() => void)[] = [];
 
@@ -825,10 +802,6 @@ export class Session {
         (this.primaryAgent as unknown as { _provider?: { budgetCalcMode?: string } })._provider?.budgetCalcMode,
       isCompactInProgress: () => this._compactInProgress,
       canAutoCompact: () => this._capabilities.includeSpawnTool,
-      getLastInputTokens: () => this._lastTotalTokens,
-      deliverSystemNotice: (content) => {
-        this._deliverMessage({ type: "system_notice", sender: "system", content, timestamp: Date.now() });
-      },
     });
 
     // Apply context budget percentage.
@@ -1071,7 +1044,7 @@ export class Session {
    * keep using the current input's index until drain delivers the new one.
    */
   private _recordInputReceived(
-    inputKind: "user" | "summarize" | "compact",
+    inputKind: "user" | "compact",
     display: string,
     content: unknown,
     contextId?: string,
@@ -1111,7 +1084,7 @@ export class Session {
   private _appendDeliveredUserMessage(
     inputIndex: number,
     inputId: string,
-    inputKind: "user" | "summarize" | "compact",
+    inputKind: "user" | "compact",
     display: string,
     content: unknown,
     contextId: string,
@@ -1421,6 +1394,8 @@ export class Session {
       // "compact" inputs are consumed by the compact phase itself and never
       // await a model reply —counting them here would schedule ghost
       // auto-resume turns after every /compact.
+      // Keep the old "summarize" input kind readable so interrupted legacy
+      // sessions can still resume an undelivered turn.
       if (inputKind !== "user" && inputKind !== "summarize") continue;
       const inputId = entry.meta["inputId"];
       return typeof inputId === "string" && !delivered.has(inputId);
@@ -1446,7 +1421,7 @@ export class Session {
 
   /**
    * Pre-activation prelude shared by every entry that records a NEW active
-   * input (user message, /summarize, /compact). The single choke point that
+   * input (user message or /compact). The single choke point that
    * enforces wake:false ordering and the "conversation has started" boundary:
    *
    *   1. Earlier-arrived ride-along (wake:false) inbox messages land in the log
@@ -1460,7 +1435,7 @@ export class Session {
    * (_appendDeliveredUserMessage), so every user-message path sets it.
    */
   private _beginActiveInput(
-    inputKind: "user" | "summarize" | "compact",
+    inputKind: "user" | "compact",
     display: string,
     content: unknown,
   ): { inputIndex: number; inputId: string; contextId: string } {
@@ -1857,7 +1832,6 @@ export class Session {
     this._usageStatsCache = null;
     this._promptSectionEstimates = null;
     this._compactInProgress = false;
-    this._hintState = "none";
     this._agentState = "idle";
     this._inbox = [];
     this._currentWorkId = null;
@@ -1874,8 +1848,6 @@ export class Session {
     }
     this._subAgentCounter = 0;
     this._shellManager.resetCounter();
-    this._pendingSummaryEntries = [];
-    this._manualSummarizeExactRange = null;
   }
 
   // ------------------------------------------------------------------
@@ -1923,12 +1895,12 @@ export class Session {
   }
 
   // ------------------------------------------------------------------
-  // Turn listing (shared by /summarize picker and /rewind picker)
+  // Turn listing (shared by rewind and history projections)
   // ------------------------------------------------------------------
 
   /**
    * Return metadata for every turn in the log (see SessionLog.listTurns).
-   * Shared by the /summarize and /rewind pickers.
+   * Shared by rewind and history projections.
    */
   listTurns(): TurnListing[] {
     return this._logStore.listTurns();
@@ -1940,7 +1912,7 @@ export class Session {
 
   /**
    * Get the list of turn boundaries available for rewind.
-   * Only shows real user turns (not injected/compact/summarize turns).
+   * Only shows real user turns (not injected or compact turns).
    * Includes turns before compact markers (rewind undoes compacts).
    * Returns turns in reverse chronological order (most recent first).
    */
@@ -1954,7 +1926,7 @@ export class Session {
     deletions: number;
     filesReverted: boolean;
   }> {
-    const userTurns = this.listTurns().filter(t => t.turnKind === "user" || t.turnKind === "summarize");
+    const userTurns = this.listTurns().filter(t => t.turnKind === "user");
 
     // Collect per-turn mutation data: distinct paths, additions, deletions
     interface TurnMutData {
@@ -2058,40 +2030,6 @@ export class Session {
   }
 
   /**
-   * Release the full content of entries covered by a freshly landed summary:
-   * the API projection already replaces them with the summary, and the TUI
-   * scrollback renders from `display`, so the only consumer of the original
-   * content from here on is a rewind that rescinds the summary —which
-   * restores it from the archive file written here. Without this, both the
-   * summary and all covered content stay resident until the next compaction.
-   */
-  private _archiveSummaryCoveredEntries(summaryEntry: LogEntry): void {
-    const sessionDir = this._store?.sessionDir as string | undefined;
-    if (!sessionDir) return;
-    const covered = (summaryEntry.meta as Record<string, unknown>)["coveredContextIds"];
-    if (!Array.isArray(covered) || covered.length === 0) return;
-    const coveredSet = new Set(covered.filter((v): v is string => typeof v === "string"));
-    const targets: LogEntry[] = [];
-    for (const e of this._log) {
-      if (e === summaryEntry || e.discarded) continue;
-      const ctx = (e.meta as Record<string, unknown>)["contextId"];
-      if (typeof ctx === "string" && coveredSet.has(ctx)) targets.push(e);
-    }
-    try {
-      const archived = archiveEntryContents(sessionDir, `summary-${summaryEntry.id}.json.gz`, targets);
-      if (archived > 0) {
-        // Stripping content is TUI-projection-visible (tool args / full
-        // text render from entry.content) —bump the revision so memoized
-        // projections recompute.
-        this._touchLog();
-      }
-    } catch {
-      // Disk error —write-then-strip left every content in place; the next
-      // compaction's archiveWindow picks the same entries up.
-    }
-  }
-
-  /**
    * Rewind truncation can remove a summary entry or compact marker whose
    * covered / pre-compact entries had their content archived to disk. Those
    * entries are live context again after the rewind, but the API projection
@@ -2169,8 +2107,6 @@ export class Session {
     this._idAllocator.restoreFrom(log);
 
     this._compactInProgress = false;
-    this._summarizeToolWhitelist = null;
-    this._hintState = "none";
     this._agentState = "idle";
     this._inbox = [];
     this._activeAsk = null;
@@ -2464,8 +2400,6 @@ export class Session {
         kill_agent: (args) => this._execKillAgent(args),
         check_status: (args) => this._execCheckStatus(args),
         await_event: (args) => this._execAwaitEvent(args),
-        show_context: (args) => this._execShowContext(args),
-        summarize_context: (args) => this._execSummarizeContextTool(args),
         ask: (args) => this._execAsk(args),
         skill: (args) => this._execSkill(args),
         send: (args) => this._execSend(args),
@@ -2970,7 +2904,7 @@ export class Session {
    * - 主会话：`{SESSION_ARTIFACTS}/tasks.json`（每会话一份，与 childSessionDir 的
    *   所有权模型一致）
    * - 子会话：纯内存（子代理不写持久化文件，清单随子会话对象消亡）
-   * - 工件目录在会话存储绑定后才可用，且 `/new`、`/resume`、`/fork` 会切换目录，
+   * - 工件目录在会话存储绑定后才可用，且 `/new`、会话恢复、`/fork` 会切换目录，
    *   因此按路径 key 重定位；key 变化时才重建（重建即从磁盘载入）。
    */
   private _ensureTaskStore(): TaskStore {
@@ -3563,19 +3497,6 @@ export class Session {
       this._contextManager.setBudgetPercent(settings.context_budget_percent);
     }
 
-    // Two-tier summarize hints: on/off + trigger levels. Invalid levels are
-    // ignored (defaults stay); the /summarize_hint command validates on input.
-    if (settings.summarize_hint) {
-      const hint = settings.summarize_hint;
-      const level1 = hint.level1 ?? this._thresholds.context_hint_level1;
-      const level2 = hint.level2 ?? this._thresholds.context_hint_level2;
-      const levelsValid = validateSummarizeHintLevels(level1, level2) === null;
-      this.setSummarizeHintConfig({
-        enabled: hint.enabled,
-        ...(levelsValid ? { level1, level2 } : {}),
-      });
-    }
-
     // Restore disabled skills
     if (settings.disabled_skills && settings.disabled_skills.length > 0) {
       this._disabledSkills = new Set(settings.disabled_skills);
@@ -3586,19 +3507,6 @@ export class Session {
     if (settings.permission_mode && ["read_only", "reversible", "yolo"].includes(settings.permission_mode)) {
       this._permissionAdvisor.sessionMode = settings.permission_mode as PermissionMode;
     }
-  }
-
-  /** Current two-tier summarize hint configuration. */
-  getSummarizeHintConfig(): { enabled: boolean; level1: number; level2: number } {
-    return this._contextManager.getSummarizeHintConfig();
-  }
-
-  /**
-   * Update the two-tier summarize hint configuration (takes effect live).
-   * Levels must be pre-validated by the caller (validateSummarizeHintLevels).
-   */
-  setSummarizeHintConfig(config: { enabled?: boolean; level1?: number; level2?: number }): void {
-    this._contextManager.setSummarizeHintConfig(config);
   }
 
   getGlobalPreferences(): GlobalTuiPreferences {
@@ -3825,31 +3733,31 @@ export class Session {
     );
   }
 
-  private _getManualContextCommandBlocker(command: "/summarize" | "/compact"): string | null {
+  private _getManualCompactBlocker(): string | null {
     if (this._compactInProgress) {
-      return `Cannot run ${command} while compact is in progress.`;
+      return "Cannot run /compact while compact is in progress.";
     }
     if (this._agentState !== "idle") {
-      return `Cannot run ${command} while the current turn is still running.`;
+      return "Cannot run /compact while the current turn is still running.";
     }
     if (this._activeAsk) {
-      return `Cannot run ${command} while an ask is pending.`;
+      return "Cannot run /compact while an ask is pending.";
     }
     if (this._pendingTurnState) {
-      return `Cannot run ${command} while a turn is waiting to resume.`;
+      return "Cannot run /compact while a turn is waiting to resume.";
     }
     if (this._hasActiveAgents()) {
-      return `Cannot run ${command} while sub-agents are still running.`;
+      return "Cannot run /compact while sub-agents are still running.";
     }
     if (this._hasRunningShells()) {
       return [
-        `Cannot run ${command} while background shells are still running.`,
+        "Cannot run /compact while background shells are still running.",
         this._buildShellReport(),
-        "Stop the shells you no longer need (open the Shells panel or run /shells), then retry.",
+        "Stop the shells you no longer need (open the process panel or run /ps), then retry.",
       ].filter(Boolean).join("\n");
     }
     if (this._hasWakingInboxMessages()) {
-      return `Cannot run ${command} while queued messages are waiting to be delivered.`;
+      return "Cannot run /compact while queued messages are waiting to be delivered.";
     }
     return null;
   }
@@ -3857,10 +3765,10 @@ export class Session {
   private async _runInjectedTurn(
     displayText: string,
     content: string,
-    opts?: { signal?: AbortSignal; turnKind?: TurnKind },
+    opts?: { signal?: AbortSignal },
   ): Promise<string> {
     this._lastTurnEndStatus = null;
-    const inputKind = opts?.turnKind ?? "summarize";
+    const inputKind = "user" as const;
     const received = this._beginActiveInput(inputKind, displayText, content);
     this._appendDeliveredUserMessage(
       received.inputIndex,
@@ -3899,10 +3807,7 @@ export class Session {
       try {
         this._ensureSessionStorageReady();
         await this._ensureMcp();
-        return await this._runInjectedTurn(displayText, content, {
-          signal: options?.signal,
-          turnKind: "user",
-        });
+        return await this._runInjectedTurn(displayText, content, { signal: options?.signal });
       } catch (err) {
         this._recordTurnFailure(err, options?.signal);
         throw err;
@@ -3910,192 +3815,6 @@ export class Session {
     });
   }
 
-  /**
-   * Return the list of items available for the /summarize picker.
-   * The picker is a pure turn list: summaries belong to their assigned turn
-   * (the nearest preceding surviving user message), so selecting a turn also
-   * selects the summaries assigned to it, and turns whose user messages were
-   * folded into a summary no longer appear. The /summarize operation's own
-   * (future) turn is excluded; the just-finished turn is a valid target.
-   */
-  getSummarizeTargets(): Array<{
-    kind: "turn" | "summary";
-    turnIndex: number;
-    preview: string;
-    timestamp: number;
-    contextId?: string;
-  }> {
-    const view = buildActiveContextView(this._log, { includeCompactContext: false });
-    const groupOrder = new Map<string, number>();
-    view.groups.forEach((group, index) => groupOrder.set(group.contextId, index));
-
-    const items: Array<{
-      kind: "turn" | "summary";
-      turnIndex: number;
-      preview: string;
-      timestamp: number;
-      contextId?: string;
-      sortKey: number;
-    }> = [];
-
-    const visibleGroupsByTurn = new Map<number, number>();
-    const markTurn = (turn: number, order: number): void => {
-      const current = visibleGroupsByTurn.get(turn);
-      if (current === undefined || order < current) {
-        visibleGroupsByTurn.set(turn, order);
-      }
-    };
-    for (const group of view.groups) {
-      const order = groupOrder.get(group.contextId) ?? Number.MAX_SAFE_INTEGER;
-      if (group.isSummary) {
-        markTurn(group.assignedTurn, order);
-        continue;
-      }
-      for (let turn = group.turnStart; turn <= group.turnEnd; turn++) {
-        markTurn(turn, order);
-      }
-    }
-
-    // Includes both "user" and "summarize" turns, matching rewind's filter.
-    // /summarize injection turns ARE user-triggered actions and may
-    // accumulate non-trivial procedural overhead (show_context output,
-    // agent's reply, the summarize_context tool call/result); allowing
-    // them as direct picker targets lets users summarize that overhead
-    // without having to sweep over surrounding turns.
-    for (const t of this.listTurns()) {
-      if (!t.inActiveWindow) continue;
-      if (t.turnKind !== "user" && t.turnKind !== "summarize") continue;
-      if (t.turnIndex > this._turnCount) continue;
-      const sortKey = visibleGroupsByTurn.get(t.turnIndex);
-      if (sortKey === undefined) continue;
-      items.push({
-        kind: "turn",
-        turnIndex: t.turnIndex,
-        preview: t.preview,
-        timestamp: t.timestamp,
-        sortKey,
-      });
-    }
-
-    items.sort((a, b) => a.sortKey - b.sortKey);
-    return items.map(({ sortKey: _, ...rest }) => rest);
-  }
-
-  /**
-   * Map a turn range to the set of visible (non-covered) context IDs.
-   * Only includes context IDs in the active window that are not already
-   * covered by a later summary. Summaries count as their assigned turn,
-   * so selecting a turn includes the summaries that belong to it.
-   */
-  getContextIdsForTurnRange(startTurn: number, endTurn: number): string[] {
-    const view = buildActiveContextView(this._log, { includeCompactContext: false });
-    return view.groups
-      .filter((group) => {
-        const turnStart = group.isSummary ? group.assignedTurn : group.turnStart;
-        const turnEnd = group.isSummary ? group.assignedTurn : group.turnEnd;
-        return turnEnd >= startTurn && turnStart <= endTurn;
-      })
-      .map((group) => group.contextId);
-  }
-
-  static readonly SUMMARIZE_TOOL_WHITELIST = new Set([
-    "show_context", "summarize_context", "read_file", "grep", "glob", "list_dir",
-  ]);
-
-  async runManualSummarize(
-    options?: {
-      signal?: AbortSignal;
-      targetContextIds?: string[];
-      focusPrompt?: string;
-    },
-  ): Promise<string> {
-    return this._withTurnLock(async () => {
-      // In-lock catch —see runInjectedCommand for why it cannot sit outside.
-      try {
-        return await this._runManualSummarizeBody(options);
-      } catch (err) {
-        this._recordTurnFailure(err, options?.signal);
-        throw err;
-      }
-    });
-  }
-
-  /** Body of runManualSummarize. Caller holds the turn lock. */
-  private async _runManualSummarizeBody(
-    options?: {
-      signal?: AbortSignal;
-      targetContextIds?: string[];
-      focusPrompt?: string;
-    },
-  ): Promise<string> {
-    {
-      this._ensureSessionStorageReady();
-      await this._ensureMcp();
-
-      const blocker = this._getManualContextCommandBlocker("/summarize");
-      if (blocker) throw new Error(blocker);
-
-      const targetIds = options?.targetContextIds;
-      if (!targetIds || targetIds.length === 0) {
-        throw new Error("/summarize requires selecting target turns first.");
-      }
-
-      const rangeFrom = targetIds[0];
-      const rangeTo = targetIds[targetIds.length - 1];
-      const currentView = buildActiveContextView(this._log, { includeCompactContext: false });
-      const fromIdx = currentView.order.indexOf(rangeFrom);
-      const toIdx = currentView.order.indexOf(rangeTo);
-      if (fromIdx < 0 || toIdx < 0 || fromIdx > toIdx) {
-        throw new Error("/summarize selected range is no longer available in the active context.");
-      }
-      const exactContextIds = currentView.order.slice(fromIdx, toIdx + 1);
-      const rangeLabel = rangeFrom === rangeTo ? rangeFrom : `${rangeFrom}..${rangeTo}`;
-      const groupWord = exactContextIds.length === 1 ? "group" : "groups";
-      const displayText = options?.focusPrompt?.trim()
-        ? `/summarize ${options.focusPrompt.trim()}`
-        : `/summarize ${rangeLabel}`;
-      const focusTail = options?.focusPrompt?.trim()
-        ? `\n\nUser's additional focus: ${options.focusPrompt.trim()}`
-        : "";
-      const prompt = [
-        displayText,
-        ``,
-        `<system-message>`,
-        `The user invoked the /summarize command, manually requesting summarization of context range ${rangeFrom}..${rangeTo} (${exactContextIds.length} ${groupWord}). For this turn only, the rule "do not summarize ranges containing user messages" is lifted for the specified range.`,
-        ``,
-        `Instructions for this turn:`,
-        `1. Call \`show_context\` to inspect the content and size of the range.`,
-        `2. You may call \`read_file\`, \`grep\`, \`glob\`, or \`list_dir\` to verify details before writing the summary content.`,
-        `3. Call \`summarize_context\` exactly once, with from="${rangeFrom}" and to="${rangeTo}". Do not split, shrink, or expand this range.`,
-        `4. If the range contains user messages —or summaries carrying <user-message> blocks —reproduce the user's original words verbatim inside a <user-message> block in your summary content, as a numbered list in chronological order. Never paraphrase, tighten, or omit any part of them. Two clarifications:`,
-        `   - File contents attached to user messages (e.g., inlined via @file references, pasted code blocks, or other resolved file refs) are not the user's words —they are data. Summarize them under the normal "preserve concrete facts" rules. The user's surrounding prose, including the @-reference itself, still goes verbatim into the <user-message> block.`,
-        `   - Only an explicit user instruction (e.g., in the focus prompt below) may relax verbatim preservation.`,
-        `5. For non-user-message content, match the information density of the original —preserve file paths with line numbers, key decisions and why, unresolved issues, code references you'd look back at, and any constraints the user stated.`,
-        `6. After summarizing, reply with a one-line description of what was summarized (e.g. "Summarized turns 3-5: auth exploration and test results"). Do not repeat the summary content.`,
-        ``,
-        `Do NOT continue the main task.`,
-        `</system-message>${focusTail}`,
-      ].join("\n");
-
-      // Enable tool whitelist for this turn
-      this._summarizeToolWhitelist = (this.constructor as typeof Session).SUMMARIZE_TOOL_WHITELIST;
-      this._manualSummarizeExactRange = {
-        from: rangeFrom,
-        to: rangeTo,
-        contextIds: exactContextIds,
-      };
-      try {
-        return await this._runInjectedTurn(
-          displayText,
-          prompt,
-          { signal: options?.signal, turnKind: "summarize" },
-        );
-      } finally {
-        this._summarizeToolWhitelist = null;
-        this._manualSummarizeExactRange = null;
-      }
-    }
-  }
 
   async runManualCompact(instruction?: string, options?: { signal?: AbortSignal }): Promise<void> {
     return this._withTurnLock(async () => {
@@ -4114,7 +3833,7 @@ export class Session {
     {
       this._ensureSessionStorageReady();
 
-      const blocker = this._getManualContextCommandBlocker("/compact");
+      const blocker = this._getManualCompactBlocker();
       if (blocker) throw new Error(blocker);
 
       this._lastTurnEndStatus = null;
@@ -4143,7 +3862,6 @@ export class Session {
       const logLenBeforeCompact = this._log.length;
       try {
         await this._doAutoCompact("before_turn", turnSignalState.signal, prompt);
-        this._hintState = "none";
         this.onSaveRequest?.();
         this._finishCurrentWork("completed");
       } catch (err) {
@@ -4237,17 +3955,7 @@ export class Session {
   private _beforeToolExecute = async (
     ctx: ToolPreflightContext,
   ): Promise<ToolPreflightDecision | void> => {
-    // 0a. /summarize tool whitelist: reject tools not in the whitelist
-    if (this._summarizeToolWhitelist) {
-      if (!this._summarizeToolWhitelist.has(ctx.toolName)) {
-        return {
-          kind: "deny",
-          message: `Tool "${ctx.toolName}" is not available during /summarize. Allowed: ${[...this._summarizeToolWhitelist].join(", ")}.`,
-        };
-      }
-    }
-
-    // 0b. Artifacts-dir bypass: file tools (read/write/edit/list/glob/grep)
+    // 0a. Artifacts-dir bypass: file tools (read/write/edit/list/glob/grep)
     //    operating inside session artifacts/ don't need approval (agent-owned
     //    scratch space). Bash is excluded —its cwd-tracking is a separate gate.
     const ARTIFACTS_BYPASS_TOOLS = new Set([
@@ -4776,8 +4484,6 @@ export class Session {
           this._lastInputTokens = result.lastInputTokens;
           this._lastTotalTokens = result.lastTotalTokens ?? result.lastInputTokens;
         }
-        this._updateHintStateAfterApiCall();
-
         if (result.suspendedAsk) {
           result.suspendedAsk.ask.turnIndex = activationTurnIndex;
           const askContextId =
@@ -4794,9 +4500,6 @@ export class Session {
             result.suspendedAsk.roundIndex,
             askContextId,
           ), false);
-          if (!result.compactNeeded) {
-            this._checkAndInjectHint(result);
-          }
           this.onSaveRequest?.();
           reachedLimit = false;
           break;
@@ -4913,10 +4616,6 @@ export class Session {
           continue;
         }
 
-        if (!result.compactNeeded && !result.endedWithoutToolCalls) {
-          this._checkAndInjectHint(result);
-        }
-
         // Messages typed while the assistant was producing a final text reply
         // become the next model input in the same work lifecycle.
         if (this._hasInboxMessages()) {
@@ -4951,7 +4650,7 @@ export class Session {
       // Non-abort errors escaping the loop (provider failures, mid-turn
       // compact, drain) end the turn as "error". The visible error log entry
       // is written exactly once per escape path by the entry-point catches
-      // (_turnInner / _resumeActivationStage / manual summarize).
+      // (_turnInner / _resumeActivationStage).
       const aborted = activeSignal.aborted;
       if (!aborted) {
         loopError = err instanceof Error ? err.message : String(err);
@@ -5315,11 +5014,6 @@ export class Session {
     this._activeAsk = null;
     this._pendingTurnState = null;
     this._activeLogEntryId = null;
-    // Summaries staged by a summarize_context whose tool_result never landed
-    // must die with the interrupted turn —a later flush would append them
-    // under the wrong turn.
-    this._pendingSummaryEntries = [];
-
     if (!activationCompleted) {
       discardInterruptedRoundReasoningInLog(this._log, logLenBefore, this._turnCount);
     }
@@ -5606,16 +5300,6 @@ export class Session {
     };
 
     const onToolResult = (name: string, tool: string, toolCallId: string, isError: boolean, summary: string) => {
-      // Flush deferred summary entries now that tool_result is in the log
-      if (this._pendingSummaryEntries.length > 0) {
-        const pending = this._pendingSummaryEntries.splice(0);
-        for (const entry of pending) {
-          this._appendEntry(entry, false);
-          if (entry.type === "summary") {
-            this._archiveSummaryCoveredEntries(entry);
-          }
-        }
-      }
       if (this._progress) {
         this._progress.onToolResult(this._turnCount, name, tool, toolCallId, isError, summary);
       }
@@ -6210,75 +5894,6 @@ export class Session {
     return result;
   }
 
-  private _execShowContext(_args: Record<string, unknown>): ToolResult {
-    const { budget } = this._contextBudgetInfo();
-
-    const contextMap = generateShowContext(this._log, this._lastInputTokens, budget);
-    return new ToolResult({ content: contextMap });
-  }
-
-  private _execSummarizeContextTool(args: Record<string, unknown>): ToolResult {
-    const result = execSummarizeContextOnLog(
-      args,
-      this._log,
-      () => this._allocateContextId(),
-      () => this._nextLogId("summary"),
-      this._turnCount,
-      this._manualSummarizeExactRange
-        ? { origin: "manual", exactRange: this._manualSummarizeExactRange }
-        : { origin: "agent" },
-    );
-
-    // Defer summary entries —they must appear AFTER the tool_result to avoid
-    // breaking the tool_call →tool_result pairing in API projections.
-    this._pendingSummaryEntries.push(...result.newEntries);
-
-    this._annotateLatestSummarizeContextToolCall(result.results);
-
-    this._touchLog();
-
-    return new ToolResult({ content: result.output });
-  }
-
-  private _annotateLatestSummarizeContextToolCall(results: Array<{ success: boolean; newContextId?: string }>): void {
-    const resolvedToolCallIds = new Set<string>();
-    let summarizeContextEntry: LogEntry | null = null;
-
-    for (let i = this._log.length - 1; i >= 0; i--) {
-      const entry = this._log[i];
-      if (entry.discarded) continue;
-      if (entry.type === "tool_result") {
-        const toolCallId = (entry.meta as Record<string, unknown>)["toolCallId"];
-        if (toolCallId) resolvedToolCallIds.add(String(toolCallId));
-        continue;
-      }
-      if (entry.type !== "tool_call") continue;
-      const toolCallId = String((entry.meta as Record<string, unknown>)["toolCallId"] ?? "");
-      if (resolvedToolCallIds.has(toolCallId)) continue;
-      if ((entry.meta as Record<string, unknown>)["toolName"] !== "summarize_context") continue;
-      summarizeContextEntry = entry;
-      break;
-    }
-
-    if (!summarizeContextEntry) return;
-    const content = summarizeContextEntry.content as Record<string, unknown>;
-    const args = (content["arguments"] as Record<string, unknown>) ?? {};
-    const operations = ((args["operations"] as Array<Record<string, unknown>>) ?? []).map((op) => ({ ...op }));
-
-    for (let i = 0; i < operations.length && i < results.length; i++) {
-      if (!results[i].success || !results[i].newContextId) continue;
-      operations[i]["_result_context_id"] = results[i].newContextId;
-    }
-
-    summarizeContextEntry.content = {
-      ...content,
-      arguments: {
-        ...args,
-        operations,
-      },
-    };
-  }
-
   // ==================================================================
   // AGENTS.md persistent memory
   // ==================================================================
@@ -6620,8 +6235,7 @@ export class Session {
           archiveStartIdx,
           archiveEndIdx,
         );
-        // Stripping window content is TUI-projection-visible —same touch
-        // contract as _archiveSummaryCoveredEntries.
+        // Stripping window content is TUI-projection-visible.
         this._touchLog();
       }
     }
@@ -6630,23 +6244,6 @@ export class Session {
     if (this._progress) {
       this._progress.onCompactEnd(this.primaryAgent.name, scenario, originalTokens);
     }
-  }
-
-  /**
-   * Check and inject summarize-hint prompts if thresholds are met
-   * (see ContextManager.checkAndInjectHint).
-   */
-  private _checkAndInjectHint(_result: ToolLoopResult): void {
-    this._contextManager.checkAndInjectHint();
-  }
-
-  /**
-   * Update hint state based on actual inputTokens from the latest API call.
-   * Implements hysteresis to prevent oscillation.
-   * Reset thresholds are auto-derived from trigger thresholds.
-   */
-  private _updateHintStateAfterApiCall(): void {
-    this._contextManager.updateHintStateAfterApiCall();
   }
 
   // ==================================================================
@@ -6705,8 +6302,6 @@ export class Session {
     const spec: Record<string, unknown> = { id: idArg.trim(), task: taskArg.trim(), mode: modeArg.trim() };
     if (template) spec["template"] = template;
     if (templatePath) spec["template_path"] = templatePath;
-    if (typeof args["model_level"] === "string") spec["model_level"] = args["model_level"];
-
     return this._execSpawnFromSpecs([spec]);
   }
 
@@ -6878,10 +6473,10 @@ export class Session {
       getPreferredThinkingLevel: () => this._preferredThinkingLevel,
       getPrimaryAgent: () => this.primaryAgent,
       getAgentTemplates: () => this.agentTemplates,
-      createFromPredefined: (templateName, taskId, modelLevel) =>
-        this._createSubAgentFromPredefined(templateName, taskId, modelLevel),
-      createFromPath: (templateDir, taskId, modelLevel) =>
-        this._createSubAgentFromPath(templateDir, taskId, modelLevel),
+      createFromPredefined: (templateName, taskId) =>
+        this._createSubAgentFromPredefined(templateName, taskId),
+      createFromPath: (templateDir, taskId) =>
+        this._createSubAgentFromPath(templateDir, taskId),
       resolveTemplatePath: (relPath) => this._resolveTemplatePath(relPath),
       buildSubAgentSystemPrompt: (basePrompt, persistent) =>
         this._buildSubAgentSystemPrompt(basePrompt, persistent),
@@ -6927,10 +6522,6 @@ export class Session {
         const resolved = resolveAgentModelEntry(this, entry);
         return { modelConfig: resolved.modelConfig, thinkingLevel: resolved.thinkingLevel };
       },
-      resolveTierModel: (tier) => {
-        const resolved = resolveModelTierEntry(this, tier);
-        return { modelConfig: resolved.modelConfig, thinkingLevel: resolved.thinkingLevel };
-      },
       getSubagentDefaultModel: () => {
         const saved = this.getSubagentDefaultModelSettings();
         if (!saved) return undefined;
@@ -6965,12 +6556,12 @@ export class Session {
     return this._subAgentFactory ??= this._buildSubAgentFactory();
   }
 
-  private _createSubAgentFromPredefined(templateName: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string } {
-    return this._subAgentFactoryInstance.createFromPredefined(templateName, taskId, modelLevel);
+  private _createSubAgentFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
+    return this._subAgentFactoryInstance.createFromPredefined(templateName, taskId);
   }
 
-  private _createSubAgentFromPath(templateDir: string, taskId: string, modelLevel?: string): { agent: Agent; thinkingLevel?: string } {
-    return this._subAgentFactoryInstance.createFromPath(templateDir, taskId, modelLevel);
+  private _createSubAgentFromPath(templateDir: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
+    return this._subAgentFactoryInstance.createFromPath(templateDir, taskId);
   }
 
   private _resolveTemplatePath(relPath: string): string {

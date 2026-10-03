@@ -165,7 +165,6 @@ export function makeScriptedSession(opts: HarnessOptions = {}): SessionHarness {
   const config = {
     mcpServerConfigs: [],
     agentModels: {},
-    modelTiers: {},
     subAgentInheritMcp: false,
     subAgentInheritHooks: false,
     getModel: (name: string) => ({

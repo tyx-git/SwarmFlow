@@ -35,7 +35,6 @@ function buildSession(projectRoot: string, store: SessionStore): Session {
     pathOverrides: { projectRoot },
     subAgentModelName: undefined,
     agentModels: {},
-    modelTiers: {},
     mcpServerConfigs: [],
     getModel: () => ({ ...modelConfig }),
     listModelEntries: () => [],

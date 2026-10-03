@@ -5,10 +5,10 @@ import {
   type CommandContext,
 } from "../src/commands/commands.js";
 
-describe("/shells command", () => {
+describe("/ps command", () => {
   it("delegates to the TUI shells picker when available", async () => {
     const registry = buildDefaultRegistry();
-    const cmd = registry.lookup("/shells");
+    const cmd = registry.lookup("/ps");
     expect(cmd).toBeTruthy();
 
     const onShellsRequested = vi.fn();
@@ -27,7 +27,7 @@ describe("/shells command", () => {
 
   it("reports unavailability when the UI has no shells picker", async () => {
     const registry = buildDefaultRegistry();
-    const cmd = registry.lookup("/shells");
+    const cmd = registry.lookup("/ps");
 
     const showMessage = vi.fn();
     const ctx: CommandContext = {

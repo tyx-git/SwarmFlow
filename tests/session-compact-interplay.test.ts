@@ -137,52 +137,6 @@ describe("messages arriving during compact (Q6)", () => {
   });
 });
 
-describe("interrupted summarize_context (B4)", () => {
-  // P1.6 — B4: 中断时未落盘的 summary 暂存必须清空，不得在下一个 turn 错位补写。
-  it("summary staged by an interrupted summarize_context never leaks into a later turn", async () => {
-    const abortController = new AbortController();
-    let harness!: SessionHarness;
-    harness = makeScriptedSession({
-      rounds: [{ text: "alpha findings worth summarizing" }],
-      toolExecutorOverrides: {
-        summarize_context: (args) => {
-          const result = harness.internals._execSummarizeContextTool(args);
-          abortController.abort();
-          return result;
-        },
-        probe_tool: () => "ok",
-      },
-    });
-    harness.session.permissionMode = "yolo";
-    try {
-      await harness.session.turn("explore");
-      const assistant = harness.session.log.find((e) => e.type === "assistant_text" && !e.discarded);
-      const contextId = String((assistant?.meta as Record<string, unknown>)?.contextId ?? "");
-      expect(contextId).toBeTruthy();
-
-      harness.provider.rounds.push({
-        toolCalls: [{
-          id: "sum-1",
-          name: "summarize_context",
-          arguments: { operations: [{ from: contextId, to: contextId, content: "alpha summary" }] },
-        }],
-      });
-      await harness.session.turn("summarize that", { signal: abortController.signal });
-      expect(harness.session.log.filter((e) => e.type === "summary" && !e.discarded)).toHaveLength(0);
-
-      harness.provider.rounds.push(
-        { toolCalls: [{ id: "probe-2", name: "probe_tool", arguments: {} }] },
-        { text: "after" },
-      );
-      await harness.session.turn("unrelated next");
-
-      expect(harness.session.log.filter((e) => e.type === "summary" && !e.discarded)).toHaveLength(0);
-    } finally {
-      harness.dispose();
-    }
-  });
-});
-
 describe("interrupted mid-turn compact", () => {
   it("records compact cancellation context and interrupted work", async () => {
     const h = makeScriptedSession({

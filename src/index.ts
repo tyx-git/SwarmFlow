@@ -36,7 +36,6 @@ export { fetchModelsFromServer, type DiscoveredModel } from "./models/discovery.
 
 // -- 更新检查 ---------------------------------------------------------
 /** 检查并下载 SwarmFlow 更新。 */
-export { checkForUpdates } from "./lifecycle/update-check.js";
 
 // -- Session --------------------------------------------------------------
 /** 核心会话类——管理生命周期、工具执行、子代理。 */
@@ -124,7 +123,7 @@ export {
 
 // -- 命令 -------------------------------------------------------------
 /**
- * 斜杠命令（/model、/key、/summarize 等）注册表。
+ * 斜杠命令（/model、/provider、/usage 等）注册表。
  * buildDefaultRegistry 构建默认命令集；
  * registerSkillCommands 将技能加载为命令。
  */
@@ -169,7 +168,7 @@ export {
 export { BASIC_TOOLS, BASIC_TOOLS_MAP, executeTool } from "./tools/basic.js";
 
 /**
- * Agent 间通信工具：spawn、kill_agent、check_status、await_event、summarize_context、ask。
+ * Agent 间通信工具：spawn、kill_agent、check_status、await_event、ask。
  * 这些工具用于多智能体蜂群编排。
  */
 export {
@@ -177,7 +176,6 @@ export {
   KILL_AGENT_TOOL,
   CHECK_STATUS_TOOL,
   AWAIT_EVENT_TOOL,
-  SUMMARIZE_CONTEXT_TOOL,
   ASK_TOOL,
 } from "./tools/comm.js";
 

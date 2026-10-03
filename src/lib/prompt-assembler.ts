@@ -146,7 +146,7 @@ export function buildAgentModelPinsSection(
   return [
     "",
     "以下子代理模板已固定了用户指定的模型。",
-    "生成这些代理时，请勿指定 `model_level` —— 固定的模型将自动使用：",
+    "生成这些代理时直接使用主代理或 /agents 配置的模型，不再指定模型层级：",
     "",
     ...lines,
   ].join("\n");

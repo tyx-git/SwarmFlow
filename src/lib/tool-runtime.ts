@@ -21,8 +21,6 @@ import {
   KILL_AGENT_TOOL,
   CHECK_STATUS_TOOL,
   AWAIT_EVENT_TOOL,
-  SHOW_CONTEXT_TOOL,
-  SUMMARIZE_CONTEXT_TOOL,
   ASK_TOOL,
   RELOAD_TOOL,
 } from "../tools/comm.js";
@@ -125,8 +123,6 @@ export function ensureCommTools(
   if (capabilities.includeKillTool) wanted.push(KILL_AGENT_TOOL);
   if (capabilities.includeCheckStatusTool) wanted.push(CHECK_STATUS_TOOL);
   if (capabilities.includeAwaitEventTool) wanted.push(AWAIT_EVENT_TOOL);
-  if (capabilities.includeShowContextTool) wanted.push(SHOW_CONTEXT_TOOL);
-  if (capabilities.includeSummarizeContextTool) wanted.push(SUMMARIZE_CONTEXT_TOOL);
   if (capabilities.includeAskTool) wanted.push(ASK_TOOL);
   if (capabilities.includeReloadTool) wanted.push(RELOAD_TOOL);
   for (const toolDef of wanted) {

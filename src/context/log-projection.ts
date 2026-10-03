@@ -8,7 +8,6 @@ import type { LogEntry, TuiDisplayKind } from "../context/log-entry.js";
 import { buildAgentResultTuiPreview } from "../context/log-entry.js";
 import type { ConversationEntry, ConversationEntryKind } from "../ui/contracts.js";
 import { mergeConsecutiveSameRole } from "../context/context-rendering.js";
-import { truncateSummarizeContextContent } from "../context/summarize-context.js";
 import { buildActiveContextView, flattenActiveContextEntries } from "../context/active-context.js";
 import { inferThinkingArtifact, normalizeThinkingArtifact } from "../lib/thinking-artifact.js";
 
@@ -593,8 +592,6 @@ export interface ApiProjectionOptions {
   resolveImageRef?: (refPath: string) => { data: string; media_type: string } | null;
   /** 为需要交替的提供商合并连续同角色消息 */
   requiresAlternatingRoles?: boolean;
-  /** 在提供商提交前截断 summarize_context 工具调用内容 */
-  truncateSummarizeContextToolArgs?: boolean;
   /** 在提交前强制执行提供商工具调用排序不变量 */
   enforceToolCallProtocol?: boolean;
 }
@@ -776,9 +773,7 @@ export function projectToApiMessages(
     );
   }
 
-  let projected = options?.truncateSummarizeContextToolArgs === false
-    ? messages
-    : truncateSummarizeContextToolArgs(messages);
+  let projected = messages;
 
   if (options?.enforceToolCallProtocol) {
     validateToolCallProtocol(projected);
@@ -969,57 +964,6 @@ function injectLabeledUserContext(
     // 插入独立的用户消息
     messages.splice(insertIdx, 0, { role: "user", content: fullContent });
   }
-}
-
-/** 截断 summarize_context 工具调用参数 */
-function truncateSummarizeContextToolArgs(
-  messages: InternalMessage[],
-): InternalMessage[] {
-  return messages.map((msg) => {
-    const toolCalls = msg["tool_calls"] as Array<Record<string, unknown>> | undefined;
-    if (!toolCalls?.length) return msg;
-
-    let modified = false;
-    const nextToolCalls = toolCalls.map((tc) => {
-      if ((tc["name"] as string) !== "summarize_context") return tc;
-
-      const args = tc["arguments"] as Record<string, unknown> | undefined;
-      const operations = args?.["operations"] as Array<Record<string, unknown>> | undefined;
-      if (!args || !operations?.length) return tc;
-
-      let opsModified = false;
-      const nextOperations = operations.map((op) => {
-        const content = op["content"] as string | undefined;
-        const resultCtxId = op["_result_context_id"] as string | number | undefined;
-        if (!content || content.length <= 100) {
-          if (resultCtxId === undefined) return op;
-          opsModified = true;
-          const { _result_context_id: _removed, ...rest } = op;
-          return rest;
-        }
-
-        opsModified = true;
-        const { _result_context_id: _removed, ...rest } = op;
-        return {
-          ...rest,
-          content: truncateSummarizeContextContent(content, resultCtxId),
-        };
-      });
-
-      if (!opsModified) return tc;
-      modified = true;
-      return {
-        ...tc,
-        arguments: {
-          ...args,
-          operations: nextOperations,
-        },
-      };
-    });
-
-    if (!modified) return msg;
-    return { ...msg, tool_calls: nextToolCalls };
-  });
 }
 
 /** 合并消息内容（处理字符串和数组格式） */

@@ -15,10 +15,10 @@ import type { Session } from "../session.js";
 import type { LogEntry } from "../context/log-entry.js";
 import type { PermissionMode } from "../permissions/index.js";
 import { projectToTuiEntries } from "../context/log-projection.js";
-import { randomSessionId, saveGlobalSettingsPatch, saveLog, SessionStore, type AgentModelEntry, type ModelTierEntry } from "../config/persistence.js";
+import { randomSessionId, saveGlobalSettingsPatch, saveLog, SessionStore, type AgentModelEntry } from "../config/persistence.js";
 import { applySessionRestore } from "../session-resume.js";
-import { getTierEligibleThinkingLevels, getThinkingLevels } from "../config/config.js";
-import { createModelTierEntry } from "../models/selection.js";
+import { getThinkingLevels, getSubAgentThinkingLevels } from "../config/config.js";
+import { createAgentModelEntry } from "../models/selection.js";
 
 export interface SessionRpcOptions {
   readonly session: Session;
@@ -119,21 +119,6 @@ interface ForkSessionPayload {
 }
 
 const PERMISSION_MODES = new Set<PermissionMode>(["read_only", "reversible", "yolo"]);
-const MODEL_TIER_LEVELS = ["high", "medium", "low"] as const;
-type ModelTierLevel = typeof MODEL_TIER_LEVELS[number];
-
-interface ModelTierStatusPayload {
-  readonly tiers: readonly {
-    readonly level: ModelTierLevel;
-    readonly provider: string | null;
-    readonly selectionKey: string | null;
-    readonly modelId: string | null;
-    readonly thinkingLevel: string | null;
-    readonly configName: string | null;
-    readonly label: string;
-  }[];
-}
-
 interface AgentRuntimeSettingsPayload {
   readonly subAgentInheritMcp: boolean;
   readonly subAgentInheritHooks: boolean;
@@ -270,38 +255,6 @@ function buildHooksStatus(s: Session): HooksStatusPayload {
   };
 }
 
-function buildModelTierStatus(s: Session): ModelTierStatusPayload {
-  const tiers = (s.config?.modelTiers ?? {}) as Partial<Record<ModelTierLevel, ModelTierEntry>>;
-  return {
-    tiers: MODEL_TIER_LEVELS.map((level) => {
-      const entry = tiers[level];
-      if (!entry) {
-        return {
-          level,
-          provider: null,
-          selectionKey: null,
-          modelId: null,
-          thinkingLevel: null,
-          configName: null,
-          label: "Inherits main model",
-        };
-      }
-      const configName = typeof s.config?.findModelConfigName === "function"
-        ? s.config.findModelConfigName(entry.provider, entry.model_id)
-          ?? s.config.findModelConfigName(entry.provider, entry.selection_key)
-        : null;
-      return {
-        level,
-        provider: entry.provider,
-        selectionKey: entry.selection_key,
-        modelId: entry.model_id,
-        thinkingLevel: entry.thinking_level,
-        configName: configName ?? null,
-        label: configName ?? `${entry.provider}:${entry.selection_key || entry.model_id}`,
-      };
-    }),
-  };
-}
 
 function buildAgentRuntimeSettings(s: Session): AgentRuntimeSettingsPayload {
   const agentModels = s.config?.agentModels;
@@ -352,25 +305,10 @@ function buildAgentModelPins(s: Session): AgentModelPinsPayload {
   return { templates: templates.sort((a, b) => a.name.localeCompare(b.name)) };
 }
 
-function defaultTierThinkingLevel(modelId: string): string {
-  if (getThinkingLevels(modelId).length === 0) return "none";
-  const eligible = getTierEligibleThinkingLevels(modelId);
-  if (eligible.length === 0) {
-    throw new Error(`Model '${modelId}' has no eligible sub-agent thinking levels.`);
-  }
-  return eligible[eligible.length - 1]!;
-}
-
-function expectModelTierLevel(
-  params: Record<string, unknown>,
-  key: string,
-  method: string,
-): ModelTierLevel {
-  const level = expectString(params, key, method);
-  if (!MODEL_TIER_LEVELS.includes(level as ModelTierLevel)) {
-    throw new Error(`${method}: '${key}' must be one of high, medium, low`);
-  }
-  return level as ModelTierLevel;
+function defaultAgentThinkingLevel(modelId: string): string {
+  const available = getSubAgentThinkingLevels(modelId);
+  if (available.length === 0) return "none";
+  return available[available.length - 1]!;
 }
 
 function forkSessionDirectory(sourceDir: string): ForkSessionPayload {
@@ -702,9 +640,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
         model: m.model,
         contextLength: m.contextLength,
         supportsMultimodal: m.supportsMultimodal,
-        tierThinkingLevels: getThinkingLevels(m.model).length === 0
+        agentThinkingLevels: getSubAgentThinkingLevels(m.model).length === 0
           ? ["none"]
-          : getTierEligibleThinkingLevels(m.model),
+          : getSubAgentThinkingLevels(m.model),
       };
     });
   });
@@ -717,40 +655,6 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return buildMeta(session, workDir, sessionDir);
   });
 
-  server.on("session.getModelTiers", () => buildModelTierStatus(session));
-
-  server.on("session.setModelTier", (params) => {
-    const p = expectObject(params, "session.setModelTier");
-    const level = expectModelTierLevel(p, "level", "session.setModelTier");
-    const current = (session.config?.modelTiers ?? {}) as Partial<Record<ModelTierLevel, ModelTierEntry>>;
-    const next: Partial<Record<ModelTierLevel, ModelTierEntry>> = { ...current };
-    const modelName = p["modelName"];
-
-    if (modelName === null || modelName === undefined || modelName === "") {
-      delete next[level];
-    } else {
-      if (typeof modelName !== "string") {
-        throw new Error("session.setModelTier: 'modelName' must be a string or null");
-      }
-      const modelConfig = session.config.getModel(modelName);
-      const thinkingLevel = optString(p, "thinkingLevel")
-        ?? defaultTierThinkingLevel(modelConfig.model);
-      const entry = createModelTierEntry({
-        provider: modelConfig.provider,
-        selectionKey: modelConfig.model,
-        modelId: modelConfig.model,
-      }, thinkingLevel);
-      next[level] = entry;
-    }
-
-    saveGlobalSettingsPatch({ model_tiers: next });
-    const mutableConfig = session.config as unknown as { _modelTiers?: typeof next };
-    if (mutableConfig._modelTiers !== undefined) {
-      mutableConfig._modelTiers = next;
-    }
-    server.emit("model.tiers.changed", buildModelTierStatus(session));
-    return buildModelTierStatus(session);
-  });
 
   server.on("session.getAgentRuntimeSettings", () => buildAgentRuntimeSettings(session));
 
@@ -804,8 +708,8 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
       }
       const modelConfig = session.config.getModel(modelName);
       const thinkingLevel = optString(p, "thinkingLevel")
-        ?? defaultTierThinkingLevel(modelConfig.model);
-      next[templateName] = createModelTierEntry({
+        ?? defaultAgentThinkingLevel(modelConfig.model);
+      next[templateName] = createAgentModelEntry({
         provider: modelConfig.provider,
         selectionKey: modelConfig.model,
         modelId: modelConfig.model,
@@ -878,17 +782,6 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   server.on("session.getMcpStatus", () => buildMcpStatus(session));
   server.on("session.getHooksStatus", () => buildHooksStatus(session));
 
-  // ── 手动上下文命令 ──
-  server.on("session.summarize", (params) => {
-    const p = expectObject(params, "session.summarize");
-    const targetContextIds = p["targetContextIds"] as string[] | undefined;
-    const focusPrompt = optString(p, "focusPrompt");
-    return fireAndForgetTurn(() => session.runManualSummarize({
-      targetContextIds: targetContextIds ?? undefined,
-      focusPrompt: focusPrompt ?? undefined,
-    }));
-  });
-
   server.on("session.compact", (params) => {
     const p = expectObject(params, "session.compact");
     const instruction = optString(p, "instruction");
@@ -922,17 +815,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return session.rewindConversation(toTurnIndex);
   });
 
-  // ── 总结选择器支持 ──
-  server.on("session.getSummarizeTargets", () => session.getSummarizeTargets());
-  server.on("session.getContextIdsForTurnRange", (params) => {
-    const p = expectObject(params, "session.getContextIdsForTurnRange");
-    const startTurn = optNumber(p, "startTurn");
-    const endTurn = optNumber(p, "endTurn");
-    if (typeof startTurn !== "number" || typeof endTurn !== "number") {
-      throw new Error("session.getContextIdsForTurnRange: 'startTurn' and 'endTurn' must be numbers");
-    }
-    return session.getContextIdsForTurnRange(startTurn, endTurn);
-  });
+
 
   // ── 订阅 ──
   // 合并日志变化发射：TUI 每回合会触发数百次 subscribeLog。

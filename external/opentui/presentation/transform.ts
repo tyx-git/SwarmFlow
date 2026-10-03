@@ -13,15 +13,11 @@ import { formatDuration } from "../display/utils/format.js";
 // ------------------------------------------------------------------
 
 const QUEUED_PREFIX = "[Queued user message]\n";
-const MANUAL_SUMMARIZE = "[Manual summarize request]";
 const ATTACHMENT_REGEX = /--- Begin content of (.+?) ---/g;
 
 function extractUserText(raw: string): { text: string; queued: boolean } {
   if (raw.startsWith(QUEUED_PREFIX)) {
     return { text: raw.slice(QUEUED_PREFIX.length), queued: true };
-  }
-  if (raw === MANUAL_SUMMARIZE) {
-    return { text: "/summarize", queued: false };
   }
   return { text: raw, queued: false };
 }
@@ -486,29 +482,6 @@ export function presentationTransform(
     }
   }
 
-  // Pre-associate summary entries with their summarize_context tool_call.
-  // Summary entries are flushed right after the tool_result, so we track the
-  // last summarize_context callId and collect consecutive isSummary entries.
-  const summariesByCallId = new Map<string, ReconciledConversationEntry[]>();
-  const consumedSummaryIds = new Set<string>();
-  {
-    let lastSummarizeContextCallId: string | null = null;
-    for (const e of entries) {
-      if (e.entry.kind === "tool_call" && getToolName(e) === "summarize_context") {
-        lastSummarizeContextCallId = getToolCallId(e) ?? null;
-      } else if (e.entry.kind === "tool_result") {
-        // tool_result doesn't break the chain
-      } else if (getMeta(e).isSummary && lastSummarizeContextCallId) {
-        const list = summariesByCallId.get(lastSummarizeContextCallId) ?? [];
-        list.push(e);
-        summariesByCallId.set(lastSummarizeContextCallId, list);
-        consumedSummaryIds.add(e.id);
-      } else {
-        lastSummarizeContextCallId = null;
-      }
-    }
-  }
-
   let i = 0;
 
   while (i < entries.length) {
@@ -527,10 +500,6 @@ export function presentationTransform(
     // 2. Route by kind
     switch (kind) {
       case "user": {
-        if (consumedSummaryIds.has(entry.id)) {
-          i++;
-          break;
-        }
         result.push(transformUser(entry));
         i++;
         break;
@@ -564,34 +533,12 @@ export function presentationTransform(
 
       case "tool_call": {
         const callEntry = entry;
-        const callToolName = getToolName(callEntry);
         const callId = getToolCallId(callEntry);
         i++;
         const resultEntry: ReconciledConversationEntry | null = callId
           ? resultByCallId.get(callId) ?? null
           : null;
         const toolOp = buildToolOperation(callEntry, resultEntry, activeEntryId);
-
-        // Fold pre-associated summary entries into the summarize_context tool's inline result
-        if (callToolName === "summarize_context" && callId) {
-          const summaries = summariesByCallId.get(callId);
-          if (summaries && summaries.length > 0) {
-            const summaryTexts: string[] = [];
-            for (const s of summaries) {
-              const text = s.entry.text;
-              if (text.trim()) summaryTexts.push(text.trim());
-            }
-            if (summaryTexts.length > 0) {
-              const merged = summaryTexts.join("\n---\n");
-              toolOp.toolInlineResult = {
-                text: merged,
-                dim: false,
-                maxLines: 5,
-              };
-              toolOp.toolResultFullText = merged;
-            }
-          }
-        }
 
         result.push(toolOp);
         break;

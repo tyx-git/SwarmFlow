@@ -36,6 +36,7 @@
     },
     "Commands": {
       "/theme": {
+        "description": "设置界面主题",
         "echo": "主题切换为",
         "usage": "用法：/theme {modes}",
         "current": "当前主题模式为“{mode}”。",
@@ -43,15 +44,15 @@
         "hint": "主题：{mode}"
       },
       "/model": {
+        "description": "选择模型和思考深度",
         "echo": "模型切换为",
         "current": "当前模型：{model}",
         "switchCancelled": "已取消模型切换。",
         "notSupported": "当前会话不支持切换模型。"
       },
-      "/autoupdate": {
-        "echo": "自动更新切换为"
-      },
+      "/agents": { "description": "配置子代理默认模型和思考深度" },
       "/permission": {
+        "description": "设置当前会话权限",
         "echo": "权限模式切换为",
         "usage": "用法：/permission {mode}",
         "readOnly": "只读",
@@ -65,15 +66,19 @@
         "invalid": "未知权限模式“{mode}”。可选：{modes}"
       },
       "/sidebar": {
+        "description": "切换侧栏显示模式",
         "echo": "侧栏切换为"
       },
       "/diff": {
+        "description": "查看当前差异",
         "echo": "差异显示切换为"
       },
       "/mcp": {
+        "description": "管理 MCP 服务器",
         "echo": "MCP 切换为"
       },
       "/skills": {
+        "description": "管理已安装的技能",
         "echo": "技能切换为",
         "title": "技能",
         "enabled": "启用",
@@ -84,17 +89,39 @@
         "usage": "使用 /skills 管理 Skill，或使用 /skills-creater 创建 Skill。"
       },
       "/hooks": {
+        "description": "查看和管理钩子",
         "echo": "钩子切换为"
       },
       "/provider": {
+        "description": "管理供应商、密钥和模型",
         "echo": "供应商切换为"
       },
       "/language": {
+        "description": "切换界面语言",
         "echo": "界面语言切换为",
         "usage": "用法：/language {languages}",
         "current": "当前界面语言：{language}",
         "hint": "界面语言：{language}"
-      }
+      },
+      "/help": { "description": "显示命令帮助" },
+      "/usage": { "description": "查看用量和统计" },
+      "/new": { "description": "开始新会话" },
+      "/rename": { "description": "重命名当前会话" },
+      "/status": { "description": "查看当前会话状态" },
+      "/compact": { "description": "压缩当前上下文" },
+      "/clear": { "description": "清屏并重置后续上下文" },
+      "/fork": { "description": "从当前会话创建分支" },
+      "/ps": { "description": "查看后台进程" },
+      "/ask": { "description": "询问独立问题" },
+      "/init": { "description": "探索项目并生成规则文件" },
+      "/plan": { "description": "进入计划讨论模式" },
+      "/goal": { "description": "设置或查看会话目标" },
+      "/fix": { "description": "复现、修复并验证已知问题" },
+      "/reviewer": { "description": "审查项目或指定范围" },
+      "/rewind": { "description": "回退会话和文件修改" },
+      "/skills-creater": { "description": "创建 Agent Skill" },
+      "/memory": { "description": "查看当前会话记忆" },
+      "/rules": { "description": "查看或更新项目规则" }
     },
     "Views": {
       "input": {
@@ -169,7 +196,7 @@
         "totalInput": "总输入",
         "cacheHitRate": "缓存命中率",
         "totalOutput": "总输出",
-        "context": "上下文",
+        "context": "上下文占用",
         "systemPrompt": "系统提示",
         "tools": "工具",
         "agentsMd": "AGENTS.md",
@@ -269,6 +296,7 @@
     },
     "Commands": {
       "/theme": {
+        "description": "Set the interface theme",
         "echo": "Theme switched to",
         "usage": "Usage: /theme {modes}",
         "current": "Theme mode is \"{mode}\".",
@@ -276,15 +304,15 @@
         "hint": "Theme: {mode}"
       },
       "/model": {
+        "description": "Select the model and thinking depth",
         "echo": "Model switched to",
         "current": "Current model: {model}",
         "switchCancelled": "Model switch cancelled.",
         "notSupported": "Model switching is not supported in this session."
       },
-      "/autoupdate": {
-        "echo": "Auto-update switched to"
-      },
+      "/agents": { "description": "Configure the default sub-agent model and thinking depth" },
       "/permission": {
+        "description": "Set the current session permission",
         "echo": "Permission mode switched to",
         "usage": "Usage: /permission {mode}",
         "readOnly": "Read-only",
@@ -298,15 +326,19 @@
         "invalid": "Unknown permission mode \"{mode}\". Valid: {modes}"
       },
       "/sidebar": {
+        "description": "Toggle sidebar display mode",
         "echo": "Sidebar switched to"
       },
       "/diff": {
+        "description": "View current changes",
         "echo": "Diff display switched to"
       },
       "/mcp": {
+        "description": "Manage MCP servers",
         "echo": "MCP switched to"
       },
       "/skills": {
+        "description": "Manage installed skills",
         "echo": "Skills switched to",
         "title": "Skills",
         "enabled": "enable",
@@ -317,17 +349,39 @@
         "usage": "Use /skills to manage skills or /skills-creater to create one."
       },
       "/hooks": {
+        "description": "View and manage hooks",
         "echo": "Hooks switched to"
       },
       "/provider": {
+        "description": "Manage providers, keys, and models",
         "echo": "Provider switched to"
       },
       "/language": {
+        "description": "Switch the interface language",
         "echo": "UI language switched to",
         "usage": "Usage: /language {languages}",
         "current": "Current UI language: {language}",
         "hint": "UI language: {language}"
-      }
+      },
+      "/help": { "description": "Show command help" },
+      "/usage": { "description": "View usage and statistics" },
+      "/new": { "description": "Start a new session" },
+      "/rename": { "description": "Rename the current session" },
+      "/status": { "description": "View current session status" },
+      "/compact": { "description": "Compact the active context" },
+      "/clear": { "description": "Clear the screen and future context" },
+      "/fork": { "description": "Fork the current session" },
+      "/ps": { "description": "View background processes" },
+      "/ask": { "description": "Ask an isolated question" },
+      "/init": { "description": "Explore the project and create rules" },
+      "/plan": { "description": "Enter planning discussion mode" },
+      "/goal": { "description": "Set or view the session goal" },
+      "/fix": { "description": "Reproduce, fix, and verify a known bug" },
+      "/reviewer": { "description": "Review the project or a scope" },
+      "/rewind": { "description": "Rewind the conversation and file changes" },
+      "/skills-creater": { "description": "Create an Agent Skill" },
+      "/memory": { "description": "View current session memory" },
+      "/rules": { "description": "View or update project rules" }
     },
     "Views": {
       "input": {
@@ -357,7 +411,7 @@
         "cwd": "Working directory",
         "session": "Session name",
         "cacheHit": "Cache hit",
-        "context": "Context",
+        "context": "Context usage",
         "cacheNull": "null",
         "untitled": "Untitled"
       },
@@ -402,7 +456,7 @@
         "totalInput": "Total Input",
         "cacheHitRate": "Cache Hit Rate",
         "totalOutput": "Total Output",
-        "context": "Context",
+        "context": "Context usage",
         "systemPrompt": "System Prompt",
         "tools": "Tools",
         "agentsMd": "AGENTS.md",

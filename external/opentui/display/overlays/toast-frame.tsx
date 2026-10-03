@@ -33,7 +33,7 @@ export interface ToastFrameProps {
  * The footer is an absolutely-positioned overlay on the bottom border: the
  * relative wrapper is the containing block, `bottom={0}` lands on the border
  * row, and `fillTransparentBackground` clears the border chars so the text
- * renders on top (the original UpdateToast "Ctrl+L dismiss" affordance).
+ * renders on top of transient runtime notices.
  */
 export function ToastFrame({
   title,
