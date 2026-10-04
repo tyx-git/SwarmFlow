@@ -50,14 +50,14 @@ export interface ServerModeOptions {
   readonly configOverrides?: readonly string[];
 }
 
-function identifyPrimaryAgent(agents: Record<string, Agent>, name = "main"): Agent {
-  const agent = agents[name];
+function identifyPrimaryAgent(agents: Record<string, Agent>, name = "queen"): Agent {
+  const agent = agents[name] ?? agents.queen;
   if (agent) return agent;
   const names = Object.keys(agents).sort();
   if (names.length > 0) return agents[names[0]!];
   // 没有用户模型时仍启动服务，让 GUI 可以通过 /provider 和 /model 完成配置。
   return new Agent({
-    name: "main",
+    name: "queen",
     modelConfig: {
       name: "__pending__",
       provider: "__pending__",

@@ -1,0 +1,7 @@
+type: agent
+name: scout
+description: "Read-only investigator — explores code and external resources, then returns a precise context handoff."
+system_prompt_file: system_prompt.md
+tool_tier: read_only
+tools_prompt_file: tools.md
+max_tool_rounds: 200

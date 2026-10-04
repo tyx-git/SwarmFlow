@@ -35,6 +35,7 @@ import { parseJsonc } from "../lib/jsonc.js";
 import type { MCPServerConfig } from "../config/config.js";
 import type { ThemeMode } from "./theme.js";
 import type { UiLanguage } from "../lib/ui-text.js";
+import type { AgentRole } from "../swarm/types.js";
 
 // ------------------------------------------------------------------
 // 常量
@@ -612,7 +613,7 @@ export interface LocalProviderConfig {
 // 新设置类型（替代 GlobalTuiPreferences）
 // ------------------------------------------------------------------
 
-/** 每模板模型固定配置：稳定的模型身份 + 思维链级别 */
+/** 每角色模型固定配置：稳定的模型身份 + 思维链级别。键使用规范角色 ID。 */
 export interface AgentModelEntry {
   /** 服务提供商 */
   provider: string;
@@ -664,8 +665,8 @@ export interface SwarmflowSettings {
   /** 禁用的技能列表 */
   disabled_skills?: string[];
 
-  // -- 代理模型（每模板模型固定配置，全局 + 本地合并）--
-  agent_models?: Record<string, AgentModelEntry>;
+  // -- 代理模型（按角色 ID 固定配置，全局 + 本地合并）--
+  agent_models?: Partial<Record<AgentRole, AgentModelEntry>>;
 
   // -- MCP 服务器（全局 + 本地合并）--
   mcp_servers?: Record<string, MCPServerSettingsEntry>;

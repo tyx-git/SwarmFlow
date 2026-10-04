@@ -28,6 +28,7 @@ import { loadLog, validateAndRepairLog, type LoadLogResult } from "../config/per
 import type { ProgressLevel, ProgressReporter } from "../lib/progress.js";
 import { ToolResult } from "../providers/base.js";
 import type { Session } from "../session.js";
+import { getAgentRoleLabel } from "../swarm/types.js";
 import {
   migrateMessageEnvelope,
   type ArchivedChildRecord,
@@ -199,7 +200,7 @@ export class ChildSessionManager {
   clearTables(): void {
     this._handles = new Map();
     this._archived = new Map();
-    // 子 id（worker-1、explorer 等）跨会话重用——切换会话时缓存若存活会提供前一会话的日志。
+    // 子 id（worker-1、scout 等）跨会话重用——切换会话时缓存若存活会提供前一会话的日志。
     this._releasedLogCache = null;
   }
 
@@ -1164,7 +1165,7 @@ export class ChildSessionManager {
         const taskTrunc = taskOneLine.length > maxTaskLen
           ? taskOneLine.slice(0, maxTaskLen - 1) + "…"
           : taskOneLine;
-        return `  #${info.numericId} ${info.taskId} [${info.template}] — ${taskTrunc}`;
+        return `  #${info.numericId} ${info.taskId} [${getAgentRoleLabel(info.template)}] — ${taskTrunc}`;
       });
       previewText = `Spawned ${spawnedInfo.length} sub-agent(s):\n${lines.join("\n")}`;
     }
@@ -1253,7 +1254,7 @@ export class ChildSessionManager {
       }
     }
 
-    return this.sendMessageToChild(to, { type: "user_input", sender: "main", content, timestamp: Date.now() });
+    return this.sendMessageToChild(to, { type: "user_input", sender: "queen", content, timestamp: Date.now() });
   }
 
   /** 复活 archived persistent 子会话：重建 Session、恢复日志、启动 turn。 */
@@ -1291,7 +1292,7 @@ export class ChildSessionManager {
     // 传递消息并启动 turn（标准传递——见 sendMessageToChild）
     this.deps.deliverToChild(session, {
       type: "user_input",
-      sender: "main",
+      sender: "queen",
       content: messageContent,
       timestamp: Date.now(),
       wake: false,

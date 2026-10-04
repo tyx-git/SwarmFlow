@@ -19,6 +19,7 @@ import { randomSessionId, saveGlobalSettingsPatch, saveLog, SessionStore, type A
 import { applySessionRestore } from "../session-resume.js";
 import { getThinkingLevels, getSubAgentThinkingLevels } from "../config/config.js";
 import { createAgentModelEntry } from "../models/selection.js";
+import { getAgentRoleLabel, isAgentRoleId } from "../swarm/types.js";
 
 export interface SessionRpcOptions {
   readonly session: Session;
@@ -128,6 +129,7 @@ interface AgentRuntimeSettingsPayload {
 interface AgentModelPinsPayload {
   readonly templates: readonly {
     readonly name: string;
+    readonly displayName: string;
     readonly description: string | null;
     readonly provider: string | null;
     readonly selectionKey: string | null;
@@ -268,12 +270,14 @@ function buildAgentRuntimeSettings(s: Session): AgentRuntimeSettingsPayload {
 }
 
 function buildAgentModelPins(s: Session): AgentModelPinsPayload {
-  const pins = (s.config?.agentModels ?? {}) as Record<string, AgentModelEntry>;
+  const pins = s.config?.agentModels ?? {};
   const templates = Object.entries(s.agentTemplates ?? {}).map(([name, agent]) => {
-    const entry = pins[name];
+    const displayName = getAgentRoleLabel(name);
+    const entry = isAgentRoleId(name) ? pins[name] : undefined;
     if (!entry) {
       return {
         name,
+        displayName,
         description: typeof agent?.description === "string" && agent.description.trim()
           ? agent.description.trim()
           : null,
@@ -282,7 +286,7 @@ function buildAgentModelPins(s: Session): AgentModelPinsPayload {
         modelId: null,
         thinkingLevel: null,
         configName: null,
-        label: "Uses tier or main model",
+        label: "Uses role default or parent model",
       };
     }
     const configName = typeof s.config?.findModelConfigName === "function"
@@ -291,6 +295,7 @@ function buildAgentModelPins(s: Session): AgentModelPinsPayload {
       : null;
     return {
       name,
+      displayName,
       description: typeof agent?.description === "string" && agent.description.trim()
         ? agent.description.trim()
         : null,
@@ -692,6 +697,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   server.on("session.setAgentModelPin", (params) => {
     const p = expectObject(params, "session.setAgentModelPin");
     const templateName = expectString(p, "templateName", "session.setAgentModelPin");
+    if (!isAgentRoleId(templateName)) {
+      throw new Error(`session.setAgentModelPin: unknown role '${templateName}'`);
+    }
     if (!session.agentTemplates?.[templateName]) {
       throw new Error(`session.setAgentModelPin: unknown template '${templateName}'`);
     }

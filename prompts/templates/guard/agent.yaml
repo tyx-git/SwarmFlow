@@ -1,0 +1,7 @@
+type: agent
+name: guard
+description: "Safety reviewer — checks permissions, sensitive data exposure, destructive operations, and rollback risk."
+system_prompt_file: system_prompt.md
+tool_tier: read_only
+tools_prompt_file: tools.md
+max_tool_rounds: 200

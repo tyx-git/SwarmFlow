@@ -32,9 +32,9 @@ import {
 function identifyPrimaryAgent(
   agents: Record<string, Agent>,
   config: Config,
-  name = "main",
+  name = "queen",
 ): Agent {
-  const agent = agents[name];
+  const agent = agents[name] ?? agents.queen;
   if (agent) return agent;
 
   const names = Object.keys(agents).sort();
@@ -46,7 +46,7 @@ function identifyPrimaryAgent(
   // Create a minimal placeholder agent with a stub modelConfig.
   // User will configure via /provider + /model.
   const stub = new Agent({
-    name: "main",
+    name: "queen",
     modelConfig: {
       name: "__pending__",
       provider: "__pending__",

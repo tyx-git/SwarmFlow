@@ -1,7 +1,0 @@
-type: agent
-name: thinking
-description: "Read-only decision consistency and challenge agent. Reconstructs decisions, detects drift, and surfaces one focused challenge."
-system_prompt_file: system_prompt.md
-tools: [read_file, list_dir, glob, grep, time, web_search, web_fetch]
-tools_prompt_file: tools.md
-max_tool_rounds: 160

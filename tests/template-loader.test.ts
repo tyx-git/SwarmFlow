@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { Config } from "../src/config/config.js";
 import { loadTemplate, validateTemplate } from "../src/templates/loader.js";
+import { AGENT_ROLE_LABELS, AgentRole } from "../src/swarm/types.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -22,9 +23,34 @@ function makeConfig(): Config {
 }
 
 describe("template type validation", () => {
-  it("keeps the main tool prompt focused on executable tools", () => {
+  it("uses only the six canonical built-in role IDs", () => {
+    const root = join(process.cwd(), "prompts", "templates");
+    const names = readdirSync(root)
+      .filter((name) => {
+        try {
+          return readFileSync(join(root, name, "agent.yaml"), "utf8").length > 0;
+        } catch {
+          return false;
+        }
+      })
+      .sort();
+    expect(names).toEqual(["guard", "merger", "queen", "reviewer", "scout", "worker"]);
+    for (const name of names) {
+      expect(validateTemplate(join(root, name))).toBeNull();
+    }
+    expect(AGENT_ROLE_LABELS).toEqual({
+      [AgentRole.Queen]: "Queen",
+      [AgentRole.Scout]: "Scout",
+      [AgentRole.Worker]: "Worker",
+      [AgentRole.Reviewer]: "Reviewer",
+      [AgentRole.Guard]: "Guard",
+      [AgentRole.Merger]: "Merger",
+    });
+  });
+
+  it("keeps the Queen tool prompt focused on executable tools", () => {
     const toolsPrompt = readFileSync(
-      join(process.cwd(), "prompts", "templates", "main", "tools.md"),
+      join(process.cwd(), "prompts", "templates", "queen", "tools.md"),
       "utf-8",
     );
 

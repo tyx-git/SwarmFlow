@@ -27,6 +27,12 @@ export enum AgentRole {
   Merger = "merger",
 }
 
+export const AGENT_ROLE_IDS: readonly AgentRole[] = Object.values(AgentRole) as AgentRole[];
+
+export function isAgentRoleId(value: string): value is AgentRole {
+  return AGENT_ROLE_IDS.includes(value as AgentRole);
+}
+
 /** 每个角色的人类可读标签。*/
 export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   [AgentRole.Queen]: "Queen",
@@ -36,6 +42,11 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   [AgentRole.Guard]: "Guard",
   [AgentRole.Merger]: "Merger",
 };
+
+/** 将角色 ID转换为界面显示名称；自定义模板保持原名。 */
+export function getAgentRoleLabel(role: string): string {
+  return AGENT_ROLE_LABELS[role as AgentRole] ?? role;
+}
 
 // ------------------------------------------------------------------
 // Swarm 拓扑

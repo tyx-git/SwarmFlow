@@ -1,6 +1,6 @@
 type: agent
-name: main
-description: "Primary agent — handles coding, review, debugging, exploration, and orchestration."
+name: queen
+description: "Primary coordinator — analyzes requests, plans work, delegates tasks, and accepts the final result."
 system_prompt_file: system_prompt.md
 tool_tier: all
 tools_prompt_file: tools.md

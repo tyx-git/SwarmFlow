@@ -2,7 +2,7 @@
  * 通信和编排工具。
  *
  * 以上下文为中心的运行时的工具定义。
- * 详细使用指导在 prompts/templates/main/system_prompt.md 中。
+ * 详细使用指导在 prompts/templates/queen/system_prompt.md 中。
  * 工具执行器在运行时由 Session 创建。
  */
 
@@ -12,7 +12,7 @@ export const SPAWN_TOOL: ToolDef = {
   name: "spawn",
   description:
     "Spawn a single sub-agent with inline parameters. " +
-    "Check pre-defined templates (e.g. 'explorer', 'reviewer') before creating custom ones. " +
+    "Check pre-defined templates (e.g. 'scout', 'worker', 'reviewer', 'guard', 'merger') before creating custom ones. " +
     "See system prompt for available templates and their capabilities.",
   parameters: {
     type: "object",
@@ -23,7 +23,7 @@ export const SPAWN_TOOL: ToolDef = {
       },
       template: {
         type: "string",
-        description: "Pre-defined template name, e.g. 'explorer', 'reviewer'.",
+        description: "Pre-defined template name: 'scout', 'worker', 'reviewer', 'guard', or 'merger'.",
       },
       template_path: {
         type: "string",

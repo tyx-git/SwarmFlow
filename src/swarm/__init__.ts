@@ -15,6 +15,9 @@ export {
   MessageType,
   RecoveryStrategy,
   AGENT_ROLE_LABELS,
+  AGENT_ROLE_IDS,
+  getAgentRoleLabel,
+  isAgentRoleId,
 } from "./types.js";
 export type {
   SwarmMessage,

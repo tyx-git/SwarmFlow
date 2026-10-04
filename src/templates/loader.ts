@@ -6,7 +6,7 @@
  * 模板文件夹布局：
  *
  *   prompts/templates/
- *   +-- main/
+ *   +-- queen/
  *   |   +-- agent.yaml          # 必需
  *   |   +-- system_prompt.md    # 由 system_prompt_file 引用
  *   |   +-- tools.md            # 由 tools_prompt_file 引用

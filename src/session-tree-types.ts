@@ -122,7 +122,7 @@ export function migrateMessageEnvelope(raw: Record<string, unknown>): MessageEnv
   const from = (raw.from as string) ?? "system";
   let type: MessageType = "system_notice";
   if (from === "user") type = "user_input";
-  else if (from === "main") type = "user_input";
+  else if (from === "queen") type = "user_input";
   else if (from === "system") type = "system_notice";
   else type = "peer_message"; // agent 名称
   return {

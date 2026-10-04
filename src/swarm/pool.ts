@@ -8,7 +8,7 @@
 
 import { Agent } from "../agents/agent.js";
 import type { AgentRole, SwarmAgentHandle } from "./types.js";
-import { AgentLifecycle } from "./types.js";
+import { AgentLifecycle, AgentRole as AgentRoleValue } from "./types.js";
 
 /** AgentPool 的配置。 */
 export interface AgentPoolConfig {
@@ -25,12 +25,12 @@ export const DEFAULT_POOL_CONFIG: AgentPoolConfig = {
   maxConcurrency: 5,
   maxTokenBudget: 2_000_000,
   roleTemplates: {
-    queen: "main",
-    scout: "explorer",
-    worker: "worker",
-    reviewer: "reviewer",
-    guard: "reviewer",
-    merger: "explorer",
+    [AgentRoleValue.Queen]: AgentRoleValue.Queen,
+    [AgentRoleValue.Scout]: AgentRoleValue.Scout,
+    [AgentRoleValue.Worker]: AgentRoleValue.Worker,
+    [AgentRoleValue.Reviewer]: AgentRoleValue.Reviewer,
+    [AgentRoleValue.Guard]: AgentRoleValue.Guard,
+    [AgentRoleValue.Merger]: AgentRoleValue.Merger,
   },
 };
 

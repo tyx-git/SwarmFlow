@@ -240,14 +240,7 @@ export class SwarmCoordinator {
    * 将角色映射到默认模板名称。
    */
   private _roleToTemplate(role: AgentRole): string {
-    switch (role) {
-      case AgentRole.Queen: return "main";
-      case AgentRole.Scout: return "explorer";
-      case AgentRole.Worker: return "worker";
-      case AgentRole.Reviewer: return "reviewer";
-      case AgentRole.Guard: return "reviewer";
-      case AgentRole.Merger: return "explorer";
-    }
+    return role;
   }
 
   /**

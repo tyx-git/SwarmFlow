@@ -8,7 +8,7 @@
  */
 
 import type { SwarmSnapshot, SwarmMetrics, TaskResult, SwarmMessage, SwarmAgentHandle, TaskDAG } from "./types.js";
-import { AgentLifecycle, MessageType } from "./types.js";
+import { AgentLifecycle, getAgentRoleLabel, MessageType } from "./types.js";
 
 /** Swarm 时间线中的单个事件。 */
 export interface TimelineEvent {
@@ -335,7 +335,7 @@ export function formatSwarmSnapshot(snapshot: SwarmSnapshot): string {
       : agent.lifecycle === AgentLifecycle.Cancelled ? "🚫"
       : "⏳";
 
-    parts.push(`  ${icon} ${agent.id} (${agent.role}) — ${agent.lifecycle}`);
+    parts.push(`  ${icon} ${agent.id} (${getAgentRoleLabel(agent.role)}) — ${agent.lifecycle}`);
     if (agent.error) parts.push(`       Error: ${agent.error}`);
   }
 

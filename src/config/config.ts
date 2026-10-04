@@ -18,6 +18,7 @@ import {
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
 import type { AgentModelEntry, LocalModelEntry, LocalProviderConfig } from "../config/persistence.js";
+import type { AgentRole } from "../swarm/types.js";
 import {
   type SealedSchema,
   type ThinkingEncryption,
@@ -553,7 +554,7 @@ export class Config {
   private _rawModels: Record<string, Record<string, unknown>> = {};
   private _models: Map<string, ModelConfig> = new Map();
   private _mcpServers: MCPServerConfig[];
-  private _agentModels: Record<string, AgentModelEntry> = {};
+  private _agentModels: Partial<Record<AgentRole, AgentModelEntry>> = {};
   private _subAgentInheritMcp: boolean;
   private _subAgentInheritHooks: boolean;
 
@@ -563,7 +564,7 @@ export class Config {
     providerModels?: Record<string, LocalModelEntry[]>;
     localProviders?: Record<string, LocalProviderConfig>;
     mcpServers?: MCPServerConfig[];
-    agentModels?: Record<string, AgentModelEntry>;
+    agentModels?: Partial<Record<AgentRole, AgentModelEntry>>;
     subAgentInheritMcp?: boolean;
     subAgentInheritHooks?: boolean;
   }) {
@@ -904,7 +905,7 @@ export class Config {
 
   // -- 代理模型固定配置 --
 
-  get agentModels(): Record<string, AgentModelEntry> {
+  get agentModels(): Partial<Record<AgentRole, AgentModelEntry>> {
     return this._agentModels;
   }
 }

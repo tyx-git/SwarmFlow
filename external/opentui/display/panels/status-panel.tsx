@@ -6,6 +6,7 @@ import { StyledText, RGBA, createTextAttributes, type TextChunk } from "@opentui
 import type { Task } from "../../../../src/lib/task-store.js";
 import type { ChildSessionSnapshot } from "../../../../src/session-tree-types.js";
 import type { ConversationPalette } from "../../components/conversation-types.js";
+import { getAgentRoleLabel } from "../../../../src/swarm/types.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { formatCompactTokensShort } from "../utils/format.js";
 import { getCommonColors } from "../theme/color-config.js";
@@ -136,6 +137,7 @@ function AgentRow({
   const descColor = isActive || isWaitingForAsk ? colors.dim : colors.textFaint;
   const shimmer = useShimmer("● ", RGBA.fromHex(statusColor), isActive);
   const statsLine = `└ ${agent.lifetimeToolCallCount} tools, ${formatCompactTokensShort(agent.lastTotalTokens)} tokens`;
+  const roleLabel = getAgentRoleLabel(agent.template);
 
   return (
     <SelectableRow
@@ -150,7 +152,7 @@ function AgentRow({
           ) : (
             <text fg={statusColor} content={`${isWaitingForAsk ? "◐" : "●"} `} flexShrink={0} />
           )}
-          <text fg={nameColor} content={agent.id} flexShrink={1} truncate />
+          <text fg={nameColor} content={`${roleLabel} · ${agent.id}`} flexShrink={1} truncate />
           <box flexGrow={1} />
         </box>
         <box flexDirection="row" width="100%" paddingLeft={2}>

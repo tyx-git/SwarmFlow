@@ -16,6 +16,7 @@ import type { MCPClientManager } from "../clients/mcp-client.js";
 import type { AgentModelEntry } from "../config/persistence.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
+import { isAgentRoleId } from "../swarm/types.js";
 
 /** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
 const COMM_TOOL_NAMES = new Set([
@@ -60,17 +61,8 @@ export class SubAgentFactory {
    */
   createFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
     const templates = this.deps.getAgentTemplates();
-    // 优先精确匹配，再大小写不敏感回退
-    let templateAgent = templates[templateName];
-    if (!templateAgent) {
-      const lower = templateName.toLowerCase();
-      for (const [key, agent] of Object.entries(templates)) {
-        if (key.toLowerCase() === lower) {
-          templateAgent = agent;
-          break;
-        }
-      }
-    }
+    // 预定义模板名称就是稳定的机器 ID，大小写变体不再视为同一模板。
+    const templateAgent = templates[templateName];
     if (!templateAgent) {
       const available = Object.keys(templates).sort();
       throw new Error(
@@ -191,12 +183,14 @@ export class SubAgentFactory {
 
   /**
    * 解析预定义子 Agent 模板的模型。
-   * 优先级：agent_models pin > /agents 默认模型 > 父模型。
+   * 优先级：agent_models[角色 ID] > /agents 默认模型 > 父模型。
    */
   private _resolveSubAgentModel(templateName: string): ResolvedSubAgentModel {
-    // 优先级 1：agent_models[templateName]
+    // 优先级 1：agent_models[角色 ID]
     try {
-      const pinnedEntry = this.deps.getConfig().agentModels[templateName];
+      const pinnedEntry = isAgentRoleId(templateName)
+        ? this.deps.getConfig().agentModels[templateName]
+        : undefined;
       if (pinnedEntry) {
         return this.deps.resolvePinnedModel(pinnedEntry);
       }
