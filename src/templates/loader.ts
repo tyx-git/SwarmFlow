@@ -49,7 +49,7 @@ const MIN_TEMPLATE_MAX_TOOL_ROUNDS = 100;
  * 工具包名称和单独工具名称可以自由混合。
  */
 export const TOOL_PACKS: Record<string, string[]> = {
-  read: ["read_file", "list_dir", "glob", "grep"],
+  read: ["read_file", "list_dir", "glob", "grep", "find_symbol", "jq"],
   edit: ["write_file", "edit_file"],
   shell: ["bash", "bash_background", "bash_output", "kill_shell"],
   util: ["time", "web_search", "web_fetch"],
@@ -461,7 +461,7 @@ export function resolvePromptsDir(templatesRoot: string): string | undefined {
  * - 缺失/null → EXECUTOR_DEFAULT_TOOLS（用于自定义模板）
  *
  * 工具包名称和单独工具名称可以自由混合：
- *   tools: [read, bash, time]   → read_file, list_dir, glob, grep, bash, time
+ *   tools: [read, bash, time]   → read_file, list_dir, glob, grep, find_symbol, jq, bash, time
  */
 /**
  * 将工具规格数组（工具包名称和/或单独工具名称）

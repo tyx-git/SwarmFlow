@@ -43,7 +43,6 @@ function PresentationPanelInner(
     selectedChildId,
     showLogoInScroll,
     branding,
-    onEntryClick,
     onAgentClick,
   }: PresentationPanelProps,
 ): React.ReactNode {
@@ -73,7 +72,6 @@ function PresentationPanelInner(
           markdownMode={markdownMode}
           diffDisplayMode={diffDisplayMode}
           markdownStyle={markdownStyle}
-          onEntryClick={onEntryClick}
           onAgentClick={onAgentClick}
         />
       ))}

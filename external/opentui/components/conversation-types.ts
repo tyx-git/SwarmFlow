@@ -20,7 +20,6 @@ export interface PresentationEntryItemProps {
   markdownMode: "rendered" | "raw";
   diffDisplayMode: "compact" | "full";
   markdownStyle: SyntaxStyle;
-  onEntryClick?: (entry: PresentationEntry) => void;
   onAgentClick?: (agentId: string) => void;
 }
 
@@ -38,6 +37,5 @@ export interface PresentationPanelProps {
   selectedChildId: string | null;
   showLogoInScroll: boolean;
   branding: DisplayThemeBrandingTokens;
-  onEntryClick?: (entry: PresentationEntry) => void;
   onAgentClick?: (agentId: string) => void;
 }

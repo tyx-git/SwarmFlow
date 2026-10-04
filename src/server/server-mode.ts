@@ -55,7 +55,30 @@ function identifyPrimaryAgent(agents: Record<string, Agent>, name = "main"): Age
   if (agent) return agent;
   const names = Object.keys(agents).sort();
   if (names.length > 0) return agents[names[0]!];
-  throw new Error("No agent templates found");
+  // 没有用户模型时仍启动服务，让 GUI 可以通过 /provider 和 /model 完成配置。
+  return new Agent({
+    name: "main",
+    modelConfig: {
+      name: "__pending__",
+      provider: "__pending__",
+      model: "",
+      apiKey: "",
+      baseUrl: "https://placeholder.invalid",
+      temperature: 0.7,
+      maxTokens: 8192,
+      contextLength: 128000,
+      supportsMultimodal: false,
+      supportsWebSearch: false,
+      thinkingBudget: 0,
+      transportProtocol: "chat",
+      thinkingEncryption: "none",
+      sealedSchema: null,
+      extra: {},
+    },
+    role: "You are a helpful assistant.",
+    tools: [],
+    description: "Default (configure a provider and model to start)",
+  });
 }
 
 /**
@@ -89,7 +112,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   let settings = mergeSettings(globalSettings, localSettings);
   settings = mergeSettings(settings, parseSettingsOverrides(opts.configOverrides ?? []));
 
-  const { providerEnvVars, localProviders, mcpServers } = settingsToConfigInputs(settings);
+  const { providerEnvVars, providerModels, localProviders, mcpServers } = settingsToConfigInputs(settings);
   const hasProviders =
     Object.keys(providerEnvVars).length > 0
     || Object.keys(localProviders).length > 0
@@ -124,6 +147,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
 
   const config = new Config({
     providerEnvVars,
+    providerModels,
     localProviders,
     mcpServers,
     agentModels: settings.agent_models,

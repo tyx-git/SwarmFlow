@@ -3,25 +3,20 @@ import { describe, expect, it } from "vitest";
 import { PROVIDER_PRESETS } from "../src/providers/presets.js";
 import { MANAGED_PROVIDER_CREDENTIAL_SPECS } from "../src/config/managed-provider-credentials.js";
 
-/**
- * Phase 2 characterization — locks the provider-side structures NOT already
- * covered by the Phase 0 model snapshot (which covers capabilities, three-axis,
- * base urls, and describeModel labels). Here: the full PROVIDER_PRESETS shape
- * and the managed-credential specs. Must stay byte-identical when these are
- * rederived from PROVIDER_SPECS.
- */
-describe("provider registry characterization (Phase 2 baseline)", () => {
-  it("freezes PROVIDER_PRESETS structure", () => {
-    expect(PROVIDER_PRESETS).toMatchSnapshot();
+describe("provider metadata", () => {
+  it("contains connection metadata but no packaged model catalog", () => {
+    expect(PROVIDER_PRESETS.length).toBeGreaterThan(0);
+    for (const preset of PROVIDER_PRESETS) {
+      expect(preset.id).toBeTruthy();
+      expect(preset.name).toBeTruthy();
+      expect(Object.prototype.hasOwnProperty.call(preset, "models")).toBe(false);
+    }
   });
 
-  it("freezes managed-credential specs (order-independent by providerId)", () => {
-    // Order is functionally irrelevant (all access is by-id lookup); the
-    // meaningful invariant is same providers → same env vars. Snapshot the
-    // by-id object so alphabetical key serialization is order-stable.
-    const byId = Object.fromEntries(
-      MANAGED_PROVIDER_CREDENTIAL_SPECS.map((s) => [s.providerId, s]),
-    );
-    expect(byId).toMatchSnapshot();
+  it("keeps managed credential slots provider-specific", () => {
+    const ids = new Set(MANAGED_PROVIDER_CREDENTIAL_SPECS.map((spec) => spec.providerId));
+    expect(ids.has("glm")).toBe(true);
+    expect(ids.has("glm-code")).toBe(true);
+    expect(ids.has("qwen-us")).toBe(true);
   });
 });

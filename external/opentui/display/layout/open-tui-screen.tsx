@@ -15,7 +15,6 @@ import { VERSION } from "../../../../src/version.js";
 import { GlowText } from "../glow-text.js";
 
 const ATTRS_BOLD = createTextAttributes({ bold: true });
-import { DetailToolTab } from "../../components/entry/detail-tool-tab.js";
 import { DetailShellTab } from "../../components/entry/detail-shell-tab.js";
 import { InputArea } from "../../input/input-area.js";
 import { ScrollViewport } from "../primitives/scroll-viewport.js";
@@ -75,7 +74,6 @@ export interface OpenTuiScreenProps {
   hasQueuedUserInput?: boolean;
   /** Temporary network retry/waiting label shown in the activity row. */
   networkStatus?: string | null;
-  onEntryClick: (entry: PresentationEntry) => void;
   onAgentClick?: (agentId: string) => void;
   pendingAsk: PendingAskUi | null;
   askError: string | null;
@@ -187,7 +185,6 @@ export function OpenTuiScreen({
   selectedChildId,
   hasQueuedUserInput = false,
   networkStatus = null,
-  onEntryClick,
   onAgentClick,
   pendingAsk,
   askError,
@@ -262,13 +259,7 @@ export function OpenTuiScreen({
   const conversationContentWidth = Math.max(20, conversationColumnWidth - 6);
   const pickerMaxVisible = computePickerMaxVisible(terminalHeight, theme.layout);
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const isDetailTab = activeTab?.kind === "detail-tool" || activeTab?.kind === "detail-shell";
-  // Detail entry lookup: live entries → frozenEntry fallback
-  const detailEntry = activeTab?.kind === "detail-tool"
-    ? (presentationEntries.find((entry) => activeTabId === `detail:${entry.id}`)
-       ?? activeTab?.frozenEntry
-       ?? null) as typeof presentationEntries[number] | null
-    : null;
+  const isDetailTab = activeTab?.kind === "detail-shell";
 
   // Sidebar visibility: hidden in child page, respects mode + terminal width
   const isChildPage = selectedChildId !== null;
@@ -519,7 +510,6 @@ export function OpenTuiScreen({
                 selectedChildId={selectedChildId}
                 showLogoInScroll={showLogoInScroll}
                 branding={theme.branding}
-                onEntryClick={onEntryClick}
                 onAgentClick={onAgentClick}
               />
               {/* Non-command overlays render inside the scroll area so they
@@ -531,14 +521,6 @@ export function OpenTuiScreen({
           {/* Detail tabs — own scrollbox. Conditional render is fine here:
               detail views don't need cross-switch state (they always show the
               same single entry; nothing to "remember"). */}
-          {detailEntry && activeTab?.kind === "detail-tool" ? (
-            <DetailToolTab
-              entry={detailEntry}
-              colors={theme.colors}
-              contentWidth={Math.max(20, conversationContentWidth - effectiveSidebarWidth)}
-              scrollRef={detailScrollRef}
-            />
-          ) : null}
           {activeTab?.kind === "detail-shell" ? (
             <DetailShellTab
               shellId={activeTab.shellId ?? ""}

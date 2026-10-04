@@ -14,9 +14,9 @@
  * `LineDescriptor[]` (line numbers, signs, ellipsis, raw payload text — NO
  * syntax highlighting), and an expensive `materializeDescriptor` pass builds
  * the highlighted `StyledText` only for the lines actually displayed. The
- * detail tab drives a scroll-window so a 400-line streaming write only
- * highlights + reconciles the ~viewport rows instead of the whole file on
- * every streamed delta. Inline previews materialize only the trailing window.
+ * virtualized renderer drives a scroll-window so a 400-line streaming write
+ * only highlights + reconciles the ~viewport rows instead of the whole file
+ * on every streamed delta. Inline previews materialize only the visible window.
  */
 
 import React, { useMemo } from "react";
@@ -26,6 +26,7 @@ import { highlightToChunks } from "../../forked/patch-opentui-markdown.js";
 import type { FileModifyDisplayData } from "../../../../src/lib/diff-hunk.js";
 import type { ConversationPalette } from "../conversation-types.js";
 import { SelectableRow } from "../../display/primitives/selectable-row.js";
+import { INLINE_EXPANSION_ELLIPSIS, INLINE_EXPANSION_MAX_LINES } from "./inline-expansion.js";
 import {
   DIFF_BRIGHTNESS_ADDITION,
   DIFF_BRIGHTNESS_DELETION,
@@ -390,15 +391,12 @@ interface FileModifyBodyProps {
   colors: ConversationPalette;
   contentWidth: number;
   streaming: boolean;
-  /** Inline mode: render only the trailing N rows (default 25). Ignored when `window` is set. */
+  /** Inline preview row count before the user expands this result. */
   maxVisibleLines?: number;
-  /**
-   * Detail (virtualized) mode: render only rows in `[start, end)`, padded with
-   * spacer boxes above/below so the scrollbar geometry stays correct. The
-   * caller (detail tab) computes this window from the live scroll offset.
-   */
+  /** Virtualized mode: render only rows in `[start, end)` with spacer boxes. */
   window?: { start: number; end: number };
-  onOpenDetail?: () => void;
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 function FileModifyBodyInner({
@@ -407,19 +405,24 @@ function FileModifyBodyInner({
   contentWidth,
   maxVisibleLines = DEFAULT_MAX_VISIBLE,
   window,
-  onOpenDetail,
+  expanded = false,
+  onToggleExpand,
 }: FileModifyBodyProps): React.ReactNode {
   const descriptors = useMemo(() => buildLineDescriptors(data, colors), [data, colors]);
   const dimFg = useMemo(() => RGBA.fromHex(colors.dim), [colors.dim]);
   const total = descriptors.length;
 
   const virtualized = window != null;
+  const inlineLimit = Math.min(INLINE_EXPANSION_MAX_LINES, Math.max(1, maxVisibleLines));
+  const visibleCount = Math.min(total, expanded ? INLINE_EXPANSION_MAX_LINES : inlineLimit);
   const start = virtualized
     ? Math.max(0, Math.min(window.start, total))
-    : Math.max(0, total - maxVisibleLines);
+    : expanded || maxVisibleLines === Number.POSITIVE_INFINITY
+      ? 0
+      : Math.max(0, total - visibleCount);
   const end = virtualized
     ? Math.max(start, Math.min(window.end, total))
-    : total;
+    : Math.min(total, start + visibleCount);
 
   const visible = useMemo(
     () => {
@@ -456,17 +459,27 @@ function FileModifyBodyInner({
   }
 
   const overflowCount = start;
+  const trailingOverflow = end < total;
   return (
     <box flexDirection="column" gap={0}>
       {overflowCount > 0 ? (
         <SelectableRow
           hoverBackgroundColor={colors.border}
-          onPress={onOpenDetail}
+          onPress={onToggleExpand}
         >
-          <text fg={colors.dim} content={`...(${overflowCount} earlier lines${onOpenDetail ? ", CLICK to open" : ""})`} />
+          <text fg={colors.dim} content={`... (${overflowCount} earlier lines${onToggleExpand ? ", click to expand" : ""})`} />
         </SelectableRow>
       ) : null}
       {rows}
+      {trailingOverflow ? (
+        expanded ? (
+          <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
+        ) : (
+          <SelectableRow hoverBackgroundColor={colors.border} onPress={onToggleExpand}>
+            <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
+          </SelectableRow>
+        )
+      ) : null}
     </box>
   );
 }
@@ -479,7 +492,8 @@ export const FileModifyBody = React.memo(
     && prev.contentWidth === next.contentWidth
     && prev.streaming === next.streaming
     && prev.maxVisibleLines === next.maxVisibleLines
-    && prev.onOpenDetail === next.onOpenDetail
+    && prev.expanded === next.expanded
+    && prev.onToggleExpand === next.onToggleExpand
     && prev.window?.start === next.window?.start
     && prev.window?.end === next.window?.end,
 );

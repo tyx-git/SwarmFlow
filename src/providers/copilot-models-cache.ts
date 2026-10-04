@@ -187,6 +187,19 @@ export async function refreshCopilotModelsCache(): Promise<CopilotModelsCacheDat
   return memoryInflight;
 }
 
+/** 已缓存且没有被当前 Copilot 套餐禁用的模型 ID。 */
+export function getCachedCopilotModelIds(): string[] | null {
+  const cache = getCached();
+  if (!cache) {
+    void refreshCopilotModelsCache().catch(() => {});
+    return null;
+  }
+  if (isCacheStale(cache)) void refreshCopilotModelsCache().catch(() => {});
+  return cache.models
+    .filter((model) => model.policy_state !== "disabled")
+    .map((model) => model.id);
+}
+
 /**
  * 基于缓存的 /models 响应，检查给定 Copilot 模型 ID 是否应对当前用户可见。
  *

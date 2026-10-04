@@ -1,10 +1,8 @@
 ﻿import {
   findProviderPreset,
-  findProviderPresetModel,
 } from "../providers/presets.js";
 import { OPENROUTER_VENDOR_BRAND } from "../models/registry.js";
 import {
-  EFFECTIVE_MODEL_TABLES,
   EFFECTIVE_PROVIDER_SPECS,
 } from "../providers/registry-effective.js";
 import { loadGlobalSettings } from "../config/persistence.js";
@@ -48,16 +46,6 @@ const PROVIDER_LABEL_OVERRIDES: Record<string, string> = Object.fromEntries(
 
 const OPENROUTER_VENDOR_LABELS: Record<string, string> = OPENROUTER_VENDOR_BRAND;
 
-/**
- * 规范化 id → displayName，从模型注册表派生（单一真实来源）。
- * 替换旧的手动维护的 MODEL_LABEL_OVERRIDES 和
- * 对顺序敏感的 SLUG_FRAGMENTS 正则回退：每个注册的模型
- *（包括别名拼写）现在通过精确规范查找解析，因此正则
- * 表已消失。未注册的 id 沿用 humanizeUnknownModel 的
- * 单词启发式，与以前相同。
- */
-const MODEL_LABEL_OVERRIDES: Record<string, string> = EFFECTIVE_MODEL_TABLES.labelOverrides;
-
 export interface ModelPresentation {
   brandKey: string;
   brandLabel: string;
@@ -70,7 +58,6 @@ export interface ModelPresentation {
   scopedDetailedLabel: string;
   compactScopedLabel: string;
   compactScopedDetailedLabel: string;
-  note?: string;
   groupId?: string;
   groupLabel?: string;
   vendorId?: string;
@@ -84,19 +71,8 @@ export interface ModelDescriptor extends ModelPresentation {
   modelId: string;
 }
 
-function canonicalizeModelKey(model: string): string {
-  return normalizeModelId(model)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 function humanizeUnknownModel(model: string): string {
   const normalized = normalizeModelId(model).trim();
-  const canonical = canonicalizeModelKey(normalized);
-  const override = MODEL_LABEL_OVERRIDES[canonical];
-  if (override) return override;
 
   const words = normalized
     .replace(/^runtime-/i, "")
@@ -186,27 +162,20 @@ export function describeModel(params: {
   const configName = params.configName?.trim() || undefined;
 
   const preset = findProviderPreset(providerId);
-  const presetModel = findProviderPresetModel(providerId, selectionKey || modelId);
-  const note = presetModel?.optionNote;
-  let modelLabel = presetModel?.label
-    ? presetModel.label.trim()
-    : humanizeUnknownModel(modelId || selectionKey);
-  if (note && modelLabel.endsWith(`(${note})`)) {
-    modelLabel = modelLabel.slice(0, modelLabel.length - note.length - 2).trim();
-  }
+  const modelLabel = humanizeUnknownModel(modelId || selectionKey);
   const compactModelLabel = compactModelLabelForDisplay(providerId, modelLabel);
 
-  const modelDetailedLabel = note ? `${modelLabel} (${note})` : modelLabel;
-  const compactModelDetailedLabel = note ? `${compactModelLabel} (${note})` : compactModelLabel;
+  const modelDetailedLabel = modelLabel;
+  const compactModelDetailedLabel = compactModelLabel;
   const brandKey = resolveBrandKey(providerId);
   const brandLabel = resolveBrandLabel(providerId);
   const providerLabel = params.providerLabelOverride?.trim() || resolveProviderLabel(providerId);
   const scopedLabel = providerLabel && modelLabel ? `${providerLabel}/${modelLabel}` : modelLabel || providerLabel;
-  const scopedDetailedLabel = note ? `${scopedLabel} (${note})` : scopedLabel;
+  const scopedDetailedLabel = scopedLabel;
   const compactScopedLabel = providerLabel && compactModelLabel
     ? `${providerLabel}/${compactModelLabel}`
     : compactModelLabel || providerLabel;
-  const compactScopedDetailedLabel = note ? `${compactScopedLabel} (${note})` : compactScopedLabel;
+  const compactScopedDetailedLabel = compactScopedLabel;
   const vendor = providerId === "openrouter"
     ? resolveVendorLabel(selectionKey, modelId)
     : {};
@@ -227,7 +196,6 @@ export function describeModel(params: {
     scopedDetailedLabel,
     compactScopedLabel,
     compactScopedDetailedLabel,
-    note,
     groupId: preset?.group,
     groupLabel: preset?.groupLabel,
     vendorId: vendor.vendorId,
@@ -277,4 +245,3 @@ function customProviderLabel(homeDir: string | undefined, providerId: string): s
     return undefined;
   }
 }
-

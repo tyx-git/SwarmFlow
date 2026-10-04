@@ -137,7 +137,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   settings = mergeSettings(settings, parseSettingsOverrides(opts?.configOverrides ?? []));
 
   // Check if any providers are configured (non-blocking; empty Config is valid on first run)
-  const { providerEnvVars, localProviders, mcpServers } = settingsToConfigInputs(settings);
+  const { providerEnvVars, providerModels, localProviders, mcpServers } = settingsToConfigInputs(settings);
 
   // ── Build Config ──
   // Materialize the protected workflow skills before resolving roots so a
@@ -150,6 +150,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   });
   const config = new Config({
     providerEnvVars,
+    providerModels,
     localProviders,
     mcpServers,
     agentModels: settings.agent_models,

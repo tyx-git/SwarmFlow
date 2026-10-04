@@ -33,6 +33,7 @@ GUI_Plan.md
 crash-diag.log
 tmp_repos/
 experiments/
+external/codegraph/
 gui_legacy/
 
 # OpenTUI fork: never-compiled zig vendor and benchmark assets

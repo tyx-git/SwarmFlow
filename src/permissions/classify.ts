@@ -49,7 +49,7 @@ function isPowerShellKind(kind?: ShellKind): boolean {
 
 /** 只读工具集合 */
 const READ_TOOLS = new Set([
-  "read_file", "list_dir", "glob", "grep",
+  "read_file", "list_dir", "glob", "grep", "find_symbol", "jq",
   "web_fetch", "web_search", "$web_search",
   "ask", "check_status", "await_event", "send",
   "bash_output", "skill", "reload", "time",

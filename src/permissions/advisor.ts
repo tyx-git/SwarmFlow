@@ -29,7 +29,7 @@ import { effectiveMode } from "./types.js";
 
 // 需要检查外部访问的 `path` 参数的文件工具
 const FILE_TOOLS_WITH_PATH = new Set([
-  "read_file", "write_file", "edit_file", "list_dir", "glob", "grep",
+  "read_file", "write_file", "edit_file", "list_dir", "glob", "grep", "find_symbol", "jq",
 ]);
 
 // ------------------------------------------------------------------

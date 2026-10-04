@@ -30,7 +30,6 @@ import {
 import { loadDotenv } from "./lifecycle/dotenv.js";
 import { applySystemProxyToEnv } from "./lib/system-proxy.js";
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { startBackgroundRegistryRefresh } from "./providers/registry-fetch.js";
 import { VERSION } from "./version.js";
 import { hasAnyManagedCredential } from "./config/managed-provider-credentials.js";
 import { findSessionById, findSessionByName, listSessionsForProject, formatSize } from "./session-resume.js";
@@ -871,9 +870,6 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
   if (globalSettings.diagnostics === true && !process.env.OPENTUI_DIAG) {
     process.env.OPENTUI_DIAG = "1";
   }
-
-  // 最佳生效非阻塞：为下次启动预热远程模型注册表。
-  startBackgroundRegistryRefresh();
 
   await (deps.launchTui ?? launchTuiFromDefaultEntry)();
 }

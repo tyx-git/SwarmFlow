@@ -15,7 +15,7 @@ import { TurnSummaryEntry } from "./turn-summary-entry.js";
 function PresentationEntryInner(
   props: PresentationEntryItemProps,
 ): React.ReactNode {
-  const { entry, colors, interruptionText, theme, contentWidth, markdownMode, diffDisplayMode, markdownStyle, onEntryClick, onAgentClick } = props;
+  const { entry, colors, interruptionText, theme, contentWidth, markdownMode, diffDisplayMode, markdownStyle, onAgentClick } = props;
 
   const renderers = {
     user: () => <UserEntry entry={entry} colors={colors} />,
@@ -28,7 +28,6 @@ function PresentationEntryInner(
         theme={theme}
         contentWidth={contentWidth}
         diffDisplayMode={diffDisplayMode}
-        onEntryClick={onEntryClick}
         onAgentClick={onAgentClick}
       />
     ),

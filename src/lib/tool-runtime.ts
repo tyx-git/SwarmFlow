@@ -239,6 +239,8 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     list_dir: scopedBuiltin("list_dir"),
     glob: scopedBuiltin("glob"),
     grep: scopedBuiltin("grep"),
+    find_symbol: scopedBuiltin("find_symbol"),
+    jq: scopedBuiltin("jq"),
     edit_file: scopedBuiltin("edit_file"),
     write_file: writeFileWithReload,
     web_search: (args, rtCtx) => executeTool("web_search", args, { signal: rtCtx?.signal }),

@@ -166,6 +166,8 @@ export {
  * executeTool 是工具的默认执行器。
  */
 export { BASIC_TOOLS, BASIC_TOOLS_MAP, executeTool } from "./tools/basic.js";
+export { FIND_SYMBOL, toolFindSymbol } from "./tools/symbol-search.js";
+export { JQ, toolJq } from "./tools/json-query.js";
 
 /**
  * Agent 间通信工具：spawn、kill_agent、check_status、await_event、ask。

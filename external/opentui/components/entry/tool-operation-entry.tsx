@@ -16,6 +16,8 @@ import { ClickablePath } from "./clickable-path.js";
 import type { DisplayTheme } from "../../display/theme/index.js";
 import { ErrorMessage } from "../../display/primitives/error-message.js";
 import { CommandText } from "./command-text.js";
+import { SelectableRow } from "../../display/primitives/selectable-row.js";
+import { INLINE_EXPANSION_ELLIPSIS, INLINE_EXPANSION_MAX_LINES } from "./inline-expansion.js";
 
 const TOOL_STREAM_MAX_LINES = 10;
 const PATH_TOOL_NAMES = new Set(["Read", "Edit", "Write", "List"]);
@@ -82,14 +84,15 @@ interface ToolOperationEntryProps {
   theme: DisplayTheme;
   contentWidth: number;
   diffDisplayMode: "compact" | "full";
-  onEntryClick?: (entry: PresentationEntry) => void;
   onAgentClick?: (agentId: string) => void;
 }
 
 function ToolOperationEntryInner(
-  { entry, colors, theme, contentWidth, diffDisplayMode, onEntryClick, onAgentClick }: ToolOperationEntryProps,
+  { entry, colors, theme, contentWidth, diffDisplayMode, onAgentClick }: ToolOperationEntryProps,
 ): React.ReactNode {
   const active = entry.state === "active";
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = () => setExpanded((previous) => !previous);
 
   const toolNameColor = theme.presentation.toolNameColor;
   const toolNameRgba = React.useMemo(() => RGBA.fromHex(toolNameColor), [toolNameColor]);
@@ -210,12 +213,15 @@ function ToolOperationEntryInner(
                 contentWidth={contentWidth - 6}
                 streaming={entry.state === "active"}
                 maxVisibleLines={diffDisplayMode === "full" ? Infinity : undefined}
-                onOpenDetail={onEntryClick ? () => onEntryClick(entry) : undefined}
+                expanded={expanded}
+                onToggleExpand={toggleExpanded}
               />
             ) : showStreamBody ? (
               <box flexDirection="column" gap={0}>
                 {streamSections.map((section) => {
-                  const preview = buildSectionPreview(section.text, TOOL_STREAM_MAX_LINES);
+                  const maxLines = expanded ? INLINE_EXPANSION_MAX_LINES : TOOL_STREAM_MAX_LINES;
+                  const preview = buildSectionPreview(section.text, maxLines);
+                  const hiddenCount = section.text.split("\n").length - preview.text.split("\n").length;
                   return (
                     <box key={section.key} flexDirection="column" width="100%" paddingBottom={1}>
                       <text fg={colors.dim} content={`${section.label}${section.complete ? "" : " (streaming)"}`} />
@@ -227,7 +233,13 @@ function ToolOperationEntryInner(
                         wrapMode="char"
                       />
                       {preview.truncated ? (
-                        <text fg={colors.dim} content="(... more lines, click to open)" />
+                        expanded ? (
+                          <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
+                        ) : (
+                          <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpanded}>
+                            <text fg={colors.dim} content={`... (${hiddenCount} more lines, click to expand)`} />
+                          </SelectableRow>
+                        )
                       ) : null}
                     </box>
                   );
@@ -246,7 +258,9 @@ function ToolOperationEntryInner(
                   contentWidth={contentWidth - 6}
                   language={entry.toolInlineResult!.language}
                   syntaxMode={entry.toolInlineResult!.syntaxMode}
-                  onOpenDetail={onEntryClick ? () => onEntryClick(entry) : undefined}
+                  expanded={expanded}
+                  fullText={entry.toolResultFullText}
+                  onToggleExpand={toggleExpanded}
                 />
               )
             ) : null}

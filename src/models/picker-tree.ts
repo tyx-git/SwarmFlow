@@ -1,6 +1,9 @@
 ﻿import { hasOAuthTokens } from "../auth/openai-oauth.js";
 import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
-import { isModelVisibleForCurrentPlan } from "../providers/copilot-models-cache.js";
+import {
+  getCachedCopilotModelIds,
+  isModelVisibleForCurrentPlan,
+} from "../providers/copilot-models-cache.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
@@ -168,7 +171,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   const includeLocalDiscoverActions = ctx.includeLocalDiscoverActions !== false;
 
   const allEntries = readModelEntries(config);
-  const entries = allEntries.filter((entry) => !entry.isPreset);
+  const entries = allEntries;
   const currentProvider = String(ctx.currentSelection?.provider ?? session.primaryAgent?.modelConfig?.provider ?? "");
   const currentModel = String(ctx.currentSelection?.modelId ?? session.primaryAgent?.modelConfig?.model ?? "");
   const currentConfigName = String(ctx.currentSelection?.configName ?? session.currentModelConfigName ?? "");
@@ -225,6 +228,16 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     addModel(entry.provider, entry.model, entry.model);
   }
 
+  try {
+    if (hasGitHubTokens()) {
+      for (const modelId of getCachedCopilotModelIds() ?? []) {
+        addModel("copilot", modelId, modelId);
+      }
+    }
+  } catch {
+    // 登录状态或模型缓存读取失败时保留用户手动配置的模型。
+  }
+
   const presetById = new Map(PROVIDER_PRESETS.map((preset) => [preset.id, preset] as const));
   const nodes: ModelPickerTreeNode[] = [];
   const processed = new Set<string>();
@@ -259,7 +272,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
           id: `${providerId}:${selectionKey}`,
           value: `${providerId}:${selectionKey}`,
           label: descriptor.modelLabel,
-          note: descriptor.note,
           isCurrent: current,
           credentialState: credential.credentialState,
           credentialHint: credential.credentialHint,
@@ -275,7 +287,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
       .sort((a, b) => {
         const labelCmp = a.label.localeCompare(b.label);
         if (labelCmp !== 0) return labelCmp;
-        return (a.note ?? "").localeCompare(b.note ?? "");
+        return a.value.localeCompare(b.value);
       });
 
     return items;

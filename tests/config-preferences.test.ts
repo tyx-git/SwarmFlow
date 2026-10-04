@@ -8,6 +8,14 @@ describe("Config preference-backed models", () => {
       providerEnvVars: {
         "openai-codex": "_OPENAI_CODEX_OAUTH",
       },
+      providerModels: {
+        "openai-codex": [
+          { id: "gpt-5.2-codex", contextLength: 400_000 },
+          { id: "gpt-5.3-codex", contextLength: 400_000 },
+          { id: "gpt-5.4", contextLength: 1_050_000 },
+          { id: "gpt-5.4-mini", contextLength: 400_000 },
+        ],
+      },
     });
 
     expect(config.modelNames).toContain("openai-codex:gpt-5.2-codex");

@@ -1,7 +1,8 @@
 ﻿/**
  * 内置工具定义和执行器。
  *
- * 包含 13 个工具：read_file、list_dir、glob、grep、edit_file、write_file、
+ * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
+ * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
  * bash、bash_background、bash_output、kill_shell、
  * time、web_search、web_fetch。
  */
@@ -43,6 +44,9 @@ import {
   truncateLine,
 } from "./shared.js";
 import { coercePathString } from "./arg-repair.js";
+import { FIND_SYMBOL, toolFindSymbol, type SymbolKind } from "./symbol-search.js";
+import { JQ, toolJq } from "./json-query.js";
+import { runBundledFd, runBundledRg } from "./native-search.js";
 import {
   type FileModifyDisplayData,
   type MatchInfo,
@@ -733,6 +737,74 @@ const GLOB: ToolDef = {
         type: "integer",
         description: `Maximum results to return (default ${GLOB_DEFAULT_LIMIT}, cap ${GLOB_MAX_LIMIT}).`,
       },
+      max_results: {
+        type: "integer",
+        description: "Alias for limit, matching fd --max-results.",
+      },
+      type: {
+        description: "fd-compatible entry type: file (default), directory, symlink, executable, or empty. May be an array.",
+        oneOf: [
+          { type: "string", enum: ["file", "directory", "dir", "symlink", "executable", "empty"] },
+          { type: "array", items: { type: "string" } },
+        ],
+      },
+      extension: {
+        description: "Filter by one or more file extensions, with or without the leading dot.",
+        oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+      },
+      and: {
+        type: "array",
+        items: { type: "string" },
+        description: "Additional fd patterns that must also match the same entry.",
+      },
+      exclude: {
+        description: "Entry glob(s) to exclude, such as node_modules or *.map.",
+        oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+      },
+      regex: {
+        type: "boolean",
+        description: "Treat pattern as a regular expression instead of a glob pattern (fd --regex).",
+      },
+      fixed_strings: {
+        type: "boolean",
+        description: "Treat pattern as a literal substring (fd -F).",
+      },
+      case_insensitive: {
+        type: "boolean",
+        description: "Force case-insensitive matching; default is smart case.",
+      },
+      full_path: {
+        type: "boolean",
+        description: "Match the pattern against the full relative path instead of only the entry name.",
+      },
+      absolute_path: {
+        type: "boolean",
+        description: "Return absolute paths (the default for compatibility).",
+      },
+      include_hidden: {
+        type: "boolean",
+        description: "Include hidden entries. Default false.",
+      },
+      no_ignore: {
+        type: "boolean",
+        description: "Do not skip standard ignored build/cache directories. Default false.",
+      },
+      follow: {
+        type: "boolean",
+        description: "Traverse symbolic-link directories. Default false.",
+      },
+      max_depth: {
+        type: "integer",
+        description: "Maximum traversal depth, relative to path.",
+      },
+      min_depth: {
+        type: "integer",
+        description: "Only return entries at or below this depth.",
+      },
+      exact_depth: {
+        type: "integer",
+        description: "Only return entries at this depth.",
+      },
     },
     required: ["pattern"],
   },
@@ -771,12 +843,79 @@ const GREP: ToolDef = {
         default: ".",
       },
       glob: {
-        type: "string",
-        description: "Filename glob filter (e.g. \"*.ts\", \"*.{ts,tsx}\").",
+        oneOf: [
+          { type: "string" },
+          { type: "array", items: { type: "string" } },
+        ],
+        description: "Filename glob filter(s), including rg negated globs such as !vendor/**.",
       },
       type: {
-        type: "string",
+        oneOf: [
+          { type: "string" },
+          { type: "array", items: { type: "string" } },
+        ],
         description: "File type filter by extension (e.g. \"js\", \"py\", \"ts\").",
+      },
+      fixed_strings: {
+        type: "boolean",
+        description: "Treat patterns as literal strings rather than regular expressions (-F).",
+      },
+      word_regexp: {
+        type: "boolean",
+        description: "Only match whole words (-w).",
+      },
+      line_regexp: {
+        type: "boolean",
+        description: "Only match complete lines (-x).",
+      },
+      multiline: {
+        type: "boolean",
+        description: "Allow matches to span lines (-U).",
+      },
+      hidden: {
+        type: "boolean",
+        description: "Search hidden files and directories. Default false.",
+      },
+      no_ignore: {
+        type: "boolean",
+        description: "Search ignored files and standard build/cache directories.",
+      },
+      follow: {
+        type: "boolean",
+        description: "Follow symbolic links during directory traversal.",
+      },
+      max_depth: {
+        type: "integer",
+        description: "Maximum directory traversal depth.",
+      },
+      max_count: {
+        type: "integer",
+        description: "Maximum matching lines per file (-m).",
+      },
+      invert_match: {
+        type: "boolean",
+        description: "Return non-matching lines (-v).",
+      },
+      only_matching: {
+        type: "boolean",
+        description: "Return only the matching text (-o; content mode).",
+      },
+      count_matches: {
+        type: "boolean",
+        description: "Count individual matches instead of matching lines (--count-matches).",
+      },
+      include_zero: {
+        type: "boolean",
+        description: "Include files with zero matches in count mode.",
+      },
+      text: {
+        type: "boolean",
+        description: "Search binary files as text (-a).",
+      },
+      sort: {
+        type: "string",
+        enum: ["path", "modified", "none"],
+        description: "Sort matched file paths; default traversal order.",
       },
       output_mode: {
         type: "string",
@@ -911,6 +1050,8 @@ export const BASIC_TOOLS: ToolDef[] = [
   LIST,
   GLOB,
   GREP,
+  FIND_SYMBOL,
+  JQ,
   EDIT,
   WRITE,
   BASH,
@@ -2626,19 +2767,167 @@ function normalizeGlobPattern(pattern: string): string {
   return "**/" + pattern;
 }
 
-/** 使用本地匹配器匹配规范化 glob 模式（相对路径）。 */
-function makeGlobMatcher(pattern: string): (relPath: string) => boolean {
-  const normalized = normalizeGlobPattern(pattern);
-  const regex = globToRegex(normalized);
-  return (relPath) => regex.test(relPath);
+interface GlobOptions {
+  limit: number;
+  native?: boolean;
+  andPatterns?: string[];
+  excludes?: string[];
+  type?: string[];
+  extensions?: string[];
+  regex?: boolean;
+  fixedStrings?: boolean;
+  caseInsensitive?: boolean;
+  fullPath?: boolean;
+  absolutePath?: boolean;
+  includeHidden?: boolean;
+  noIgnore?: boolean;
+  follow?: boolean;
+  maxDepth?: number;
+  minDepth?: number;
+  exactDepth?: number;
+  signal?: AbortSignal;
 }
 
-async function toolGlob(pattern: string, searchPath: string, limit: number): Promise<string> {
+function requiredStringList(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = args[key];
+  if (value == null) return [];
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return value.filter((item): item is string => item.trim().length > 0);
+  }
+  throw new ToolArgValidationError(toolName, key, `'${key}' must be a string or an array of strings.`);
+}
+
+function matchesGlobEntry(
+  pattern: string,
+  relativePath: string,
+  entryName: string,
+  options: GlobOptions,
+): boolean {
+  const candidate = options.fullPath || pattern.includes("/") ? relativePath : entryName;
+  const normalized = options.fullPath || pattern.includes("/") ? normalizeGlobPattern(pattern) : pattern;
+  const caseInsensitive = options.caseInsensitive ?? pattern === pattern.toLocaleLowerCase();
+  let matched: boolean;
+  if (options.fixedStrings) {
+    const haystack = caseInsensitive ? candidate.toLocaleLowerCase() : candidate;
+    const needle = caseInsensitive ? pattern.toLocaleLowerCase() : pattern;
+    matched = haystack.includes(needle);
+  } else if (options.regex) {
+    try {
+      matched = new RegExp(pattern, caseInsensitive ? "i" : undefined).test(candidate);
+    } catch {
+      matched = false;
+    }
+  } else {
+    const regex = globToRegex(caseInsensitive ? normalized.toLocaleLowerCase() : normalized);
+    matched = regex.test(caseInsensitive ? candidate.toLocaleLowerCase() : candidate);
+  }
+  if (!matched) return false;
+  if (options.extensions && options.extensions.length > 0) {
+    const ext = path.extname(entryName).slice(1).toLocaleLowerCase();
+    if (!options.extensions.some((item) => item.replace(/^\./, "").toLocaleLowerCase() === ext)) return false;
+  }
+  return true;
+}
+
+function matchesGlobExclusion(
+  relativePath: string,
+  entryName: string,
+  excludes: readonly string[] | undefined,
+): boolean {
+  if (!excludes || excludes.length === 0) return false;
+  return excludes.some((exclude) => {
+    const pattern = exclude.replace(/^!/, "");
+    const regex = globToRegex(pattern.includes("/") ? pattern : `**/${pattern}`);
+    return regex.test(relativePath) || regex.test(entryName);
+  });
+}
+
+function matchesGlobType(
+  stat: import("node:fs").Stats,
+  types: string[] | undefined,
+  emptyDirectory = false,
+): boolean {
+  if (!types || types.length === 0) return stat.isFile();
+  return types.some((raw) => {
+    const type = raw.toLocaleLowerCase();
+    if (type === "file" || type === "f") return stat.isFile();
+    if (type === "directory" || type === "dir" || type === "d") return stat.isDirectory();
+    if (type === "symlink" || type === "l") return stat.isSymbolicLink();
+    if (type === "empty") return stat.isFile() ? stat.size === 0 : stat.isDirectory() && emptyDirectory;
+    if (type === "executable" || type === "x") return stat.isFile() && (stat.mode & 0o111) !== 0;
+    return false;
+  });
+}
+
+function bundledFdArgs(options: GlobOptions): string[] {
+  const args: string[] = [];
+  if (!options.regex) args.push("--glob");
+  if (options.fixedStrings) args.push("--fixed-strings");
+  if (options.caseInsensitive === true) args.push("--ignore-case");
+  if (options.caseInsensitive === false) args.push("--case-sensitive");
+  if (options.includeHidden) args.push("--hidden");
+  if (options.noIgnore) args.push("--no-ignore");
+  if (options.follow) args.push("--follow");
+  if (options.fullPath) args.push("--full-path");
+  if (options.type && options.type.length > 0) {
+    for (const type of options.type) args.push("--type", type);
+  } else {
+    args.push("--type", "file");
+  }
+  for (const extension of options.extensions ?? []) args.push("--extension", extension.replace(/^\./, ""));
+  for (const extra of options.andPatterns ?? []) args.push("--and", extra);
+  for (const exclude of options.excludes ?? []) args.push("--exclude", exclude);
+  if (options.maxDepth !== undefined) args.push("--max-depth", String(options.maxDepth));
+  if (options.minDepth !== undefined) args.push("--min-depth", String(options.minDepth));
+  if (options.exactDepth !== undefined) args.push("--exact-depth", String(options.exactDepth));
+  return args;
+}
+
+function normalizeNativeFdOutput(
+  content: string,
+  searchPath: string,
+  options: GlobOptions,
+): string {
+  if (!content || content.startsWith("ERROR:")) return content;
+  const lines = content.split(/\r?\n/).filter(Boolean);
+  const filtered = options.noIgnore
+    ? lines
+    : lines.filter((entry) => {
+      const absolute = path.isAbsolute(entry) ? entry : path.resolve(searchPath, entry);
+      const relative = path.relative(searchPath, absolute);
+      const parts = relative.split(/[\\/]+/).filter(Boolean);
+      return !parts.slice(0, -1).some((part) => isExcludedDirName(part));
+    });
+  const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
+  const shown = filtered.slice(0, cap);
+  let result = shown.join("\n");
+  if (filtered.length > cap) {
+    result += `\n\n[Showing ${cap} of ${filtered.length} matches. Pass limit=${Math.min(cap * 4, GLOB_MAX_LIMIT)} or narrow the pattern to see more.]`;
+  }
+  return result || "No files found matching the pattern.";
+}
+
+async function toolGlob(pattern: string, searchPath: string, options: GlobOptions): Promise<string> {
   if (!existsSync(searchPath)) {
     return `ERROR: Path not found: ${searchPath}`;
   }
-  const cap = Math.min(Math.max(1, limit), GLOB_MAX_LIMIT);
-  const match = makeGlobMatcher(pattern);
+  const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
+
+  const native = options.native ? await runBundledFd({
+    pattern,
+    root: searchPath,
+    args: bundledFdArgs(options),
+    absolutePath: options.absolutePath,
+    signal: options.signal,
+  }) : { available: false, content: "" };
+  if (native.available) {
+    return normalizeNativeFdOutput(native.content, searchPath, options);
+  }
 
   const results: Array<{ path: string; mtime: number }> = [];
   let filesScanned = 0;
@@ -2648,7 +2937,7 @@ async function toolGlob(pattern: string, searchPath: string, limit: number): Pro
     // Bounded recursion guard: protects against pathological / circular
     // symlink trees that would otherwise keep recursing on directory loops
     // without ever incrementing filesScanned.
-    if (depth > GLOB_MAX_DEPTH) return;
+    if (depth > Math.min(options.maxDepth ?? GLOB_MAX_DEPTH, GLOB_MAX_DEPTH)) return;
 
     let entries: string[];
     try {
@@ -2662,25 +2951,56 @@ async function toolGlob(pattern: string, searchPath: string, limit: number): Pro
       // Hidden names skip universally (files + dirs). Directory-only
       // exclusions (node_modules, dist, target, — are checked AFTER stat
       // so a regular file with the same name is not silently hidden.
-      if (isHiddenName(name)) continue;
+      if (!options.includeHidden && isHiddenName(name)) continue;
 
       const full = path.join(dir, name);
       const rel = relPrefix ? relPrefix + "/" + name : name;
 
       let stat;
       try {
-        stat = await fs.stat(full);
+        stat = options.follow ? await fs.stat(full) : await fs.lstat(full);
       } catch {
         continue;
       }
 
       if (stat.isDirectory()) {
-        if (isExcludedDirName(name)) continue;
-        await walk(full, depth + 1, rel);
-      } else if (stat.isFile()) {
+        if (!options.noIgnore && isExcludedDirName(name)) continue;
+        const entryDepth = depth + 1;
+        let emptyDirectory = false;
+        if (options.type?.some((item) => item.toLocaleLowerCase() === "empty") === true) {
+          try {
+            emptyDirectory = (await fs.readdir(full)).length === 0;
+          } catch {
+            emptyDirectory = false;
+          }
+        }
+        const wantsDirectories = options.type?.some((item) => {
+          const type = item.toLocaleLowerCase();
+          return type === "directory" || type === "dir" || type === "d" || type === "empty";
+        }) === true;
+        const withinDepth = options.exactDepth !== undefined
+          ? entryDepth === options.exactDepth
+          : entryDepth >= (options.minDepth ?? 0) && entryDepth <= Math.min(options.maxDepth ?? GLOB_MAX_DEPTH, GLOB_MAX_DEPTH);
+        const matchesPattern = matchesGlobEntry(pattern, rel, name, options)
+          && (options.andPatterns ?? []).every((extra) => matchesGlobEntry(extra, rel, name, options));
+        if (wantsDirectories && withinDepth && !matchesGlobExclusion(rel, name, options.excludes) && matchesGlobType(stat, options.type, emptyDirectory) && matchesPattern) {
+          results.push({ path: options.absolutePath === false ? rel : full, mtime: stat.mtimeMs });
+        }
+        if (options.exactDepth === undefined || entryDepth <= options.exactDepth) {
+          await walk(full, depth + 1, rel);
+        } else if (entryDepth < (options.minDepth ?? 0)) {
+          await walk(full, depth + 1, rel);
+        }
+      } else if (stat.isFile() || stat.isSymbolicLink()) {
         filesScanned++;
-        if (match(rel)) {
-          results.push({ path: full, mtime: stat.mtimeMs });
+        const entryDepth = depth + 1;
+        const withinDepth = options.exactDepth !== undefined
+          ? entryDepth === options.exactDepth
+          : entryDepth >= (options.minDepth ?? 0) && entryDepth <= Math.min(options.maxDepth ?? GLOB_MAX_DEPTH, GLOB_MAX_DEPTH);
+        const matchesPattern = matchesGlobEntry(pattern, rel, name, options)
+          && (options.andPatterns ?? []).every((extra) => matchesGlobEntry(extra, rel, name, options));
+        if (withinDepth && !matchesGlobExclusion(rel, name, options.excludes) && matchesGlobType(stat, options.type) && matchesPattern) {
+          results.push({ path: options.absolutePath === false ? rel : full, mtime: stat.mtimeMs });
         }
       }
     }
@@ -2712,8 +3032,9 @@ async function toolGlob(pattern: string, searchPath: string, limit: number): Pro
 // ------------------------------------------------------------------
 
 interface GrepOptions {
-  glob?: string;
-  fileType?: string;
+  native?: boolean;
+  glob?: string[];
+  fileType?: string[];
   outputMode: "content" | "files_with_matches" | "count";
   afterContext: number;
   beforeContext: number;
@@ -2722,18 +3043,104 @@ interface GrepOptions {
   showLineNumbers: boolean;
   headLimit: number;
   perFileLimit: number;
+  fixedStrings: boolean;
+  wordRegexp: boolean;
+  lineRegexp: boolean;
+  multiline: boolean;
+  hidden: boolean;
+  noIgnore: boolean;
+  follow: boolean;
+  maxDepth: number;
+  maxCount: number;
+  invertMatch: boolean;
+  onlyMatching: boolean;
+  countMatches: boolean;
+  includeZero: boolean;
+  text: boolean;
+  sort: "path" | "modified" | "none";
+  signal?: AbortSignal;
 }
 
 /** Check if a filename matches a simple glob pattern (e.g. "*.ts", "*.{ts,tsx}") */
-function matchFileGlob(filename: string, globPattern: string): boolean {
-  const regex = globToRegex(globPattern);
-  return regex.test(filename);
+function matchFileGlob(filename: string, globPatterns: readonly string[]): boolean {
+  if (globPatterns.length === 0) return true;
+  let included = false;
+  let hasPositive = false;
+  for (const globPattern of globPatterns) {
+    const negated = globPattern.startsWith("!");
+    if (!negated) hasPositive = true;
+    const pattern = negated ? globPattern.slice(1) : globPattern;
+    const regex = globToRegex(pattern.includes("/") ? pattern : `**/${pattern}`);
+    if (!regex.test(filename) && !regex.test(path.basename(filename))) continue;
+    if (negated) return false;
+    included = true;
+  }
+  return hasPositive ? included : true;
 }
 
 /** Check if file extension matches a type filter */
-function matchFileType(filename: string, typeFilter: string): boolean {
+function matchFileType(filename: string, typeFilters: readonly string[]): boolean {
+  if (typeFilters.length === 0) return true;
   const ext = path.extname(filename).slice(1).toLowerCase();
-  return ext === typeFilter.toLowerCase();
+  const aliases: Record<string, readonly string[]> = {
+    javascript: ["js", "jsx", "mjs", "cjs"],
+    typescript: ["ts", "tsx", "mts", "cts"],
+    python: ["py", "pyi"],
+    shell: ["sh", "bash", "zsh"],
+    rust: ["rs"],
+    go: ["go"],
+    java: ["java"],
+    csharp: ["cs"],
+    cpp: ["cc", "cpp", "cxx", "hpp", "hh", "hxx"],
+  };
+  return typeFilters.some((typeFilter) => {
+    const normalized = typeFilter.replace(/^\./, "").toLowerCase();
+    return (aliases[normalized] ?? [normalized]).includes(ext);
+  });
+}
+
+function bundledRgArgs(options: GrepOptions): string[] {
+  const args: string[] = [];
+  if (options.outputMode === "files_with_matches") args.push("--files-with-matches");
+  if (options.outputMode === "count") args.push(options.countMatches ? "--count-matches" : "--count");
+  if (options.afterContext === options.beforeContext && options.afterContext > 0) {
+    args.push("--context", String(options.afterContext));
+  } else {
+    if (options.afterContext > 0) args.push("--after-context", String(options.afterContext));
+    if (options.beforeContext > 0) args.push("--before-context", String(options.beforeContext));
+  }
+  if (options.caseInsensitive === true) args.push("--ignore-case");
+  if (options.caseInsensitive === false) args.push("--case-sensitive");
+  if (options.fixedStrings) args.push("--fixed-strings");
+  if (options.wordRegexp) args.push("--word-regexp");
+  if (options.lineRegexp) args.push("--line-regexp");
+  if (options.multiline) args.push("--multiline");
+  if (options.hidden) args.push("--hidden");
+  if (options.noIgnore) args.push("--no-ignore");
+  if (options.follow) args.push("--follow");
+  if (options.maxDepth >= 0) args.push("--max-depth", String(options.maxDepth));
+  if (options.maxCount > 0) args.push("--max-count", String(options.maxCount));
+  if (options.invertMatch) args.push("--invert-match");
+  if (options.onlyMatching && options.outputMode === "content") args.push("--only-matching");
+  if (options.text) args.push("--text");
+  if (!options.showLineNumbers && options.outputMode === "content") args.push("--no-line-number");
+  else if (options.showLineNumbers && options.outputMode === "content") args.push("--line-number");
+  for (const glob of options.glob ?? []) args.push("--glob", glob);
+  for (const type of options.fileType ?? []) args.push("--type", type);
+  if (options.sort !== "none") args.push(`--sort=${options.sort}`);
+  // rg 的 max-count 按文件生效；head_limit 在最终文本上再截断，
+  // 因而原生路径仍保留 rg 的匹配语义。
+  return args;
+}
+
+function trimNativeGrepOutput(content: string, options: GrepOptions): string {
+  const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
+  if (!content || content.startsWith("ERROR:") || options.outputMode === "files_with_matches" || options.outputMode === "count") {
+    return content;
+  }
+  const lines = content.split(/\r?\n/);
+  if (lines.length <= cap) return content;
+  return `${lines.slice(0, cap).join("\n")}\n\n[Reached results cap (${cap}). Narrow the pattern or raise head_limit.]`;
 }
 
 async function toolGrep(
@@ -2761,9 +3168,19 @@ async function toolGrep(
         `(${pat.length} chars, limit ${SEARCH_MAX_PATTERN_LENGTH}).`
       );
     }
-    if (/(^|[^\\])\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/.test(pat)) {
+    if (!options.fixedStrings && /(^|[^\\])\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/.test(pat)) {
       return "ERROR: Regex appears too complex/risky (nested quantified group).";
     }
+  }
+
+  const native = options.native ? await runBundledRg({
+    patterns,
+    root: searchPath,
+    args: bundledRgArgs(options),
+    signal: options.signal,
+  }) : { available: false, content: "" };
+  if (native.available) {
+    return trimNativeGrepOutput(native.content, options);
   }
 
   // Smart case (ripgrep-style): no ASCII uppercase in any pattern 鈬?-i.
@@ -2776,6 +3193,17 @@ async function toolGrep(
     effectiveCaseInsensitive = options.caseInsensitive;
   }
 
+  const preparedPatterns = options.fixedStrings
+    ? patterns.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    : patterns;
+  const patternRegexes = preparedPatterns.map((pattern) => {
+    let source = pattern;
+    if (options.wordRegexp) source = `\\b(?:${source})\\b`;
+    if (options.lineRegexp) source = `^(?:${source})$`;
+    if (options.multiline) source = source.replace(/\\n/g, "\n");
+    return source;
+  });
+
   // Combine multiple patterns into a single OR regex. For one pattern, use
   // it directly to keep the existing regex semantics intact (capture groups,
   // anchors, etc.). For multiple, wrap each in a non-capturing group so
@@ -2784,9 +3212,9 @@ async function toolGrep(
   try {
     const flags = effectiveCaseInsensitive ? "i" : "";
     if (patterns.length === 1) {
-      regex = new RegExp(patterns[0]!, flags);
+      regex = new RegExp(patternRegexes[0]!, flags + (options.multiline ? "s" : ""));
     } else {
-      regex = new RegExp(patterns.map((p) => `(?:${p})`).join("|"), flags);
+      regex = new RegExp(patternRegexes.map((p) => `(?:${p})`).join("|"), flags + (options.multiline ? "s" : ""));
     }
   } catch (e) {
     return `ERROR: Invalid regex: ${e instanceof Error ? e.message : String(e)}`;
@@ -2818,8 +3246,8 @@ async function toolGrep(
     return false;
   }
 
-  function shouldIncludeFile(filename: string): boolean {
-    if (options.glob && !matchFileGlob(filename, options.glob)) return false;
+  function shouldIncludeFile(filename: string, relativePath = filename): boolean {
+    if (options.glob && !matchFileGlob(relativePath, options.glob)) return false;
     if (options.fileType && !matchFileType(filename, options.fileType)) return false;
     return true;
   }
@@ -2831,25 +3259,37 @@ async function toolGrep(
     } catch {
       return;
     }
-    // Skip binary files
+    // 除非请求了 rg 的文本模式，否则跳过二进制文件。
     const header = raw.subarray(0, 8192);
-    if (header.includes(0)) return;
+    if (!options.text && header.includes(0)) return;
 
     const text = raw.toString("utf-8");
-    const lines = text.split("\n");
+    const lines = options.multiline ? [text] : text.split("\n");
     const matchingLines: Array<{ line: number; text: string }> = [];
-    const perFileCap = Math.max(1, options.perFileLimit);
+    const perFileCap = Math.max(1, Math.min(options.perFileLimit, options.maxCount > 0 ? options.maxCount : options.perFileLimit));
     let totalMatchesInFile = 0;
+    let totalIndividualMatches = 0;
     let truncatedAt: number | undefined;
 
     for (let i = 0; i < lines.length; i++) {
       if (regex.global || regex.sticky) regex.lastIndex = 0;
-      if (regex.test(lines[i])) {
+      const lineText = lines[i]!;
+      const matched = regex.test(lineText);
+      if (options.invertMatch ? !matched : matched) {
         totalMatchesInFile += 1;
+        if (options.countMatches && !options.invertMatch) {
+          const countRegex = new RegExp(regex.source, regex.flags.replace("g", "") + "g");
+          totalIndividualMatches += [...lineText.matchAll(countRegex)].length;
+        }
         if (matchingLines.length < perFileCap) {
+          const displayText = options.onlyMatching && !options.invertMatch
+            ? [...lineText.matchAll(new RegExp(regex.source, regex.flags.replace("g", "") + "g"))]
+              .map((match) => match[0])
+              .join("\n")
+            : lineText;
           matchingLines.push({
             line: i + 1,
-            text: truncateLine(lines[i].trimEnd(), SEARCH_LINE_MAX_CHARS),
+            text: truncateLine(displayText.trimEnd(), SEARCH_LINE_MAX_CHARS),
           });
         } else if (truncatedAt === undefined) {
           truncatedAt = totalMatchesInFile;
@@ -2857,11 +3297,11 @@ async function toolGrep(
       }
     }
 
-    if (matchingLines.length > 0) {
+    if (matchingLines.length > 0 || (options.outputMode === "count" && options.includeZero)) {
       fileMatches.push({
         file: filePath,
         matches: matchingLines,
-        count: totalMatchesInFile,
+        count: options.countMatches ? totalIndividualMatches : totalMatchesInFile,
         truncatedAt,
       });
       // headLimit counts entries (lines for content, files otherwise).
@@ -2872,7 +3312,7 @@ async function toolGrep(
 
   async function walkForGrep(dir: string, depth: number): Promise<void> {
     if (shouldStop()) return;
-    if (depth > SEARCH_MAX_DEPTH) {
+    if (depth > Math.min(options.maxDepth, SEARCH_MAX_DEPTH)) {
       stats.depthLimitHits += 1;
       return;
     }
@@ -2884,25 +3324,27 @@ async function toolGrep(
       return;
     }
 
+    entries.sort((a, b) => a.localeCompare(b));
     for (const name of entries) {
       if (shouldStop()) return;
       // Hidden names skip universally. Excluded-dir names are filtered
       // only after stat to avoid hiding regular files that happen to be
       // named `build` / `dist` / `target` / etc.
-      if (isHiddenName(name)) continue;
+      if (!options.hidden && isHiddenName(name)) continue;
       const full = path.join(dir, name);
       let stat;
       try {
-        stat = await fs.stat(full);
+        stat = options.follow ? await fs.stat(full) : await fs.lstat(full);
       } catch {
         continue;
       }
 
       if (stat.isDirectory()) {
-        if (isExcludedDirName(name)) continue;
+        if (!options.noIgnore && isExcludedDirName(name)) continue;
         await walkForGrep(full, depth + 1);
       } else if (stat.isFile()) {
-        if (!shouldIncludeFile(name)) continue;
+        const relativePath = path.relative(searchPath, full).replace(/\\/g, "/");
+        if (!shouldIncludeFile(name, relativePath)) continue;
         if (getSensitiveFileReadReason(full)) {
           stats.skippedSensitiveFiles += 1;
           continue;
@@ -2931,11 +3373,24 @@ async function toolGrep(
   // Handle single file path
   const pathStat = statSync(searchPath);
   if (pathStat.isFile()) {
-    if (shouldIncludeFile(path.basename(searchPath))) {
+    if (shouldIncludeFile(path.basename(searchPath), path.basename(searchPath))) {
       await processFile(searchPath);
     }
   } else {
+    if (options.sort === "path") {
+      // Directory traversal already sorts entries lexicographically.
+    }
     await walkForGrep(searchPath, 0);
+  }
+
+  if (options.sort === "modified") {
+    fileMatches.sort((a, b) => {
+      try {
+        return statSync(b.file).mtimeMs - statSync(a.file).mtimeMs;
+      } catch {
+        return 0;
+      }
+    });
   }
 
   // Format output based on mode
@@ -3275,24 +3730,72 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         return formatToolError("time", e);
       }
     },
-    glob: async (args) => {
+    glob: async (args, rtCtx) => {
       try {
         const a = expectArgsObject("glob", args);
         const pattern = requiredStringArg("glob", a, "pattern", { nonEmpty: true });
+        if (a["regex"] === true) {
+          try {
+            new RegExp(pattern, a["case_insensitive"] === true ? "i" : undefined);
+          } catch (error) {
+            throw new ToolArgValidationError("glob", "pattern", `invalid regular expression: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
         const requestedPath = optionalPathArg("glob", a, "path", ".");
-        const limit = optionalPositiveIntegerArg("glob", a, "limit") ?? GLOB_DEFAULT_LIMIT;
+        const limit = optionalPositiveIntegerArg("glob", a, "limit")
+          ?? optionalPositiveIntegerArg("glob", a, "max_results")
+          ?? GLOB_DEFAULT_LIMIT;
+        const type = requiredStringList("glob", a, "type");
+        const extensions = requiredStringList("glob", a, "extension");
+        const andPatterns = requiredStringList("glob", a, "and");
+        const excludes = requiredStringList("glob", a, "exclude");
+        const maxDepth = optionalIntegerArg("glob", a, "max_depth");
+        const minDepth = optionalIntegerArg("glob", a, "min_depth");
+        const exactDepth = optionalIntegerArg("glob", a, "exact_depth");
+        const native = [
+          "type", "extension", "and", "exclude", "regex", "fixed_strings", "case_insensitive",
+          "full_path", "absolute_path", "include_hidden", "no_ignore", "follow", "max_depth",
+          "min_depth", "exact_depth", "max_results",
+        ].some((key) => a[key] !== undefined);
+        for (const [key, value] of [["max_depth", maxDepth], ["min_depth", minDepth], ["exact_depth", exactDepth]] as const) {
+          if (value !== undefined && value < 0) {
+            throw new ToolArgValidationError("glob", key, `'${key}' must be >= 0.`);
+          }
+        }
+        if (minDepth !== undefined && exactDepth !== undefined && minDepth !== exactDepth) {
+          throw new ToolArgValidationError("glob", "exact_depth", "'exact_depth' cannot be combined with a different 'min_depth'.");
+        }
         const globPath = scopedPath(
           requestedPath,
           "search",
           ctx,
           { mustExist: true, expectDirectory: true },
         );
-        return await toolGlob(pattern, globPath, limit);
+        return await toolGlob(pattern, globPath, {
+          limit,
+          native,
+          andPatterns: andPatterns.length > 0 ? andPatterns : undefined,
+          excludes: excludes.length > 0 ? excludes : undefined,
+          type: type.length > 0 ? type : undefined,
+          extensions: extensions.length > 0 ? extensions : undefined,
+          regex: a["regex"] === true,
+          fixedStrings: a["fixed_strings"] === true,
+          caseInsensitive: typeof a["case_insensitive"] === "boolean" ? a["case_insensitive"] as boolean : undefined,
+          fullPath: a["full_path"] === true,
+          absolutePath: a["absolute_path"] !== false,
+          includeHidden: a["include_hidden"] === true,
+          noIgnore: a["no_ignore"] === true,
+          follow: a["follow"] === true,
+          maxDepth,
+          minDepth,
+          exactDepth,
+          signal: rtCtx?.signal,
+        });
       } catch (e) {
         return formatToolError("glob", e);
       }
     },
-    grep: async (args) => {
+    grep: async (args, rtCtx) => {
       try {
         const a = expectArgsObject("grep", args);
 
@@ -3325,9 +3828,12 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
           ctx,
           { mustExist: true },
         );
-        const globFilter = optionalStringArg("grep", a, "glob", "");
-        const fileType = optionalStringArg("grep", a, "type", "");
+        const globFilter = requiredStringList("grep", a, "glob");
+        const fileType = requiredStringList("grep", a, "type");
         const outputMode = optionalStringArg("grep", a, "output_mode", "files_with_matches") as "content" | "files_with_matches" | "count";
+        if (!["content", "files_with_matches", "count"].includes(outputMode)) {
+          throw new ToolArgValidationError("grep", "output_mode", "'output_mode' must be content, files_with_matches, or count.");
+        }
 
         // Context-line aliases: prefer hyphen forms (Cursor convention) but
         // accept word forms because some LLMs translate them automatically.
@@ -3350,10 +3856,26 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         const headLimit = optionalPositiveIntegerArg("grep", a, "head_limit") ?? 0;
         const perFileLimit =
           optionalPositiveIntegerArg("grep", a, "limit_per_file") ?? SEARCH_DEFAULT_PER_FILE_LIMIT;
+        const maxDepthArg = optionalIntegerArg("grep", a, "max_depth");
+        if (maxDepthArg !== undefined && maxDepthArg < 0) {
+          throw new ToolArgValidationError("grep", "max_depth", "'max_depth' must be >= 0.");
+        }
+        const maxDepth = maxDepthArg ?? SEARCH_MAX_DEPTH;
+        const maxCount = optionalPositiveIntegerArg("grep", a, "max_count") ?? 0;
+        const sort = optionalStringArg("grep", a, "sort", "none");
+        const native = [
+          "fixed_strings", "word_regexp", "line_regexp", "multiline", "hidden", "no_ignore", "follow",
+          "max_depth", "max_count", "invert_match", "only_matching", "count_matches", "include_zero",
+          "text", "sort", "glob", "type",
+        ].some((key) => a[key] !== undefined);
+        if (sort !== "none" && sort !== "path" && sort !== "modified") {
+          throw new ToolArgValidationError("grep", "sort", "'sort' must be none, path, or modified.");
+        }
 
         return await toolGrep(patterns, searchPath, {
-          glob: globFilter || undefined,
-          fileType: fileType || undefined,
+          glob: globFilter.length > 0 ? globFilter : undefined,
+          fileType: fileType.length > 0 ? fileType : undefined,
+          native,
           outputMode,
           afterContext: contextCtx > 0 ? contextCtx : afterCtx,
           beforeContext: contextCtx > 0 ? contextCtx : beforeCtx,
@@ -3361,9 +3883,107 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
           showLineNumbers,
           headLimit,
           perFileLimit,
+          fixedStrings: a["fixed_strings"] === true,
+          wordRegexp: a["word_regexp"] === true,
+          lineRegexp: a["line_regexp"] === true,
+          multiline: a["multiline"] === true,
+          hidden: a["hidden"] === true,
+          noIgnore: a["no_ignore"] === true,
+          follow: a["follow"] === true,
+          maxDepth,
+          maxCount,
+          invertMatch: a["invert_match"] === true,
+          onlyMatching: a["only_matching"] === true,
+          countMatches: a["count_matches"] === true,
+          includeZero: a["include_zero"] === true,
+          text: a["text"] === true,
+          sort: sort as "path" | "modified" | "none",
+          signal: rtCtx?.signal,
         });
       } catch (e) {
         return formatToolError("grep", e);
+      }
+    },
+    find_symbol: async (args, rtCtx) => {
+      try {
+        const a = expectArgsObject("find_symbol", args);
+        const query = requiredStringArg("find_symbol", a, "query", { maxLen: 200 });
+        const requestedPath = optionalPathArg("find_symbol", a, "path", ".");
+        const searchPath = scopedPath(
+          requestedPath,
+          "search",
+          ctx,
+          { mustExist: true },
+        );
+        const language = optionalStringArg("find_symbol", a, "language", "");
+        const kindRaw = optionalStringArg("find_symbol", a, "kind", "function");
+        const validKinds = new Set<SymbolKind>([
+          "function", "method", "class", "interface", "type", "variable",
+          "struct", "trait", "enum", "any",
+        ]);
+        if (!validKinds.has(kindRaw as SymbolKind)) {
+          throw new ToolArgValidationError(
+            "find_symbol",
+            "kind",
+            `'kind' must be one of ${[...validKinds].join(", ")}.`,
+          );
+        }
+        const include = optionalStringArg("find_symbol", a, "include", "");
+        const caseInsensitive = a["case_insensitive"] === true;
+        const hidden = a["hidden"] === true;
+        const noIgnore = a["no_ignore"] === true;
+        const follow = a["follow"] === true;
+        const maxResults = optionalPositiveIntegerArg("find_symbol", a, "max_results") ?? 200;
+        return await toolFindSymbol({
+          query,
+          path: searchPath,
+          language: language || undefined,
+          kind: kindRaw as SymbolKind,
+          include: include || undefined,
+          caseInsensitive,
+          hidden,
+          noIgnore,
+          follow,
+          maxResults: Math.min(maxResults, 200),
+          signal: rtCtx?.signal,
+        });
+      } catch (e) {
+        return formatToolError("find_symbol", e);
+      }
+    },
+    jq: async (args) => {
+      try {
+        const a = expectArgsObject("jq", args);
+        const query = requiredStringArg("jq", a, "query", { nonEmpty: true, maxLen: 2_000 });
+        const requestedPath = optionalPathArg("jq", a, "path", "");
+        const contentRaw = a["content"];
+        if (contentRaw !== undefined && typeof contentRaw !== "string") {
+          throw new ToolArgValidationError("jq", "content", "'content' must be a string.");
+        }
+        if (!requestedPath && contentRaw === undefined) {
+          throw new ToolArgValidationError("jq", "path", "one of 'path' or 'content' is required.");
+        }
+        const filePath = requestedPath
+          ? scopedPath(requestedPath, "read", ctx, { mustExist: true, expectFile: true })
+          : undefined;
+        if (filePath) {
+          const sensitiveReason = getSensitiveFileReadReason(filePath);
+          if (sensitiveReason) {
+            return `ERROR: Access to sensitive file is blocked by default: ${filePath} (${sensitiveReason}).`;
+          }
+        }
+        const maxChars = optionalPositiveIntegerArg("jq", a, "max_chars") ?? 80_000;
+        return await toolJq({
+          query,
+          path: filePath,
+          content: contentRaw as string | undefined,
+          raw: a["raw"] === true,
+          compact: a["compact"] === true,
+          slurp: a["slurp"] === true,
+          maxChars: Math.min(maxChars, 80_000),
+        });
+      } catch (e) {
+        return formatToolError("jq", e);
       }
     },
     web_search: async (args, rtCtx) => {

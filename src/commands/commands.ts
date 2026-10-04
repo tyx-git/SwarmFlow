@@ -19,7 +19,6 @@ const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { CommandPickerPresentation } from "../ui/picker.js";
 import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry } from "../config/persistence.js";
-import { fetchModelSpecSuggestion } from "../models/dev-lookup.js";
 import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
 import { applySessionRestore } from "../session-resume.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
@@ -386,6 +385,47 @@ function persistModelSelection(ctx: CommandContext): void {
   }
 }
 
+/** 将通过 provider:model 临时创建的模型保存到用户目录，避免重启后丢失。 */
+function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModelSelection): void {
+  if (!selection.selectedConfigName.startsWith("runtime-")) return;
+
+  const providerId = selection.modelProvider;
+  const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
+  const existing = settings.providers?.[providerId];
+  const preset = findProviderPreset(providerId);
+
+  // 未知 provider 没有端点信息时不能凭空生成 settings 条目。
+  if (!existing && !preset) return;
+
+  const provider: ProviderEntry = { ...(existing ?? {}) };
+  if (!provider.api_key_env && preset && providerId !== "openai-codex" && providerId !== "copilot") {
+    provider.api_key_env = preset.envVar;
+  }
+
+  const model = (() => {
+    try {
+      return ctx.session.config?.getModel?.(selection.selectedConfigName);
+    } catch {
+      return undefined;
+    }
+  })();
+  const contextLength = typeof model?.contextLength === "number" && model.contextLength > 0
+    ? model.contextLength
+    : 128_000;
+  const models = [...(provider.models ?? [])];
+  if (!models.some((item) => item.id === selection.modelId)) {
+    models.push({ id: selection.modelId, context_length: contextLength });
+  }
+  provider.models = models;
+
+  persistSettingsPatch({
+    providers: {
+      ...(settings.providers ?? {}),
+      [providerId]: provider,
+    },
+  }, ctx.swarmflowHomeDir);
+}
+
 /**
  * Persist a partial settings update to global settings.json.
  * Reads existing settings, merges the patch, and writes back.
@@ -702,6 +742,7 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
       modelSelectionKey: resolvedSelection.modelSelectionKey,
       modelId: resolvedSelection.modelId,
     });
+    persistRuntimeModelConfig(ctx, resolvedSelection);
 
     // 如果新模型支持它，提示思考水平
     await promptThinkingLevel(ctx);
@@ -753,6 +794,7 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
       model_id: resolved.modelId,
       thinking_level: thinkingLevel,
     };
+    persistRuntimeModelConfig(ctx, resolved);
     if (typeof session.setSubagentDefaultModelSettings !== "function") {
       throw new Error("Sub-agent model settings are not available in this session.");
     }
@@ -884,7 +926,7 @@ function commonProviderOptions(): CommandOption[] {
     .map((preset) => ({
       label: preset.name,
       value: preset.id,
-      detail: preset.models.length > 0 ? `${preset.models.length} model(s)` : preset.id,
+      detail: preset.id,
     }));
   return providerPresetOptions.length > 0 ? providerPresetOptions : [{ label: "No provider presets found", value: "", disabled: true }];
 }
@@ -1219,7 +1261,7 @@ async function testEndpoint(baseUrl: string, apiKey: string | undefined, protoco
   }
 }
 
-/* 提示标记计数：建议值（如果有）+常用预设+自定义；可选的跳过。 */
+/* 提示 token 数：可选建议值 + 常用预设 + 自定义输入。 */
 async function promptTokenCount(
   ctx: CommandContext,
   message: string,
@@ -1279,26 +1321,24 @@ async function addModelsInteractive(
       ? ((await ctx.promptSecret!({ message: `${label} — model id` }))?.trim() ?? "")
       : choice.slice("pick:".length);
     if (!modelId || addedIds.has(modelId)) continue;
-    const sug = await fetchModelSpecSuggestion(modelId, { homeDir: ctx.swarmflowHomeDir });
     const reportedCtx = discovered.find((d) => d.id === modelId)?.contextLength;
-    const ctxLen = await promptTokenCount(ctx, `${label} / ${modelId} — context length (required)`, sug?.contextLength ?? reportedCtx, { allowSkip: false });
+    const ctxLen = await promptTokenCount(ctx, `${label} / ${modelId} — context length (required)`, reportedCtx, { allowSkip: false });
     if (!ctxLen) { ctx.showMessage("Context length is required — model not added."); continue; }
     const mmChoice = await ctx.promptSelect!({
       message: `${label} / ${modelId} — multimodal (image input)?`,
       options: [
-        { label: `No${sug?.multimodal ? "" : "  (default)"}`, value: "no" },
-        { label: `Yes${sug?.multimodal ? "  (models.dev says yes)" : ""}`, value: "yes" },
+        { label: "No  (default)", value: "no" },
+        { label: "Yes", value: "yes" },
       ],
     });
     if (mmChoice === undefined) continue;
-    const maxOut = await promptTokenCount(ctx, `${label} / ${modelId} — max output tokens (optional)`, sug?.maxOutputTokens, { allowSkip: true });
+    const maxOut = await promptTokenCount(ctx, `${label} / ${modelId} — max output tokens (optional)`, undefined, { allowSkip: true });
     const entry: CustomModelEntry = { id: modelId, context_length: ctxLen };
     if (mmChoice === "yes") entry.multimodal = true;
     if (maxOut) entry.max_output_tokens = maxOut;
-    if (sug?.thinkingLevels?.length) entry.thinking_levels = sug.thinkingLevels;
     added.push(entry);
     addedIds.add(modelId);
-    ctx.showMessage(`Added ${modelId}${sug ? " (specs from models.dev)" : ""}. Pick another or choose Done.`);
+    ctx.showMessage(`Added ${modelId}. Pick another or choose Done.`);
   }
 }
 

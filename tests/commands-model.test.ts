@@ -415,7 +415,7 @@ describe("/model command", () => {
       },
     };
 
-    expect(config.listModelEntries().every((entry) => entry.isPreset)).toBe(true);
+    expect(config.listModelEntries()).toEqual([]);
     expect(cmd!.options!({ session })).toEqual([]);
   });
 
@@ -477,11 +477,11 @@ describe("/model command", () => {
     expect(openai).toBeTruthy();
     expect(opts.find((o) => o.value === "kimi")).toBeUndefined();
     expect(anthropic!.children).toHaveLength(1);
-    expect(anthropic!.children?.some((c) => c.label.includes("Claude Sonnet 4.6  (current)"))).toBe(true);
-    expect(anthropic!.children?.some((c) => c.label.includes("Claude Haiku 4.5"))).toBe(false);
+    expect(anthropic!.children?.some((c) => c.value === "anthropic:claude-sonnet-4-6")).toBe(true);
+    expect(anthropic!.children?.some((c) => c.value === "anthropic:claude-haiku-4-5")).toBe(false);
     expect(openai!.children).toHaveLength(1);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.4"))).toBe(true);
-    expect(openai!.children?.some((c) => c.label.includes("GPT-5.2"))).toBe(false);
+    expect(openai!.children?.some((c) => c.value === "openai:gpt-5.4")).toBe(true);
+    expect(openai!.children?.some((c) => c.value === "openai:gpt-5.2")).toBe(false);
     const qwenChina = qwenGroup!.children?.find((o) => o.value === "qwen");
     const qwenIntl = qwenGroup!.children?.find((o) => o.value === "qwen-intl");
     const qwenUs = qwenGroup!.children?.find((o) => o.value === "qwen-us");
@@ -490,9 +490,9 @@ describe("/model command", () => {
     expect(qwenUs).toBeUndefined();
     expect(qwenChina!.children).toHaveLength(1);
     expect(qwenIntl!.children).toHaveLength(1);
-    expect(qwenChina!.children?.some((c) => c.label.includes("Qwen3.6 Plus"))).toBe(true);
-    expect(qwenChina!.children?.some((c) => c.label.includes("Qwen3.7 Max"))).toBe(false);
-    expect(qwenIntl!.children?.some((c) => c.label.includes("Qwen3.7 Max"))).toBe(true);
+    expect(qwenChina!.children?.some((c) => c.value === "qwen:qwen3.6-plus")).toBe(true);
+    expect(qwenChina!.children?.some((c) => c.value === "qwen:qwen3.7-max")).toBe(false);
+    expect(qwenIntl!.children?.some((c) => c.value === "qwen-intl:qwen3.7-max")).toBe(true);
   });
 
   it("tracks managed provider keys per exact endpoint instead of sharing them across a group", () => {
@@ -601,26 +601,26 @@ describe("/model command", () => {
 
     expect(vendorAnthro).toBeTruthy();
     expect(vendorAnthro!.label).toBe("Anthropic");
-    expect(vendorAnthro!.children?.some((c) => c.label.startsWith("Claude Haiku 4.5"))).toBe(true);
-    expect(vendorAnthro!.children?.some((c) => c.label.includes("Claude Sonnet 4.6  (1M context)"))).toBe(true);
+    expect(vendorAnthro!.children?.some((c) => c.value === "openrouter:anthropic/claude-haiku-4.5")).toBe(true);
+    expect(vendorAnthro!.children?.some((c) => c.value === "openrouter:anthropic/claude-sonnet-4.6")).toBe(true);
 
     expect(vendorOpenAI).toBeTruthy();
     expect(vendorOpenAI!.label).toBe("OpenAI");
-    expect(vendorOpenAI!.children?.some((c) => c.label.startsWith("GPT-5.4"))).toBe(true);
-    expect(vendorOpenAI!.children?.some((c) => c.label.startsWith("GPT-5.3 Codex"))).toBe(true);
+    expect(vendorOpenAI!.children?.some((c) => c.value === "openrouter:openai/gpt-5.4")).toBe(true);
+    expect(vendorOpenAI!.children?.some((c) => c.value === "openrouter:openai/gpt-5.3-codex")).toBe(true);
 
     expect(vendorQwen).toBeTruthy();
     expect(vendorQwen!.label).toBe("Qwen");
-    expect(vendorQwen!.children?.some((c) => c.label.startsWith("Qwen3.6 Plus"))).toBe(true);
-    expect(vendorQwen!.children?.some((c) => c.label.startsWith("Qwen3.7 Max"))).toBe(true);
+    expect(vendorQwen!.children?.some((c) => c.value === "openrouter:qwen/qwen3.6-plus")).toBe(true);
+    expect(vendorQwen!.children?.some((c) => c.value === "openrouter:qwen/qwen3.7-max")).toBe(true);
 
     expect(vendorKimi).toBeTruthy();
     expect(vendorKimi!.label).toBe("Kimi");
-    expect(vendorKimi!.children?.some((c) => c.label.startsWith("Kimi K2.5"))).toBe(true);
+    expect(vendorKimi!.children?.some((c) => c.value === "openrouter:moonshotai/kimi-k2.5")).toBe(true);
 
     expect(vendorMiniMax).toBeTruthy();
     expect(vendorMiniMax!.label).toBe("MiniMax");
-    expect(vendorMiniMax!.children?.some((c) => c.label.startsWith("MiniMax M2.5"))).toBe(true);
+    expect(vendorMiniMax!.children?.some((c) => c.value === "openrouter:minimax/minimax-m2.5")).toBe(true);
 
     expect(vendorGLM).toBeTruthy();
     expect(vendorGLM!.label).toBe("GLM / Zhipu");
@@ -858,6 +858,10 @@ describe("/model command", () => {
       expect(persistedSettings).toEqual({
         providers: {
           glm: { api_key_env: "GLM_API_KEY" },
+          "glm-code": {
+            api_key_env: "SWARMFLOW_GLM_CODE_API_KEY",
+            models: [{ id: "glm-5", context_length: 128000 }],
+          },
           lmstudio: {
             base_url: "http://localhost:1234/v1",
             model: "qwen/qwen3.5-9b",
@@ -882,7 +886,7 @@ describe("/model command", () => {
     }
   });
 
-  it("preserves preset-specific overrides for Anthropic 1M variants", async () => {
+  it("switches a user supplied model id without packaged preset overrides", async () => {
     process.env["ANTHROPIC_API_KEY"] = "sk-anthropic";
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/model");
@@ -926,10 +930,8 @@ describe("/model command", () => {
       "runtime-anthropic-claude-sonnet-4-6-1m",
       expect.objectContaining({
         provider: "anthropic",
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-4-6-1m",
         api_key: "${ANTHROPIC_API_KEY}",
-        context_length: 1_000_000,
-        betas: ["context-1m-2025-08-07"],
       }),
     );
     expect(switchModel).toHaveBeenCalledWith("runtime-anthropic-claude-sonnet-4-6-1m");
@@ -995,7 +997,7 @@ describe("/model command", () => {
     expect(resetForNewSession).not.toHaveBeenCalled();
   });
 
-  it("maps OpenRouter Anthropic aliases to the official 1M preset config", async () => {
+  it("keeps user supplied OpenRouter model ids unchanged", async () => {
     process.env["OPENROUTER_API_KEY"] = "sk-openrouter";
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/model");
@@ -1039,9 +1041,8 @@ describe("/model command", () => {
       "runtime-openrouter-anthropic-claude-sonnet-4-6",
       expect.objectContaining({
         provider: "openrouter",
-        model: "anthropic/claude-sonnet-4.6",
+        model: "anthropic/claude-sonnet-4-6",
         api_key: "${OPENROUTER_API_KEY}",
-        context_length: 1_000_000,
       }),
     );
     expect(switchModel).toHaveBeenCalledWith("runtime-openrouter-anthropic-claude-sonnet-4-6");

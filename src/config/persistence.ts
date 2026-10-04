@@ -586,8 +586,6 @@ export interface LocalModelEntry {
   maxOutputTokens?: number;
   /** 是否支持多模态输入 */
   multimodal?: boolean;
-  /** 可用的思维链级别列表 */
-  thinkingLevels?: string[];
   /** 是否支持网络搜索 */
   webSearch?: boolean;
 }
@@ -686,9 +684,10 @@ export interface SwarmflowSettings {
 
 /**
  * A provider entry in settings.json.
- * Cloud providers have `api_key_env`; local providers have `base_url` + `model`.
+ * Cloud providers use `api_key_env` plus a user supplied `models` list;
+ * local/custom providers use `base_url` plus `model` or `models`.
  */
-/** settings.json 中的提供商条目。云提供商有 `api_key_env`；本地提供商有 `base_url` + `model` */
+/** settings.json 中的提供商条目。云提供商使用 `api_key_env` + 用户模型列表；本地/自定义 provider 使用 `base_url` + 模型。 */
 export interface ProviderEntry {
   /** 持有 API 密钥的环境变量名（云提供商） */
   api_key_env?: string;
@@ -720,8 +719,6 @@ export interface CustomModelEntry {
   max_output_tokens?: number;
   /** 图像/多模态输入。默认 false */
   multimodal?: boolean;
-  /** 思维链级别，例如 ["off","on"]。默认 none（非思维链模型） */
-  thinking_levels?: string[];
   /** 原生网络搜索。默认 false */
   web_search?: boolean;
 }
@@ -1687,26 +1684,37 @@ export function localSettingsPath(projectPath: string): string {
  */
 export function settingsToConfigInputs(settings: SwarmflowSettings): {
   providerEnvVars: Record<string, string>;
+  /** 云端提供商的用户模型目录；模型不会从程序内置注册表注入。 */
+  providerModels: Record<string, LocalModelEntry[]>;
   localProviders: Record<string, LocalProviderConfig>;
   mcpServers: MCPServerConfig[];
 } {
   const providerEnvVars: Record<string, string> = {};
+  const providerModels: Record<string, LocalModelEntry[]> = {};
   const localProviders: Record<string, LocalProviderConfig> = {};
 
   if (settings.providers) {
     for (const [id, entry] of Object.entries(settings.providers)) {
-      if (entry.api_key_env) {
-        // 云提供商
-        providerEnvVars[id] = entry.api_key_env;
+      if (entry.api_key_env || (!entry.base_url && entry.models?.length)) {
+        // 无 base_url 的条目属于内置 provider；凭据可来自 API key、托管槽或 OAuth 登录。
+        if (entry.api_key_env) providerEnvVars[id] = entry.api_key_env;
+        if (entry.models?.length) {
+          providerModels[id] = entry.models.map((m) => ({
+            id: m.id,
+            contextLength: m.context_length ?? 128_000,
+            maxOutputTokens: m.max_output_tokens,
+            multimodal: m.multimodal,
+            webSearch: m.web_search,
+          }));
+        }
       } else if (entry.base_url && (entry.models?.length || entry.model)) {
         // 自定义/本地提供商：优先使用 models[]；回退到旧版单模型。
         const models: LocalModelEntry[] = entry.models?.length
           ? entry.models.map((m) => ({
               id: m.id,
-              contextLength: m.context_length,
+              contextLength: m.context_length ?? 128_000,
               maxOutputTokens: m.max_output_tokens,
               multimodal: m.multimodal,
-              thinkingLevels: m.thinking_levels,
               webSearch: m.web_search,
             }))
           : [{ id: entry.model!, contextLength: entry.context_length ?? 128_000 }];
@@ -1752,5 +1760,5 @@ export function settingsToConfigInputs(settings: SwarmflowSettings): {
     }
   }
 
-  return { providerEnvVars, localProviders, mcpServers };
+  return { providerEnvVars, providerModels, localProviders, mcpServers };
 }

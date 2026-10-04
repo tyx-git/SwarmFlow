@@ -9,6 +9,7 @@ import { buildToolResultArtifacts, type ToolResultLineArtifact } from "../tool-r
 import { SelectableRow } from "../../display/primitives/selectable-row.js";
 import { chunkDisplayWidth, createChunk } from "../syntax-highlight-utils.js";
 import { CommandText } from "./command-text.js";
+import { INLINE_EXPANSION_ELLIPSIS, INLINE_EXPANSION_MAX_LINES } from "./inline-expansion.js";
 
 /** Clickable fold indicator with hover highlight. */
 function FoldIndicator(
@@ -30,13 +31,14 @@ interface InlineResultProps {
   contentWidth: number;
   language?: string;
   syntaxMode?: "command" | "output";
-  onOpenDetail?: () => void;
+  expanded?: boolean;
+  fullText?: string;
+  onToggleExpand?: () => void;
 }
 
 const LINE_PREFIX = "";
 const MAX_LINES_PER_HUNK = 20;
 const CONTEXT_LINES = 3;
-const FOLD_TEXT = "... (CLICK to open)";
 const ELLIPSIS = "\u2026";
 
 /** Sum display widths of all chunks in a StyledText. */
@@ -137,12 +139,19 @@ function splitIntoHunks(artifacts: ToolResultLineArtifact[]): Hunk[] {
 }
 
 function InlineResultInner(
-  { data, colors, contentWidth, language, syntaxMode, onOpenDetail }: InlineResultProps,
+  { data, colors, contentWidth, language, syntaxMode, expanded = false, fullText, onToggleExpand }: InlineResultProps,
 ): React.ReactNode {
+  const displayExpanded = expanded;
+  const text = displayExpanded && fullText !== undefined ? fullText : data.text;
+  const lineLimit = displayExpanded
+    ? INLINE_EXPANSION_MAX_LINES
+    : Math.min(INLINE_EXPANSION_MAX_LINES, Math.max(1, data.maxLines));
+  const unknownRemainder = data.truncated === true && !(displayExpanded && fullText !== undefined);
+
   const artifacts = useMemo(() => {
     if (data.toolMetadata) {
       return buildToolResultArtifacts({
-        text: data.text,
+        text,
         dim: data.dim,
         toolMetadata: data.toolMetadata,
         wrapWidth: Math.max(8, contentWidth - 8),
@@ -151,13 +160,13 @@ function InlineResultInner(
       });
     }
     return null;
-  }, [data.text, data.dim, data.toolMetadata, data.noDiffBackground, contentWidth, colors]);
+  }, [text, data.dim, data.toolMetadata, data.noDiffBackground, contentWidth, colors]);
 
   // Memoized: for a large diff this rebuilds a 1000+ element structure, and
   // without the memo it ran on every re-render of the transcript.
   const hunks = useMemo(
     () => (artifacts && artifacts.some((a) => !!a.rowBackgroundColor)
-      ? splitIntoHunks(artifacts)
+      ? splitIntoHunks(artifacts.slice(0, INLINE_EXPANSION_MAX_LINES))
       : null),
     [artifacts],
   );
@@ -165,11 +174,10 @@ function InlineResultInner(
   // 命令和源码输出预览需要绕过通用 metadata/diff 分支，
   // 否则工具结果的弱化样式会覆盖语法高亮文本。
   if (language || syntaxMode) {
-    const lines = data.text.split("\n");
-    const visibleLines = data.maxLines === Number.POSITIVE_INFINITY
-      ? lines
-      : lines.slice(0, data.maxLines);
+    const lines = text.split("\n");
+    const visibleLines = lines.slice(0, lineLimit);
     const hiddenCount = Math.max(0, lines.length - visibleLines.length);
+    const hasRemainder = hiddenCount > 0 || unknownRemainder;
     return (
       <box flexDirection="column" gap={0}>
         {visibleLines.map((line, idx) => (
@@ -183,11 +191,15 @@ function InlineResultInner(
             wrapMode="char"
           />
         ))}
-        {hiddenCount > 0 ? (
+        {hasRemainder ? (
           <FoldIndicator
-            text={`${LINE_PREFIX}... (${hiddenCount} more lines${onOpenDetail ? ", CLICK to open" : ""})`}
+            text={displayExpanded
+              ? INLINE_EXPANSION_ELLIPSIS
+              : hiddenCount > 0
+                ? `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+                : INLINE_EXPANSION_ELLIPSIS}
             colors={colors}
-            onClick={onOpenDetail}
+            onClick={!displayExpanded && (hiddenCount > 0 || unknownRemainder) ? onToggleExpand : undefined}
           />
         ) : null}
       </box>
@@ -196,6 +208,22 @@ function InlineResultInner(
 
   if (artifacts) {
     if (hunks) {
+      if (displayExpanded) {
+        const visibleArtifacts = artifacts.slice(0, INLINE_EXPANSION_MAX_LINES);
+        return (
+          <box flexDirection="column" gap={0}>
+            {visibleArtifacts.map((artifact, idx) => (
+              <box key={idx} flexDirection="row" width="100%" backgroundColor={artifact.rowBackgroundColor}>
+                <text fg={colors.dim} content={LINE_PREFIX} />
+                <text content={artifact.content} wrapMode="none" />
+              </box>
+            ))}
+            {artifacts.length > visibleArtifacts.length || unknownRemainder
+              ? <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
+              : null}
+          </box>
+        );
+      }
       const elements: React.ReactNode[] = [];
       let elementKey = 0;
 
@@ -229,9 +257,6 @@ function InlineResultInner(
         if (!hunk.isChanged) {
           // Unchanged context hunk: show up to CONTEXT_LINES at each edge
           const n = hunk.artifacts.length;
-          const prevIsChanged = hi > 0 && hunks[hi - 1].isChanged;
-          const nextIsChanged = hi < hunks.length - 1 && hunks[hi + 1].isChanged;
-
           if (isFirst) {
             // Leading context: ⋮ then last CONTEXT_LINES
             pushSeparator();
@@ -264,22 +289,32 @@ function InlineResultInner(
         for (const artifact of visible) pushArtifact(artifact);
 
         if (hidden > 0) {
-          const hasMoreChangedHunks = hunks.slice(hi + 1).some((h) => h.isChanged);
-          const clickSuffix = !hasMoreChangedHunks && onOpenDetail
-            ? ", CLICK to open"
+          const clickSuffix = onToggleExpand
+            ? ", CLICK to expand"
             : "";
           elements.push(
             <FoldIndicator
               key={`fold-${elementKey++}`}
               text={`${LINE_PREFIX}... (${hidden} more changed lines${clickSuffix})`}
               colors={colors}
-              onClick={onOpenDetail && !hasMoreChangedHunks ? onOpenDetail : undefined}
+              onClick={onToggleExpand}
             />,
           );
         }
 
         // If last hunk is changed, add trailing ⋮
         if (isLast) pushSeparator();
+      }
+
+      if (artifacts.length > INLINE_EXPANSION_MAX_LINES || unknownRemainder) {
+        elements.push(
+          <FoldIndicator
+            key={`fold-${elementKey++}`}
+            text={displayExpanded ? INLINE_EXPANSION_ELLIPSIS : `${INLINE_EXPANSION_ELLIPSIS} (click to expand)`}
+            colors={colors}
+            onClick={!displayExpanded ? onToggleExpand : undefined}
+          />,
+        );
       }
 
       return (
@@ -294,17 +329,17 @@ function InlineResultInner(
       return <box flexDirection="column" gap={0} />;
     }
 
-    if (data.maxLines <= 1) {
+    if (!displayExpanded && data.maxLines <= 1) {
       const first = artifacts[0];
       const dimFg = RGBA.fromHex(colors.dim);
       const availableWidth = Math.max(8, contentWidth - 2);
       const truncated = truncateStyledText(first.content, availableWidth, dimFg);
       const wasTruncated = truncated !== first.content;
       const moreCount = artifacts.length - 1;
-      const hasMore = moreCount > 0 || wasTruncated || data.truncated === true;
+      const hasMore = moreCount > 0 || wasTruncated || unknownRemainder;
       const foldText = moreCount > 0
-        ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onOpenDetail ? ", CLICK to open" : ""})`
-        : `${LINE_PREFIX}${FOLD_TEXT}`;
+        ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
+        : unknownRemainder ? INLINE_EXPANSION_ELLIPSIS : `${LINE_PREFIX}...`;
 
       return (
         <box flexDirection="column" gap={0}>
@@ -320,19 +355,21 @@ function InlineResultInner(
             <FoldIndicator
               text={foldText}
               colors={colors}
-              onClick={onOpenDetail}
+              onClick={moreCount > 0 || unknownRemainder ? onToggleExpand : undefined}
             />
           )}
         </box>
       );
     }
 
-    const visibleArtifacts = artifacts.slice(0, data.maxLines);
-    const artifactHiddenCount = Math.max(0, artifacts.length - data.maxLines);
-    const hasHiddenArtifacts = artifactHiddenCount > 0 || data.truncated === true;
+    const visibleArtifacts = artifacts.slice(0, lineLimit);
+    const artifactHiddenCount = Math.max(0, artifacts.length - visibleArtifacts.length);
+    const hasHiddenArtifacts = artifactHiddenCount > 0 || unknownRemainder;
     const artifactFoldText = artifactHiddenCount > 0
-      ? `${LINE_PREFIX}... (${artifactHiddenCount} more lines${onOpenDetail ? ", CLICK to open" : ""})`
-      : `${LINE_PREFIX}${FOLD_TEXT}`;
+      ? displayExpanded
+        ? INLINE_EXPANSION_ELLIPSIS
+        : `${LINE_PREFIX}... (${artifactHiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+      : INLINE_EXPANSION_ELLIPSIS;
 
     return (
       <box flexDirection="column" gap={0}>
@@ -354,7 +391,7 @@ function InlineResultInner(
           <FoldIndicator
             text={artifactFoldText}
             colors={colors}
-            onClick={onOpenDetail}
+            onClick={!displayExpanded && (artifactHiddenCount > 0 || unknownRemainder) ? onToggleExpand : undefined}
           />
         )}
       </box>
@@ -364,18 +401,18 @@ function InlineResultInner(
   // Plain text inline result (no toolMetadata) — result body uses the
   // two-tier dim palette (darker than tool call args).
   const textColor = data.dim ? colors.dim : colors.toolResultBody;
-  const lines = data.text.split("\n");
+  const lines = text.split("\n");
 
-  if (data.maxLines <= 1 && lines.length > 0) {
+  if (!displayExpanded && data.maxLines <= 1 && lines.length > 0) {
     const firstLine = lines[0] || "";
     const availableWidth = Math.max(8, contentWidth - 2);
     const truncated = truncateString(firstLine, availableWidth);
     const wasTruncated = truncated !== firstLine;
     const moreCount = lines.length - 1;
-    const hasMore = moreCount > 0 || wasTruncated || data.truncated === true;
+    const hasMore = moreCount > 0 || wasTruncated || unknownRemainder;
     const foldText = moreCount > 0
-      ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onOpenDetail ? ", CLICK to open" : ""})`
-      : `${LINE_PREFIX}${FOLD_TEXT}`;
+      ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
+      : unknownRemainder ? INLINE_EXPANSION_ELLIPSIS : `${LINE_PREFIX}...`;
 
     return (
       <box flexDirection="column" gap={0}>
@@ -387,19 +424,21 @@ function InlineResultInner(
           <FoldIndicator
             text={foldText}
             colors={colors}
-            onClick={onOpenDetail}
+            onClick={moreCount > 0 || unknownRemainder ? onToggleExpand : undefined}
           />
         )}
       </box>
     );
   }
 
-  const visibleLines = lines.slice(0, data.maxLines);
-  const hiddenCount = Math.max(0, lines.length - data.maxLines);
-  const hasHiddenLines = hiddenCount > 0 || data.truncated === true;
+  const visibleLines = lines.slice(0, lineLimit);
+  const hiddenCount = Math.max(0, lines.length - visibleLines.length);
+  const hasHiddenLines = hiddenCount > 0 || unknownRemainder;
   const foldText = hiddenCount > 0
-    ? `${LINE_PREFIX}... (${hiddenCount} more lines${onOpenDetail ? ", CLICK to open" : ""})`
-    : `${LINE_PREFIX}${FOLD_TEXT}`;
+    ? displayExpanded
+      ? INLINE_EXPANSION_ELLIPSIS
+      : `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+    : INLINE_EXPANSION_ELLIPSIS;
 
   return (
     <box flexDirection="column" gap={0}>
@@ -416,7 +455,7 @@ function InlineResultInner(
         <FoldIndicator
           text={foldText}
           colors={colors}
-          onClick={onOpenDetail}
+          onClick={!displayExpanded && (hiddenCount > 0 || unknownRemainder) ? onToggleExpand : undefined}
         />
       )}
     </box>
@@ -429,5 +468,7 @@ export const InlineResult = React.memo(
     prev.data === next.data
     && prev.colors === next.colors
     && prev.contentWidth === next.contentWidth
-    && prev.onOpenDetail === next.onOpenDetail,
+    && prev.expanded === next.expanded
+    && prev.fullText === next.fullText
+    && prev.onToggleExpand === next.onToggleExpand,
 );

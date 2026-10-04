@@ -527,9 +527,6 @@ export function OpenTuiApp({
     if (activeTab?.kind === "child") {
       const childId = activeTab.id.startsWith("child:") ? activeTab.id.slice(6) : activeTab.id;
       setSelectedChildId(childId);
-    } else if (activeTab?.kind === "detail-tool") {
-      const src = activeTab.sourceSessionKey;
-      setSelectedChildId(src?.startsWith("child:") ? src.slice(6) : null);
     } else {
       setSelectedChildId(null);
     }
@@ -540,7 +537,7 @@ export function OpenTuiApp({
   // surface.
   const getActiveScrollBox = useCallback((): ScrollBoxRenderable | null => {
     const activeTab = tabs.find((t) => t.id === activeTabId);
-    const isDetail = activeTab?.kind === "detail-tool" || activeTab?.kind === "detail-shell";
+    const isDetail = activeTab?.kind === "detail-shell";
     return (isDetail ? detailScrollRef.current : mainScrollRef.current) ?? null;
   }, [activeTabId, tabs]);
   const handleCloseTab = useCallback((tabId: string) => {
@@ -574,39 +571,6 @@ export function OpenTuiApp({
     });
     setActiveTabId(tabId);
   }, []);
-  const openDetailTab = useCallback((entry: import("./presentation/types.js").PresentationEntry) => {
-    // Thinking entries expand/collapse inline — no detail tab needed.
-    if (entry.kind === "thinking") return;
-    // bash_background / timed-out bash entries route to the live shell tab
-    // when the shell is still tracked by the MAIN session (child sessions
-    // have their own shell managers — ids would collide).
-    if (!selectedChildId) {
-      const resultText = entry.toolResultFullText ?? "";
-      const match = resultText.match(/background shell '([^']+)'/);
-      if (match && session.getBackgroundShellDetail?.(match[1], { maxChars: 500 })) {
-        const snapshot = (session.getBackgroundShellSnapshots?.() ?? []).find((s: ShellSnapshotUi) => s.id === match[1]);
-        openShellDetailTab(match[1], snapshot?.command);
-        return;
-      }
-    }
-    const tabId = `detail:${entry.id}`;
-    const sourceKey = selectedChildId ? `child:${selectedChildId}` : "main";
-    setTabs((prev) => {
-      if (prev.some((t) => t.id === tabId)) return prev;
-      const kind = "detail-tool" as const;
-      const label = `${entry.toolDisplayName ?? "Tool"} ${entry.toolText ?? ""}`.trim();
-      return [...prev, {
-        id: tabId,
-        label,
-        icon: "◇",
-        closeable: true,
-        kind,
-        sourceSessionKey: sourceKey,
-        detailEntryId: entry.id,
-      }];
-    });
-    setActiveTabId(tabId);
-  }, [selectedChildId, session, openShellDetailTab]);
   const [hint, setHint] = useState<string | null>(null);
   const [mcpFailures, setMcpFailures] = useState<import("./display/overlays/mcp-toast.js").McpFailure[] | null>(null);
   const [usagePanel, setUsagePanel] = useState(false);
@@ -3183,7 +3147,6 @@ export function OpenTuiApp({
       selectedChildId={selectedChildId}
       hasQueuedUserInput={queuedInputs.length > 0}
       networkStatus={selectedChildId ? null : networkStatus}
-      onEntryClick={openDetailTab}
       onAgentClick={enterChildSession}
       pendingAsk={pendingAsk}
       askError={askError}

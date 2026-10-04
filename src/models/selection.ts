@@ -8,13 +8,11 @@
 import { hasOAuthTokens } from "../auth/openai-oauth.js";
 import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
 import {
-  buildProviderPresetRawConfig,
   findProviderPreset,
-  findProviderPresetModel,
 } from "../providers/presets.js";
 import { isManagedProvider } from "../config/managed-provider-credentials.js";
 import { describeModel } from "../models/presentation.js";
-import { getThinkingLevels, getSubAgentThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
+import { runtimeTransportProtocol } from "../config/config.js";
 import type { AgentModelEntry } from "../config/persistence.js";
 
 /** 模型条目接口 */
@@ -24,7 +22,6 @@ export type ModelEntryLike = {
   model: string;
   apiKeyRaw: string;
   hasResolvedApiKey: boolean;
-  isPreset?: boolean;
 };
 
 /** 持久化的模型选择 */
@@ -272,24 +269,8 @@ export function resolveModelIdentity(
  * 直接 settings.json 编辑在解析时捕获。
  */
 export function validateThinkingLevelForModel(modelId: string, thinkingLevel: string, source: string): void {
-  if (!thinkingLevel) {
+  if (typeof thinkingLevel !== "string" || !thinkingLevel.trim()) {
     throw new Error(`${source}: missing thinking_level. Re-configure the entry.`);
-  }
-  const native = getThinkingLevels(modelId);
-  if (native.length === 0) {
-    if (thinkingLevel !== "none") {
-      throw new Error(
-        `${source}: model '${modelId}' does not support thinking, but thinking_level is '${thinkingLevel}'.`,
-      );
-    }
-    return;
-  }
-  const eligible = getSubAgentThinkingLevels(modelId);
-  if (!eligible.includes(thinkingLevel)) {
-    throw new Error(
-      `${source}: thinking_level '${thinkingLevel}' is not a valid sub-agent thinking level for model '${modelId}'. ` +
-      `Valid: ${eligible.join(", ")}.`,
-    );
   }
 }
 
@@ -354,17 +335,8 @@ export function resolveModelSelection(
     );
   }
 
-  const presetModel = findProviderPresetModel(parsed.provider, parsed.model);
-  const resolvedModel = presetModel?.id ?? parsed.model;
-  const selectionKey = presetModel?.key ?? parsed.model;
-  const presetRequiresDedicatedConfig = Boolean(
-    presetModel && (
-      presetModel.key !== presetModel.id
-      || presetModel.optionNote
-      || presetModel.config
-      || (presetModel.aliases && presetModel.aliases.length > 0)
-    ),
-  );
+  const resolvedModel = parsed.model;
+  const selectionKey = parsed.model;
 
   const entries = readModelEntries(config);
   const exactEntries = entries.filter((entry) =>
@@ -372,7 +344,7 @@ export function resolveModelSelection(
   );
   const exactWithKey = exactEntries.find((entry) => entry.hasResolvedApiKey);
 
-  if (exactWithKey && !presetRequiresDedicatedConfig) {
+  if (exactWithKey) {
     selectedConfigName = exactWithKey.name;
   } else {
     const keySource = getProviderKeySource(entries, parsed.provider)
@@ -411,13 +383,13 @@ export function resolveModelSelection(
     }
 
     const runtimeName = runtimeModelName(parsed.provider, selectionKey);
-    const rawConfig: Record<string, unknown> = presetModel
-      ? buildProviderPresetRawConfig(parsed.provider, presetModel, keySource)
-      : {
-          provider: parsed.provider,
-          model: resolvedModel,
-          api_key: keySource,
-        };
+    const rawConfig: Record<string, unknown> = {
+      provider: parsed.provider,
+      model: resolvedModel,
+      api_key: keySource,
+      // 没有本地模型目录可供推断时使用保守默认值；用户可在 settings.json 覆盖。
+      context_length: 128_000,
+    };
     if (rawConfig.transport_protocol !== undefined) {
       rawConfig.transport_protocol = runtimeTransportProtocol(String(rawConfig.transport_protocol))
         ?? runtimeTransportProtocol(parsed.provider)

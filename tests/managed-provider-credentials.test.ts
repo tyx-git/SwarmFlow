@@ -44,7 +44,14 @@ describe("managed provider credentials", () => {
   it("auto-registers managed provider models from SwarmFlow env slots", () => {
     process.env["SWARMFLOW_GLM_CODE_API_KEY"] = "glm-code-secret";
 
-    const cfg = new Config({});
+    const cfg = new Config({
+      providerModels: {
+        "glm-code": [
+          { id: "glm-5", contextLength: 200_000 },
+          { id: "glm-4.7", contextLength: 200_000 },
+        ],
+      },
+    });
 
     expect(cfg.modelNames).toContain("glm-code:glm-5");
     expect(cfg.modelNames).toContain("glm-code:glm-4.7");
@@ -54,7 +61,9 @@ describe("managed provider credentials", () => {
   it("does not share managed credentials across endpoints", () => {
     process.env["SWARMFLOW_GLM_API_KEY"] = "glm-standard-secret";
 
-    const cfg = new Config({});
+    const cfg = new Config({
+      providerModels: { glm: [{ id: "glm-5", contextLength: 200_000 }] },
+    });
 
     expect(cfg.modelNames).toContain("glm:glm-5");
     expect(cfg.modelNames).not.toContain("glm-code:glm-5");
@@ -63,7 +72,14 @@ describe("managed provider credentials", () => {
   it("keeps Qwen regional credentials scoped to the configured endpoint", () => {
     process.env["SWARMFLOW_QWEN_US_API_KEY"] = "qwen-us-secret";
 
-    const cfg = new Config({});
+    const cfg = new Config({
+      providerModels: {
+        "qwen-us": [
+          { id: "qwen3.6-plus", contextLength: 1_000_000 },
+          { id: "qwen3.7-max", contextLength: 1_000_000 },
+        ],
+      },
+    });
 
     expect(cfg.modelNames).toContain("qwen-us:qwen3.6-plus");
     expect(cfg.modelNames).toContain("qwen-us:qwen3.7-max");

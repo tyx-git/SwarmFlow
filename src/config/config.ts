@@ -17,7 +17,7 @@ import {
   MANAGED_PROVIDER_CREDENTIAL_SPECS,
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
-import type { AgentModelEntry, LocalProviderConfig } from "../config/persistence.js";
+import type { AgentModelEntry, LocalModelEntry, LocalProviderConfig } from "../config/persistence.js";
 import {
   type SealedSchema,
   type ThinkingEncryption,
@@ -26,8 +26,7 @@ import {
   resolveThinkingEncryption,
   resolveTransportProtocol,
 } from "../lib/thinking-artifact.js";
-import { LEGACY_EXTENDED_CACHE_IDS } from "../models/registry.js";
-import { EFFECTIVE_MODEL_TABLES } from "../providers/registry-effective.js";
+import { THINKING_LEVEL_LIST } from "./thinking.js";
 
 export { SWARMFLOW_HOME_DIR } from "../lib/home-path.js";
 
@@ -84,8 +83,6 @@ export interface ModelConfigEntry {
   apiKeyRaw: string;
   /** 该 API 密钥是否可以成功解析（环境变量已设置或 OAuth 令牌存在） */
   hasResolvedApiKey: boolean;
-  /** Whether the entry was synthesized from a provider preset at startup. */
-  isPreset?: boolean;
 }
 
 /** MCP 服务器配置——定义如何连接和与 MCP 服务器通信 */
@@ -109,20 +106,17 @@ export interface MCPServerConfig {
 }
 
 // ------------------------------------------------------------------
-// 已知模型查找表（从 registry-effective 自动派生）
+// 模型能力不从随程序发布的目录推断；用户配置的字段优先。
 // ------------------------------------------------------------------
 
-/** 有效模型表的别名，从 providers/registry-effective.js 导入 */
-const _MODEL_TABLES = EFFECTIVE_MODEL_TABLES;
+/** 保留兼容的能力映射；模型能力来自用户配置。 */
+export const KNOWN_CONTEXT_LENGTHS: Record<string, number> = {};
 
-/** 已知模型的上下文长度映射（模型 ID → token 数） */
-export const KNOWN_CONTEXT_LENGTHS: Record<string, number> = _MODEL_TABLES.contextLengths;
+/** 用户未显式声明时不启用多模态能力。 */
+export const KNOWN_MULTIMODAL_MODELS: Set<string> = new Set();
 
-/** 已知支持多模态的模型集合 */
-export const KNOWN_MULTIMODAL_MODELS: Set<string> = _MODEL_TABLES.multimodal;
-
-/** 已知不支持网络搜索的模型集合 */
-export const KNOWN_NO_WEB_SEARCH_MODELS: Set<string> = _MODEL_TABLES.noWebSearch;
+/** 保留兼容的网络搜索黑名单；模型能力来自用户配置。 */
+export const KNOWN_NO_WEB_SEARCH_MODELS: Set<string> = new Set();
 
 /** Convert the user-facing settings protocol alias to the runtime enum. */
 export function runtimeTransportProtocol(protocol: string | undefined): TransportProtocol | undefined {
@@ -145,22 +139,15 @@ export function runtimeTransportProtocol(protocol: string | undefined): Transpor
   }
 }
 
-/**
- * 支持 OpenAI 扩展 24 小时提示缓存保留的模型
- * （`prompt_cache_retention: "24h"`）。从标记为 extendedCache 的规格派生，
- * 并与已退役但仍可配置的旧 ID 联合（见 model-registry）。
- */
-export const KNOWN_EXTENDED_CACHE_MODELS: Set<string> = new Set([
-  ..._MODEL_TABLES.extendedCache,
-  ...LEGACY_EXTENDED_CACHE_IDS,
-]);
+/** 没有内置模型能力表；扩展缓存能力必须由运行时显式配置。 */
+export const KNOWN_EXTENDED_CACHE_MODELS: Set<string> = new Set();
 
 // ------------------------------------------------------------------
 // 每个模型的最大输出 token 数
 // ------------------------------------------------------------------
 
-/** 已知模型的最大输出 token 数映射 */
-export const KNOWN_MAX_OUTPUT_TOKENS: Record<string, number> = _MODEL_TABLES.maxOutputTokens;
+/** 用户未显式指定时不限制模型的已知输出上限。 */
+export const KNOWN_MAX_OUTPUT_TOKENS: Record<string, number> = {};
 
 /** 解析模型的最大输出 token 数。优先级：已知查找（精确匹配 > 标准化匹配）> undefined */
 export function getModelMaxOutputTokens(model: string): number | undefined {
@@ -172,14 +159,15 @@ export function getModelMaxOutputTokens(model: string): number | undefined {
 // 每个模型的思维链级别
 // ------------------------------------------------------------------
 
-/** 已知模型的思考深度映射。 */
-export const KNOWN_THINKING_LEVELS: Record<string, string[]> = _MODEL_TABLES.thinkingLevels;
+/** 保留兼容的思考深度映射；未知模型使用可配置默认档位。 */
+export const KNOWN_THINKING_LEVELS: Record<string, string[]> = {};
 
-/** 返回模型可用的思维链级别列表，非思维链模型返回空数组 */
+/** 返回模型可用的思考深度候选；最终支持情况由供应商确认。 */
 export function getThinkingLevels(model: string): string[] {
   return KNOWN_THINKING_LEVELS[model]
     ?? KNOWN_THINKING_LEVELS[normalizeModelId(model)]
-    ?? [];
+    // 模型能力由供应商在实际请求时确认；未知模型先展示用户配置的默认档位。
+    ?? [...THINKING_LEVEL_LIST];
 }
 
 /**
@@ -563,7 +551,6 @@ export function getBundledAssetsDir(): string {
 
 export class Config {
   private _rawModels: Record<string, Record<string, unknown>> = {};
-  private _presetModelNames = new Set<string>();
   private _models: Map<string, ModelConfig> = new Map();
   private _mcpServers: MCPServerConfig[];
   private _agentModels: Record<string, AgentModelEntry> = {};
@@ -572,6 +559,8 @@ export class Config {
 
   constructor(opts: {
     providerEnvVars?: Record<string, string>;
+    /** 用户为云端提供商声明的模型；内置注册表不再提供模型条目。 */
+    providerModels?: Record<string, LocalModelEntry[]>;
     localProviders?: Record<string, LocalProviderConfig>;
     mcpServers?: MCPServerConfig[];
     agentModels?: Record<string, AgentModelEntry>;
@@ -584,6 +573,7 @@ export class Config {
     this._subAgentInheritHooks = opts.subAgentInheritHooks ?? true;
     this._populateFromPreferences(
       opts.providerEnvVars ?? {},
+      opts.providerModels ?? {},
       opts.localProviders ?? {},
     );
   }
@@ -598,11 +588,12 @@ export class Config {
 
   /**
    * 从提供商环境变量映射和本地服务器配置填充原始模型映射。
-   * 对于每个已配置的提供商，注册所有预设模型。
-   * 对于每个本地服务器，注册一个模型条目。
+   * 对于每个已配置的提供商，只注册用户提供的模型。
+   * 对于每个本地服务器，注册用户配置的模型条目。
    */
   private _populateFromPreferences(
     providerEnvVars: Record<string, string>,
+    providerModels: Record<string, LocalModelEntry[]>,
     localProviders: Record<string, LocalProviderConfig>,
   ): void {
     const preferenceApiKey = (providerId: string, source: string): string => {
@@ -624,21 +615,41 @@ export class Config {
       return `\${${source}}`;
     };
 
-    // 云端/标准提供商
-    for (const [providerId, envVar] of Object.entries(providerEnvVars)) {
-      const preset = findProviderPreset(providerId);
-      if (!preset || preset.localServer || isManagedProvider(providerId)) continue;
-
-      for (const model of preset.models) {
-        const name = `${providerId}:${model.key}`;
+    const registerModels = (providerId: string, apiKeyRaw: string, models: LocalModelEntry[]): void => {
+      for (const model of models) {
+        const name = `${providerId}:${model.id}`;
         this._rawModels[name] = {
           provider: providerId,
           model: model.id,
-          api_key: preferenceApiKey(providerId, envVar),
-          ...(model.config ?? {}),
+          api_key: apiKeyRaw,
+          context_length: model.contextLength,
+          ...(model.maxOutputTokens !== undefined ? { max_tokens: model.maxOutputTokens } : {}),
+          ...(model.multimodal !== undefined ? { supports_multimodal: model.multimodal } : {}),
+          ...(model.webSearch !== undefined ? { supports_web_search: model.webSearch } : {}),
         };
-        this._presetModelNames.add(name);
       }
+    };
+
+    // 云端/标准提供商。模型条目来自 settings.json，不从 provider 元数据生成。
+    const configuredProviderIds = new Set([
+      ...Object.keys(providerEnvVars),
+      ...Object.keys(providerModels),
+    ]);
+    for (const providerId of configuredProviderIds) {
+      const preset = findProviderPreset(providerId);
+      if (preset?.localServer || isManagedProvider(providerId)) continue;
+      const envVar = providerEnvVars[providerId];
+      let apiKeyRaw = envVar ? preferenceApiKey(providerId, envVar) : undefined;
+      if (!apiKeyRaw && preset && typeof process.env[preset.envVar] === "string" && process.env[preset.envVar]!.trim()) {
+        apiKeyRaw = preferenceApiKey(providerId, preset.envVar);
+      }
+      if (!apiKeyRaw && providerId === "openai-codex") {
+        apiKeyRaw = "oauth:openai-codex";
+      }
+      if (!apiKeyRaw && providerId === "copilot") {
+        apiKeyRaw = "oauth:copilot";
+      }
+      if (apiKeyRaw) registerModels(providerId, apiKeyRaw, providerModels[providerId] ?? []);
     }
 
     // 托管云提供商：直接从固定的 swarmflow 环境变量槽解析。
@@ -646,18 +657,13 @@ export class Config {
       const raw = process.env[spec.internalEnvVar];
       if (typeof raw !== "string" || raw.trim() === "") continue;
       const preset = findProviderPreset(spec.providerId);
-      if (!preset || preset.localServer) continue;
+      if (preset?.localServer) continue;
 
-      for (const model of preset.models) {
-        const name = `${spec.providerId}:${model.key}`;
-        this._rawModels[name] = {
-          provider: spec.providerId,
-          model: model.id,
-          api_key: preferenceApiKey(spec.providerId, spec.internalEnvVar),
-          ...(model.config ?? {}),
-        };
-        this._presetModelNames.add(name);
-      }
+      registerModels(
+        spec.providerId,
+        preferenceApiKey(spec.providerId, spec.internalEnvVar),
+        providerModels[spec.providerId] ?? [],
+      );
     }
 
     // 自定义/本地提供商：一个端点，一个或多个模型。
@@ -728,7 +734,7 @@ export class Config {
     const knownKeys = new Set([
       "provider", "model", "api_key", "base_url",
       "temperature", "max_tokens", "context_length",
-      "supports_multimodal", "supports_thinking", "thinking_budget",
+      "supports_multimodal", "thinking_budget",
       "supports_web_search",
       "transport_protocol", "thinking_encryption", "sealed_schema",
     ]);
@@ -839,7 +845,6 @@ export class Config {
         apiKeyRaw,
         hasResolvedApiKey: hasResolvableApiKey(apiKeyRaw),
       };
-      if (this._presetModelNames.has(name)) entry.isPreset = true;
       out.push(entry);
     }
     return out;
@@ -865,14 +870,12 @@ export class Config {
       : undefined;
     if (protocol) normalized.transport_protocol = protocol;
     this._rawModels[name] = normalized;
-    this._presetModelNames.delete(name);
     this._models.delete(name);
   }
 
   /** 从运行时配置中移除模型（自定义提供商管理） */
   removeModel(name: string): void {
     delete this._rawModels[name];
-    this._presetModelNames.delete(name);
     this._models.delete(name);
   }
 

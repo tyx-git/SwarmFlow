@@ -17,7 +17,10 @@ function writeRuntimeSettings(): void {
     join(swarmflowHome, "settings.json"),
     JSON.stringify({
       providers: {
-        openai: { api_key_env: TEST_KEY_ENV },
+        openai: {
+          api_key_env: TEST_KEY_ENV,
+          models: [{ id: "gpt-5.4-mini", context_length: 400_000 }],
+        },
       },
       default_model: "openai:gpt-5.4-mini",
       thinking_level: "high",

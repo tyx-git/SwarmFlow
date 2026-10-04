@@ -12,7 +12,6 @@ import { join } from "node:path";
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import {
   PROVIDER_PRESETS,
-  buildProviderPresetRawConfig,
   type ProviderPreset,
 } from "../providers/presets.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
@@ -128,7 +127,11 @@ export class InitService {
       isOAuth: preset.id === "openai-codex" || preset.id === "copilot",
       isLocal: Boolean(preset.localServer),
       isManaged: isManagedProvider(preset.id),
-      models: preset.models.map((m) => ({ key: m.key, id: m.id, label: m.label })),
+      models: (this.configuredProviders.get(preset.id)?.models ?? []).map((model) => ({
+        key: model.id,
+        id: model.id,
+        label: model.id,
+      })),
     }));
   }
 
@@ -143,7 +146,10 @@ export class InitService {
     if (apiKey.trim()) {
       setDotenvKey(envVar, apiKey.trim());
     }
-    this.configuredProviders.set(providerId, { api_key_env: envVar });
+    this.configuredProviders.set(providerId, {
+      ...this.configuredProviders.get(providerId),
+      api_key_env: envVar,
+    });
     return { ok: true, envVar };
   }
 
@@ -184,7 +190,10 @@ export class InitService {
     if (apiKey.trim()) {
       setDotenvKey(envVar, apiKey.trim());
     }
-    this.configuredProviders.set(providerId, { api_key_env: envVar });
+    this.configuredProviders.set(providerId, {
+      ...this.configuredProviders.get(providerId),
+      api_key_env: envVar,
+    });
     return { ok: true, envVar };
   }
 
@@ -204,15 +213,11 @@ export class InitService {
     const parsed = parseProviderModelTarget(target);
     if (!parsed) throw new Error(`Invalid model target: ${target}`);
 
-    const presetModel = PROVIDER_PRESETS
-      .find((preset) => preset.id === parsed.provider)
-      ?.models.find((model) => model.key === parsed.model);
-
     return {
       configName: `${parsed.provider}:${parsed.model}`,
       providerId: parsed.provider,
       selectionKey: parsed.model,
-      modelId: presetModel?.id ?? parsed.model,
+      modelId: parsed.model,
     };
   }
 
@@ -293,16 +298,19 @@ export class InitService {
 
   private detectConfiguredProviders(): Map<string, ProviderEntry> {
     const providers = new Map<string, ProviderEntry>();
+    const existingProviders = loadGlobalSettings(this.homeDir).providers ?? {};
     for (const preset of PROVIDER_PRESETS) {
+      const existing = existingProviders[preset.id];
+      if (existing) providers.set(preset.id, existing);
       if (preset.localServer) continue;
       if (isManagedProvider(preset.id)) {
         if (hasManagedCredential(preset.id)) {
-          providers.set(preset.id, { api_key_env: preset.envVar });
+          providers.set(preset.id, { ...existing, api_key_env: existing?.api_key_env ?? preset.envVar });
         }
         continue;
       }
       if (process.env[preset.envVar]) {
-        providers.set(preset.id, { api_key_env: preset.envVar });
+        providers.set(preset.id, { ...existing, api_key_env: existing?.api_key_env ?? preset.envVar });
       }
     }
     return providers;
@@ -319,31 +327,31 @@ export class InitService {
     const config = new Config({});
 
     for (const [providerId, entry] of this.configuredProviders) {
-      if (entry.base_url && entry.model) {
-        config.upsertModelRaw(`${providerId}:${entry.model}`, {
-          provider: providerId,
-          model: entry.model,
-          api_key: entry.api_key ?? "local",
-          base_url: entry.base_url,
-          context_length: entry.context_length,
-          ...(entry.protocol ? { transport_protocol: runtimeTransportProtocol(entry.protocol) ?? "chat" } : {}),
-          supports_web_search: false,
-        });
-        continue;
-      }
-      const preset = PROVIDER_PRESETS.find((c) => c.id === providerId);
-      if (!preset || preset.localServer) continue;
-      const placeholderKey =
+      const models = entry.models?.length
+        ? entry.models
+        : entry.model
+          ? [{ id: entry.model, context_length: entry.context_length ?? 128_000 }]
+          : [];
+      const placeholderKey = entry.api_key_env
+        ? `\${${entry.api_key_env}}`
+        :
         providerId === "openai-codex"
           ? "oauth:openai-codex"
           : providerId === "copilot"
             ? "oauth:copilot"
-            : "wizard-configured";
-      for (const model of preset.models) {
-        config.upsertModelRaw(
-          `${providerId}:${model.key}`,
-          buildProviderPresetRawConfig(providerId, model, placeholderKey),
-        );
+            : entry.api_key ?? "wizard-configured";
+      for (const model of models) {
+        config.upsertModelRaw(`${providerId}:${model.id}`, {
+          provider: providerId,
+          model: model.id,
+          api_key: placeholderKey,
+          ...(entry.base_url ? { base_url: entry.base_url } : {}),
+          ...(entry.protocol ? { transport_protocol: runtimeTransportProtocol(entry.protocol) ?? "chat" } : {}),
+          context_length: model.context_length,
+          ...(model.max_output_tokens ? { max_tokens: model.max_output_tokens } : {}),
+          supports_multimodal: model.multimodal ?? false,
+          supports_web_search: model.web_search ?? false,
+        });
       }
     }
 

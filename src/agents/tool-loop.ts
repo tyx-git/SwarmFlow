@@ -140,6 +140,14 @@ export function generateToolCallDisplay(
       return pattern ? `${toolName} ${pattern}` : toolName;
     case "grep":
       return pattern && path ? `${toolName} ${pattern} in ${path}` : pattern ? `${toolName} ${pattern}` : toolName;
+    case "find_symbol":
+      return compactDisplayValue(toolArgs["query"])
+        ? `${toolName} ${compactDisplayValue(toolArgs["query"])}${path ? ` in ${path}` : ""}`
+        : toolName;
+    case "jq":
+      return compactDisplayValue(toolArgs["query"])
+        ? `${toolName} ${compactDisplayValue(toolArgs["query"])}${path ? ` ${path}` : ""}`
+        : toolName;
     case "bash":
     case "bash_background":
       return command ? `${toolName} ${command}` : toolName;
