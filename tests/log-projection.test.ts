@@ -286,8 +286,8 @@ describe("projectToTuiEntries", () => {
   it("hides legacy sub-agent tool call entries from the TUI projection", () => {
     const entries = [
       ...basicLog(),
-      createSubAgentToolCall("satc-001", 1, "[#1 explorer-A] read_file src/a.ts", 1, "explorer-A", "read_file", 1),
-      createSubAgentToolCall("satc-002", 1, "[#2 explorer-B] grep \"auth\" src/", 2, "explorer-B", "grep", 1),
+      createSubAgentToolCall("satc-001", 1, "[#1 scout-A] read_file src/a.ts", 1, "scout-A", "read_file", 1),
+      createSubAgentToolCall("satc-002", 1, "[#2 scout-B] grep \"auth\" src/", 2, "scout-B", "grep", 1),
     ];
 
     const tui = projectToTuiEntries(entries);
@@ -300,8 +300,8 @@ describe("projectToTuiEntries", () => {
       createSystemPrompt("sys-001", "prompt"),
       createUserMessage("user-001", 1, "investigate", "investigate", "c1"),
       createReasoning("rsn-001", 1, 0, "thinking...", "thinking...", { state: "r0" }),
-      createSubAgentToolCall("satc-001", 1, "[#1 explorer-A] read_file src/a.ts", 1, "explorer-A", "read_file", 1),
-      createSubAgentToolCall("satc-002", 1, "[#2 explorer-B] grep \"auth\" src/", 2, "explorer-B", "grep", 1),
+      createSubAgentToolCall("satc-001", 1, "[#1 scout-A] read_file src/a.ts", 1, "scout-A", "read_file", 1),
+      createSubAgentToolCall("satc-002", 1, "[#2 scout-B] grep \"auth\" src/", 2, "scout-B", "grep", 1),
       createAssistantText("asst-001", 1, 0, "Done.", "Done."),
     ];
 
@@ -320,7 +320,7 @@ describe("projectToTuiEntries", () => {
       createSystemPrompt("sys-001", "prompt"),
       createUserMessage("user-001", 1, "investigate", "investigate", "c1"),
       createReasoning("rsn-001", 1, 0, "thinking...", "thinking...", { state: "r0" }),
-      createSubAgentToolCall("satc-001", 1, "[#1 explorer-A] read_file src/a.ts", 1, "explorer-A", "read_file", 1),
+      createSubAgentToolCall("satc-001", 1, "[#1 scout-A] read_file src/a.ts", 1, "scout-A", "read_file", 1),
       createToolCall(
         "tc-001",
         1,
@@ -345,7 +345,7 @@ describe("projectToTuiEntries", () => {
       createSystemPrompt("sys-001", "prompt"),
       createUserMessage("user-001", 1, "investigate", "investigate", "c1"),
       createAssistantText("asst-001", 1, 0, "First answer", "First answer"),
-      createSubAgentToolCall("satc-001", 1, "[#1 explorer-A] read_file src/a.ts", 1, "explorer-A", "read_file", 1),
+      createSubAgentToolCall("satc-001", 1, "[#1 scout-A] read_file src/a.ts", 1, "scout-A", "read_file", 1),
       createReasoning("rsn-001", 1, 1, "second thinking", "second thinking", { state: "r1" }),
     ];
 
@@ -361,15 +361,15 @@ describe("projectToTuiEntries", () => {
     const entries: LogEntry[] = [
       createSystemPrompt("sys-001", "prompt"),
       createUserMessage("user-001", 1, "investigate", "investigate", "c1"),
-      createSubAgentStart("sas-001", 1, "started", 1, "explorer", "task"),
-      createSubAgentToolCall("satc-001", 1, "[#1 explorer] tool 1", 1, "explorer", "tool1", 1),
-      createSubAgentToolCall("satc-002", 1, "[#1 explorer] tool 2", 1, "explorer", "tool2", 2),
-      createSubAgentToolCall("satc-003", 1, "[#1 explorer] tool 3", 1, "explorer", "tool3", 3),
-      createSubAgentToolCall("satc-004", 1, "[#1 explorer] tool 4", 1, "explorer", "tool4", 4),
-      createSubAgentToolCall("satc-005", 1, "[#1 explorer] tool 5", 1, "explorer", "tool5", 5),
-      createSubAgentToolCall("satc-006", 1, "[#1 explorer] tool 6", 1, "explorer", "tool6", 6),
-      createSubAgentToolCall("satc-007", 1, "[#1 explorer] tool 7", 1, "explorer", "tool7", 7),
-      createSubAgentEnd("sae-001", 1, "done", 1, "explorer", 10, 7),
+      createSubAgentStart("sas-001", 1, "started", 1, "scout", "task"),
+      createSubAgentToolCall("satc-001", 1, "[#1 scout] tool 1", 1, "scout", "tool1", 1),
+      createSubAgentToolCall("satc-002", 1, "[#1 scout] tool 2", 1, "scout", "tool2", 2),
+      createSubAgentToolCall("satc-003", 1, "[#1 scout] tool 3", 1, "scout", "tool3", 3),
+      createSubAgentToolCall("satc-004", 1, "[#1 scout] tool 4", 1, "scout", "tool4", 4),
+      createSubAgentToolCall("satc-005", 1, "[#1 scout] tool 5", 1, "scout", "tool5", 5),
+      createSubAgentToolCall("satc-006", 1, "[#1 scout] tool 6", 1, "scout", "tool6", 6),
+      createSubAgentToolCall("satc-007", 1, "[#1 scout] tool 7", 1, "scout", "tool7", 7),
+      createSubAgentEnd("sae-001", 1, "done", 1, "scout", 10, 7),
       createStatus("st-001", 1, "Status line", "info"),
     ];
 
@@ -387,7 +387,7 @@ describe("projectToTuiEntries", () => {
         0,
         "await_event 120s",
         { id: "await_event:1", name: "await_event", arguments: { seconds: 120 } },
-        { toolCallId: "await_event:1", toolName: "await_event", agentName: "main" },
+        { toolCallId: "await_event:1", toolName: "await_event", agentName: "queen" },
       ),
       createSubAgentEnd("sae-001", 1, "done", 6, "investigate-other-packages", 89.4, 49),
       createReasoning("rsn-001", 1, 1, "thinking", "thinking", { state: "r1" }),
@@ -398,7 +398,7 @@ describe("projectToTuiEntries", () => {
         1,
         "await_event 120s",
         { id: "await_event:2", name: "await_event", arguments: { seconds: 120 } },
-        { toolCallId: "await_event:2", toolName: "await_event", agentName: "main" },
+        { toolCallId: "await_event:2", toolName: "await_event", agentName: "queen" },
       ),
       createSubAgentEnd("sae-002", 1, "done", 2, "investigate-opencode", 95.4, 34),
       createReasoning("rsn-002", 1, 2, "thinking again", "thinking again", { state: "r2" }),
@@ -429,7 +429,7 @@ describe("projectToApiMessages", () => {
       1,
       "worker-1",
       1,
-      "explorer",
+      "scout",
       "completed",
       "natural",
       1000,
@@ -449,7 +449,7 @@ describe("projectToApiMessages", () => {
         0,
         "await_event 60s",
         { id: "await_event:2", name: "await_event", arguments: { seconds: 60 } },
-        { toolCallId: "await_event:2", toolName: "await_event", agentName: "main", contextId: "r1" },
+        { toolCallId: "await_event:2", toolName: "await_event", agentName: "queen", contextId: "r1" },
       ),
       legacyAgentResult,
       createToolResult(
@@ -670,7 +670,7 @@ describe("projectToApiMessages", () => {
         0,
         "await_event 15s",
         { id: "await_event:1", name: "await_event", arguments: { seconds: 15 } },
-        { toolCallId: "await_event:1", toolName: "await_event", agentName: "main", contextId: "r1" },
+        { toolCallId: "await_event:1", toolName: "await_event", agentName: "queen", contextId: "r1" },
       ),
       createUserMessage("user-002", 1, "side channel", "side channel", "c2"),
       createToolResult(

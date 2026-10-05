@@ -17,7 +17,7 @@ describe("task status panel layout and presentation", () => {
     id: "worker-1",
     numericId: 1,
     logRevision: 0,
-    template: "explorer",
+    template: "scout",
     mode: "oneshot",
     lifecycle: "idle",
     phase: "idle",

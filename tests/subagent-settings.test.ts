@@ -54,13 +54,13 @@ describe("sub-agent default model settings", () => {
 
   it("uses the configured default when no pin or tier is present", () => {
     const template = {
-      name: "explorer",
+      name: "scout",
       systemPrompt: "Explore.",
       tools: [],
       maxToolRounds: 4,
     } as any;
     const factory = new SubAgentFactory({
-      getAgentTemplates: () => ({ explorer: template }),
+      getAgentTemplates: () => ({ scout: template }),
       getConfig: () => ({
         agentModels: {},
         subAgentInheritMcp: false,
@@ -75,7 +75,7 @@ describe("sub-agent default model settings", () => {
       getSubagentDefaultModel: () => ({ modelConfig: MODEL, thinkingLevel: "high" }),
     });
 
-    const result = factory.createFromPredefined("explorer", "worker-1");
+    const result = factory.createFromPredefined("scout", "worker-1");
     expect(result.agent.modelConfig.name).toBe("subagent-model");
     expect(result.thinkingLevel).toBe("high");
   });

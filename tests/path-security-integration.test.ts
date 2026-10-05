@@ -116,7 +116,7 @@ describe("path security integration", () => {
 
     const result = await (Session.prototype as any)._execSpawn.call(
       fakeSession,
-      { id: "test-agent", template: "explorer", template_path: "custom/", task: "do stuff", mode: "oneshot" },
+      { id: "test-agent", template: "scout", template_path: "custom/", task: "do stuff", mode: "oneshot" },
     );
     expect(result.content).toContain("cannot specify both");
   });

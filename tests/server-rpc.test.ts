@@ -205,7 +205,7 @@ describe("ask events over RPC", () => {
         name: "worker-1",
         tools: [testToolDef("write_file")],
       });
-      const handle = h.internals._instantiateChildSession("worker-1", "explorer", "persistent", childAgent);
+      const handle = h.internals._instantiateChildSession("worker-1", "scout", "persistent", childAgent);
       h.internals._childSessions.set("worker-1", handle);
       let fired = false;
       handle.session._beforeToolExecute = async (ctx: { toolName: string }) => {
@@ -294,7 +294,7 @@ describe("projected log over RPC", () => {
       const childProvider = new ScriptedProvider();
       childProvider.rounds = [{ text: "child says hi" }];
       const childAgent = makeScriptedAgentObject(childProvider, { name: "worker-1" });
-      const handle = h.internals._instantiateChildSession("worker-1", "explorer", "persistent", childAgent);
+      const handle = h.internals._instantiateChildSession("worker-1", "scout", "persistent", childAgent);
       h.internals._childSessions.set("worker-1", handle);
       await h.internals._execSend({ to: "worker-1", content: "say hi" });
       await waitFor(() => handle.lastOutcome === "completed");

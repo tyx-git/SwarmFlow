@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 function hint(overrides: Partial<TaskResumeHint> = {}): TaskResumeHint {
-  return { childId: "explorer-1", toolCalls: 12, tokensIn: 40_000, resumable: true, reason: "in_progress_work", ...overrides };
+  return { childId: "scout-1", toolCalls: 12, tokensIn: 40_000, resumable: true, reason: "in_progress_work", ...overrides };
 }
 
 describe("TaskStore CRUD", () => {
@@ -121,18 +121,18 @@ describe("TaskStore reconcile support", () => {
     const dispatched = store.create("Dispatched", "d").task;
     const own = store.create("Own work", "d").task;
     const done = store.create("Done", "d").task;
-    store.update(dispatched.id, { status: "in_progress", metadata: { agentId: "explorer-1" } });
+    store.update(dispatched.id, { status: "in_progress", metadata: { agentId: "scout-1" } });
     store.update(own.id, { status: "in_progress" });
     store.update(done.id, { status: "completed" });
 
-    const result = store.markInterrupted({ "explorer-1": hint() }, 1_700_000_000_000);
+    const result = store.markInterrupted({ "scout-1": hint() }, 1_700_000_000_000);
 
     expect(result.changed.sort()).toEqual([dispatched.id, own.id].sort());
     const upgraded = store.get(dispatched.id);
     expect(upgraded?.status).toBe("pending");
     expect(upgraded?.metadata["interruptedAt"]).toBe(1_700_000_000_000);
     expect(upgraded?.metadata["resumeHint"]).toEqual(hint());
-    expect(upgraded?.metadata["agentId"]).toBe("explorer-1");
+    expect(upgraded?.metadata["agentId"]).toBe("scout-1");
 
     const ownTask = store.get(own.id);
     expect(ownTask?.status).toBe("pending");
@@ -151,8 +151,8 @@ describe("TaskStore reconcile support", () => {
   it("resumes a hinted task, clears the marker and counts attempts", () => {
     const store = TaskStore.memory();
     const task = store.create("T", "d").task;
-    store.update(task.id, { status: "in_progress", metadata: { agentId: "explorer-1" } });
-    store.markInterrupted({ "explorer-1": hint() }, 1);
+    store.update(task.id, { status: "in_progress", metadata: { agentId: "scout-1" } });
+    store.markInterrupted({ "scout-1": hint() }, 1);
 
     const first = store.beginResume(task.id);
     expect(first.ok).toBe(true);
@@ -164,16 +164,16 @@ describe("TaskStore reconcile support", () => {
   it("refuses resume when not resumable, superseded or attempts exhausted", () => {
     const store = TaskStore.memory();
     const task = store.create("T", "d").task;
-    store.update(task.id, { status: "in_progress", metadata: { agentId: "explorer-1" } });
+    store.update(task.id, { status: "in_progress", metadata: { agentId: "scout-1" } });
 
-    store.markInterrupted({ "explorer-1": hint({ resumable: false, reason: "too_early" }) }, 1);
+    store.markInterrupted({ "scout-1": hint({ resumable: false, reason: "too_early" }) }, 1);
     expect(store.beginResume(task.id).reason).toBe("too_early");
 
     store.update(task.id, { metadata: { resumeHint: hint() } });
     store.update(task.id, { metadata: { agentId: "worker-2" } });
     expect(store.beginResume(task.id).reason).toBe("superseded");
 
-    store.update(task.id, { metadata: { agentId: "explorer-1" } });
+    store.update(task.id, { metadata: { agentId: "scout-1" } });
     expect(store.beginResume(task.id).ok).toBe(true);
     for (let i = 1; i < RESUME_MAX_ATTEMPTS; i++) store.beginResume(task.id);
     expect(store.beginResume(task.id).reason).toBe("attempts_exhausted");
@@ -185,8 +185,8 @@ describe("TaskStore reconcile support", () => {
     expect(store.beginResume(task.id).reason).toBe("no_resume_hint");
     expect(store.beginResume("99").reason).toBe("not_found");
 
-    store.update(task.id, { status: "in_progress", metadata: { agentId: "explorer-1" } });
-    store.markInterrupted({ "explorer-1": hint() }, 1);
+    store.update(task.id, { status: "in_progress", metadata: { agentId: "scout-1" } });
+    store.markInterrupted({ "scout-1": hint() }, 1);
     store.update(task.id, { status: "completed" });
     expect(store.beginResume(task.id).reason).toBe("already_completed");
   });
@@ -307,15 +307,15 @@ describe("formatTaskSnapshot", () => {
     const third = store.create("Waiting", "d").task;
     store.update(first.id, { status: "completed" });
     // third 由子代理推进 → 重启对账后降级为 pending 并带续跑提示
-    store.update(third.id, { status: "in_progress", metadata: { agentId: "explorer-1" } });
-    store.markInterrupted({ "explorer-1": hint() });
+    store.update(third.id, { status: "in_progress", metadata: { agentId: "scout-1" } });
+    store.markInterrupted({ "scout-1": hint() });
     // second 是本轮新开始的工作（对账之后），应保持 in_progress
     store.update(second.id, { status: "in_progress", metadata: { agentId: "worker-1" } });
 
     const snapshot = formatTaskSnapshot(store.list());
     expect(snapshot.startsWith("[Current Tasks]")).toBe(true);
     expect(snapshot).toContain(`- #${second.id} [in_progress] Running (owner: worker-1)`);
-    expect(snapshot).toContain(`- #${third.id} [pending] Waiting (owner: explorer-1) (interrupted — resumable via task_resume)`);
+    expect(snapshot).toContain(`- #${third.id} [pending] Waiting (owner: scout-1) (interrupted — resumable via task_resume)`);
     expect(snapshot).toContain(`- #${first.id} [completed] Finished`);
     // 未完成项在已完成项之前
     expect(snapshot.indexOf("Running")).toBeLessThan(snapshot.indexOf("Finished"));
@@ -336,8 +336,8 @@ describe("formatTaskSnapshot", () => {
   it("marks non-resumable interruptions as needing re-dispatch", () => {
     const store = TaskStore.memory();
     const task = store.create("Stuck", "d").task;
-    store.update(task.id, { status: "in_progress", metadata: { agentId: "explorer-9" } });
-    store.markInterrupted({ "explorer-9": hint({ childId: "explorer-9", resumable: false, reason: "too_early" }) });
+    store.update(task.id, { status: "in_progress", metadata: { agentId: "scout-9" } });
+    store.markInterrupted({ "scout-9": hint({ childId: "scout-9", resumable: false, reason: "too_early" }) });
     expect(formatTaskSnapshot(store.list())).toContain("(interrupted — needs re-dispatch)");
   });
 });

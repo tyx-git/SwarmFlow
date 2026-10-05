@@ -10,10 +10,10 @@ import { ErrorMessage } from "../primitives/error-message.js";
 import { countWrappedDisplayLines } from "../utils/format.js";
 
 function formatAskSource(ask: AskPanelProps["ask"]): string {
-  const sourceName = ask.source.agentName || ask.source.agentId || "Main agent";
+  const sourceName = ask.source.agentName || ask.source.agentId || "Queen";
   const lower = sourceName.toLowerCase();
-  const isMain = lower === "primary" || lower === "main" || lower === "root";
-  return isMain ? "Source: Main agent" : `Source: Sub-Agent ${sourceName}`;
+  const isQueen = lower === "primary" || lower === "queen" || lower === "root";
+  return isQueen ? "Source: Queen" : `Source: Sub-Agent ${sourceName}`;
 }
 
 export function AskPanelView({

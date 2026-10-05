@@ -317,7 +317,7 @@ describe("Factory functions", () => {
   });
 
   it("createSubAgentStart", () => {
-    const e = createSubAgentStart("sas-001", 2, "Sub-agent #1 started", 1, "explorer", "find files");
+    const e = createSubAgentStart("sas-001", 2, "Sub-agent #1 started", 1, "scout", "find files");
     expect(e.type).toBe("sub_agent_start");
     expect(e.tuiVisible).toBe(true);
     expect(e.displayKind).toBe("progress");
@@ -325,13 +325,13 @@ describe("Factory functions", () => {
   });
 
   it("createSubAgentToolCall", () => {
-    const e = createSubAgentToolCall("satc-001", 2, "[#1] reading file", 1, "explorer", "read_file", 5);
+    const e = createSubAgentToolCall("satc-001", 2, "[#1] reading file", 1, "scout", "read_file", 5);
     expect(e.type).toBe("sub_agent_tool_call");
     expect(e.meta.toolCallCount).toBe(5);
   });
 
   it("createSubAgentEnd", () => {
-    const e = createSubAgentEnd("sae-001", 2, "Sub-agent #1 completed", 1, "explorer", 12.3, 5);
+    const e = createSubAgentEnd("sae-001", 2, "Sub-agent #1 completed", 1, "scout", 12.3, 5);
     expect(e.type).toBe("sub_agent_end");
     expect(e.meta.elapsed).toBe(12.3);
   });

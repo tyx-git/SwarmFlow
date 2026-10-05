@@ -308,7 +308,7 @@ describe("ask subscription", () => {
         name: "worker-1",
         tools: [testToolDef("write_file")],
       });
-      const handle = h.internals._instantiateChildSession("worker-1", "explorer", "persistent", childAgent);
+      const handle = h.internals._instantiateChildSession("worker-1", "scout", "persistent", childAgent);
       h.internals._childSessions.set("worker-1", handle);
 
       // Stage the approval gate on the CHILD session.

@@ -682,8 +682,8 @@ describe("session storage lifecycle", () => {
         supportsMultimodal: false,
       };
       const templateAgent = {
-        name: "explorer",
-        systemPrompt: "Explorer rooted at {PROJECT_ROOT}; artifacts at {SESSION_ARTIFACTS}.",
+        name: "scout",
+        systemPrompt: "Scout rooted at {PROJECT_ROOT}; artifacts at {SESSION_ARTIFACTS}.",
         tools: [],
         maxToolRounds: 100,
         modelConfig: { ...modelConfig },
@@ -694,11 +694,11 @@ describe("session storage lifecycle", () => {
       } as any;
       const session = makeSession(projectRoot, store, {
         modelConfigs: { "test-model": modelConfig },
-        agentTemplates: { explorer: templateAgent },
+        agentTemplates: { scout: templateAgent },
       }) as any;
 
-      const { agent } = session._createSubAgentFromPredefined("explorer", "explorer-1");
-      const handle = session._instantiateChildSession("explorer-1", "explorer", "oneshot", agent);
+      const { agent } = session._createSubAgentFromPredefined("scout", "scout-1");
+      const handle = session._instantiateChildSession("scout-1", "scout", "oneshot", agent);
       const childSystemContent = getSystemPromptContent(handle.session);
 
       expect(childSystemContent).not.toContain("{PROJECT_ROOT}");
@@ -706,7 +706,7 @@ describe("session storage lifecycle", () => {
       expect(childSystemContent).toContain(`artifacts at ${handle.artifactsDir}`);
       // Template prompt must appear exactly once — instantiation mutates the
       // agent's prompt, so a double-append would duplicate it.
-      expect(countOccurrences(childSystemContent, "Explorer rooted at")).toBe(1);
+      expect(countOccurrences(childSystemContent, "Scout rooted at")).toBe(1);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
@@ -768,7 +768,7 @@ describe("session storage lifecycle", () => {
         childSessions: [{
           id: "repo-mapper",
           numericId: 1,
-          template: "explorer",
+          template: "scout",
           mode: "persistent",
           lifecycle: "idle",
           outcome: "completed",
@@ -897,7 +897,7 @@ describe("session storage lifecycle", () => {
       (session as any)._childSessions.set("working-agent", {
         id: "working-agent",
         numericId: 1,
-        template: "explorer",
+        template: "scout",
         mode: "persistent",
         lifecycle: "running",
         status: "working",
@@ -924,7 +924,7 @@ describe("session storage lifecycle", () => {
       (session as any)._childSessions.set("finished-agent", {
         id: "finished-agent",
         numericId: 2,
-        template: "explorer",
+        template: "scout",
         mode: "oneshot",
         lifecycle: "archived",
         status: "completed",

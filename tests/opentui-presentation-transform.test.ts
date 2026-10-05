@@ -146,7 +146,7 @@ describe("OpenTUI presentation transform", () => {
   it("marks truncated agent_result previews as expandable while preserving received message text", () => {
     const receivedMessage = Array.from(
       { length: 12 },
-      (_, idx) => idx === 0 ? "[Agent \"docs-explorer\" completed]" : `line ${idx}`,
+      (_, idx) => idx === 0 ? "[Agent \"docs-scout\" completed]" : `line ${idx}`,
     ).join("\n");
     const preview = receivedMessage.split("\n").slice(0, 8).join("\n");
 
@@ -157,7 +157,7 @@ describe("OpenTUI presentation transform", () => {
         text: preview,
         fullText: receivedMessage,
         meta: {
-          agentId: "docs-explorer",
+          agentId: "docs-scout",
           outcome: "completed",
           cause: "natural",
           elapsedMs: 196900,
@@ -172,7 +172,7 @@ describe("OpenTUI presentation transform", () => {
     expect(result[0]).toMatchObject({
       kind: "tool_operation",
       toolDisplayName: "Agent Complete",
-      toolText: "docs-explorer",
+      toolText: "docs-scout",
       toolSuffix: "(196.9s)",
       toolInlineResult: {
         text: preview,

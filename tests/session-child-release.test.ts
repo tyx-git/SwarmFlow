@@ -21,7 +21,7 @@ function makeChild(h: SessionHarness, mode: "oneshot" | "persistent", replyText:
   const childProvider = new ScriptedProvider();
   childProvider.rounds = [{ text: replyText }];
   const childAgent = makeScriptedAgentObject(childProvider, { name: "worker-1" });
-  const handle = h.internals._instantiateChildSession("worker-1", "explorer", mode, childAgent);
+  const handle = h.internals._instantiateChildSession("worker-1", "scout", mode, childAgent);
   h.internals._childSessions.set("worker-1", handle);
   return { handle, childProvider };
 }
@@ -163,7 +163,7 @@ describe("one-shot child release", () => {
         record: {
           id: "worker-1",
           numericId: handle.numericId,
-          template: "explorer",
+          template: "scout",
           mode: "oneshot",
           lifecycle: "archived",
           outcome: "completed",

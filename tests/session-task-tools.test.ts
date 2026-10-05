@@ -38,14 +38,14 @@ describe("session task wiring", () => {
       subject: "Wire the task layer",
       description: "Make the task tools callable.",
       active_form: "Wiring the task layer",
-      metadata: { agentId: "explorer-1" },
+      metadata: { agentId: "scout-1" },
     });
     expect(created).toContain("Task #1 created: Wire the task layer");
 
     // 内存态即时可见（读路径不读盘）
     expect(harness.session.getTaskState().map((task) => [task.id, task.status])).toEqual([["1", "pending"]]);
     expect(harness.session.getTaskState()[0].activeForm).toBe("Wiring the task layer");
-    expect(harness.session.getTaskState()[0].metadata["agentId"]).toBe("explorer-1");
+    expect(harness.session.getTaskState()[0].metadata["agentId"]).toBe("scout-1");
 
     // write-through：变更即落盘
     const artifactsDir = harness.internals._getArtifactsDirIfAvailable() as string;
@@ -56,7 +56,7 @@ describe("session task wiring", () => {
     expect(onDisk.sessionId.length).toBeGreaterThan(0);
 
     const listed = await exec("task_list", {});
-    expect(listed).toContain("#1 [pending] Wire the task layer (explorer-1)");
+    expect(listed).toContain("#1 [pending] Wire the task layer (scout-1)");
 
     const got = await exec("task_get", { task_id: "1" });
     expect(got).toContain("Task #1: Wire the task layer");
@@ -106,7 +106,7 @@ describe("session task wiring", () => {
 describe("session restart reconciliation", () => {
   it("downgrades in-progress tasks and records an interrupted marker", async () => {
     harness = makeScriptedSession();
-    await exec("task_create", { subject: "Dispatched work", description: "d", metadata: { agentId: "explorer-1" } });
+    await exec("task_create", { subject: "Dispatched work", description: "d", metadata: { agentId: "scout-1" } });
     await exec("task_update", { task_id: "1", status: "in_progress" });
     await exec("task_create", { subject: "Own work", description: "d" });
     await exec("task_update", { task_id: "2", status: "in_progress" });
@@ -117,7 +117,7 @@ describe("session restart reconciliation", () => {
     expect(tasks.map((task) => task.status)).toEqual(["pending", "pending"]);
     expect(typeof tasks[0].metadata["interruptedAt"]).toBe("number");
     // 该子代理并没有恢复出来的会话 → 判定为不可续，并给出原因
-    expect(tasks[0].metadata["resumeHint"]).toMatchObject({ childId: "explorer-1", resumable: false, reason: "log_unavailable" });
+    expect(tasks[0].metadata["resumeHint"]).toMatchObject({ childId: "scout-1", resumable: false, reason: "log_unavailable" });
     // 父自己推进的任务只降级，不给续跑建议
     expect(tasks[1].metadata["resumeHint"]).toBeUndefined();
 
@@ -152,9 +152,9 @@ describe("session fork reconciliation", () => {
     await exec("task_create", {
       subject: "Inherited work",
       description: "d",
-      metadata: { agentId: "explorer-1", result: "partial" },
+      metadata: { agentId: "scout-1", result: "partial" },
     });
-    await exec("task_update", { task_id: "1", status: "in_progress", owner: "explorer-1" });
+    await exec("task_update", { task_id: "1", status: "in_progress", owner: "scout-1" });
 
     const result = harness.session.reconcileTaskListAfterRestore({ fork: true });
 

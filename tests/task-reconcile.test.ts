@@ -10,12 +10,12 @@ import type { ChildResumeSignals, ResumeReason } from "../src/lib/task-reconcile
 
 function signals(overrides: Partial<ChildResumeSignals> = {}): ChildResumeSignals {
   return {
-    childId: "explorer-1",
+    childId: "scout-1",
     logAvailable: true,
     templateAvailable: true,
     sessionAvailable: true,
     outcome: "none",
-    taskAgentId: "explorer-1",
+    taskAgentId: "scout-1",
     toolCalls: 12,
     tokensIn: 40_000,
     ...overrides,
@@ -120,7 +120,7 @@ describe("toResumeHint", () => {
   it("carries the metrics and the decision into the parent task metadata", () => {
     const s = signals({ toolCalls: 15, tokensIn: 12_345 });
     expect(toResumeHint(s, decideChildResume(s))).toEqual({
-      childId: "explorer-1",
+      childId: "scout-1",
       toolCalls: 15,
       tokensIn: 12_345,
       resumable: true,

@@ -70,7 +70,7 @@ function makeParentWithChild(childRounds: Array<{ text?: string; toolCalls?: Arr
     name: "worker-1",
     tools: [testToolDef("write_file"), testToolDef("slow_tool")],
   });
-  const handle = h.internals._instantiateChildSession("worker-1", "explorer", "persistent", childAgent);
+  const handle = h.internals._instantiateChildSession("worker-1", "scout", "persistent", childAgent);
   h.internals._childSessions.set("worker-1", handle);
   return { h, childProvider, handle };
 }
@@ -231,7 +231,7 @@ describe("child approval routing", () => {
       const childProvider = new ScriptedProvider();
       const childAgent = makeScriptedAgentObject(childProvider, { name: "worker-2" });
 
-      const handle = h.internals._instantiateChildSession("worker-2", "explorer", "persistent", childAgent);
+      const handle = h.internals._instantiateChildSession("worker-2", "scout", "persistent", childAgent);
 
       expect(handle.session.permissionMode).toBe("read_only");
     } finally {
