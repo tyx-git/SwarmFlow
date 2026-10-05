@@ -193,6 +193,21 @@ describe("TaskStore reconcile support", () => {
 });
 
 describe("TaskStore persistence", () => {
+  it("reloads planned roles and repairs dependency edges in both directions", () => {
+    const dir = makeTempDir();
+    const filePath = taskStorePath(dir);
+    const store = new TaskStore({ filePath, sessionId: "s1" });
+    const scout = store.create("Explore", "read only", undefined, undefined, "scout").task;
+    const worker = store.create("Implement", "write code", undefined, undefined, "worker").task;
+    store.update(worker.id, { addBlockedBy: [scout.id] });
+
+    const reloaded = new TaskStore({ filePath, sessionId: "s1" });
+    expect(reloaded.get(scout.id)?.role).toBe("scout");
+    expect(reloaded.get(worker.id)?.role).toBe("worker");
+    expect(reloaded.get(worker.id)?.blockedBy).toEqual([scout.id]);
+    expect(reloaded.get(scout.id)?.blocks).toEqual([worker.id]);
+  });
+
   it("writes through and reloads from disk", () => {
     const dir = makeTempDir();
     const filePath = taskStorePath(dir);

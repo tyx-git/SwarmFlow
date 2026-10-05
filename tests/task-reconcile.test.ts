@@ -140,6 +140,7 @@ describe("describeResumeReason", () => {
       "superseded",
       "log_unavailable",
       "template_missing",
+      "model_unavailable",
       "child_released",
       "persistent_child",
     ];

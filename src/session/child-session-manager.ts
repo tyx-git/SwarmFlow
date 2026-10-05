@@ -707,7 +707,10 @@ export class ChildSessionManager {
 
   /** 子会话自己的任务清单摘要（纯内存读取；已释放或无清单时返回 undefined）。 */
   private _childTaskSummary(handle: ChildSessionHandle): { total: number; open: number; done: number } | undefined {
-    const tasks = handle.session?.getTaskState();
+    const getTaskState = handle.session && typeof handle.session.getTaskState === "function"
+      ? handle.session.getTaskState.bind(handle.session)
+      : undefined;
+    const tasks = getTaskState?.();
     if (!tasks || tasks.length === 0) return undefined;
     const done = tasks.filter((task) => task.status === "completed").length;
     return { total: tasks.length, open: tasks.length - done, done };
@@ -715,7 +718,10 @@ export class ChildSessionManager {
 
   /** 拍下子代理自己的未完成任务，供 Queen 判断是否需要重派。 */
   private _childOpenTasks(handle: ChildSessionHandle): ChildTaskHandoff[] {
-    return (handle.session?.getTaskState() ?? [])
+    const getTaskState = handle.session && typeof handle.session.getTaskState === "function"
+      ? handle.session.getTaskState.bind(handle.session)
+      : undefined;
+    return (getTaskState?.() ?? [])
       .filter((task) => task.status === "pending" || task.status === "in_progress")
       .map((task) => ({
         id: task.id,

@@ -123,6 +123,7 @@ describe("P4 shell governance", () => {
   });
 });
 
+describe("P6 output round context", () => {
   it("text-only final rounds keep their own context_id", () => {
     const projectRoot = makeTempDir("swarmflow-p6-round-retag-");
     try {

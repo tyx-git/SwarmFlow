@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import {
   loadSubagentSettings,
   saveSubagentSettings,
   subagentSettingsPath,
+  SubagentSettingsLoadError,
 } from "../src/session/subagent-settings.js";
 import { SubAgentFactory } from "../src/session/subagent-factory.js";
 
@@ -98,5 +99,17 @@ describe("sub-agent role model settings", () => {
     const result = factory.createFromPredefined("scout", "worker-1");
     expect(result.agent.modelConfig.name).toBe("subagent-model");
     expect(result.thinkingLevel).toBe("high");
+  });
+
+  it("fails loudly when persisted role settings are corrupt instead of inheriting Queen", () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-subagent-settings-corrupt-"));
+    try {
+      const path = subagentSettingsPath(root, join(root, "session-123"));
+      mkdirSync(join(root, ".swarmflow", "session-123", "agents"), { recursive: true });
+      writeFileSync(path, "{\"version\":1,\"roles\":", "utf8");
+      expect(() => loadSubagentSettings(path)).toThrow(SubagentSettingsLoadError);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

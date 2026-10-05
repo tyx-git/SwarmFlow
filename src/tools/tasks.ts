@@ -29,7 +29,7 @@ export const TASK_CREATE_TOOL: ToolDef = {
     "- Record newly discovered unfinished work so the owning session can decide what remains\n\n" +
     "## When NOT to use\n" +
     "- A single straightforward change, a trivial lookup, or a purely conversational question\n" +
-    "- Do not duplicate Queen's root task in a child list; the `spawn.task` argument is the assigned work packet\n\n" +
+    "- Do not duplicate Queen's root task in a child list; the `spawn.task` argument is the assigned work packet, not a task-list entry\n\n" +
     "## Fields\n" +
     "- **subject**: brief actionable title in imperative form (e.g. \"Fix the login redirect\")\n" +
     "- **description**: what must be done, including context and acceptance criteria — enough for\n" +

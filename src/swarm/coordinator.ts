@@ -19,6 +19,7 @@ import type { SwarmPattern, TaskNode, TaskDAG, ExecutionPlan, SwarmMessage } fro
 import { AgentPool, type AgentPoolConfig } from "./pool.js";
 import { BUILTIN_PATTERNS } from "./patterns.js";
 import { formatDirectDependencyResults, parseTaskHandoff } from "./task-handoff.js";
+import { validateDAG } from "./task-dag.js";
 
 /** 协调器发出的事件。*/
 export interface SwarmCoordinatorEvents {
@@ -164,17 +165,44 @@ export class SwarmCoordinator {
     const signal = this._abortController.signal;
     const startTime = Date.now();
 
+    const validation = validateDAG(dag);
+    if (!validation.valid) {
+      return this._errorResult(`Cannot execute invalid DAG: ${validation.errors.join("; ")}`);
+    }
+
     const results = new Map<string, TaskResult>();
     const plan = this._buildPlan(dag);
 
     try {
       for (const level of plan.levels) {
-        if (signal.aborted) break;
+        if (signal.aborted) {
+          this._markCancelledTasks(dag, results, startTime);
+          break;
+        }
 
-        // 并行执行此级别的所有任务
-        const levelPromises = level.taskIds.map((taskId) =>
-          this._executeTask(taskId, dag, results, signal),
-        );
+        // A failed direct dependency blocks the downstream node. Preserve a
+        // concrete failed result so later levels cannot run accidentally.
+        const levelPromises = level.taskIds.map((taskId) => {
+          const node = dag.nodes.get(taskId);
+          const failedDependencies = node?.dependencies.filter((dependencyId) => {
+            const dependency = results.get(dependencyId);
+            return dependency !== undefined && !dependency.success;
+          }) ?? [];
+          if (failedDependencies.length === 0) {
+            return this._executeTask(taskId, dag, results, signal);
+          }
+
+          const blocked: TaskResult = {
+            taskId,
+            agentId: "",
+            success: false,
+            output: "",
+            usage: { inputTokens: 0, outputTokens: 0 },
+            error: `Blocked by failed dependencies: ${failedDependencies.join(", ")}`,
+            durationMs: 0,
+          };
+          return Promise.resolve(blocked);
+        });
         const levelResults = await Promise.allSettled(levelPromises);
 
         // 收集结果
@@ -183,7 +211,11 @@ export class SwarmCoordinator {
           const settled = levelResults[i]!;
           if (settled.status === "fulfilled") {
             results.set(taskId, settled.value);
-            this._events.onTaskComplete?.(settled.value);
+            if (settled.value.success) {
+              this._events.onTaskComplete?.(settled.value);
+            } else {
+              this._events.onTaskFailed?.(taskId, settled.value.error ?? "Task failed");
+            }
           } else {
             const err = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
             results.set(taskId, {
@@ -201,6 +233,10 @@ export class SwarmCoordinator {
       }
     } catch (err) {
       this._events.onError?.(err instanceof Error ? err : new Error(String(err)));
+    }
+
+    if (signal.aborted) {
+      this._markCancelledTasks(dag, results, startTime);
     }
 
     const durationMs = Date.now() - startTime;
@@ -437,6 +473,28 @@ export class SwarmCoordinator {
     }
 
     return summary;
+  }
+
+  /** Record tasks that never started after a cooperative cancellation. */
+  private _markCancelledTasks(
+    dag: TaskDAG,
+    results: Map<string, TaskResult>,
+    startTime: number,
+  ): void {
+    for (const taskId of dag.nodes.keys()) {
+      if (results.has(taskId)) continue;
+      const result: TaskResult = {
+        taskId,
+        agentId: "",
+        success: false,
+        output: "",
+        usage: { inputTokens: 0, outputTokens: 0 },
+        error: "Execution cancelled before task started",
+        durationMs: Date.now() - startTime,
+      };
+      results.set(taskId, result);
+      this._events.onTaskFailed?.(taskId, result.error!);
+    }
   }
 
   /**

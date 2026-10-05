@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { Config } from "../src/config/config.js";
-import { loadTemplate, validateTemplate } from "../src/templates/loader.js";
+import { loadTemplate, loadTemplates, validateTemplate } from "../src/templates/loader.js";
 import { AGENT_ROLE_LABELS, AgentRole } from "../src/swarm/types.js";
 
 function makeTempDir(prefix: string): string {
@@ -56,6 +56,55 @@ describe("template type validation", () => {
 
     expect(toolsPrompt).not.toContain("`show_context`");
     expect(toolsPrompt).not.toContain("`summarize_context`");
+  });
+
+  it("keeps role tool boundaries aligned with the six built-in templates", () => {
+    const templates = loadTemplates(
+      join(process.cwd(), "prompts", "templates"),
+      makeConfig(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "test-model",
+    );
+    const names = (role: string) => new Set((templates[role]?.tools ?? []).map((tool) => tool.name));
+    expect(names("queen")).not.toContain("write_file");
+    expect(names("queen")).not.toContain("bash");
+    expect(names("worker")).toContain("write_file");
+    expect(names("worker")).toContain("edit_file");
+    expect(names("worker")).toContain("bash");
+    for (const role of ["scout", "reviewer", "guard", "merger"]) {
+      expect(names(role)).not.toContain("write_file");
+      expect(names(role)).not.toContain("edit_file");
+      expect(names(role)).not.toContain("bash");
+    }
+  });
+
+  it("keeps the six role prompts explicit about ownership and bounded handoffs", () => {
+    const templates = loadTemplates(
+      join(process.cwd(), "prompts", "templates"),
+      makeConfig(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "test-model",
+    );
+
+    expect(templates.queen?.systemPrompt).toContain("final technical decision");
+    expect(templates.queen?.systemPrompt).toContain("Do not edit workspace files");
+    expect(templates.scout?.systemPrompt).toContain("read-only investigation agent");
+    expect(templates.worker?.systemPrompt).toContain("Never spawn, delegate to, or create another agent");
+    expect(templates.reviewer?.systemPrompt).toContain("independent quality reviewer");
+    expect(templates.guard?.systemPrompt).toContain("independent safety and recovery reviewer");
+    expect(templates.merger?.systemPrompt).toContain("read-only synthesizer");
+
+    for (const role of ["queen", "scout", "reviewer", "guard", "merger"]) {
+      expect(templates[role]?.systemPrompt).toContain("Context Boundary");
+      expect(templates[role]?.systemPrompt).toContain("swarmflow-handoff");
+    }
+    expect(templates.worker?.systemPrompt).toContain("swarmflow-handoff");
   });
 
   it("rejects templates without type: agent", () => {

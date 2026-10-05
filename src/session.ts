@@ -5983,6 +5983,7 @@ export class Session {
 
 
   private _getArtifactsDirIfAvailable(): string | undefined {
+    if (this._sessionArtifactsOverride) return this._sessionArtifactsOverride;
     if (!this._store) return undefined;
     const d = this._store.artifactsDir;
     if (d) return d;

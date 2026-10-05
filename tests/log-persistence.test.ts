@@ -106,6 +106,24 @@ describe("saveLog + loadLog", () => {
     expect(loaded.meta.updatedAt).toBeTruthy();
   });
 
+  it("round-trips child role state, failure state, and termination cause", () => {
+    const meta = sampleMeta();
+    meta.childSessions = [{
+      id: "worker-1",
+      numericId: 1,
+      template: "worker",
+      mode: "oneshot",
+      lifecycle: "archived",
+      status: "error",
+      outcome: "error",
+      terminationCause: "parent_kill",
+      order: 1,
+    }];
+    saveLog(testDir, meta, sampleLog());
+
+    expect(loadLog(testDir).meta.childSessions).toEqual(meta.childSessions);
+  });
+
   it("preserves roundIndex", () => {
     const entries = [
       createSystemPrompt("sys-001", "prompt"),

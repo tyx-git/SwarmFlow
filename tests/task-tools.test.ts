@@ -61,13 +61,14 @@ describe("task tool definitions", () => {
       "status",
       "subject",
       "description",
+      "role",
       "active_form",
       "owner",
       "metadata",
       "add_blocks",
       "add_blocked_by",
     ]);
-    expect(props(TASK_TOOLS[0])).toEqual(["subject", "description", "active_form", "metadata"]);
+    expect(props(TASK_TOOLS[0])).toEqual(["subject", "description", "role", "active_form", "metadata"]);
   });
 
   it("disambiguates the task list from spawn's work assignment and check_status", () => {

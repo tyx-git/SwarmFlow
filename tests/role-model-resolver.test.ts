@@ -88,4 +88,24 @@ describe("unified role model resolver", () => {
       },
     })).toThrow(RoleModelResolutionError);
   });
+
+  it("uses the child session's persisted model and thinking depth during history restore", () => {
+    const childModel = { ...QUEEN_MODEL, name: "history-worker", model: "gpt-history" };
+    const session = makeSession({
+      getModel: (name: string) => name === "history-worker" ? childModel : QUEEN_MODEL,
+    });
+    const resolved = resolveRoleModel(session, "worker", undefined, {
+      modelConfigName: "history-worker",
+      modelProvider: "openai",
+      modelSelectionKey: "gpt-history",
+      modelId: "gpt-history",
+      thinkingLevel: "xhigh",
+    });
+
+    expect(resolved).toMatchObject({
+      source: "persisted",
+      modelConfig: childModel,
+      thinkingLevel: "xhigh",
+    });
+  });
 });
