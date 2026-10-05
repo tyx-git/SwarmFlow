@@ -1,9 +1,9 @@
 /**
  * 任务列表工具（snake_case 协议名；展示名对齐 pi-tasks 的 TaskCreate 等，见 tool-profiles）。
  *
- * 工具集划分（设计定稿）：
- *  - `task_create` / `task_list` / `task_get` / `task_update`：**主 agent 与子 agent 都可用**
- *    （子 agent 也需要自己拆分并记录任务；其清单为纯内存，随子会话消亡）
+ * 工具集划分：
+ *  - `task_create` / `task_list` / `task_get` / `task_update`：主会话和子会话都可用，但清单按 Session 隔离
+ *    （Queen 维护根 DAG；子代理只记录自己的本地子步骤，结束时未完成项回传给 Queen）
  *  - `task_resume`：**仅主 agent**（重启后按 resumeHint 断点续跑某个子代理；子代理无法派生）
  *  - `task_execute`（未在本批次实现）：仅主 agent，落地时按同一约定加 `includeTaskExecute`
  *  - **不新增** `task_output` / `task_stop`：与既有 `bash_output` / `kill_shell` / `check_status` /
@@ -22,26 +22,22 @@ import type { ToolDef } from "../providers/base.js";
 export const TASK_CREATE_TOOL: ToolDef = {
   name: "task_create",
   description:
-    "Create a task-list entry to track multi-step work in this session.\n\n" +
+    "Create a task-list entry in this session's task list. Task lists are session-scoped: Queen owns the root task graph and cross-agent dependencies; a sub-agent may track only its own local execution steps.\n\n" +
     "## When to use\n" +
-    "- Work with 3+ distinct steps, or work that needs planning before editing\n" +
-    "- The user explicitly asks for a task list, or hands over several tasks at once\n" +
-    "- Immediately after receiving new instructions, so requirements are captured before work starts\n" +
-    "- After finishing a task, to record follow-up work discovered on the way\n\n" +
+    "- Queen: capture each root deliverable before dispatching, then connect dependencies with task_update\n" +
+    "- Sub-agent: track bounded internal steps that help complete its assigned task\n" +
+    "- Record newly discovered unfinished work so the owning session can decide what remains\n\n" +
     "## When NOT to use\n" +
     "- A single straightforward change, a trivial lookup, or a purely conversational question\n" +
-    "- Work you are about to hand to a sub-agent as a one-shot assignment: that is the `spawn`\n" +
-    "  tool's `task` argument, not a task-list entry. Use this tool when the user should be able\n" +
-    "  to watch progress, or when the work must survive across turns.\n\n" +
+    "- Do not duplicate Queen's root task in a child list; the `spawn.task` argument is the assigned work packet\n\n" +
     "## Fields\n" +
     "- **subject**: brief actionable title in imperative form (e.g. \"Fix the login redirect\")\n" +
     "- **description**: what must be done, including context and acceptance criteria — enough for\n" +
     "  another agent to pick it up\n" +
+    "- **role** (optional): the planned role ID for this DAG node (`queen`, `scout`, `worker`, `reviewer`, `guard`, or `merger`)\n" +
     "- **active_form** (optional): present-continuous wording shown while the task is in progress\n" +
     "  (e.g. \"Fixing the login redirect\"); falls back to the subject\n\n" +
-    "New tasks start as `pending`. Create several tasks by calling this tool once per task in the\n" +
-    "same response — independent calls run in parallel. Check `task_list` first to avoid duplicates.\n" +
-    "Use `task_update` afterwards to mark progress or to wire up `add_blocks` / `add_blocked_by`.",
+    "New tasks start as `pending`. Queen should create root work items first and use `task_update` to wire `add_blocks` / `add_blocked_by` before dispatch. A child may wire dependencies only among its own local tasks. Each Session has a separate list; child-local IDs are not root task IDs.",
   parameters: {
     type: "object",
     properties: {
@@ -52,6 +48,11 @@ export const TASK_CREATE_TOOL: ToolDef = {
       description: {
         type: "string",
         description: "What needs to be done, including context and acceptance criteria.",
+      },
+      role: {
+        type: "string",
+        enum: ["queen", "scout", "worker", "reviewer", "guard", "merger"],
+        description: "Planned role ID for this DAG node.",
       },
       active_form: {
         type: "string",
@@ -78,21 +79,21 @@ export const TASK_CREATE_TOOL: ToolDef = {
 export const TASK_LIST_TOOL: ToolDef = {
   name: "task_list",
   description:
-    "List the tasks tracked for this session.\n\n" +
+    "List this Session's tasks only. Queen sees the root list; each child sees its separate local list.\n\n" +
     "## When to use\n" +
     "- To see what is available to work on (`pending`, unowned, not blocked)\n" +
     "- To check overall progress, or to find what is blocked on what\n" +
     "- After completing a task, to pick up the next one\n\n" +
     "## Output\n" +
-    "One line per task: `#id [status] subject`, plus the owner and any unfinished blockers.\n" +
+    "One line per task: `#id [status] [role] subject`, plus the owner and any unfinished blockers.\n" +
     "Read it together with `task_get`, which returns the full description and dependency edges.\n\n" +
     "## Reading the status\n" +
     "- `pending` — not started. `pending` with an `interrupted` marker means a previous run was cut\n" +
     "  short: check `resumeHint` on the task before deciding whether to continue or re-dispatch.\n" +
     "- `in_progress` — something is working on it right now (you, or a sub-agent in `owner`).\n" +
     "- `completed` — done. Prefer working on the lowest id first; earlier tasks set up context.\n\n" +
-    "This is the **task list**, not runtime agent status — use `check_status` for sub-agent and\n" +
-    "background-shell state.",
+    "This is the **session-local task list**, not runtime agent status — use `check_status` for sub-agent and\n" +
+    "background-shell state. When a child ends, unfinished local tasks are returned to Queen; Queen decides whether to add root tasks and re-dispatch.",
   parameters: {
     type: "object",
     properties: {},
@@ -108,7 +109,7 @@ export const TASK_LIST_TOOL: ToolDef = {
 export const TASK_GET_TOOL: ToolDef = {
   name: "task_get",
   description:
-    "Retrieve one task by id, including its description, dependency edges and metadata.\n\n" +
+    "Retrieve one task by id, including its planned role, description, dependency edges and metadata. Parent tasks may include `childOpenTasks` returned by a finished child.\n\n" +
     "## When to use\n" +
     "- Before starting work, to read the full requirements instead of only the subject line\n" +
     "- To understand what a task blocks and what blocks it\n" +
@@ -141,20 +142,18 @@ export const TASK_UPDATE_TOOL: ToolDef = {
     "## Status workflow\n" +
     "`pending` → `in_progress` → `completed`. Use `deleted` to remove a task permanently.\n\n" +
     "**Before starting work:** mark the task `in_progress` first — do not begin while it still reads\n" +
-    "`pending`. **After finishing:** mark it `completed`, then call `task_list` for the next task.\n\n" +
+    "`pending`. **After finishing:** mark it `completed`. Queen chooses the next root task; a child may continue only within its assigned work packet.\n\n" +
     "Only mark a task `completed` when it is fully done and verified. If tests fail, the change is\n" +
-    "partial, or an error is unresolved: keep it `in_progress` and create a new task describing what\n" +
-    "must be resolved.\n\n" +
+    "partial, or an error is unresolved: keep the task open and record the exact remaining work. A child must include its unfinished local tasks in its handoff so Queen can decide whether to re-dispatch.\n\n" +
     "## Fields\n" +
     "- **status**: `pending` | `in_progress` | `completed` | `deleted`\n" +
-    "- **subject** / **description** / **active_form**: revise wording when requirements change\n" +
-    "- **owner**: who is executing it (a sub-agent id when you dispatched it)\n" +
-    "- **metadata**: shallow merge; set a key to `null` to delete it. Use it to record `agentId`,\n" +
-    "  `result`, `lastError`, or to clear a stale `resumeHint` after re-dispatching.\n" +
+    "- **subject** / **description** / **active_form** / **role**: revise task wording or planned role when requirements change\n" +
+    "- **owner**: who is executing it (the chosen child id when Queen dispatches this root task)\n" +
+    "- **metadata**: shallow merge; set a key to `null` to delete it. Before `spawn`, Queen must set `agentId` to the same chosen child id as `owner`, and wait for this update to succeed; runtime uses `metadata.agentId` to attach the child's result and unfinished local tasks, and the child may finish before `spawn` returns. Other bookkeeping keys include `result`, `lastError`, `childOpenTasks`, and `resumeHint`.\n" +
     "- **add_blocks**: tasks that cannot start until this one completes\n" +
     "- **add_blocked_by**: tasks that must complete before this one can start\n\n" +
     "## Dependencies\n" +
-    "Edges are maintained in both directions. Self-dependencies, references to missing tasks and\n" +
+    "Edges are maintained in both directions. Queen owns cross-role/root dependencies; a child may only connect its own local steps. Self-dependencies, references to missing tasks and\n" +
     "mutual blocks are reported as warnings in the result — resolve them rather than ignoring them.\n\n" +
     "## Resume bookkeeping\n" +
     "A task left `pending` with `interrupted` and a `resumeHint` after a restart can be continued with\n" +
@@ -181,6 +180,11 @@ export const TASK_UPDATE_TOOL: ToolDef = {
       description: {
         type: "string",
         description: "New description for the task.",
+      },
+      role: {
+        type: "string",
+        enum: ["queen", "scout", "worker", "reviewer", "guard", "merger"],
+        description: "New planned role ID for the task.",
       },
       active_form: {
         type: "string",
@@ -257,7 +261,7 @@ export const TASK_RESUME_TOOL: ToolDef = {
 // 导出
 // ------------------------------------------------------------------
 
-/** 主 agent 与子 agent 都可用的任务工具。 */
+/** 主、子会话都可用但分别作用于各自任务清单的工具。 */
 export const TASK_TOOLS: ToolDef[] = [
   TASK_CREATE_TOOL,
   TASK_LIST_TOOL,

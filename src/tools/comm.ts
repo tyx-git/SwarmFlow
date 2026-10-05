@@ -11,7 +11,7 @@ import type { ToolDef } from "../providers/base.js";
 export const SPAWN_TOOL: ToolDef = {
   name: "spawn",
   description:
-    "Spawn a single sub-agent with inline parameters. " +
+    "Queen-only orchestration action: spawn a single sub-agent for a root task already tracked in Queen's task list. Before spawn, bind that root task with task_update by setting owner and metadata.agentId to the chosen child ID; wait for the update to succeed because the child may finish before spawn returns. Child results and unfinished local tasks are linked through metadata.agentId. Child agents cannot spawn or delegate. " +
     "Check pre-defined templates (e.g. 'scout', 'worker', 'reviewer', 'guard', 'merger') before creating custom ones. " +
     "See system prompt for available templates and their capabilities.",
   parameters: {

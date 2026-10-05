@@ -20,18 +20,22 @@ import {
   readFileSync,
   writeFileSync,
   statSync,
+  lstatSync,
   unlinkSync,
   rmdirSync,
   rmSync,
   renameSync,
   copyFileSync,
+  cpSync,
+  readlinkSync,
+  symlinkSync,
   readdirSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
-import { homedir } from "node:os";
-import { join, relative } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { basename, dirname, join, relative, resolve, sep, isAbsolute } from "node:path";
 
 import { applyPatch, parsePatch } from "diff";
+import { hashFilesystemPath } from "../lib/filesystem-hash.js";
 
 import type { LogEntry } from "../context/log-entry.js";
 import type { FileMutation, BashMutation, BashMutationEntry } from "../tools/basic.js";
@@ -48,6 +52,29 @@ export interface RewindEngineDeps {
   projectRoot: string;
   /** 会话产物目录（存储绑定时，用于定位 journal）。 */
   getArtifactsDir(): string | undefined;
+}
+
+interface RewindPreimage {
+  path: string;
+  kind: "missing" | "file" | "directory" | "symlink";
+  backupPath?: string;
+  symlinkTarget?: string;
+  symlinkType?: "file" | "dir";
+}
+
+interface RewindAppliedMutation {
+  entryId: string;
+  bashEntryIndex?: number;
+}
+
+interface RewindJournal {
+  version: 1;
+  filePath: string;
+  state: "preparing" | "ready";
+  backupDir: string;
+  preimages: RewindPreimage[];
+  applied: RewindAppliedMutation[];
+  pending: RewindAppliedMutation[];
 }
 
 export class RewindEngine {
@@ -174,7 +201,7 @@ export class RewindEngine {
    * 和应用后通知。
    */
   async applyFiles(plan: RewindPlan): Promise<RewindApplyResult> {
-    const journalPath = this._writeRewindJournal(plan);
+    const journal = this._writeRewindJournal(plan);
 
     const revertedPaths: string[] = [];
     const conflictPaths: string[] = [];
@@ -213,12 +240,15 @@ export class RewindEngine {
             bashSkipped.push(`${be.description} (${liveStatus.conflictReason})${detailSuffix}`);
             continue;
           }
+          const mutationRef = { entryId: be.entryId, bashEntryIndex: be.bashEntryIndex };
+          this._beginJournalOperation(journal, [mutationRef]);
           const success = this._executeBashRevert(be);
           if (success) {
             bashReverted.push(be.description);
             this._markBashMutationEntryReverted(be.entryId, be.bashEntryIndex);
+            this._recordJournalApplied(journal, mutationRef);
           } else {
-            bashSkipped.push(be.description);
+            throw new Error(`Failed to revert shell mutation: ${be.description}`);
           }
         } else {
           const entry = op.entry;
@@ -241,24 +271,45 @@ export class RewindEngine {
           }
           const earliestMut = entry.mutations[entry.mutations.length - 1];
           const createdFile = this._isMutationFileCreation(earliestMut.entryId);
+          const mutationRefs = entry.mutations.map((mutation) => ({ entryId: mutation.entryId }));
+          this._beginJournalOperation(journal, mutationRefs);
           if (content === "" && createdFile) {
-            try { unlinkSync(entry.path); } catch { /* ignore ENOENT */ }
+            try {
+              unlinkSync(entry.path);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            }
           } else {
             writeFileSync(entry.path, content, { encoding: "utf-8" });
           }
           revertedPaths.push(entry.path);
 
-          for (const mut of entry.mutations) {
-            this._markMutationReverted(mut.entryId);
+          for (const mutation of entry.mutations) {
+            this._markMutationReverted(mutation.entryId);
+          }
+          for (const mutation of mutationRefs) {
+            this._recordJournalApplied(journal, mutation);
           }
         }
       }
     } catch (e) {
-      this._restoreFromRewindJournal(journalPath);
+      try {
+        this._restoreFromRewindJournal(journal);
+        this._clearJournalMutationMarks(journal);
+        this._deleteRewindJournal(journal);
+      } catch (restoreError) {
+        return {
+          revertedPaths: [],
+          conflictPaths: [],
+          bashReverted: [],
+          bashSkipped: [],
+          error: `Rewind failed: ${e instanceof Error ? e.message : String(e)}. Recovery is pending: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+        };
+      }
       return { revertedPaths: [], conflictPaths: [], bashReverted: [], bashSkipped: [], error: `Rewind failed: ${e instanceof Error ? e.message : String(e)}` };
     }
 
-    this._deleteRewindJournal(journalPath);
+    if (journal.applied.length === 0) this._deleteRewindJournal(journal);
 
     return { revertedPaths, conflictPaths, bashReverted, bashSkipped };
   }
@@ -266,11 +317,61 @@ export class RewindEngine {
   /**
    * 检测并从崩溃的回退中恢复（journal 残留时触发）。
    */
-  recoverJournalIfNeeded(): void {
+  recoverJournalIfNeeded(): boolean {
     const journalPath = this._getRewindJournalPath();
+    if (!existsSync(journalPath)) return false;
+    const parsed: unknown = JSON.parse(readFileSync(journalPath, { encoding: "utf-8" }));
+    if (Array.isArray(parsed)) {
+      this._restoreLegacyRewindJournal(parsed);
+      unlinkSync(journalPath);
+      return true;
+    }
+    const journal = this._readRewindJournal(journalPath);
+    if (journal.state === "preparing") {
+      this._deleteRewindJournal(journal);
+      return false;
+    }
+    if (this._journalMatchesPersistedLog(journal)) {
+      this._deleteRewindJournal(journal);
+      return false;
+    }
+    this._restoreFromRewindJournal(journal);
+    this._clearJournalMutationMarks(journal);
+    return true;
+  }
+
+  private _restoreLegacyRewindJournal(value: unknown[]): void {
+    const preimages = value.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        throw new Error("Legacy rewind journal contains an invalid preimage.");
+      }
+      const image = item as Record<string, unknown>;
+      if (typeof image.path !== "string" || typeof image.existed !== "boolean") {
+        throw new Error("Legacy rewind journal contains an invalid path record.");
+      }
+      if (image.existed && typeof image.content !== "string") {
+        throw new Error(`Legacy rewind journal is missing file content for ${image.path}.`);
+      }
+      return image as { path: string; existed: boolean; content: string | null };
+    });
+
+    for (const image of preimages) {
+      if (image.existed && image.content !== null) {
+        mkdirSync(dirname(image.path), { recursive: true });
+        writeFileSync(image.path, image.content, { encoding: "utf-8" });
+      } else if (!image.existed) {
+        rmSync(image.path, { recursive: true, force: true });
+      }
+    }
+  }
+
+  /** 调用方确认回退日志已持久化后清理 journal。 */
+  finalizeJournal(): void {
+    const dir = this.deps.getArtifactsDir();
+    if (!dir) return;
+    const journalPath = join(dir, "rewind-journal.json");
     if (!existsSync(journalPath)) return;
-    this._restoreFromRewindJournal(journalPath);
-    this._deleteRewindJournal(journalPath);
+    this._deleteRewindJournal(this._readRewindJournal(journalPath));
   }
 
   /** 执行 bash revert（mkdir/cp/mv 的逆向操作）。 */
@@ -288,15 +389,11 @@ export class RewindEngine {
       if (me.kind === "cp") {
         if (!me.target) return false;
         if (me.targetExisted && me.backupPath) {
-          copyFileSync(me.backupPath, me.target);
-          try { unlinkSync(me.backupPath); } catch { /* ignore */ }
+          rmSync(me.target, { recursive: true, force: true });
+          this._copyBashBackup(me.backupPath, me.target);
+          rmSync(me.backupPath, { recursive: true, force: true });
         } else if (existsSync(me.target)) {
-          const st = statSync(me.target);
-          if (st.isDirectory()) {
-            rmSync(me.target, { recursive: true });
-          } else {
-            unlinkSync(me.target);
-          }
+          rmSync(me.target, { recursive: true, force: true });
         }
         return true;
       }
@@ -305,8 +402,8 @@ export class RewindEngine {
         if (!me.source || !me.target) return false;
         renameSync(me.target, me.source);
         if (me.targetExisted && me.backupPath) {
-          copyFileSync(me.backupPath, me.target);
-          try { unlinkSync(me.backupPath); } catch { /* ignore */ }
+          this._copyBashBackup(me.backupPath, me.target);
+          rmSync(me.backupPath, { recursive: true, force: true });
         }
         return true;
       }
@@ -314,6 +411,13 @@ export class RewindEngine {
       return false;
     }
     return false;
+  }
+
+  private _copyBashBackup(source: string, target: string): void {
+    const stat = lstatSync(source);
+    if (stat.isDirectory()) cpSync(source, target, { recursive: true, verbatimSymlinks: true });
+    else if (stat.isFile()) copyFileSync(source, target);
+    else throw new Error(`Unsupported rewind backup type: ${source}`);
   }
 
   /** 将指定的 bash mutation 条目标记为已回退。 */
@@ -404,6 +508,10 @@ export class RewindEngine {
   ): BashRewindEntry {
     const base = { entryId, turnIndex, logIndex, bashEntryIndex, mutation: me };
 
+    if (me.untracked) {
+      return { ...base, kind: me.kind, description: `${me.kind} ${me.target ?? ""}`.trim(), status: "conflict", conflictReason: "untracked", conflictDetails: ["A reliable post-mutation snapshot was not recorded."] };
+    }
+
     // mkdir：检查目录是否仍存在，是否非空
     if (me.kind === "mkdir" && me.createdDirs) {
       const dirs = [...me.createdDirs].reverse();
@@ -455,7 +563,7 @@ export class RewindEngine {
 
       if (me.postImageSha) {
         try {
-          const currentSha = createHash("sha256").update(readFileSync(me.target)).digest("hex");
+          const currentSha = hashFilesystemPath(me.target);
           if (currentSha !== me.postImageSha) {
             const desc = me.targetExisted ? `restore ${me.target}` : `rm ${me.target}`;
             return { ...base, kind: "cp", description: desc, status: "conflict", conflictReason: "disk_modified", conflictDetails: ["File was modified after the copy."] };
@@ -486,7 +594,7 @@ export class RewindEngine {
 
       if (me.postImageSha) {
         try {
-          const currentSha = createHash("sha256").update(readFileSync(me.target)).digest("hex");
+          const currentSha = hashFilesystemPath(me.target);
           if (currentSha !== me.postImageSha) {
             return { ...base, kind: "mv", description: `mv ${me.target} ← ${me.source}`, status: "conflict", conflictReason: "disk_modified", conflictDetails: ["File was modified after the move."] };
           }
@@ -526,46 +634,245 @@ export class RewindEngine {
   }
 
   private _getRewindJournalPath(): string {
-    const dir = this.deps.getArtifactsDir() ?? join(homedir(), ".swarmflow", "tmp");
+    const dir = this.deps.getArtifactsDir();
+    if (!dir) throw new Error("Session artifacts are unavailable; refusing an unjournaled rewind.");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     return join(dir, "rewind-journal.json");
   }
 
-  /** 写入回退预镜像 journal（应用前）。 */
-  private _writeRewindJournal(plan: RewindPlan): string {
+  /** 为文件和 shell 回退将要触碰的路径建立崩溃恢复快照。 */
+  private _writeRewindJournal(plan: RewindPlan): RewindJournal {
     const journalPath = this._getRewindJournalPath();
-    const preimages: Array<{ path: string; existed: boolean; content: string | null }> = [];
-    const allPaths = [...plan.applicable, ...plan.warnings];
-    for (const entry of allPaths) {
-      try {
-        const content = readFileSync(entry.path, { encoding: "utf-8" });
-        preimages.push({ path: entry.path, existed: true, content });
-      } catch {
-        preimages.push({ path: entry.path, existed: false, content: null });
+    if (existsSync(journalPath)) {
+      throw new Error("A previous rewind journal still needs recovery; resume the session before retrying.");
+    }
+
+    const backupDir = `${journalPath}.data-${randomUUID()}`;
+    const journal: RewindJournal = {
+      version: 1,
+      filePath: journalPath,
+      state: "preparing",
+      backupDir,
+      preimages: [],
+      applied: [],
+      pending: [],
+    };
+    mkdirSync(backupDir, { recursive: true });
+
+    try {
+      this._writeJournalFile(journalPath, journal);
+      const paths = new Set<string>();
+      for (const entry of [...plan.applicable, ...plan.warnings]) paths.add(entry.path);
+      for (const entry of plan.bashEntries) {
+        const mutation = entry.mutation;
+        if (mutation.kind === "mkdir") {
+          for (const dir of mutation.createdDirs ?? []) paths.add(dir);
+        } else {
+          if (mutation.source) paths.add(mutation.source);
+          if (mutation.target) paths.add(mutation.target);
+          if (mutation.backupPath) paths.add(mutation.backupPath);
+        }
+      }
+
+      let index = 0;
+      for (const requestedPath of paths) {
+        const targetPath = resolve(requestedPath);
+        if (pathsOverlap(targetPath, backupDir) || pathsOverlap(targetPath, journalPath)) {
+          throw new Error(`Cannot journal a rewind target that overlaps its recovery data: ${targetPath}`);
+        }
+
+        const backupPath = join(backupDir, String(index++));
+        let stat;
+        try {
+          stat = lstatSync(targetPath);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            journal.preimages.push({ path: targetPath, kind: "missing" });
+            this._writeJournalFile(journalPath, journal);
+            continue;
+          }
+          throw error;
+        }
+
+        if (stat.isSymbolicLink()) {
+          const symlinkTarget = readlinkSync(targetPath);
+          let symlinkType: "file" | "dir" = "file";
+          try {
+            if (statSync(targetPath).isDirectory()) symlinkType = "dir";
+          } catch { /* preserve dangling links as file links */ }
+          journal.preimages.push({ path: targetPath, kind: "symlink", symlinkTarget, symlinkType });
+        } else if (stat.isFile()) {
+          copyFileSync(targetPath, backupPath);
+          journal.preimages.push({ path: targetPath, kind: "file", backupPath });
+        } else if (stat.isDirectory()) {
+          cpSync(targetPath, backupPath, { recursive: true, verbatimSymlinks: true });
+          journal.preimages.push({ path: targetPath, kind: "directory", backupPath });
+        } else {
+          throw new Error(`Cannot safely snapshot special filesystem path: ${targetPath}`);
+        }
+        this._writeJournalFile(journalPath, journal);
+      }
+
+      journal.state = "ready";
+      this._writeJournalFile(journalPath, journal);
+      return journal;
+    } catch (error) {
+      this._deleteRewindJournal(journal);
+      throw error;
+    }
+  }
+
+  private _writeJournalFile(path: string, journal: RewindJournal): void {
+    const tempPath = `${path}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(tempPath, JSON.stringify(journal), { encoding: "utf-8" });
+      renameSync(tempPath, path);
+    } catch (error) {
+      try { unlinkSync(tempPath); } catch { /* ignore */ }
+      throw error;
+    }
+  }
+
+  private _readRewindJournal(path: string): RewindJournal {
+    const raw = JSON.parse(readFileSync(path, { encoding: "utf-8" })) as Partial<RewindJournal>;
+    if (
+      raw.version !== 1 ||
+      raw.filePath !== path ||
+      (raw.state !== "preparing" && raw.state !== "ready") ||
+      typeof raw.backupDir !== "string" ||
+      !Array.isArray(raw.preimages) ||
+      !Array.isArray(raw.applied) ||
+      !Array.isArray(raw.pending)
+    ) {
+      throw new Error("Rewind recovery journal is invalid; it was preserved for manual recovery.");
+    }
+    const backupDir = resolve(raw.backupDir);
+    if (
+      dirname(backupDir) !== dirname(resolve(path)) ||
+      !basename(backupDir).startsWith(`${basename(path)}.data-`) ||
+      !raw.preimages.every((image) => this._isValidJournalPreimage(image, backupDir)) ||
+      !raw.applied.every((item) => this._isValidJournalMutation(item)) ||
+      !raw.pending.every((item) => this._isValidJournalMutation(item))
+    ) {
+      throw new Error("Rewind recovery journal contains invalid paths or mutation references; it was preserved.");
+    }
+    return raw as RewindJournal;
+  }
+
+  private _isValidJournalPreimage(value: unknown, backupDir: string): value is RewindPreimage {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const image = value as Record<string, unknown>;
+    if (typeof image.path !== "string" || resolve(image.path) !== image.path) return false;
+    if (image.kind === "missing") return true;
+    if (image.kind === "symlink") {
+      return typeof image.symlinkTarget === "string" &&
+        (image.symlinkType === "file" || image.symlinkType === "dir");
+    }
+    if (image.kind !== "file" && image.kind !== "directory") return false;
+    if (typeof image.backupPath !== "string") return false;
+    const relativeBackup = relative(backupDir, resolve(image.backupPath));
+    return relativeBackup !== "" && relativeBackup !== ".." &&
+      !relativeBackup.startsWith(`..${sep}`) && !isAbsolute(relativeBackup);
+  }
+
+  private _isValidJournalMutation(value: unknown): value is RewindAppliedMutation {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const mutation = value as Record<string, unknown>;
+    return typeof mutation.entryId === "string" && mutation.entryId.length > 0 &&
+      (mutation.bashEntryIndex === undefined ||
+        (typeof mutation.bashEntryIndex === "number" && Number.isInteger(mutation.bashEntryIndex) && mutation.bashEntryIndex >= 0));
+  }
+
+  private _recordJournalApplied(journal: RewindJournal, mutation: RewindAppliedMutation): void {
+    const exists = journal.applied.some((item) =>
+      item.entryId === mutation.entryId && item.bashEntryIndex === mutation.bashEntryIndex,
+    );
+    if (exists) return;
+    journal.applied.push(mutation);
+    journal.pending = journal.pending.filter((item) =>
+      item.entryId !== mutation.entryId || item.bashEntryIndex !== mutation.bashEntryIndex,
+    );
+    this._writeJournalFile(journal.filePath, journal);
+  }
+
+  private _beginJournalOperation(journal: RewindJournal, mutations: RewindAppliedMutation[]): void {
+    for (const mutation of mutations) {
+      if (!journal.pending.some((item) =>
+        item.entryId === mutation.entryId && item.bashEntryIndex === mutation.bashEntryIndex,
+      )) journal.pending.push(mutation);
+    }
+    this._writeJournalFile(journal.filePath, journal);
+  }
+
+  private _journalMatchesPersistedLog(journal: RewindJournal): boolean {
+    const committed = [...journal.applied, ...journal.pending];
+    return committed.every((mutation) => {
+      const entry = this.deps.getLog().find((candidate) => candidate.id === mutation.entryId);
+      if (!entry) return true;
+      const meta = entry.meta as Record<string, unknown>;
+      if (mutation.bashEntryIndex === undefined) return meta.fileMutationReverted === true;
+      if (meta.bashMutationReverted === true) return true;
+      const indices = meta.bashMutationRevertedIndices;
+      return Array.isArray(indices) && indices.includes(mutation.bashEntryIndex);
+    });
+  }
+
+  private _restoreFromRewindJournal(journal: RewindJournal): void {
+    if (journal.state === "preparing") return;
+    const deepestFirst = [...journal.preimages].sort((a, b) => b.path.length - a.path.length);
+    for (const image of deepestFirst) {
+      rmSync(image.path, { recursive: true, force: true });
+    }
+
+    const shallowestFirst = [...journal.preimages].sort((a, b) => a.path.length - b.path.length);
+    for (const image of shallowestFirst) {
+      if (image.kind === "missing") continue;
+      mkdirSync(dirname(image.path), { recursive: true });
+      if (image.kind === "symlink") {
+        if (!image.symlinkTarget) throw new Error(`Missing symlink target in rewind journal for ${image.path}`);
+        symlinkSync(image.symlinkTarget, image.path, image.symlinkType);
+      } else {
+        if (!image.backupPath || !existsSync(image.backupPath)) {
+          throw new Error(`Missing rewind snapshot for ${image.path}`);
+        }
+        if (image.kind === "file") copyFileSync(image.backupPath, image.path);
+        else cpSync(image.backupPath, image.path, { recursive: true, verbatimSymlinks: true });
       }
     }
-    writeFileSync(journalPath, JSON.stringify(preimages), { encoding: "utf-8" });
-    return journalPath;
   }
 
-  /** 从 journal 恢复（崩溃时调用）。 */
-  private _restoreFromRewindJournal(journalPath: string): void {
-    try {
-      const raw = readFileSync(journalPath, { encoding: "utf-8" });
-      const preimages: Array<{ path: string; existed: boolean; content: string | null }> = JSON.parse(raw);
-      for (const img of preimages) {
-        try {
-          if (img.existed && img.content !== null) {
-            writeFileSync(img.path, img.content, { encoding: "utf-8" });
-          } else if (!img.existed) {
-            try { unlinkSync(img.path); } catch { /* ignore */ }
-          }
-        } catch { /* best effort */ }
+  private _clearJournalMutationMarks(journal: RewindJournal): void {
+    for (const mutation of [...journal.applied, ...journal.pending]) {
+      const entry = this.deps.getLog().find((candidate) => candidate.id === mutation.entryId);
+      if (!entry) continue;
+      const meta = entry.meta as Record<string, unknown>;
+      if (mutation.bashEntryIndex === undefined) {
+        delete meta.fileMutationReverted;
+        continue;
       }
-    } catch { /* journal 损坏或缺失 */ }
+      const indices = Array.isArray(meta.bashMutationRevertedIndices)
+        ? (meta.bashMutationRevertedIndices as unknown[]).filter((value) => value !== mutation.bashEntryIndex)
+        : [];
+      if (indices.length > 0) meta.bashMutationRevertedIndices = indices;
+      else delete meta.bashMutationRevertedIndices;
+      delete meta.bashMutationReverted;
+    }
   }
 
-  private _deleteRewindJournal(journalPath: string): void {
-    try { unlinkSync(journalPath); } catch { /* ignore */ }
+  private _deleteRewindJournal(journal: RewindJournal): void {
+    const journalPath = journal.filePath;
+    try { unlinkSync(journalPath); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    rmSync(journal.backupDir, { recursive: true, force: true });
   }
+}
+
+function pathsOverlap(a: string, b: string): boolean {
+  const left = resolve(a);
+  const right = resolve(b);
+  const leftToRight = relative(left, right);
+  const rightToLeft = relative(right, left);
+  const isInside = (value: string) => value === "" || (value !== ".." && !value.startsWith(`..${sep}`) && !isAbsolute(value));
+  return isInside(leftToRight) || isInside(rightToLeft);
 }

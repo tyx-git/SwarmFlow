@@ -1,17 +1,21 @@
 import type { ModelConfig } from "../config/config.js";
-import { resolvePersistedModelSelection } from "../models/selection.js";
+import { resolvePersistedModelSelection, type PersistedModelSelection } from "../models/selection.js";
 import { isAgentRoleId, type AgentRole } from "../swarm/types.js";
 import type { SubagentSettings } from "./subagent-settings.js";
 
 export interface ResolvedRoleModel {
   role: string;
-  source: "role" | "queen";
+  source: "role" | "queen" | "persisted";
   configName: string;
   provider: string;
   selectionKey: string;
   modelId: string;
   modelConfig: ModelConfig;
   thinkingLevel: string;
+}
+
+export interface PersistedRoleModelSelection extends PersistedModelSelection {
+  thinkingLevel?: string;
 }
 
 export class RoleModelResolutionError extends Error {
@@ -25,9 +29,30 @@ export class RoleModelResolutionError extends Error {
 export function resolveRoleModel(
   session: any,
   role: string,
-  settings: SubagentSettings | undefined = session.getSubagentSettings?.(),
+  settings?: SubagentSettings,
+  persistedSelection?: PersistedRoleModelSelection,
 ): ResolvedRoleModel {
-  const roleSettings = isAgentRoleId(role) ? settings?.roles[role as AgentRole] : undefined;
+  if (persistedSelection) {
+    try {
+      const resolved = resolvePersistedModelSelection(session, persistedSelection);
+      return {
+        role,
+        source: "persisted",
+        configName: resolved.selectedConfigName,
+        provider: resolved.modelProvider,
+        selectionKey: resolved.modelSelectionKey,
+        modelId: resolved.modelId,
+        modelConfig: session.config.getModel(resolved.selectedConfigName),
+        thinkingLevel: persistedSelection.thinkingLevel || "off",
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new RoleModelResolutionError(role, `saved child-session model cannot be restored: ${detail}`, error);
+    }
+  }
+
+  const effectiveSettings = settings ?? session.getSubagentSettings?.();
+  const roleSettings = isAgentRoleId(role) ? effectiveSettings?.roles[role as AgentRole] : undefined;
   if (!roleSettings) {
     const modelConfig = session.primaryAgent.modelConfig as ModelConfig;
     return {

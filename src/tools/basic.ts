@@ -8,7 +8,7 @@
  */
 
 import fs from "node:fs/promises";
-import { existsSync, statSync, readFileSync, readdirSync, realpathSync, writeFileSync as fsWriteFileSync, unlinkSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, statSync, lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync as fsWriteFileSync, unlinkSync, mkdirSync, copyFileSync, cpSync, rmSync } from "node:fs";
 import { randomUUID, createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -37,6 +37,7 @@ import {
 } from "../context/document-projection.js";
 import { classifyFile, IMAGE_MEDIA_TYPES } from "../lib/file-attach.js";
 import { createPatch } from "diff";
+import { hashFilesystemPath } from "../lib/filesystem-hash.js";
 import {
   isExcludedDirName,
   isHiddenName,
@@ -83,13 +84,16 @@ export interface BashMutationEntry {
   source?: string;
   /** cp/mv：目标路径。 */
   target?: string;
-  /** 操作前目标文件是否存在。 */
+  /** 操作前目标文件或目录是否存在。 */
   targetExisted?: boolean;
-  /** 被覆盖文件的备份路径（在 session artifacts 中）。 */
+  /** 被覆盖文件或目录的备份路径（在 session artifacts 中）。 */
   backupPath?: string;
+  targetKind?: "file" | "directory";
+  /** 变更后无法生成可信指纹时，不允许自动回退。 */
+  untracked?: true;
   /** cp -r：递归复制创建的新目录树。 */
   recursive?: boolean;
-  /** 执行后目标文件的 SHA256（用于冲突检测）。 */
+  /** 执行后目标文件或目录树的 SHA256（用于冲突检测）。 */
   postImageSha?: string;
 }
 
@@ -111,7 +115,8 @@ interface BashPreExecState {
   targetPath?: string;
   /** cp/mv：目标之前是否存在。 */
   targetExisted?: boolean;
-  /** cp/mv：备份文件路径（如果目标是现有文件）。 */
+  targetKind?: "file" | "directory";
+  /** cp/mv：备份文件或目录路径（如果目标已存在）。 */
   backupPath?: string;
   /** cp -r 标志。 */
   recursive?: boolean;
@@ -224,6 +229,12 @@ function prepareBashPreExec(
   if (parsed.cmd === "cp" || parsed.cmd === "mv") {
     // parseTrackableBashMutation already enforces args.length === 2
     const sourcePath = resolve(parsed.args[0]!);
+    if (existsSync(sourcePath)) {
+      const sourceStat = lstatSync(sourcePath);
+      if (sourceStat.isSymbolicLink() || (!sourceStat.isFile() && !sourceStat.isDirectory())) {
+        throw new Error(`Cannot safely track shell mutation source: ${sourcePath}`);
+      }
+    }
     let targetPath = resolve(parsed.args[1]!);
     const recursive = parsed.flags.some(f => f === "-r" || f === "-R" || f === "--recursive" ||
       (f.startsWith("-") && !f.startsWith("--") && f.includes("r")));
@@ -238,17 +249,20 @@ function prepareBashPreExec(
     }
 
     let targetExisted = false;
+    let targetKind: "file" | "directory" | undefined;
     let backupPath: string | undefined;
 
     if (existsSync(targetPath)) {
-      try {
-        if (statSync(targetPath).isFile()) {
-          targetExisted = true;
-          mkdirSync(backupsDir, { recursive: true });
-          backupPath = path.join(backupsDir, randomUUID());
-          copyFileSync(targetPath, backupPath);
-        }
-      } catch { /* ignore */ }
+      const targetStat = lstatSync(targetPath);
+      if (targetStat.isSymbolicLink() || (!targetStat.isFile() && !targetStat.isDirectory())) {
+        throw new Error(`Cannot safely track shell mutation target: ${targetPath}`);
+      }
+      targetExisted = true;
+      targetKind = targetStat.isDirectory() ? "directory" : "file";
+      mkdirSync(backupsDir, { recursive: true });
+      backupPath = path.join(backupsDir, randomUUID());
+      if (targetKind === "directory") cpSync(targetPath, backupPath, { recursive: true, verbatimSymlinks: true });
+      else copyFileSync(targetPath, backupPath);
     }
 
     return {
@@ -256,6 +270,7 @@ function prepareBashPreExec(
       args: [sourcePath, targetPath],
       targetPath,
       targetExisted,
+      targetKind,
       backupPath,
       recursive,
       sourcePath,
@@ -296,20 +311,19 @@ function recordBashPostExec(
 
     let postImageSha: string | undefined;
     try {
-      const st = statSync(preExec.targetPath);
-      if (st.isFile()) {
-        postImageSha = createHash("sha256").update(readFileSync(preExec.targetPath)).digest("hex");
-      }
-    } catch { /* ignore */ }
+      postImageSha = hashFilesystemPath(preExec.targetPath);
+    } catch { /* mark as untracked below */ }
 
     return {
       kind: preExec.kind,
       source: preExec.sourcePath,
       target: preExec.targetPath,
       targetExisted: preExec.targetExisted,
+      targetKind: preExec.targetKind,
       backupPath: preExec.backupPath,
       recursive: preExec.recursive || undefined,
       postImageSha,
+      ...(!postImageSha ? { untracked: true as const } : {}),
     };
   }
 
@@ -3712,7 +3726,7 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         if (isError) {
           for (const { state } of preExecStates) {
             if (state.backupPath) {
-              try { unlinkSync(state.backupPath); } catch { /* ignore */ }
+              try { rmSync(state.backupPath, { recursive: true, force: true }); } catch { /* ignore */ }
             }
           }
         }

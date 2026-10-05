@@ -24,7 +24,7 @@ import { childRestartState } from "../lib/task-reconcile.js";
 import type { HookEvent, HookPayload } from "../hooks/index.js";
 import { createAgentResult, type LogEntry } from "../context/log-entry.js";
 import { describeModel } from "../models/presentation.js";
-import { loadLog, validateAndRepairLog, type LoadLogResult } from "../config/persistence.js";
+import { loadLog, validateAndRepairLog, type LoadLogResult, type LogSessionMeta } from "../config/persistence.js";
 import type { ProgressLevel, ProgressReporter } from "../lib/progress.js";
 import { ToolResult } from "../providers/base.js";
 import type { Session } from "../session.js";
@@ -38,9 +38,12 @@ import {
   type ChildSessionOutcome,
   type ChildSessionPhase,
   type ChildSessionSnapshot,
+  type ChildSessionStatus,
+  type ChildTaskHandoff,
   type MessageEnvelope,
 } from "../session-tree-types.js";
 import { SEND_TOOL } from "../tools/comm.js";
+import { RoleModelResolutionError, type PersistedRoleModelSelection } from "./role-model-resolver.js";
 
 /** 子代理输出截断限制（12000 字符）。 */
 const SUB_AGENT_OUTPUT_LIMIT = 12_000;
@@ -148,6 +151,7 @@ export interface ChildSessionManagerDeps {
     outcome: ChildSessionOutcome;
     cause: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt";
     taskSummary: { total: number; open: number; done: number } | undefined;
+    openTasks: ChildTaskHandoff[];
   }): void;
   /** 持久化子会话日志+meta。路由经 Session._saveChildSession。返回保存是否成功——决定释放逻辑。 */
   saveChildSession(handle: ChildSessionHandle): boolean;
@@ -160,8 +164,8 @@ export interface ChildSessionManagerDeps {
   getPrimaryAgent(): Agent;
   getAgentTemplates(): Record<string, Agent>;
   // 子代理工厂
-  createFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string };
-  createFromPath(templateDir: string, taskId: string): { agent: Agent; thinkingLevel?: string };
+  createFromPredefined(templateName: string, taskId: string, persistedSelection?: PersistedRoleModelSelection): { agent: Agent; thinkingLevel?: string };
+  createFromPath(templateDir: string, taskId: string, persistedSelection?: PersistedRoleModelSelection): { agent: Agent; thinkingLevel?: string };
   resolveTemplatePath(relPath: string): string;
   buildSubAgentSystemPrompt(basePrompt: string, persistent: boolean): string;
   /** 构造子 Session（打破 Session-Manager 导入循环）。 */
@@ -175,7 +179,7 @@ export class ChildSessionManager {
    * 恢复失败的子（prepareChildRestores 会跳过它们）。
    * 启动对账用：让父任务知道"这个子的记录/模板不可用，只能重派"。
    */
-  private _restoreFailures = new Map<string, "log_unavailable" | "template_missing">();
+  private _restoreFailures = new Map<string, "log_unavailable" | "template_missing" | "model_unavailable">();
   private _counter = 0;
 
   constructor(private readonly deps: ChildSessionManagerDeps) {}
@@ -428,6 +432,7 @@ export class ChildSessionManager {
     handle.lastActivityAt = Date.now();
     handle.suspended = false;
     handle.terminationCause = undefined;
+    handle.lastOutcome = "none";
     const abortController = new AbortController();
     handle.abortController = abortController;
     handle.settlePromise = new Promise<void>((resolve) => {
@@ -543,6 +548,7 @@ export class ChildSessionManager {
     handle.lastActivityAt = Date.now();
     handle.suspended = false;
     handle.terminationCause = undefined;
+    handle.lastOutcome = "none";
     const abortController = new AbortController();
     handle.abortController = abortController;
     // 创建 settle promise 以便 close() 等待本 turn 结束
@@ -550,6 +556,7 @@ export class ChildSessionManager {
       handle.settleResolve = resolve;
     });
     handle.turnPromise = session.turn(input, { signal: abortController.signal, skipUserInput: options?.skipUserInput });
+    this.deps.requestSave();
     void handle.turnPromise.then(
       () => this.finishChildTurn(handle, undefined),
       (error: unknown) => this.finishChildTurn(handle, error),
@@ -664,16 +671,7 @@ export class ChildSessionManager {
     handle.terminationCause = undefined;
 
     // 子拆分结果回传：在冻结/释放之前抓取（释放后 Session 就没了）。
-    try {
-      this.deps.reportChildSettled?.({
-        childId: handle.id,
-        outcome: handle.lastOutcome,
-        cause,
-        taskSummary: this._childTaskSummary(handle),
-      });
-    } catch (error) {
-      console.warn(`Failed to report child settle for '${handle.id}':`, error);
-    }
+    this._reportChildSettled(handle, cause);
 
     // 生命周期转换：oneshot → archived，persistent → idle
     let savedOk = false;
@@ -683,6 +681,10 @@ export class ChildSessionManager {
     } else {
       handle.lifecycle = "idle";
       this.deps.saveChildSession(handle);
+    }
+    this.deps.requestSave();
+
+    if (handle.mode === "persistent") {
       // persistent：自然完成后自动恢复排队消息。
       if (cause === "natural") {
         if (this.deps.childHasInbox(session)) {
@@ -711,6 +713,51 @@ export class ChildSessionManager {
     return { total: tasks.length, open: tasks.length - done, done };
   }
 
+  /** 拍下子代理自己的未完成任务，供 Queen 判断是否需要重派。 */
+  private _childOpenTasks(handle: ChildSessionHandle): ChildTaskHandoff[] {
+    return (handle.session?.getTaskState() ?? [])
+      .filter((task) => task.status === "pending" || task.status === "in_progress")
+      .map((task) => ({
+        id: task.id,
+        subject: task.subject,
+        description: task.description,
+        status: task.status === "pending" ? "pending" as const : "in_progress" as const,
+        activeForm: task.activeForm,
+        blocks: [...task.blocks],
+        blockedBy: [...task.blockedBy],
+      }));
+  }
+
+  private _reportChildSettled(
+    handle: ChildSessionHandle,
+    cause: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt",
+  ): void {
+    try {
+      this.deps.reportChildSettled?.({
+        childId: handle.id,
+        outcome: handle.lastOutcome,
+        cause,
+        taskSummary: this._childTaskSummary(handle),
+        openTasks: this._childOpenTasks(handle),
+      });
+    } catch (error) {
+      console.warn(`Failed to report child settle for '${handle.id}':`, error);
+    }
+  }
+
+  private _formatChildOpenTasks(tasks: readonly ChildTaskHandoff[]): string {
+    if (tasks.length === 0) return "";
+    const lines = ["## Unfinished child tasks", "Queen owns reassignment; these local task IDs belong only to this child session."];
+    for (const task of tasks) {
+      lines.push(`- [${task.status}] local #${task.id}: ${task.subject}`);
+      lines.push(`  Description: ${task.description.replace(/\s+/g, " ").trim()}`);
+      if (task.activeForm) lines.push(`  Active form: ${task.activeForm}`);
+      if (task.blockedBy.length > 0) lines.push(`  Blocked by local tasks: ${task.blockedBy.map((id) => `#${id}`).join(", ")}`);
+      if (task.blocks.length > 0) lines.push(`  Blocks local tasks: ${task.blocks.map((id) => `#${id}`).join(", ")}`);
+    }
+    return lines.join("\n");
+  }
+
   /** 构建 agent_result 内容（处理输出截断和溢出文件）。 */
   private _buildAgentResultApiContent(
     handle: ChildSessionHandle,
@@ -722,9 +769,11 @@ export class ChildSessionManager {
       : "";
     const header = `[Agent "${handle.id}" ${outcome}${causeNote}]`;
     const text = (handle.resultText ?? "").trim();
+    const unfinishedTasks = this._formatChildOpenTasks(this._childOpenTasks(handle));
+    const taskSuffix = unfinishedTasks ? `\n\n${unfinishedTasks}` : "";
 
     if (!text) {
-      return { content: `${header}\n(no output)` };
+      return { content: `${header}\n(no output)${taskSuffix}` };
     }
 
     if (text.length > SUB_AGENT_OUTPUT_LIMIT) {
@@ -742,12 +791,12 @@ export class ChildSessionManager {
           `(line ${truncatedAtLine}). Full output: ${relativePath}. ` +
           `Continue reading from line ${truncatedAtLine} with \`read_file(start_line=${truncatedAtLine})\`; ` +
           `do not reread the portion already received.)\n\n` +
-          truncated,
+          truncated + taskSuffix,
         fullOutputPath: relativePath,
       };
     }
 
-    return { content: `${header}\n${text}` };
+    return { content: `${header}\n${text}${taskSuffix}` };
   }
 
   /** 将 handle 从 live 表移到 archived 表，释放 Session 实例。 */
@@ -758,6 +807,8 @@ export class ChildSessionManager {
       template: handle.template,
       mode: handle.mode,
       outcome: handle.lastOutcome,
+      status: handle.status,
+      terminationCause: handle.terminationCause,
       order: handle.order,
       sessionDir: handle.sessionDir,
       artifactsDir: handle.artifactsDir,
@@ -841,6 +892,7 @@ export class ChildSessionManager {
     handle.phase = "idle";
     handle.lastOutcome = "interrupted";
     handle.lastActivityAt = Date.now();
+    this._reportChildSettled(handle, handle.terminationCause ?? "user_targeted_kill");
     const savedOk = this.deps.saveChildSession(handle);
     // blocked one-shot 从不在 finishChildTurn 到达此处——此处释放使"archived one-shot 已释放"不变量无持续例外。
     this._freezeAndRelease(handle, savedOk);
@@ -907,6 +959,7 @@ export class ChildSessionManager {
           handle.session,
           "Parent session was interrupted by the user.",
         );
+        handle.terminationCause ??= "parent_kill";
         handle.lastOutcome = "interrupted";
         if (handle.mode === "oneshot") {
           handle.lifecycle = "archived";
@@ -917,6 +970,7 @@ export class ChildSessionManager {
           handle.status = "idle";
         }
         handle.lastActivityAt = Date.now();
+        this._reportChildSettled(handle, handle.terminationCause ?? "parent_kill");
         const progress = this.deps.getProgress();
         if (progress) {
           progress.emit({
@@ -956,7 +1010,12 @@ export class ChildSessionManager {
       }
       handle.lifecycle = "archived";
       handle.status = "terminated";
+      handle.terminationCause ??= "parent_kill";
       handle.lastActivityAt = Date.now();
+      this._reportChildSettled(
+        handle,
+        handle.terminationCause ?? (handle.lastOutcome === "completed" ? "natural" : "parent_kill"),
+      );
       this.deps.saveChildSession(handle);
     }
     for (const [, handle] of this._handles) {
@@ -966,6 +1025,8 @@ export class ChildSessionManager {
         template: handle.template,
         mode: handle.mode,
         outcome: handle.lastOutcome,
+        status: handle.status,
+        terminationCause: handle.terminationCause,
         order: handle.order,
         sessionDir: handle.sessionDir,
         artifactsDir: handle.artifactsDir,
@@ -977,7 +1038,7 @@ export class ChildSessionManager {
   // -- 启动对账（重启后子代理一律视为已终止） --------------------------
 
   /** 恢复失败的子：子代理 id → 原因。 */
-  getRestoreFailures(): ReadonlyMap<string, "log_unavailable" | "template_missing"> {
+  getRestoreFailures(): ReadonlyMap<string, "log_unavailable" | "template_missing" | "model_unavailable"> {
     return this._restoreFailures;
   }
 
@@ -1035,6 +1096,7 @@ export class ChildSessionManager {
     if (handle.session && !state.keepSession) {
       // 先落盘再释放：释放后磁盘副本是唯一副本。
       const savedOk = this.deps.saveChildSession(handle);
+      if (savedOk) handle.session.finalizeRewindJournal();
       handle.frozenSnapshot = this._buildSnapshot(handle);
       handle.session = null;
       handle.turnPromise = null;
@@ -1046,7 +1108,8 @@ export class ChildSessionManager {
       }
       return;
     }
-    this.deps.saveChildSession(handle);
+    const savedOk = this.deps.saveChildSession(handle);
+    if (savedOk) handle.session?.finalizeRewindJournal();
   }
 
   /** 等待所有运行中的子会话 turn 结束（带超时）。 */
@@ -1259,11 +1322,14 @@ export class ChildSessionManager {
 
   /** 复活 archived persistent 子会话：重建 Session、恢复日志、启动 turn。 */
   private async _reviveArchivedChild(record: ArchivedChildRecord, messageContent: string): Promise<void> {
+    const loaded = loadLog(record.sessionDir);
+    const repaired = validateAndRepairLog(loaded.entries);
+    const persistedSelection = this._persistedChildModelSelection(loaded.meta);
     let agent: Agent;
     if (this.deps.getAgentTemplates()[record.template]) {
-      ({ agent } = this.deps.createFromPredefined(record.template, record.id));
+      ({ agent } = this.deps.createFromPredefined(record.template, record.id, persistedSelection));
     } else {
-      ({ agent } = this.deps.createFromPath(this.deps.resolveTemplatePath(record.template), record.id));
+      ({ agent } = this.deps.createFromPath(this.deps.resolveTemplatePath(record.template), record.id, persistedSelection));
     }
 
     const handle = this.instantiateChild(
@@ -1277,9 +1343,8 @@ export class ChildSessionManager {
     // 从磁盘恢复日志
     const session = handle.session;
     if (!session) throw new Error(`freshly instantiated child '${record.id}' has no session`);
-    const loaded = loadLog(record.sessionDir);
-    const repaired = validateAndRepairLog(loaded.entries);
     session.restoreFromLog(loaded.meta, repaired.entries, loaded.idAllocator);
+    session.recoverRewindIfNeeded();
     handle.lifecycle = "idle";
     handle.lastOutcome = record.outcome;
     handle.lastActivityAt = Date.now();
@@ -1318,48 +1383,54 @@ export class ChildSessionManager {
     const prepared: PreparedChildRestore[] = [];
     const ordered = [...childSessions].sort((a, b) => (a.order ?? a.numericId) - (b.order ?? b.numericId));
     for (const record of ordered) {
-      let agent: Agent;
-      try {
-        if (this.deps.getAgentTemplates()[record.template]) {
-          ({ agent } = this.deps.createFromPredefined(record.template, record.id));
-        } else {
-          ({ agent } = this.deps.createFromPath(this.deps.resolveTemplatePath(record.template), record.id));
-        }
-      } catch (e) {
-        const reason = e instanceof Error ? e.message : String(e);
-        warnings.push(`Failed to prepare child session '${record.id}': ${reason}`);
-        this._restoreFailures.set(record.id, "template_missing");
-        continue;
-      }
-
       const sessionDir = this.childSessionDir(record.id);
       const artifactsDir = join(sessionDir, "artifacts");
+      let loaded: LoadLogResult;
 
       try {
-        const loaded = loadLog(sessionDir);
+        loaded = loadLog(sessionDir);
         const repaired = validateAndRepairLog(loaded.entries);
         if (repaired.repaired) {
           for (const warning of repaired.warnings) {
             warnings.push(`[repair:${record.id}] ${warning}`);
           }
         }
-        prepared.push({
-          record,
-          agent,
-          sessionDir,
-          artifactsDir,
-          loaded: {
-            ...loaded,
-            entries: repaired.entries,
-          },
-        });
+        loaded = { ...loaded, entries: repaired.entries };
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         warnings.push(`Failed to load child session '${record.id}': ${reason}`);
         this._restoreFailures.set(record.id, "log_unavailable");
+        continue;
       }
+
+      let agent: Agent;
+      try {
+        const persistedSelection = this._persistedChildModelSelection(loaded.meta);
+        if (this.deps.getAgentTemplates()[record.template]) {
+          ({ agent } = this.deps.createFromPredefined(record.template, record.id, persistedSelection));
+        } else {
+          ({ agent } = this.deps.createFromPath(this.deps.resolveTemplatePath(record.template), record.id, persistedSelection));
+        }
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        warnings.push(`Failed to prepare child session '${record.id}': ${reason}`);
+        this._restoreFailures.set(record.id, e instanceof RoleModelResolutionError ? "model_unavailable" : "template_missing");
+        continue;
+      }
+
+      prepared.push({ record, agent, sessionDir, artifactsDir, loaded });
     }
     return prepared;
+  }
+
+  private _persistedChildModelSelection(meta: LogSessionMeta): PersistedRoleModelSelection {
+    return {
+      modelConfigName: meta.modelConfigName || undefined,
+      modelProvider: meta.modelProvider,
+      modelSelectionKey: meta.modelSelectionKey,
+      modelId: meta.modelId,
+      thinkingLevel: meta.thinkingLevel,
+    };
   }
 
   /** 提交已准备的子会话恢复。 */
@@ -1380,14 +1451,38 @@ export class ChildSessionManager {
         const session = handle.session;
         if (!session) throw new Error("freshly instantiated child has no session");
         session.restoreFromLog(loaded.meta, loaded.entries, loaded.idAllocator);
+        session.recoverRewindIfNeeded();
         handle.lifecycle = record.lifecycle;
-        handle.lastOutcome = record.outcome ?? "none";
+        handle.terminationCause = record.terminationCause;
+        const restoredEndStatus = session.lastTurnEndStatus;
+        const outcomeFromLog: ChildSessionOutcome | undefined = restoredEndStatus === "error"
+          ? "error"
+          : restoredEndStatus === "interrupted"
+            ? "interrupted"
+            : restoredEndStatus === "completed"
+              ? "completed"
+              : undefined;
+        const hadLiveTurn = record.lifecycle === "running" || record.lifecycle === "blocked";
+        handle.lastOutcome = (hadLiveTurn ? outcomeFromLog : record.outcome ?? outcomeFromLog) ?? "none";
         handle.lastActivityAt = Date.now();
         handle.resultText = extractLatestAssistantText(session.log);
-        handle.status =
-          record.lifecycle === "archived"
-            ? "terminated"
-            : "idle";
+        const storedStatus = record.status && ["working", "idle", "error", "interrupted", "terminated", "completed"].includes(record.status)
+          ? record.status as ChildSessionStatus
+          : undefined;
+        const settledStatus: ChildSessionStatus = handle.lastOutcome === "completed"
+          ? "completed"
+          : handle.lastOutcome === "error"
+            ? "error"
+            : handle.lastOutcome === "interrupted"
+              ? "interrupted"
+              : record.lifecycle === "archived"
+                ? "terminated"
+                : "idle";
+        handle.status = record.lifecycle === "running" || record.lifecycle === "blocked"
+          ? "error"
+          : storedStatus && storedStatus !== "working"
+            ? storedStatus
+            : settledStatus;
 
         if (record.inbox && record.inbox.length > 0) {
           // 已结束 one-shot 的恢复 inbox 在下方 release 时丢弃：
@@ -1400,10 +1495,13 @@ export class ChildSessionManager {
 
         this._handles.set(record.id, handle);
         // 已结束 one-shot 子会话以 released 状态返回，与 live settle 同。
-        this._freezeAndRelease(handle, true);
+        const savedOk = this.deps.saveChildSession(handle);
+        if (savedOk) session.finalizeRewindJournal();
+        this._freezeAndRelease(handle, savedOk);
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
         warnings.push(`Failed to restore child session '${record.id}': ${reason}`);
+        this._restoreFailures.set(record.id, "log_unavailable");
       }
     }
 

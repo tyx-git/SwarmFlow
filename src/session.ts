@@ -59,7 +59,7 @@ import {
   subagentSettingsPath,
   type SubagentSettings,
 } from "./session/subagent-settings.js";
-import { resolveRoleModel as resolveRoleModelConfig } from "./session/role-model-resolver.js";
+import { resolveRoleModel as resolveRoleModelConfig, type PersistedRoleModelSelection } from "./session/role-model-resolver.js";
 import {
   COMPACT_PROMPT_OUTPUT,
   COMPACT_PROMPT_TOOLCALL,
@@ -105,6 +105,7 @@ import { HookRuntime, type HookPayload } from "./hooks/index.js";
 import type { HookManifest } from "./hooks/types.js";
 import { assembleFullSystemPrompt, readAgentsMemory } from "./lib/prompt-assembler.js";
 import { shell } from "./platform/index.js";
+import { isAgentRoleId } from "./swarm/types.js";
 import { buildShellNotes } from "./tools/shell-notes.js";
 import {
   argOptionalString,
@@ -176,6 +177,7 @@ import {
   type ChildSessionMode,
   type ChildSessionPhase,
   type ChildSessionSnapshot,
+  type ChildTaskHandoff,
   type DeliverMessageResult,
   type MessageEnvelope,
 } from "./session-tree-types.js";
@@ -524,7 +526,7 @@ export class Session {
   private _turnInFlight: Promise<string | void> | null = null;
 
   /** Callback for incremental persistence —called at save-worthy checkpoints. */
-  onSaveRequest?: () => void;
+  onSaveRequest?: () => void | boolean;
   /** Callback for MCP connection status —called after initial connect or reload. */
   onMcpStatus?: (statuses: Array<{ name: string; state: string; toolCount: number; error?: string }>) => void;
 
@@ -2142,8 +2144,22 @@ export class Session {
   /**
    * Check for and recover from a crashed rewind on session restore.
    */
-  recoverRewindIfNeeded(): void {
-    this._rewindEngine.recoverJournalIfNeeded();
+  recoverRewindIfNeeded(): boolean {
+    const recovered = this._rewindEngine.recoverJournalIfNeeded();
+    if (!recovered) return false;
+    let saved = false;
+    try {
+      saved = this.onSaveRequest?.() === true;
+    } catch {
+      // Keep the recovery journal until a later save confirms the log state.
+    }
+    if (saved) this._rewindEngine.finalizeJournal();
+    return true;
+  }
+
+  /** Mark a rewind transaction complete after the caller has saved the log. */
+  finalizeRewindJournal(): void {
+    this._rewindEngine.finalizeJournal();
   }
 
   /**
@@ -2292,7 +2308,9 @@ export class Session {
         template: handle.template,
         mode: handle.mode,
         lifecycle: handle.lifecycle,
+        status: handle.status,
         outcome: handle.lastOutcome,
+        terminationCause: handle.terminationCause,
         order: handle.order,
         // Released one-shots have no Session (and by definition no live
         // inbox) —this read must tolerate null or every root save after
@@ -2307,7 +2325,9 @@ export class Session {
         template: record.template,
         mode: record.mode,
         lifecycle: "archived" as ChildSessionLifecycle,
+        status: record.status,
         outcome: record.outcome,
+        terminationCause: record.terminationCause,
         order: record.order,
       })),
     ];
@@ -2964,6 +2984,7 @@ export class Session {
     outcome: ChildOutcome;
     cause: TerminationCause;
     taskSummary?: { total: number; open: number; done: number };
+    openTasks: ChildTaskHandoff[];
   }): void {
     const store = this._ensureTaskStore();
     const task = store.list().find((candidate) => candidate.metadata["agentId"] === info.childId);
@@ -2974,6 +2995,7 @@ export class Session {
       lastSettledAt: Date.now(),
     };
     if (info.taskSummary) metadata["taskSummary"] = info.taskSummary;
+    metadata["childOpenTasks"] = info.openTasks.length > 0 ? info.openTasks : null;
     if (info.outcome === "completed") {
       // 已完成：清掉续跑建议，避免下次重启又提示续跑一个已经跑完的任务。
       metadata["resumeHint"] = null;
@@ -3042,7 +3064,9 @@ export class Session {
       const signal = signals.get(agentId);
       const failure = failures.get(agentId);
       const fromLog = loggedOutcomes.get(agentId);
-      const decision = opts.fork
+      const decision = failure === "model_unavailable"
+        ? { resumable: false, reason: "model_unavailable" as const }
+        : opts.fork
         ? // 分叉：执行体一律作废，不提供续跑
           { resumable: false, reason: "superseded" as const }
         : decideChildResume({
@@ -3152,6 +3176,11 @@ export class Session {
     if (description instanceof ToolResult) return description;
     const activeForm = this._argOptionalString("task_create", args, "active_form");
     if (activeForm instanceof ToolResult) return activeForm;
+    const role = this._argOptionalString("task_create", args, "role");
+    if (role instanceof ToolResult) return role;
+    if (role && !isAgentRoleId(role.trim())) {
+      return new ToolResult({ content: "Error: 'role' must be queen, scout, worker, reviewer, guard, or merger." });
+    }
     const metadata = this._argTaskMetadata(args["metadata"]);
     if (metadata instanceof ToolResult) return metadata;
 
@@ -3160,6 +3189,7 @@ export class Session {
       description.trim(),
       activeForm,
       metadata,
+      role?.trim(),
     );
     this._notifyTaskListeners();
     return new ToolResult({
@@ -3170,7 +3200,9 @@ export class Session {
   private _execTaskList(): ToolResult {
     const store = this._ensureTaskStore();
     const tasks = store.list();
-    if (tasks.length === 0) return new ToolResult({ content: "No tasks found" });
+    if (tasks.length === 0) {
+      return new ToolResult({ content: store.lastSaveError ? `No tasks loaded. ${store.lastSaveError}` : "No tasks found" });
+    }
 
     // 面向模型的可读顺序：未完成在前，同状态按 id。
     const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, completed: 2 };
@@ -3180,6 +3212,7 @@ export class Session {
 
     const lines = sorted.map((task) => {
       let line = `#${task.id} [${task.status}] ${task.subject}`;
+      if (task.role) line += ` [${task.role}]`;
       const owner = task.owner ?? (typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined);
       if (owner) line += ` (${owner})`;
 
@@ -3201,9 +3234,14 @@ export class Session {
             : ` [interrupted — re-dispatch with a new agent id: ${describeResumeReason(hint.reason as ResumeReason)}]`;
         }
       }
+      const childOpenTasks = task.metadata["childOpenTasks"];
+      if (Array.isArray(childOpenTasks) && childOpenTasks.length > 0) {
+        line += ` [${childOpenTasks.length} unfinished child-local tasks returned; inspect task_get; Queen decides re-dispatch]`;
+      }
       return line;
     });
 
+    if (store.lastSaveError) lines.push(`warning: ${store.lastSaveError}`);
     return new ToolResult({ content: lines.join("\n") });
   }
 
@@ -3216,6 +3254,7 @@ export class Session {
     if (!task) return new ToolResult({ content: `Task #${taskId} not found` });
 
     const lines: string[] = [`Task #${task.id}: ${task.subject}`, `Status: ${task.status}`];
+    if (task.role) lines.push(`Role: ${task.role}`);
     const owner = task.owner ?? (typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined);
     if (owner) lines.push(`Owner: ${owner}`);
     if (task.activeForm) lines.push(`Active form: ${task.activeForm}`);
@@ -3236,8 +3275,25 @@ export class Session {
       );
     }
 
-    const metaKeys = Object.keys(task.metadata);
-    if (metaKeys.length > 0) lines.push(`Metadata: ${JSON.stringify(task.metadata)}`);
+    const childOpenTasks = task.metadata["childOpenTasks"];
+    if (Array.isArray(childOpenTasks) && childOpenTasks.length > 0) {
+      lines.push(`Unfinished child-local tasks returned (${childOpenTasks.length}); Queen must decide whether to re-dispatch:`);
+      for (const value of childOpenTasks) {
+        if (!value || typeof value !== "object") continue;
+        const item = value as Record<string, unknown>;
+        const localId = typeof item["id"] === "string" ? item["id"] : "?";
+        const subject = typeof item["subject"] === "string" ? item["subject"] : "(no subject)";
+        const status = typeof item["status"] === "string" ? item["status"] : "unknown";
+        const description = typeof item["description"] === "string" ? item["description"] : "";
+        lines.push(`- [${status}] child-local #${localId}: ${subject}${description ? ` — ${description}` : ""}`);
+      }
+    }
+
+    const displayMetadata = { ...task.metadata };
+    delete displayMetadata["childOpenTasks"];
+    const metaKeys = Object.keys(displayMetadata);
+    if (metaKeys.length > 0) lines.push(`Metadata: ${JSON.stringify(displayMetadata)}`);
+    if (store.lastSaveError) lines.push(`warning: ${store.lastSaveError}`);
     return new ToolResult({ content: lines.join("\n") });
   }
 
@@ -3258,17 +3314,22 @@ export class Session {
       fields.status = status;
     }
 
-    const textFields: Array<[string, "subject" | "description" | "activeForm" | "owner"]> = [
+    const textFields: Array<[string, "subject" | "description" | "activeForm" | "owner" | "role"]> = [
       ["subject", "subject"],
       ["description", "description"],
       ["active_form", "activeForm"],
       ["owner", "owner"],
+      ["role", "role"],
     ];
     for (const [key, field] of textFields) {
       const value = this._argOptionalString("task_update", args, key);
       if (value instanceof ToolResult) return value;
       if (value !== undefined) fields[field] = value;
     }
+    if (fields.role && !isAgentRoleId(fields.role.trim())) {
+      return new ToolResult({ content: "Error: 'role' must be queen, scout, worker, reviewer, guard, or merger." });
+    }
+    if (fields.role) fields.role = fields.role.trim();
 
     const metadata = this._argTaskMetadata(args["metadata"]);
     if (metadata instanceof ToolResult) return metadata;
@@ -6488,10 +6549,10 @@ export class Session {
       getPreferredThinkingLevel: () => this._preferredThinkingLevel,
       getPrimaryAgent: () => this.primaryAgent,
       getAgentTemplates: () => this.agentTemplates,
-      createFromPredefined: (templateName, taskId) =>
-        this._createSubAgentFromPredefined(templateName, taskId),
-      createFromPath: (templateDir, taskId) =>
-        this._createSubAgentFromPath(templateDir, taskId),
+      createFromPredefined: (templateName, taskId, persistedSelection) =>
+        this._createSubAgentFromPredefined(templateName, taskId, persistedSelection),
+      createFromPath: (templateDir, taskId, persistedSelection) =>
+        this._createSubAgentFromPath(templateDir, taskId, persistedSelection),
       resolveTemplatePath: (relPath) => this._resolveTemplatePath(relPath),
       buildSubAgentSystemPrompt: (basePrompt, persistent) =>
         this._buildSubAgentSystemPrompt(basePrompt, persistent),
@@ -6532,7 +6593,10 @@ export class Session {
       getMcpManager: () => this._mcpManager,
       getPromptsDirs: () => this._promptsDirs,
       resolveSessionArtifacts: () => this._resolveSessionArtifacts(),
-      resolveRoleModel: (role) => resolveRoleModelConfig(this, role, this.getSubagentSettings()),
+      resolveRoleModel: (role, persistedSelection) =>
+        persistedSelection
+          ? resolveRoleModelConfig(this, role, undefined, persistedSelection)
+          : resolveRoleModelConfig(this, role, this.getSubagentSettings()),
     });
   }
 
@@ -6540,12 +6604,20 @@ export class Session {
     return this._subAgentFactory ??= this._buildSubAgentFactory();
   }
 
-  private _createSubAgentFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
-    return this._subAgentFactoryInstance.createFromPredefined(templateName, taskId);
+  private _createSubAgentFromPredefined(
+    templateName: string,
+    taskId: string,
+    persistedSelection?: PersistedRoleModelSelection,
+  ): { agent: Agent; thinkingLevel?: string } {
+    return this._subAgentFactoryInstance.createFromPredefined(templateName, taskId, persistedSelection);
   }
 
-  private _createSubAgentFromPath(templateDir: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
-    return this._subAgentFactoryInstance.createFromPath(templateDir, taskId);
+  private _createSubAgentFromPath(
+    templateDir: string,
+    taskId: string,
+    persistedSelection?: PersistedRoleModelSelection,
+  ): { agent: Agent; thinkingLevel?: string } {
+    return this._subAgentFactoryInstance.createFromPath(templateDir, taskId, persistedSelection);
   }
 
   private _resolveTemplatePath(relPath: string): string {

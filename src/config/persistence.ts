@@ -985,6 +985,51 @@ export interface LoadLogResult {
   idAllocator: LogIdAllocator;
 }
 
+function normalizeChildSessionMeta(value: unknown): ChildSessionMetaRecord | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    typeof raw["id"] !== "string" || !raw["id"].trim() ||
+    typeof raw["template"] !== "string" || !raw["template"].trim() ||
+    (raw["mode"] !== "oneshot" && raw["mode"] !== "persistent")
+  ) return undefined;
+
+  const numericId = raw["numericId"];
+  if (typeof numericId !== "number" || !Number.isInteger(numericId) || numericId < 0) return undefined;
+  const orderRaw = raw["order"];
+  const order = typeof orderRaw === "number" && Number.isInteger(orderRaw) && orderRaw >= 0 ? orderRaw : numericId;
+  const outcome = raw["outcome"] === "none" || raw["outcome"] === "completed" || raw["outcome"] === "interrupted" || raw["outcome"] === "error"
+    ? raw["outcome"]
+    : undefined;
+  const lifecycle = raw["lifecycle"] === "running" || raw["lifecycle"] === "blocked" || raw["lifecycle"] === "idle" || raw["lifecycle"] === "archived"
+    ? raw["lifecycle"]
+    : outcome === "completed" || outcome === "error" || outcome === "interrupted"
+      ? "archived"
+      : "idle";
+  const status = raw["status"] === "working" || raw["status"] === "idle" || raw["status"] === "error" || raw["status"] === "interrupted" || raw["status"] === "terminated" || raw["status"] === "completed"
+    ? raw["status"]
+    : undefined;
+  const terminationCause = raw["terminationCause"] === "natural" || raw["terminationCause"] === "parent_kill" || raw["terminationCause"] === "user_targeted_kill" || raw["terminationCause"] === "user_mass_interrupt"
+    ? raw["terminationCause"]
+    : undefined;
+
+  const record: ChildSessionMetaRecord = {
+    id: raw["id"],
+    numericId,
+    template: raw["template"],
+    mode: raw["mode"],
+    lifecycle,
+    order,
+  };
+  if (outcome !== undefined) record.outcome = outcome;
+  if (status !== undefined) record.status = status as ChildSessionMetaRecord["status"];
+  if (terminationCause !== undefined) record.terminationCause = terminationCause;
+  if (Array.isArray(raw["inbox"])) {
+    record.inbox = raw["inbox"].filter((item) => Boolean(item && typeof item === "object" && !Array.isArray(item))) as ChildSessionMetaRecord["inbox"];
+  }
+  return record;
+}
+
 /** 从磁盘加载会话日志（log.json） */
 export function loadLog(dir: string): LoadLogResult {
   const logFile = join(dir, "log.json");
@@ -1005,7 +1050,9 @@ export function loadLog(dir: string): LoadLogResult {
     turnCount: raw.turn_count ?? 0,
     compactCount: raw.compact_count ?? 0,
     thinkingLevel: raw.thinking_level ?? "",
-    childSessions: Array.isArray(raw.child_sessions) ? raw.child_sessions as ChildSessionMetaRecord[] : undefined,
+    childSessions: Array.isArray(raw.child_sessions)
+      ? (raw.child_sessions as unknown[]).map(normalizeChildSessionMeta).filter((record): record is ChildSessionMetaRecord => record !== undefined)
+      : undefined,
   };
 
   const rawEntries = (raw.entries ?? []) as Array<Record<string, unknown>>;

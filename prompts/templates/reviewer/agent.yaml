@@ -1,7 +1,8 @@
 type: agent
 name: reviewer
-description: "Reviews changes made by another agent with fresh-eyes context. Runs tests, checks scope, returns a structured verdict."
+description: "Read-only reviewer that checks changes, scope, and validation evidence, then returns a structured verdict."
 system_prompt_file: system_prompt.md
-tools: [read_file, list_dir, glob, grep, bash, time, web_search, web_fetch]
+tool_tier: read_only
 tools_prompt_file: tools.md
+mcp_tools: none
 max_tool_rounds: 200

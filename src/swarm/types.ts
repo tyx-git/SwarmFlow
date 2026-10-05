@@ -216,7 +216,7 @@ export interface TaskResult {
   success: boolean;
   /** 输出文本。 */
   output: string;
-  /** 从输出中解析出的结构化交接；解析失败时缺省并保留原始 output。 */
+  /** 从输出中解析出的结构化交接；格式化给下游时保留有长度上限的原文摘录作为后备证据。 */
   handoff?: TaskHandoff;
   /** 修改的文件（用于 worker 任务）。 */
   modifiedFiles?: string[];

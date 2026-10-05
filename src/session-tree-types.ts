@@ -60,13 +60,27 @@ export interface ChildSessionSnapshot {
   taskSummary?: { total: number; open: number; done: number };
 }
 
+/** 子代理结束时回传给 Queen 的未完成本地任务。 */
+export interface ChildTaskHandoff {
+  id: string;
+  subject: string;
+  description: string;
+  status: "pending" | "in_progress";
+  activeForm?: string;
+  blocks: string[];
+  blockedBy: string[];
+}
+
 export interface ChildSessionMetaRecord {
   id: string;
   numericId: number;
   template: string;
   mode: ChildSessionMode;
   lifecycle: ChildSessionLifecycle;
+  /** 最近的稳定状态；running/working 在恢复时会归一为失败态。 */
+  status?: ChildSessionStatus;
   outcome?: ChildSessionOutcome;
+  terminationCause?: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt";
   order: number;
   inbox?: MessageEnvelope[];
 }
@@ -140,6 +154,8 @@ export interface ArchivedChildRecord {
   template: string;
   mode: ChildSessionMode;
   outcome: ChildSessionOutcome;
+  status?: ChildSessionStatus;
+  terminationCause?: "natural" | "parent_kill" | "user_targeted_kill" | "user_mass_interrupt";
   order: number;
   sessionDir: string;
   artifactsDir: string;

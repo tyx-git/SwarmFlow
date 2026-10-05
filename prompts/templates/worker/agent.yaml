@@ -1,7 +1,8 @@
 type: agent
 name: worker
-description: "General-purpose agent with file and shell access."
+description: "Bounded implementation agent with project-file editing and validation tools."
 system_prompt_file: system_prompt.md
-tools: [read_file, list_dir, glob, grep, write_file, edit_file, bash, time, web_search, web_fetch]
+tools: [read, write_file, edit_file, bash]
 tools_prompt_file: tools.md
+mcp_tools: none
 max_tool_rounds: 200

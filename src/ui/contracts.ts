@@ -59,7 +59,7 @@ export interface BashRewindEntry {
   kind: "mkdir" | "cp" | "mv";
   description: string;
   status: "applicable" | "conflict";
-  conflictReason?: "dir_not_empty" | "dir_deleted" | "backup_missing" | "source_occupied" | "disk_modified" | "target_deleted";
+  conflictReason?: "dir_not_empty" | "dir_deleted" | "backup_missing" | "source_occupied" | "disk_modified" | "target_deleted" | "untracked";
   conflictDetails?: string[];
   /** 用于执行的原始 BashMutationEntry。 */
   mutation: import("../tools/basic.js").BashMutationEntry;
@@ -155,6 +155,7 @@ export interface Session {
   rewindConversation?(toTurnIndex: number): { removed: number; error?: string };
   rewindFiles?(plan: RewindPlan): Promise<RewindApplyResult>;
   rewindBoth?(toTurnIndex: number, plan: RewindPlan): Promise<RewindApplyResult & { removed: number }>;
+  finalizeRewindJournal?(): void;
   resumePendingTurn?(options?: { signal?: AbortSignal }): Promise<string>;
   hasPendingTurnToResume?(): boolean;
   runManualCompact?(instruction?: string, options?: { signal?: AbortSignal; completionDisplay?: string }): Promise<void>;

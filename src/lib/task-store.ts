@@ -14,7 +14,8 @@
  *  - 子会话：纯内存，随子会话对象消亡
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 /** 任务文件名（位于会话工件目录下）。 */
@@ -45,6 +46,8 @@ export interface Task {
   id: string;
   subject: string;
   description: string;
+  /** 计划执行此节点的角色 ID。 */
+  role?: string;
   status: TaskStatus;
   /** 进行中时展示的持续态文案（例如「正在运行测试」）。 */
   activeForm?: string;
@@ -72,6 +75,7 @@ export interface TaskUpdateFields {
   status?: TaskStatus | "deleted";
   subject?: string;
   description?: string;
+  role?: string;
   activeForm?: string;
   owner?: string;
   /** 浅合并；值为 `null` 时删除该键。 */
@@ -134,6 +138,17 @@ function asOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function compareIdStrings(a: string, b: string): number {
+  const left = Number(a);
+  const right = Number(b);
+  if (Number.isFinite(left) && Number.isFinite(right)) return left - right;
+  return a.localeCompare(b);
+}
+
+function sameStrings(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 /**
  * 把磁盘记录修成可信形状。
  *
@@ -161,6 +176,9 @@ export function normalizeTask(raw: unknown): Task | undefined {
     updatedAt: typeof record["updatedAt"] === "number" ? record["updatedAt"] : now,
   };
 
+  const role = asOptionalString(record["role"]);
+  if (role) normalized.role = role;
+
   const activeForm = asOptionalString(record["activeForm"]);
   if (activeForm) normalized.activeForm = activeForm;
   const owner = asOptionalString(record["owner"]);
@@ -178,6 +196,7 @@ export class TaskStore {
   private _nextId = 1;
   private _tasks = new Map<string, Task>();
   private _lastSaveError: string | undefined;
+  private _blockedSaveError: string | undefined;
   /** 文件属于别的会话：不载入、也拒绝覆盖（防两个进程互踩同一会话）。 */
   private _foreignFile = false;
 
@@ -212,10 +231,24 @@ export class TaskStore {
     if (!path || !existsSync(path)) return;
     try {
       const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-      const { tasks, nextId, sessionId } = parsed as Partial<TaskStoreData>;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        this._blockedSaveError = "tasks.json has an invalid envelope; refusing to overwrite it.";
+        this._lastSaveError = this._blockedSaveError;
+        return;
+      }
+      const record = parsed as Partial<TaskStoreData>;
+      const { tasks, nextId, sessionId } = record;
+      if (record.version !== undefined && record.version !== TASK_STORE_VERSION) {
+        this._blockedSaveError = `tasks.json version ${String(record.version)} is not supported; refusing to overwrite it.`;
+        this._lastSaveError = this._blockedSaveError;
+        return;
+      }
       // 信封不可用（截断写入 / 手工编辑）→ 保持现状，绝不清空。
-      if (!Array.isArray(tasks)) return;
+      if (!Array.isArray(tasks)) {
+        this._blockedSaveError = "tasks.json has no valid task list; refusing to overwrite it.";
+        this._lastSaveError = this._blockedSaveError;
+        return;
+      }
       if (typeof sessionId === "string" && sessionId.length > 0 && sessionId !== this._sessionId) {
         this._foreignFile = true;
         return;
@@ -224,20 +257,81 @@ export class TaskStore {
       // 先构建完整替换，坏记录不会留下半载入状态。
       const loaded = new Map<string, Task>();
       let maxId = 0;
+      let needsRepair = false;
+      const seenIds = new Set<string>();
       for (const raw of tasks) {
         const task = normalizeTask(raw);
-        if (!task) continue;
+        if (!task) {
+          needsRepair = true;
+          this._blockedSaveError = "tasks.json contains an invalid task record; refusing to overwrite it.";
+          this._lastSaveError = this._blockedSaveError;
+          continue;
+        }
+        if (seenIds.has(task.id)) {
+          needsRepair = true;
+          this._blockedSaveError = `tasks.json contains duplicate task id '${task.id}'; refusing to overwrite it.`;
+          this._lastSaveError = this._blockedSaveError;
+          continue;
+        }
+        seenIds.add(task.id);
         loaded.set(task.id, task);
         const numeric = Number(task.id);
         if (Number.isFinite(numeric) && numeric > maxId) maxId = numeric;
       }
       this._tasks = loaded;
+      if (this._repairDependencyEdges()) needsRepair = true;
       // 未来的 id 全部来自这个计数器：必须以文件中已用 id 为下限重算，
       // 否则缺失/陈旧的 nextId 会产生重复 id。
       this._nextId = typeof nextId === "number" && Number.isInteger(nextId) && nextId > maxId ? nextId : maxId + 1;
+      if (needsRepair && !this._blockedSaveError) this._save();
     } catch {
-      /* 不可读或非 JSON —— 保持内存现状 */
+      this._blockedSaveError = "tasks.json is unreadable or invalid JSON; refusing to overwrite it.";
+      this._lastSaveError = this._blockedSaveError;
     }
+  }
+
+  /** 根据仍有效的依赖边重建 DAG 的正反向引用。 */
+  private _repairDependencyEdges(): boolean {
+    const edges = new Set<string>();
+    let repaired = false;
+    for (const task of this._tasks.values()) {
+      for (const targetId of task.blocks) {
+        if (targetId === task.id || !this._tasks.has(targetId)) {
+          repaired = true;
+          continue;
+        }
+        edges.add(`${task.id}\0${targetId}`);
+      }
+      for (const sourceId of task.blockedBy) {
+        if (sourceId === task.id || !this._tasks.has(sourceId)) {
+          repaired = true;
+          continue;
+        }
+        edges.add(`${sourceId}\0${task.id}`);
+      }
+    }
+
+    const blocks = new Map<string, Set<string>>();
+    const blockedBy = new Map<string, Set<string>>();
+    for (const id of this._tasks.keys()) {
+      blocks.set(id, new Set());
+      blockedBy.set(id, new Set());
+    }
+    for (const edge of edges) {
+      const [sourceId, targetId] = edge.split("\0");
+      if (!sourceId || !targetId) continue;
+      blocks.get(sourceId)!.add(targetId);
+      blockedBy.get(targetId)!.add(sourceId);
+    }
+
+    for (const task of this._tasks.values()) {
+      const nextBlocks = [...blocks.get(task.id)!].sort(compareIdStrings);
+      const nextBlockedBy = [...blockedBy.get(task.id)!].sort(compareIdStrings);
+      if (!sameStrings(task.blocks, nextBlocks) || !sameStrings(task.blockedBy, nextBlockedBy)) repaired = true;
+      task.blocks = nextBlocks;
+      task.blockedBy = nextBlockedBy;
+    }
+    return repaired;
   }
 
   private _save(): string | undefined {
@@ -247,6 +341,10 @@ export class TaskStore {
       this._lastSaveError = `tasks.json 属于其它会话，已拒绝写入：${path}`;
       return this._lastSaveError;
     }
+    if (this._blockedSaveError) {
+      this._lastSaveError = this._blockedSaveError;
+      return this._lastSaveError;
+    }
     const data: TaskStoreData = {
       version: TASK_STORE_VERSION,
       sessionId: this._sessionId,
@@ -254,14 +352,18 @@ export class TaskStore {
       updatedAt: new Date().toISOString(),
       tasks: [...this._tasks.values()],
     };
+    let tmp = "";
     try {
       mkdirSync(dirname(path), { recursive: true });
-      const tmp = `${path}.tmp`;
+      tmp = `${path}.${randomUUID()}.tmp`;
       writeFileSync(tmp, JSON.stringify(data, null, 2));
       renameSync(tmp, path);
       this._lastSaveError = undefined;
       return undefined;
     } catch (error) {
+      if (tmp) {
+        try { rmSync(tmp, { force: true }); } catch { /* ignore */ }
+      }
       const message = error instanceof Error ? error.message : String(error);
       this._lastSaveError = `任务落盘失败（内存态仍有效）：${message}`;
       return this._lastSaveError;
@@ -301,6 +403,7 @@ export class TaskStore {
     description: string,
     activeForm?: string,
     metadata?: Record<string, unknown>,
+    role?: string,
   ): { task: Task } & TaskMutationResult {
     const now = Date.now();
     const task: Task = {
@@ -314,6 +417,7 @@ export class TaskStore {
       createdAt: now,
       updatedAt: now,
     };
+    if (role) task.role = role;
     if (activeForm) task.activeForm = activeForm;
     this._tasks.set(task.id, task);
     return { task, saveError: this._save() };
@@ -342,6 +446,10 @@ export class TaskStore {
     if (fields.description !== undefined) {
       task.description = fields.description;
       changedFields.push("description");
+    }
+    if (fields.role !== undefined) {
+      task.role = fields.role;
+      changedFields.push("role");
     }
     if (fields.activeForm !== undefined) {
       task.activeForm = fields.activeForm;
@@ -438,6 +546,7 @@ export class TaskStore {
       "lastSettledAt",
       "lastOutcome",
       "taskSummary",
+      "childOpenTasks",
     ];
     const changed: string[] = [];
     for (const task of this._tasks.values()) {
@@ -571,6 +680,10 @@ export function formatTaskSnapshot(tasks: readonly Task[]): string {
     const hint = readResumeHint(task);
     if (hint && task.status !== "completed") {
       line += hint.resumable ? " (interrupted — resumable via task_resume)" : " (interrupted — needs re-dispatch)";
+    }
+    const childOpenTasks = task.metadata["childOpenTasks"];
+    if (Array.isArray(childOpenTasks) && childOpenTasks.length > 0) {
+      line += ` (${childOpenTasks.length} unfinished child-local tasks returned; inspect task_get)`;
     }
     lines.push(line);
   }

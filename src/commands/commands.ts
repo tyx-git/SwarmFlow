@@ -388,8 +388,8 @@ function persistModelSelection(ctx: CommandContext): void {
 }
 
 /** 将通过 provider:model 临时创建的模型保存到用户目录，避免重启后丢失。 */
-function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModelSelection): void {
-  if (!selection.selectedConfigName.startsWith("runtime-")) return;
+function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModelSelection): boolean {
+  if (!selection.selectedConfigName.startsWith("runtime-")) return true;
 
   const providerId = selection.modelProvider;
   const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
@@ -397,7 +397,7 @@ function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModel
   const preset = findProviderPreset(providerId);
 
   // 未知 provider 没有端点信息时不能凭空生成 settings 条目。
-  if (!existing && !preset) return;
+  if (!existing && !preset) return false;
 
   const provider: ProviderEntry = { ...(existing ?? {}) };
   if (!provider.api_key_env && preset && providerId !== "openai-codex" && providerId !== "copilot") {
@@ -420,7 +420,7 @@ function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModel
   }
   provider.models = models;
 
-  persistSettingsPatch({
+  return persistSettingsPatch({
     providers: {
       ...(settings.providers ?? {}),
       [providerId]: provider,
@@ -432,11 +432,12 @@ function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModel
  * Persist a partial settings update to global settings.json.
  * Reads existing settings, merges the patch, and writes back.
  */
-function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: string): void {
+function persistSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: string): boolean {
   try {
     saveGlobalSettingsPatch(patch, homeDir);
+    return true;
   } catch {
-    // 忽略命令执行期间的持久性失败。
+    return false;
   }
 }
 
@@ -756,6 +757,10 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
     }
     const { selectedConfigName } = resolvedSelection;
 
+    if (!persistRuntimeModelConfig(ctx, resolvedSelection)) {
+      throw new Error("The selected runtime model could not be persisted; the session model was not changed.");
+    }
+
     // 适当地切换活动运行时；会话历史记录保持完整。
     session.switchModel(selectedConfigName);
     session.setPersistedModelSelection?.({
@@ -764,8 +769,6 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
       modelSelectionKey: resolvedSelection.modelSelectionKey,
       modelId: resolvedSelection.modelId,
     });
-    persistRuntimeModelConfig(ctx, resolvedSelection);
-
     // 如果新模型支持它，提示思考水平
     await promptThinkingLevel(ctx);
     persistModelSelection(ctx);
@@ -779,7 +782,13 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
 async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;
   const target = args.trim();
-  const settings = session.getSubagentSettings?.() as SubagentSettings | undefined;
+  let settings: SubagentSettings | undefined;
+  try {
+    settings = session.getSubagentSettings?.() as SubagentSettings | undefined;
+  } catch (error) {
+    ctx.showMessage(`Failed to load sub-agent role settings: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   const role = target ? target.split(/\s+/, 1)[0] : "";
 
   if (!target && !ctx.promptCommandPicker) {
@@ -859,7 +868,9 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
       model_id: resolved.modelId,
       thinking_level: thinkingLevel,
     };
-    persistRuntimeModelConfig(ctx, resolved);
+    if (!persistRuntimeModelConfig(ctx, resolved)) {
+      throw new Error("The selected runtime model could not be persisted; the role settings were not changed.");
+    }
     if (typeof session.setSubagentSettings !== "function") {
       throw new Error("Sub-agent model settings are not available in this session.");
     }
@@ -3249,6 +3260,11 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
   }
 
   ctx.autoSave();
+  try {
+    session.finalizeRewindJournal?.();
+  } catch (error) {
+    ctx.showHint?.(`Rewind recovery journal retained: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 // ------------------------------------------------------------------

@@ -13,7 +13,7 @@ import type { Config } from "../config/config.js";
 import type { MCPClientManager } from "../clients/mcp-client.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
-import type { ResolvedRoleModel } from "./role-model-resolver.js";
+import type { PersistedRoleModelSelection, ResolvedRoleModel } from "./role-model-resolver.js";
 
 /** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
 const COMM_TOOL_NAMES = new Set([
@@ -28,7 +28,7 @@ export interface SubAgentFactoryDeps {
   getPromptsDirs(): string[] | undefined;
   resolveSessionArtifacts(): string;
   /** 角色模型解析的统一入口。 */
-  resolveRoleModel(role: string): ResolvedRoleModel;
+  resolveRoleModel(role: string, persistedSelection?: PersistedRoleModelSelection): ResolvedRoleModel;
 }
 
 /**
@@ -47,7 +47,11 @@ export class SubAgentFactory {
    * 从预定义模板创建子 Agent。
    * 模板从 getAgentTemplates() 获取（Session 初始化时加载）。
    */
-  createFromPredefined(templateName: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
+  createFromPredefined(
+    templateName: string,
+    taskId: string,
+    persistedSelection?: PersistedRoleModelSelection,
+  ): { agent: Agent; thinkingLevel?: string } {
     const templates = this.deps.getAgentTemplates();
     // 预定义模板名称就是稳定的机器 ID，大小写变体不再视为同一模板。
     const templateAgent = templates[templateName];
@@ -58,7 +62,7 @@ export class SubAgentFactory {
       );
     }
 
-    const { modelConfig, thinkingLevel } = this.deps.resolveRoleModel(templateName);
+    const { modelConfig, thinkingLevel } = this.deps.resolveRoleModel(templateName, persistedSelection);
     const tools = [...templateAgent.tools]; // 使用模板的工具，非主 Agent 的
 
     const agent = new Agent({
@@ -79,7 +83,11 @@ export class SubAgentFactory {
    * 从磁盘模板路径创建子 Agent。
    * 模板路径必须位于 SESSION_ARTIFACTS 内（安全约束）。
    */
-  createFromPath(templateDir: string, taskId: string): { agent: Agent; thinkingLevel?: string } {
+  createFromPath(
+    templateDir: string,
+    taskId: string,
+    persistedSelection?: PersistedRoleModelSelection,
+  ): { agent: Agent; thinkingLevel?: string } {
     const templateAgent = loadTemplate(
       templateDir,
       this.deps.getConfig(),
@@ -87,7 +95,7 @@ export class SubAgentFactory {
       this.deps.getMcpManager(),
       this.deps.getPromptsDirs(),
     );
-    const { modelConfig, thinkingLevel } = this.deps.resolveRoleModel(templateAgent.name);
+    const { modelConfig, thinkingLevel } = this.deps.resolveRoleModel(templateAgent.name, persistedSelection);
 
     const agent = new Agent({
       name: taskId,

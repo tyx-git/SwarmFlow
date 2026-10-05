@@ -379,17 +379,19 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return sessionDir;
   };
 
-  const saveSessionLog = (): void => {
+  const saveSessionLog = (): boolean => {
     const currentDir = getCurrentSessionDir();
-    if (!currentDir) return;
+    if (!currentDir) return false;
     try {
       const { meta, entries } = session.getLogForPersistence();
-      if (meta.turnCount === 0) return;
+      if (meta.turnCount === 0) return true;
       saveLog(currentDir, meta, [...entries]);
+      return true;
     } catch (err) {
       server.emit("server.stderr", {
         text: `[autosave] ${err instanceof Error ? err.message : String(err)}\n`,
       });
+      return false;
     }
   };
 
@@ -782,11 +784,12 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   // 检查点保存：Session 期望外部持久化器。
   session.onSaveRequest = () => {
     const previousDir = sessionDir;
-    saveSessionLog();
+    const saved = saveSessionLog();
     if (sessionDir && sessionDir !== previousDir) {
       server.emit("ready", buildMeta(session, workDir, sessionDir));
     }
     server.emit("session.saved", { revision: session.getLogRevision() });
+    return saved;
   };
 
   return {

@@ -2,7 +2,7 @@
 import { join } from "node:path";
 
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
-import { loadLog, validateAndRepairLog, type SessionStore } from "./config/persistence.js";
+import { loadLog, saveLog, validateAndRepairLog, type SessionStore } from "./config/persistence.js";
 import type { Session } from "./session.js";
 
 /**
@@ -246,6 +246,7 @@ export function applySessionRestore(
 
   const bindingState = store.captureBindingState();
   try {
+    let rewindRecovered = false;
     store.attachToExistingSession(sessionDir);
     if (typeof (session as { setStore?: (s: SessionStore) => void }).setStore === "function") {
       (session as { setStore: (s: SessionStore) => void }).setStore(store);
@@ -253,6 +254,11 @@ export function applySessionRestore(
     const prepared = session.prepareRestoreFromLog(logData.meta, repairedEntries, logData.idAllocator);
     const restoreWarnings = session.commitPreparedRestore(prepared);
     for (const w of restoreWarnings) warnings.push(`[resume] ${w}`);
+    try {
+      rewindRecovered = session.recoverRewindIfNeeded();
+    } catch (e) {
+      warnings.push(`[rewind] recovery failed; the journal was retained: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     // 启动对账：重启后子代理一律视为已终止，只按阈值判定是否值得断点续跑。
     // 必须在这里（子会话提交之后）：阈值指标来自恢复出的子日志。
@@ -262,6 +268,16 @@ export function applySessionRestore(
       if (reconcile.notice) session.deliverRestoreNotice(reconcile.notice);
     } catch (e) {
       warnings.push(`[tasks] reconciliation failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (rewindRecovered) {
+      try {
+        const restored = session.getLogForPersistence();
+        saveLog(sessionDir, restored.meta, [...restored.entries]);
+        session.finalizeRewindJournal();
+      } catch (e) {
+        warnings.push(`[rewind] recovery log could not be saved; the journal was retained: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   } catch (e) {
     store.restoreBindingState(bindingState);

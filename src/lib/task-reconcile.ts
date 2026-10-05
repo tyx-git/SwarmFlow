@@ -38,6 +38,8 @@ export type ResumeReason =
   | "log_unavailable"
   /** 模板缺失/不可解析 → 只能重派。 */
   | "template_missing"
+  /** 子会话日志中的模型配置无法解析 → 只能重派或修复模型配置。 */
+  | "model_unavailable"
   /** 子会话对象已被释放（归档过的 oneshot），无法直接续跑 → 重派。 */
   | "child_released"
   /** persistent 子会话（可多轮对话）豁免阈值：上下文本身就有价值。 */
@@ -154,6 +156,8 @@ export function describeResumeReason(reason: ResumeReason): string {
       return "子会话日志不可用，只能重派";
     case "template_missing":
       return "子代理模板缺失或不可解析，只能重派";
+    case "model_unavailable":
+      return "子会话保存的模型配置无法解析，只能修复配置或重派";
     case "child_released":
       return "子会话对象已释放，无法直接续跑，需重派";
     case "persistent_child":
