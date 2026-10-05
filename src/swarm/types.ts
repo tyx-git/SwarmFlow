@@ -216,6 +216,8 @@ export interface TaskResult {
   success: boolean;
   /** 输出文本。 */
   output: string;
+  /** 从输出中解析出的结构化交接；解析失败时缺省并保留原始 output。 */
+  handoff?: TaskHandoff;
   /** 修改的文件（用于 worker 任务）。 */
   modifiedFiles?: string[];
   /** Token 使用量。 */
@@ -224,6 +226,15 @@ export interface TaskResult {
   error?: string;
   /** 持续时间（毫秒）。 */
   durationMs: number;
+}
+
+/** 任务向直接下游节点交接的结构化结论。 */
+export interface TaskHandoff {
+  conclusion: string;
+  modifiedFiles: string[];
+  testResults: string[];
+  risks: string[];
+  openQuestions: string[];
 }
 
 // ------------------------------------------------------------------

@@ -18,6 +18,7 @@ import {
 import type { SwarmPattern, TaskNode, TaskDAG, ExecutionPlan, SwarmMessage } from "./types.js";
 import { AgentPool, type AgentPoolConfig } from "./pool.js";
 import { BUILTIN_PATTERNS } from "./patterns.js";
+import { formatDirectDependencyResults, parseTaskHandoff } from "./task-handoff.js";
 
 /** 协调器发出的事件。*/
 export interface SwarmCoordinatorEvents {
@@ -172,7 +173,7 @@ export class SwarmCoordinator {
 
         // 并行执行此级别的所有任务
         const levelPromises = level.taskIds.map((taskId) =>
-          this._executeTask(taskId, dag, signal),
+          this._executeTask(taskId, dag, results, signal),
         );
         const levelResults = await Promise.allSettled(levelPromises);
 
@@ -341,6 +342,7 @@ export class SwarmCoordinator {
   private async _executeTask(
     taskId: string,
     dag: TaskDAG,
+    results: ReadonlyMap<string, TaskResult>,
     signal: AbortSignal,
   ): Promise<TaskResult> {
     const node = dag.nodes.get(taskId);
@@ -366,9 +368,13 @@ export class SwarmCoordinator {
       if (!agent) throw new Error(`Agent not found: ${agentId}`);
 
       // Prepare the task prompt
-      const taskPrompt = node.instructions
+      const taskInstructions = node.instructions
         ? `${node.description}\n\nInstructions: ${node.instructions}`
         : node.description;
+      const dependencyResults = formatDirectDependencyResults(node, dag, results);
+      const taskPrompt = dependencyResults
+        ? `${taskInstructions}\n\n${dependencyResults}`
+        : taskInstructions;
 
       // 处理 scout tasks — these are read-only
       this.pool.setLifecycle(agentId, AgentLifecycle.ToolCalling);
@@ -379,12 +385,15 @@ export class SwarmCoordinator {
       this.pool.setLifecycle(agentId, AgentLifecycle.Completed);
       this.pool.recordUsage(agentId, result.totalUsage.inputTokens, result.totalUsage.outputTokens);
       this.pool.unassignTask(agentId, taskId);
+      const handoff = parseTaskHandoff(result.text);
 
       return {
         taskId,
         agentId,
         success: true,
         output: result.text,
+        handoff,
+        modifiedFiles: handoff?.modifiedFiles,
         usage: result.totalUsage,
         durationMs: Date.now() - startTime,
       };

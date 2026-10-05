@@ -27,6 +27,7 @@ export type {
   ExecutionPlan,
   SwarmAgentHandle,
   TaskResult,
+  TaskHandoff,
   ExecutionResult,
   HandoffContext,
   SwarmSnapshot,

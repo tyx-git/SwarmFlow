@@ -14,6 +14,7 @@ import { ContextBridge } from "./context-bridge.js";
 import { mergeResults } from "./merger.js";
 import { TaskDecomposer } from "./decomposer.js";
 import { SwarmScheduler, type Schedule } from "./scheduler.js";
+import { getTerminalMergerResults, stripTaskHandoffBlock } from "./task-handoff.js";
 import type { TaskDAG, ExecutionResult, TaskResult, SwarmSnapshot, SwarmMetrics } from "./types.js";
 import { AgentLifecycle, SwarmTopology } from "./types.js";
 
@@ -118,11 +119,18 @@ export class SwarmExecutor {
       // 步骤 3：通过协调器执行
       const result = await this.coordinator.executeDag(dag);
 
-      // 步骤 4：合并（汇总）
-      result.summary = mergeResults(
-        [...result.results.values()],
-        { strategy: "synthesize" },
-      );
+      // 终端 Merger 已基于直接依赖结果做了模型汇总，优先展示它的输出。
+      const mergerResults = getTerminalMergerResults(dag, result.results);
+      if (mergerResults.length > 0) {
+        result.summary = mergerResults
+          .map((mergerResult) => stripTaskHandoffBlock(mergerResult.output) || mergerResult.output)
+          .join("\n\n");
+      } else {
+        result.summary = mergeResults(
+          [...result.results.values()],
+          { strategy: "synthesize" },
+        );
+      }
 
       this._events.onExecutionComplete?.(result);
       return result;
