@@ -88,58 +88,181 @@ describe("/model command", () => {
     expect(registry.lookup("/agents")?.picker?.mode).toBe("single");
   });
 
-  it("saves /agents model and thinking depth without changing the primary session", async () => {
-    process.env["OPENAI_API_KEY"] = "sk-openai";
+  it.each(["queen", "scout", "worker", "reviewer", "guard", "merger"])(
+    "saves /agents model and thinking depth for the %s role",
+    async (role) => {
+      process.env["OPENAI_API_KEY"] = "sk-openai";
+      const registry = buildDefaultRegistry();
+      const cmd = registry.lookup("/agents");
+      expect(cmd).toBeTruthy();
+
+      const save = vi.fn();
+      const promptCommandPicker = vi.fn()
+        .mockResolvedValueOnce({ value: "my-openai" })
+        .mockResolvedValueOnce({ value: "high" });
+      const session: any = {
+        config: {
+          modelNames: ["my-openai"],
+          getModel: () => ({
+            name: "my-openai",
+            provider: "openai",
+            model: "gpt-5.4",
+            apiKey: "sk-openai",
+          }),
+          listModelEntries: () => ([{
+            name: "my-openai",
+            provider: "openai",
+            model: "gpt-5.4",
+            apiKeyRaw: "sk-openai",
+            hasResolvedApiKey: true,
+          }]),
+        },
+        primaryAgent: { modelConfig: { name: "primary", provider: "anthropic", model: "claude" } },
+        thinkingLevel: "medium",
+        getSubagentSettings: () => undefined,
+        setSubagentSettings: save,
+      };
+
+      await cmd!.handler({
+        ...makeContext(registry, session),
+        promptCommandPicker,
+      }, role);
+
+      expect(promptCommandPicker).toHaveBeenCalledTimes(2);
+      expect(save).toHaveBeenCalledWith({
+        version: 1,
+        roles: {
+          [role]: {
+            config_name: "my-openai",
+            provider: "openai",
+            selection_key: "gpt-5.4",
+            model_id: "gpt-5.4",
+            thinking_level: "high",
+          },
+        },
+      });
+      expect(session.primaryAgent.modelConfig.provider).toBe("anthropic");
+      expect(session.switchModel).toBeUndefined();
+    },
+  );
+
+  it("lists all roles with Queen inheritance and opens each selection stage inline", async () => {
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/agents");
-    expect(cmd).toBeTruthy();
+    const session: any = {
+      primaryAgent: { modelConfig: { provider: "openai", model: "gpt-5.4" } },
+      getSubagentSettings: () => undefined,
+    };
+    const options = cmd!.options!({ session });
+    expect(options.map((option) => option.value)).toEqual([
+      "queen", "scout", "worker", "reviewer", "guard", "merger",
+    ]);
+    expect(options.find((option) => option.value === "scout")?.label).toMatch(/(?:继承 Queen 当前模型|Inherit Queen current model) \(openai\/gpt-5\.4\)/);
 
-    const save = vi.fn();
-    const promptCommandPicker = vi.fn()
+    const saves = vi.fn();
+    const picker = vi.fn()
+      .mockResolvedValueOnce({ value: "guard" })
       .mockResolvedValueOnce({ value: "my-openai" })
       .mockResolvedValueOnce({ value: "high" });
+    const configuredSession: any = {
+      config: {
+        modelNames: ["my-openai"],
+        getModel: () => ({ name: "my-openai", provider: "openai", model: "gpt-5.4", apiKey: "sk-openai" }),
+        listModelEntries: () => [{ name: "my-openai", provider: "openai", model: "gpt-5.4", apiKeyRaw: "sk-openai", hasResolvedApiKey: true }],
+      },
+      primaryAgent: { modelConfig: { provider: "anthropic", model: "claude" } },
+      getSubagentSettings: () => undefined,
+      setSubagentSettings: saves,
+    };
+    await cmd!.handler({ ...makeContext(registry, configuredSession), promptCommandPicker: picker }, "");
+
+    expect(picker).toHaveBeenCalledTimes(3);
+    expect(picker.mock.calls.every(([, presentation]) => presentation?.inputArea === true)).toBe(true);
+    const pickerTitles = picker.mock.calls.map(([, presentation]) => presentation?.title ?? "");
+    expect(pickerTitles[0]).toMatch(/选择角色|Select role/);
+    expect(pickerTitles[1]).toMatch(/选择供应商和模型|Select provider and model/);
+    expect(pickerTitles[2]).toMatch(/思考深度|Thinking depth/);
+    expect(saves).toHaveBeenCalledWith(expect.objectContaining({
+      version: 1,
+      roles: { guard: expect.objectContaining({ model_id: "gpt-5.4", thinking_level: "high" }) },
+    }));
+  });
+
+  it.each([
+    { stage: "role", values: [undefined] },
+    { stage: "model", values: ["scout", undefined] },
+    { stage: "thinking depth", values: ["scout", "my-openai", undefined] },
+  ])("cancelling the /agents $stage step leaves existing role settings untouched", async ({ values }) => {
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/agents");
+    const existing = {
+      version: 1 as const,
+      roles: {
+        scout: {
+          config_name: "saved-model",
+          provider: "anthropic",
+          selection_key: "claude-sonnet-4-6",
+          model_id: "claude-sonnet-4-6",
+          thinking_level: "medium",
+        },
+      },
+    };
+    const save = vi.fn();
+    const prompt = vi.fn();
+    values.forEach((value) => prompt.mockResolvedValueOnce(value ? { value } : undefined));
     const session: any = {
       config: {
         modelNames: ["my-openai"],
-        getModel: () => ({
-          name: "my-openai",
-          provider: "openai",
-          model: "gpt-5.4",
-          apiKey: "sk-openai",
-        }),
-        listModelEntries: () => ([{
-          name: "my-openai",
-          provider: "openai",
-          model: "gpt-5.4",
-          apiKeyRaw: "sk-openai",
-          hasResolvedApiKey: true,
-        }]),
+        getModel: () => ({ name: "my-openai", provider: "openai", model: "gpt-5.4", apiKey: "sk-openai" }),
+        listModelEntries: () => [{ name: "my-openai", provider: "openai", model: "gpt-5.4", apiKeyRaw: "sk-openai", hasResolvedApiKey: true }],
       },
-      primaryAgent: { modelConfig: { name: "primary", provider: "anthropic", model: "claude" } },
-      thinkingLevel: "medium",
+      primaryAgent: { modelConfig: { provider: "anthropic", model: "claude" } },
+      getSubagentSettings: () => existing,
+      setSubagentSettings: save,
+    };
+
+    await cmd!.handler({ ...makeContext(registry, session), promptCommandPicker: prompt }, "");
+    expect(save).not.toHaveBeenCalled();
+    expect(existing.roles.scout.model_id).toBe("claude-sonnet-4-6");
+  });
+
+  it("persists Queen runtime model definitions with the /model provider settings path without switching the active session", async () => {
+    process.env["ANTHROPIC_API_KEY"] = "sk-anthropic";
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/agents");
+    const tempHome = mkdtempSync(join(tmpdir(), "swarmflow-agents-queen-"));
+    const save = vi.fn();
+    const switchModel = vi.fn();
+    const setPersistedModelSelection = vi.fn();
+    const picker = vi.fn()
+      .mockResolvedValueOnce({ value: "anthropic:claude-sonnet-4-6-1m" })
+      .mockResolvedValueOnce({ value: "high" });
+    const session: any = {
+      config: {
+        modelNames: [],
+        listModelEntries: () => [],
+        upsertModelRaw: vi.fn(),
+      },
+      primaryAgent: { modelConfig: { name: "active", provider: "openai", model: "gpt-5.4" } },
+      switchModel,
+      setPersistedModelSelection,
       getSubagentSettings: () => undefined,
       setSubagentSettings: save,
     };
 
-    await cmd!.handler({
-      ...makeContext(registry, session),
-      promptCommandPicker,
-    }, "scout");
-
-    expect(promptCommandPicker).toHaveBeenCalledTimes(2);
-    expect(save).toHaveBeenCalledWith({
-      version: 1,
-      roles: {
-        scout: {
-          config_name: "my-openai",
-          provider: "openai",
-          selection_key: "gpt-5.4",
-          model_id: "gpt-5.4",
-          thinking_level: "high",
-        },
-      },
-    });
-    expect(session.primaryAgent.modelConfig.provider).toBe("anthropic");
+    try {
+      await cmd!.handler({ ...makeContext(registry, session, tempHome), promptCommandPicker: picker }, "queen");
+      const providerSettings = JSON.parse(readFileSync(join(tempHome, "settings.json"), "utf8"));
+      expect(providerSettings.providers.anthropic.models).toContainEqual(expect.objectContaining({ id: "claude-sonnet-4-6-1m" }));
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({
+        roles: { queen: expect.objectContaining({ config_name: "runtime-anthropic-claude-sonnet-4-6-1m" }) },
+      }));
+      expect(switchModel).not.toHaveBeenCalled();
+      expect(setPersistedModelSelection).not.toHaveBeenCalled();
+      expect(session.primaryAgent.modelConfig).toMatchObject({ provider: "openai", model: "gpt-5.4" });
+    } finally {
+      rmSync(tempHome, { recursive: true, force: true });
+    }
   });
 
   it("registers every option command with the shared input-area picker", () => {

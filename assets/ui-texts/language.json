@@ -136,6 +136,10 @@
       "commandPicker": {
         "selectProvider": "选择供应商:",
         "selectModel": "选择模型:",
+        "selectRole": "选择角色:",
+        "selectProviderAndModel": "选择供应商和模型:",
+        "queenCurrentModel": "使用当前模型",
+        "inheritQueenModel": "继承 Queen 当前模型",
         "thinkingTitle": "思考深度",
         "thinkingDepth": "选择思考深度:",
         "skills": "技能:",
@@ -399,6 +403,10 @@
       "commandPicker": {
         "selectProvider": "Select provider:",
         "selectModel": "Select model:",
+        "selectRole": "Select role:",
+        "selectProviderAndModel": "Select provider and model:",
+        "queenCurrentModel": "Current model",
+        "inheritQueenModel": "Inherit Queen current model",
         "thinkingTitle": "Thinking depth",
         "thinkingDepth": "Select thinking depth:",
         "skills": "Skills:",

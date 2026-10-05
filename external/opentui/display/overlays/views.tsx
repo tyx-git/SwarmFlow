@@ -317,6 +317,8 @@ export function CommandPickerView(
   const pickerText = createUiText(language);
   const inlineTitle = picker.commandName === "/model"
     ? pickerText.get(["Views", "commandPicker", modelPickerHasBranches ? "selectProvider" : "selectModel"])
+    : picker.commandName === "/agents"
+      ? pickerText.get(["Views", "commandPicker", "selectRole"])
     : picker.commandName === "/skills"
       ? pickerText.get(["Views", "commandPicker", "skills"])
       : picker.title === pickerText.get(["Views", "commandPicker", "thinkingTitle"])

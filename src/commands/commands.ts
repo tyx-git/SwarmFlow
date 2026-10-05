@@ -538,9 +538,14 @@ function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
 
 function subagentRoleOptions(ctx: CommandOptionsContext): CommandOption[] {
   const saved = ctx.session.getSubagentSettings?.() as SubagentSettings | undefined;
+  const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
+  const queenModel = `${ctx.session.primaryAgent?.modelConfig?.provider ?? "unknown"}/${ctx.session.primaryAgent?.modelConfig?.model ?? "unknown"}`;
   return AGENT_ROLE_IDS.map((role) => {
     const roleSettings = saved?.roles[role];
-    const suffix = roleSettings ? ` · ${roleSettings.provider}/${roleSettings.model_id} ${roleSettings.thinking_level}` : " · inherit Queen";
+    const inherited = role === "queen"
+      ? `${text.get(["Views", "commandPicker", "queenCurrentModel"])} (${queenModel})`
+      : `${text.get(["Views", "commandPicker", "inheritQueenModel"])} (${queenModel})`;
+    const suffix = roleSettings ? ` · ${roleSettings.provider}/${roleSettings.model_id} ${roleSettings.thinking_level}` : ` · ${inherited}`;
     return { label: `${AGENT_ROLE_LABELS[role]}${suffix}`, value: role };
   });
 }
@@ -656,6 +661,7 @@ async function pickResolvedModelSelection(
     initialTarget?: string;
     treeOverrides?: ModelPickerOverrides;
     flatMessage?: string;
+    picker?: CommandPickerPresentation;
   },
 ): Promise<ResolvedModelSelection | undefined> {
   let target = opts?.initialTarget?.trim() ?? "";
@@ -665,6 +671,7 @@ async function pickResolvedModelSelection(
       if (ctx.promptCommandPicker) {
         target = (await ctx.promptCommandPicker(
           modelOptionsWithTree({ session: ctx.session, store: ctx.store }, opts?.treeOverrides),
+          opts?.picker,
         ))?.value ?? "";
       } else if (ctx.promptSelect) {
         const choice = await ctx.promptSelect({
@@ -759,10 +766,17 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
   const role = target ? target.split(/\s+/, 1)[0] : "";
 
   if (!target && !ctx.promptCommandPicker) {
+    const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
     const configured = AGENT_ROLE_IDS
       .map((id) => {
         const entry = settings?.roles[id];
-        return entry ? `${AGENT_ROLE_LABELS[id]}: ${entry.provider}/${entry.model_id} ${entry.thinking_level}` : `${AGENT_ROLE_LABELS[id]}: inherit Queen`;
+        const queenModel = `${session.primaryAgent?.modelConfig?.provider ?? "unknown"}/${session.primaryAgent?.modelConfig?.model ?? "unknown"}`;
+        const inherited = id === "queen"
+          ? `${text.get(["Views", "commandPicker", "queenCurrentModel"])} (${queenModel})`
+          : `${text.get(["Views", "commandPicker", "inheritQueenModel"])} (${queenModel})`;
+        return entry
+          ? `${AGENT_ROLE_LABELS[id]}: ${entry.provider}/${entry.model_id} ${entry.thinking_level}`
+          : `${AGENT_ROLE_LABELS[id]}: ${inherited}`;
       })
       .join("\n");
     ctx.showMessage(configured);
@@ -770,9 +784,13 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
   }
 
   try {
-    const selectedRole = role || (ctx.promptCommandPicker ? (await ctx.promptCommandPicker(subagentRoleOptions({ session, store: ctx.store })))?.value ?? "" : "");
+    const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
+    const selectedRole = role || (ctx.promptCommandPicker ? (await ctx.promptCommandPicker(
+      subagentRoleOptions({ session, store: ctx.store }),
+      { title: text.get(["Views", "commandPicker", "selectRole"]), inputArea: true },
+    ))?.value ?? "" : "");
     if (!isAgentRoleId(selectedRole)) {
-      ctx.showMessage("Sub-agent role configuration cancelled.");
+      if (role) ctx.showMessage(`Unknown sub-agent role '${role}'.`);
       return;
     }
     const current = settings?.roles[selectedRole];
@@ -780,6 +798,10 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
     const resolved = await pickResolvedModelSelection(ctx, {
       initialTarget: modelTarget,
       flatMessage: `Select ${AGENT_ROLE_LABELS[selectedRole]} model`,
+      picker: {
+        title: text.get(["Views", "commandPicker", "selectProviderAndModel"]),
+        inputArea: true,
+      },
       treeOverrides: current ? {
         currentSelection: {
           configName: current.config_name,
