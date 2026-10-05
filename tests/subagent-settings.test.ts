@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  loadSubagentDefaultModel,
-  saveSubagentDefaultModel,
+  loadSubagentSettings,
+  saveSubagentSettings,
   subagentSettingsPath,
 } from "../src/session/subagent-settings.js";
 import { SubAgentFactory } from "../src/session/subagent-factory.js";
@@ -27,26 +27,31 @@ const MODEL = {
   extra: {},
 };
 
-describe("sub-agent default model settings", () => {
-  it("stores settings below the project .swarmflow session directory", () => {
+describe("sub-agent role model settings", () => {
+  it("stores versioned role settings below the project .swarmflow session directory", () => {
     const root = mkdtempSync(join(tmpdir(), "swarmflow-subagent-settings-"));
     try {
       const path = subagentSettingsPath(root, join(root, "session-123"));
       expect(path).toBe(join(root, ".swarmflow", "session-123", "agents", "subagent.json"));
 
       const value = {
-        config_name: "subagent-model",
-        provider: "openai",
-        selection_key: "gpt-subagent",
-        model_id: "gpt-subagent",
-        thinking_level: "high",
+        version: 1 as const,
+        roles: {
+          scout: {
+            config_name: "subagent-model",
+            provider: "openai",
+            selection_key: "gpt-subagent",
+            model_id: "gpt-subagent",
+            thinking_level: "high",
+          },
+        },
       };
-      saveSubagentDefaultModel(path, value);
-      const updated = { ...value, thinking_level: "xhigh" };
-      saveSubagentDefaultModel(path, updated);
+      saveSubagentSettings(path, value);
+      const updated = { ...value, roles: { ...value.roles, scout: { ...value.roles.scout, thinking_level: "xhigh" } } };
+      saveSubagentSettings(path, updated);
       expect(existsSync(path)).toBe(true);
       expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(updated);
-      expect(loadSubagentDefaultModel(path)).toEqual(updated);
+      expect(loadSubagentSettings(path)).toEqual(updated);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -62,17 +67,13 @@ describe("sub-agent default model settings", () => {
     const factory = new SubAgentFactory({
       getAgentTemplates: () => ({ scout: template }),
       getConfig: () => ({
-        agentModels: {},
         subAgentInheritMcp: false,
       }) as any,
       getMcpManager: () => undefined,
       getPromptsDirs: () => undefined,
       resolveSessionArtifacts: () => ".",
       getParentModelConfig: () => ({ ...MODEL, name: "parent-model", model: "gpt-parent" }),
-      resolvePinnedModel: () => { throw new Error("unused"); },
-      resolveTierModel: () => { throw new Error("unused"); },
-      appendStatus: () => undefined,
-      getSubagentDefaultModel: () => ({ modelConfig: MODEL, thinkingLevel: "high" }),
+      getSubagentRoleModel: (role: string) => role === "scout" ? ({ modelConfig: MODEL, thinkingLevel: "high" }) : undefined,
     });
 
     const result = factory.createFromPredefined("scout", "worker-1");

@@ -13,7 +13,6 @@ import {
 import { isManagedProvider } from "../config/managed-provider-credentials.js";
 import { describeModel } from "../models/presentation.js";
 import { runtimeTransportProtocol } from "../config/config.js";
-import type { AgentModelEntry } from "../config/persistence.js";
 
 /** 模型条目接口 */
 export type ModelEntryLike = {
@@ -38,19 +37,6 @@ export interface ResolvedModelSelection {
   selectedHint: string;
   modelProvider: string;
   modelSelectionKey: string;
-  modelId: string;
-}
-
-/** 解析后的运行时模型 */
-export interface ResolvedRuntimeModel extends ResolvedModelSelection {
-  modelConfig: any;
-  thinkingLevel?: string;
-}
-
-/** 稳定模型标识 */
-export interface StableModelIdentity {
-  provider: string;
-  selectionKey: string;
   modelId: string;
 }
 
@@ -176,127 +162,6 @@ export function runtimeModelName(provider: string, model: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
   return `runtime-${slug(provider)}-${slug(model)}`;
-}
-
-/**
- * 转换为稳定模型标识。
- */
-export function toStableModelIdentity(
-  selection: Pick<ResolvedModelSelection, "modelProvider" | "modelSelectionKey" | "modelId">,
-): StableModelIdentity {
-  return {
-    provider: selection.modelProvider,
-    selectionKey: selection.modelSelectionKey,
-    modelId: selection.modelId,
-  };
-}
-
-/** Create a per-template sub-agent model pin. */
-export function createAgentModelEntry(
-  identity: StableModelIdentity,
-  thinkingLevel: string,
-): AgentModelEntry {
-  validateThinkingLevelForModel(identity.modelId, thinkingLevel, "Agent model pin");
-  return {
-    provider: identity.provider,
-    selection_key: identity.selectionKey,
-    model_id: identity.modelId,
-    thinking_level: thinkingLevel,
-  };
-}
-
-/**
- * 为模型标识解析配置名称。
- */
-export function resolveConfigNameForModelIdentity(
-  config: any,
-  identity: StableModelIdentity,
-): string | undefined {
-  const stableConfigName = `${identity.provider}:${identity.selectionKey}`;
-  const knownNames = new Set<string>((config?.modelNames as string[]) ?? []);
-  if (knownNames.has(stableConfigName)) {
-    return stableConfigName;
-  }
-
-  if (typeof config?.findModelConfigName === "function") {
-    return config.findModelConfigName(identity.provider, identity.modelId)
-      ?? config.findModelConfigName(identity.provider, identity.selectionKey);
-  }
-
-  return undefined;
-}
-
-/**
- * 解析模型标识。
- */
-export function resolveModelIdentity(
-  session: any,
-  identity: StableModelIdentity,
-): ResolvedModelSelection {
-  const config = session.config;
-  const existingConfigName = resolveConfigNameForModelIdentity(config, identity);
-  if (existingConfigName) {
-    const existing = config.getModel(existingConfigName);
-    const descriptor = describeModel({
-      configName: existingConfigName,
-      providerId: identity.provider,
-      selectionKey: identity.selectionKey,
-      modelId: existing.model || identity.modelId,
-    });
-    return {
-      selectedConfigName: existingConfigName,
-      selectedHint: descriptor.scopedDetailedLabel,
-      modelProvider: identity.provider,
-      modelSelectionKey: identity.selectionKey,
-      modelId: existing.model || identity.modelId,
-    };
-  }
-
-  return resolveModelSelection(session, `${identity.provider}:${identity.selectionKey || identity.modelId}`);
-}
-
-/**
- * 验证 thinking_level 是否是模型的有效子代理层级值。
- *
- * 规则：
- *   - 非思考模型（无原生级别）：必须恰好是 "none"（哨兵）。
- *   - 有思考能力的模型：必须是 `getSubAgentThinkingLevels(model)` 之一，
- *     即过滤掉 "off" / "none" 的原生列表。层级始终启用思考 —
- *     主代理关闭思考是一个单独的、仅主代理的选择。
- *
- * 源标签包含在错误中，以便调用者知道哪个入口点
- * 产生了坏值。用于 Agent model pin 的保存和解析路径。
- * 直接 settings.json 编辑在解析时捕获。
- */
-export function validateThinkingLevelForModel(modelId: string, thinkingLevel: string, source: string): void {
-  if (typeof thinkingLevel !== "string" || !thinkingLevel.trim()) {
-    throw new Error(`${source}: missing thinking_level. Re-configure the entry.`);
-  }
-}
-
-/**
- * 解析代理模型条目。
- */
-export function resolveAgentModelEntry(
-  session: any,
-  entry: AgentModelEntry,
-): ResolvedRuntimeModel {
-  const resolved = resolveModelIdentity(session, {
-    provider: entry.provider,
-    selectionKey: entry.selection_key || entry.model_id,
-    modelId: entry.model_id,
-  });
-  const modelConfig = session.config.getModel(resolved.selectedConfigName);
-  validateThinkingLevelForModel(
-    modelConfig.model || entry.model_id,
-    entry.thinking_level,
-    `Agent model pin`,
-  );
-  return {
-    ...resolved,
-    modelConfig,
-    thinkingLevel: entry.thinking_level,
-  };
 }
 
 /**

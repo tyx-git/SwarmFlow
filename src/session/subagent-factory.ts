@@ -1,8 +1,7 @@
 /**
  * SubAgentFactory —— 为子会话构建 Agent 实例（P2.4a）。
  *
- * 拥有模板查找（预定义 + 磁盘）、模型解析
- *（agent_models pin > session default > 父模型）、comm 工具剥离、
+ * 拥有模板查找（预定义 + 磁盘）、按角色模型解析、comm 工具剥离、
  * 以及子会话 system-prompt 分层。模型条目解析和状态回退
  * 通过 deps 闭包回调 Session。
  */
@@ -13,10 +12,8 @@ import { join } from "node:path";
 import { Agent } from "../agents/agent.js";
 import type { Config, ModelConfig } from "../config/config.js";
 import type { MCPClientManager } from "../clients/mcp-client.js";
-import type { AgentModelEntry } from "../config/persistence.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
-import { isAgentRoleId } from "../swarm/types.js";
 
 /** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
 const COMM_TOOL_NAMES = new Set([
@@ -36,11 +33,8 @@ export interface SubAgentFactoryDeps {
   getPromptsDirs(): string[] | undefined;
   resolveSessionArtifacts(): string;
   getParentModelConfig(): ModelConfig;
-  /** 包装 resolveAgentModelEntry(session, entry)。 */
-  resolvePinnedModel(entry: AgentModelEntry): ResolvedSubAgentModel;
-  /** 追加状态条目到会话日志（模型回退通知）。 */
-  appendStatus(message: string, statusType: string): void;
-  getSubagentDefaultModel?(): ResolvedSubAgentModel | undefined;
+  /** 按角色读取当前会话的模型与思考深度。 */
+  getSubagentRoleModel?(role: string): ResolvedSubAgentModel | undefined;
 }
 
 /**
@@ -48,7 +42,7 @@ export interface SubAgentFactoryDeps {
  *
  * 职责：
  * - 模板查找：预定义模板（从 prompts/templates/）或磁盘模板
- * - 模型解析优先级：agent_models pin > /agents 默认模型 > 父模型
+ * - 模型解析优先级：角色配置 > 父模型
  * - 工具约束：剥离 comm 工具、剥离不可继承的 MCP 工具
  * - System prompt 分层：模板 prompt + 模式 prompt（oneshot/persistent）
  */
@@ -99,7 +93,7 @@ export class SubAgentFactory {
       this.deps.getMcpManager(),
       this.deps.getPromptsDirs(),
     );
-    const { modelConfig, thinkingLevel } = this._getSubAgentModelConfig();
+    const { modelConfig, thinkingLevel } = this._resolveSubAgentModel(templateAgent.name);
 
     const agent = new Agent({
       name: taskId,
@@ -182,32 +176,11 @@ export class SubAgentFactory {
   }
 
   /**
-   * 解析预定义子 Agent 模板的模型。
-   * 优先级：agent_models[角色 ID] > /agents 默认模型 > 父模型。
+   * 解析角色模型；未配置时继承主会话模型。
    */
-  private _resolveSubAgentModel(templateName: string): ResolvedSubAgentModel {
-    // 优先级 1：agent_models[角色 ID]
-    try {
-      const pinnedEntry = isAgentRoleId(templateName)
-        ? this.deps.getConfig().agentModels[templateName]
-        : undefined;
-      if (pinnedEntry) {
-        return this.deps.resolvePinnedModel(pinnedEntry);
-      }
-    } catch (err) {
-      // pinned 模型配置但不可用——回退到父模型
-      const msg = `Pinned model for '${templateName}' unavailable: ${err instanceof Error ? err.message : String(err)}. Using parent model.`;
-      this.deps.appendStatus(msg, "agent_model_fallback");
-      return { modelConfig: this.deps.getParentModelConfig() };
-    }
-
-    return this._getSubAgentModelConfig();
-  }
-
-  private _getSubAgentModelConfig(): ResolvedSubAgentModel {
-    const configuredDefault = this.deps.getSubagentDefaultModel?.();
-    if (configuredDefault) return configuredDefault;
-    return { modelConfig: this.deps.getParentModelConfig() };
+  private _resolveSubAgentModel(role: string): ResolvedSubAgentModel {
+    return this.deps.getSubagentRoleModel?.(role)
+      ?? { modelConfig: this.deps.getParentModelConfig() };
   }
 
   /** 从 promptsDirs 读取提示文件（可选）。 */

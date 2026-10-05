@@ -15,7 +15,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AgentRole } from "../swarm/types.js";
 
 // ------------------------------------------------------------------
 // 提示层类型定义
@@ -129,30 +128,6 @@ export function readAgentsMemory(projectRoot: string): string {
   return parts.join("\n\n---\n\n");
 }
 
-/**
- * 构建列出代理模型固定配置的提示段落。
- */
-export function buildAgentModelPinsSection(
-  agentModels: Partial<Record<AgentRole, { provider: string; selection_key: string; model_id: string; thinking_level?: string }>>,
-): string | null {
-  const entries = Object.entries(agentModels);
-  if (entries.length === 0) return null;
-
-  const lines = entries.map(([role, model]) => {
-    const parts = [`- **${role}**: ${model.model_id}`];
-    if (model.thinking_level) parts[0] += ` (thinking: ${model.thinking_level})`;
-    return parts[0];
-  });
-
-  return [
-    "",
-    "以下子代理角色已固定了用户指定的模型。",
-    "生成这些代理时直接使用主代理或 /agents 配置的模型，不再指定模型层级：",
-    "",
-    ...lines,
-  ].join("\n");
-}
-
 // ------------------------------------------------------------------
 // 组装器
 // ------------------------------------------------------------------
@@ -171,8 +146,6 @@ export interface AssembleOptions {
   sessionStartedAt?: string;
   /* 会话创建时的模型标识。跨简历和/模型切换稳定。 */
   initialModel?: string;
-  /* 配置中的代理模型引脚（用于模型引脚部分）。 */
-  agentModels?: Partial<Record<AgentRole, { provider: string; selection_key: string; model_id: string; thinking_level?: string }>>;
   /* {SHELL_NOTES}变量的特定于shell的注释（bash vs PowerShell）。 */
   shellNotes?: string;
   /* 额外的提示层（钩子，注入转弯等）。 */
@@ -203,14 +176,6 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
     prompt = prompt.trimEnd() +
       "\n\n---\n\n# Persistent Memory (AGENTS.md)\n\n" +
       memory;
-  }
-
-  // 层：代理模型固定配置
-  if (opts.agentModels) {
-    const pinsSection = buildAgentModelPinsSection(opts.agentModels);
-    if (pinsSection) {
-      prompt = prompt.trimEnd() + "\n\n" + pinsSection;
-    }
   }
 
   // 层：额外层（钩子、注入回合 —— 未来的扩展点）

@@ -54,7 +54,8 @@ import { launchDesignHelper } from "../browser/index.js";
 import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme.js";
 import { THINKING_LEVEL_LIST } from "../config/thinking.js";
 import { createUiText, getUiLanguage, hasUiText, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
-import type { SubagentDefaultModel } from "../session/subagent-settings.js";
+import type { SubagentRoleSettings, SubagentSettings } from "../session/subagent-settings.js";
+import { AGENT_ROLE_IDS, AGENT_ROLE_LABELS, isAgentRoleId } from "../swarm/types.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -535,16 +536,13 @@ function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
   return modelOptionsWithTree(ctx);
 }
 
-function subagentModelOptions(ctx: CommandOptionsContext): CommandOption[] {
-  const saved = ctx.session.getSubagentDefaultModelSettings?.();
-  return modelOptionsWithTree(ctx, saved ? {
-    currentSelection: {
-      configName: saved.config_name,
-      provider: saved.provider,
-      selectionKey: saved.selection_key,
-      modelId: saved.model_id,
-    },
-  } : undefined);
+function subagentRoleOptions(ctx: CommandOptionsContext): CommandOption[] {
+  const saved = ctx.session.getSubagentSettings?.() as SubagentSettings | undefined;
+  return AGENT_ROLE_IDS.map((role) => {
+    const roleSettings = saved?.roles[role];
+    const suffix = roleSettings ? ` · ${roleSettings.provider}/${roleSettings.model_id} ${roleSettings.thinking_level}` : " · inherit Queen";
+    return { label: `${AGENT_ROLE_LABELS[role]}${suffix}`, value: role };
+  });
 }
 
 type ModelPickerOverrides = Omit<ModelPickerTreeContext, "session">;
@@ -757,21 +755,39 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
 async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;
   const target = args.trim();
-  const current = session.getSubagentDefaultModelSettings?.() as SubagentDefaultModel | undefined;
+  const settings = session.getSubagentSettings?.() as SubagentSettings | undefined;
+  const role = target ? target.split(/\s+/, 1)[0] : "";
 
   if (!target && !ctx.promptCommandPicker) {
-    if (current) {
-      ctx.showMessage(`Sub-agent default: ${current.provider}/${current.model_id} ${current.thinking_level}`);
-    } else {
-      ctx.showMessage("Sub-agents inherit the current session model and thinking depth.");
-    }
+    const configured = AGENT_ROLE_IDS
+      .map((id) => {
+        const entry = settings?.roles[id];
+        return entry ? `${AGENT_ROLE_LABELS[id]}: ${entry.provider}/${entry.model_id} ${entry.thinking_level}` : `${AGENT_ROLE_LABELS[id]}: inherit Queen`;
+      })
+      .join("\n");
+    ctx.showMessage(configured);
     return;
   }
 
   try {
+    const selectedRole = role || (ctx.promptCommandPicker ? (await ctx.promptCommandPicker(subagentRoleOptions({ session, store: ctx.store })))?.value ?? "" : "");
+    if (!isAgentRoleId(selectedRole)) {
+      ctx.showMessage("Sub-agent role configuration cancelled.");
+      return;
+    }
+    const current = settings?.roles[selectedRole];
+    const modelTarget = target.slice(role.length).trim();
     const resolved = await pickResolvedModelSelection(ctx, {
-      initialTarget: target,
-      flatMessage: "Select sub-agent model",
+      initialTarget: modelTarget,
+      flatMessage: `Select ${AGENT_ROLE_LABELS[selectedRole]} model`,
+      treeOverrides: current ? {
+        currentSelection: {
+          configName: current.config_name,
+          provider: current.provider,
+          selectionKey: current.selection_key,
+          modelId: current.model_id,
+        },
+      } : undefined,
     });
     if (!resolved) {
       ctx.showMessage("Sub-agent model configuration cancelled.");
@@ -787,7 +803,7 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
       return;
     }
 
-    const settings: SubagentDefaultModel = {
+    const roleSettings: SubagentRoleSettings = {
       config_name: resolved.selectedConfigName,
       provider: resolved.modelProvider,
       selection_key: resolved.modelSelectionKey,
@@ -795,11 +811,15 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
       thinking_level: thinkingLevel,
     };
     persistRuntimeModelConfig(ctx, resolved);
-    if (typeof session.setSubagentDefaultModelSettings !== "function") {
+    if (typeof session.setSubagentSettings !== "function") {
       throw new Error("Sub-agent model settings are not available in this session.");
     }
-    session.setSubagentDefaultModelSettings(settings);
-    ctx.showHint?.(`Sub-agent default set: ${resolved.modelProvider}/${resolved.modelId} ${thinkingLevel}`);
+    const nextSettings: SubagentSettings = {
+      version: 1,
+      roles: { ...(settings?.roles ?? {}), [selectedRole]: roleSettings },
+    };
+    session.setSubagentSettings(nextSettings);
+    ctx.showHint?.(`${AGENT_ROLE_LABELS[selectedRole]} set: ${resolved.modelProvider}/${resolved.modelId} ${thinkingLevel}`);
     ctx.autoSave();
   } catch (error) {
     ctx.showMessage(`Failed to configure sub-agent model: ${error instanceof Error ? error.message : String(error)}`);
@@ -2369,7 +2389,7 @@ export function buildDefaultRegistry(): CommandRegistry {
 
   registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
   registerBuiltin(registry, { name: "/model", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
-  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentModelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentRoleOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
   registerBuiltin(registry, { name: "/permission", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
 
   registerBuiltin(registry, { name: "/skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, category: "Ecosystem" });

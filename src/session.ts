@@ -54,10 +54,11 @@ import { SessionLog, type TurnListing } from "./session/session-log.js";
 import { ContextManager } from "./session/context-manager.js";
 import { SubAgentFactory } from "./session/subagent-factory.js";
 import {
-  loadSubagentDefaultModel,
-  saveSubagentDefaultModel,
+  loadSubagentSettings,
+  saveSubagentSettings,
   subagentSettingsPath,
-  type SubagentDefaultModel,
+  type SubagentRoleSettings,
+  type SubagentSettings,
 } from "./session/subagent-settings.js";
 import {
   COMPACT_PROMPT_OUTPUT,
@@ -179,7 +180,6 @@ import {
   type MessageEnvelope,
 } from "./session-tree-types.js";
 import {
-  resolveAgentModelEntry,
   resolvePersistedModelSelection,
   type PersistedModelSelection,
 } from "./models/selection.js";
@@ -3524,19 +3524,19 @@ export class Session {
     });
   }
 
-  /** 当前会话的子代理默认模型配置；未配置时返回 undefined。 */
-  getSubagentDefaultModelSettings(): SubagentDefaultModel | undefined {
+  /** 当前会话按角色保存的子代理模型配置。 */
+  getSubagentSettings(): SubagentSettings | undefined {
     const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
     if (!sessionDir) return undefined;
-    return loadSubagentDefaultModel(subagentSettingsPath(this._projectRoot, sessionDir));
+    return loadSubagentSettings(subagentSettingsPath(this._projectRoot, sessionDir));
   }
 
-  /** 保存当前会话的子代理默认模型配置。 */
-  setSubagentDefaultModelSettings(settings: SubagentDefaultModel): void {
+  /** 保存当前会话按角色保存的子代理模型配置。 */
+  setSubagentSettings(settings: SubagentSettings): void {
     this._ensureSessionStorageReady();
     const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
     if (!sessionDir) throw new Error("Session directory is unavailable.");
-    saveSubagentDefaultModel(subagentSettingsPath(this._projectRoot, sessionDir), settings);
+    saveSubagentSettings(subagentSettingsPath(this._projectRoot, sessionDir), settings);
     this.onSaveRequest?.();
   }
 
@@ -6044,7 +6044,6 @@ export class Session {
       systemData: this._resolveSystemData({ allowUnresolved: true }),
       sessionStartedAt: this._createdAt,
       initialModel: this._initialModel,
-      agentModels: this.config.agentModels,
       shellNotes: buildShellNotes(shell.kind),
     });
   }
@@ -6534,12 +6533,8 @@ export class Session {
       getPromptsDirs: () => this._promptsDirs,
       resolveSessionArtifacts: () => this._resolveSessionArtifacts(),
       getParentModelConfig: () => this.primaryAgent.modelConfig,
-      resolvePinnedModel: (entry) => {
-        const resolved = resolveAgentModelEntry(this, entry);
-        return { modelConfig: resolved.modelConfig, thinkingLevel: resolved.thinkingLevel };
-      },
-      getSubagentDefaultModel: () => {
-        const saved = this.getSubagentDefaultModelSettings();
+      getSubagentRoleModel: (role) => {
+        const saved = this.getSubagentSettings()?.roles[role as keyof SubagentSettings["roles"]] as SubagentRoleSettings | undefined;
         if (!saved) return undefined;
         try {
           const resolved = resolvePersistedModelSelection(this, {
@@ -6553,17 +6548,8 @@ export class Session {
             thinkingLevel: saved.thinking_level,
           };
         } catch (error) {
-          this._appendEntry(createStatus(
-            this._nextLogId("status"),
-            this._turnCount,
-            `Sub-agent default model unavailable: ${error instanceof Error ? error.message : String(error)}. Using parent model.`,
-            "agent_model_fallback",
-          ));
           return undefined;
         }
-      },
-      appendStatus: (message, statusType) => {
-        this._appendEntry(createStatus(this._nextLogId("status"), this._turnCount, message, statusType));
       },
     });
   }

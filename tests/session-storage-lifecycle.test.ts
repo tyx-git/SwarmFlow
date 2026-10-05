@@ -77,7 +77,6 @@ function makeSession(
   const config = {
     pathOverrides: { projectRoot },
     subAgentModelName: undefined,
-    agentModels: {},
     mcpServerConfigs: [],
     getModel: (name: string) => {
       const modelConfig = modelConfigs[name];

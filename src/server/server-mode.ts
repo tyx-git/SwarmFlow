@@ -150,7 +150,6 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     providerModels,
     localProviders,
     mcpServers,
-    agentModels: settings.agent_models,
     subAgentInheritMcp: settings.sub_agent_inherit_mcp,
     subAgentInheritHooks: settings.sub_agent_inherit_hooks,
   });

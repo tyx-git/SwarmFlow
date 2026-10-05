@@ -15,11 +15,9 @@ import type { Session } from "../session.js";
 import type { LogEntry } from "../context/log-entry.js";
 import type { PermissionMode } from "../permissions/index.js";
 import { projectToTuiEntries } from "../context/log-projection.js";
-import { randomSessionId, saveGlobalSettingsPatch, saveLog, SessionStore, type AgentModelEntry } from "../config/persistence.js";
+import { randomSessionId, saveGlobalSettingsPatch, saveLog, SessionStore } from "../config/persistence.js";
 import { applySessionRestore } from "../session-resume.js";
-import { getThinkingLevels, getSubAgentThinkingLevels } from "../config/config.js";
-import { createAgentModelEntry } from "../models/selection.js";
-import { getAgentRoleLabel, isAgentRoleId } from "../swarm/types.js";
+import { getSubAgentThinkingLevels } from "../config/config.js";
 
 export interface SessionRpcOptions {
   readonly session: Session;
@@ -123,21 +121,6 @@ const PERMISSION_MODES = new Set<PermissionMode>(["read_only", "reversible", "yo
 interface AgentRuntimeSettingsPayload {
   readonly subAgentInheritMcp: boolean;
   readonly subAgentInheritHooks: boolean;
-  readonly agentModelPins: number;
-}
-
-interface AgentModelPinsPayload {
-  readonly templates: readonly {
-    readonly name: string;
-    readonly displayName: string;
-    readonly description: string | null;
-    readonly provider: string | null;
-    readonly selectionKey: string | null;
-    readonly modelId: string | null;
-    readonly thinkingLevel: string | null;
-    readonly configName: string | null;
-    readonly label: string;
-  }[];
 }
 
 export function buildMeta(s: Session, workDir: string, sessionDir: string | null): MetaPayload {
@@ -259,61 +242,10 @@ function buildHooksStatus(s: Session): HooksStatusPayload {
 
 
 function buildAgentRuntimeSettings(s: Session): AgentRuntimeSettingsPayload {
-  const agentModels = s.config?.agentModels;
   return {
     subAgentInheritMcp: s.config?.subAgentInheritMcp ?? true,
     subAgentInheritHooks: s.config?.subAgentInheritHooks ?? true,
-    agentModelPins: agentModels && typeof agentModels === "object"
-      ? Object.keys(agentModels).length
-      : 0,
   };
-}
-
-function buildAgentModelPins(s: Session): AgentModelPinsPayload {
-  const pins = s.config?.agentModels ?? {};
-  const templates = Object.entries(s.agentTemplates ?? {}).map(([name, agent]) => {
-    const displayName = getAgentRoleLabel(name);
-    const entry = isAgentRoleId(name) ? pins[name] : undefined;
-    if (!entry) {
-      return {
-        name,
-        displayName,
-        description: typeof agent?.description === "string" && agent.description.trim()
-          ? agent.description.trim()
-          : null,
-        provider: null,
-        selectionKey: null,
-        modelId: null,
-        thinkingLevel: null,
-        configName: null,
-        label: "Uses role default or parent model",
-      };
-    }
-    const configName = typeof s.config?.findModelConfigName === "function"
-      ? s.config.findModelConfigName(entry.provider, entry.model_id)
-        ?? s.config.findModelConfigName(entry.provider, entry.selection_key)
-      : null;
-    return {
-      name,
-      displayName,
-      description: typeof agent?.description === "string" && agent.description.trim()
-        ? agent.description.trim()
-        : null,
-      provider: entry.provider,
-      selectionKey: entry.selection_key,
-      modelId: entry.model_id,
-      thinkingLevel: entry.thinking_level,
-      configName: configName ?? null,
-      label: configName ?? `${entry.provider}:${entry.selection_key || entry.model_id}`,
-    };
-  });
-  return { templates: templates.sort((a, b) => a.name.localeCompare(b.name)) };
-}
-
-function defaultAgentThinkingLevel(modelId: string): string {
-  const available = getSubAgentThinkingLevels(modelId);
-  if (available.length === 0) return "none";
-  return available[available.length - 1]!;
 }
 
 function forkSessionDirectory(sourceDir: string): ForkSessionPayload {
@@ -692,46 +624,6 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return buildAgentRuntimeSettings(session);
   });
 
-  server.on("session.getAgentModelPins", () => buildAgentModelPins(session));
-
-  server.on("session.setAgentModelPin", (params) => {
-    const p = expectObject(params, "session.setAgentModelPin");
-    const templateName = expectString(p, "templateName", "session.setAgentModelPin");
-    if (!isAgentRoleId(templateName)) {
-      throw new Error(`session.setAgentModelPin: unknown role '${templateName}'`);
-    }
-    if (!session.agentTemplates?.[templateName]) {
-      throw new Error(`session.setAgentModelPin: unknown template '${templateName}'`);
-    }
-
-    const current = (session.config?.agentModels ?? {}) as Record<string, AgentModelEntry>;
-    const next: Record<string, AgentModelEntry> = { ...current };
-    const modelName = p["modelName"];
-
-    if (modelName === null || modelName === undefined || modelName === "") {
-      delete next[templateName];
-    } else {
-      if (typeof modelName !== "string") {
-        throw new Error("session.setAgentModelPin: 'modelName' must be a string or null");
-      }
-      const modelConfig = session.config.getModel(modelName);
-      const thinkingLevel = optString(p, "thinkingLevel")
-        ?? defaultAgentThinkingLevel(modelConfig.model);
-      next[templateName] = createAgentModelEntry({
-        provider: modelConfig.provider,
-        selectionKey: modelConfig.model,
-        modelId: modelConfig.model,
-      }, thinkingLevel);
-    }
-
-    saveGlobalSettingsPatch({ agent_models: next });
-    const mutableConfig = session.config as unknown as { _agentModels?: typeof next };
-    if (mutableConfig._agentModels !== undefined) {
-      mutableConfig._agentModels = next;
-    }
-    server.emit("agent.models.changed", buildAgentModelPins(session));
-    return buildAgentModelPins(session);
-  });
 
   // ── Skills ──
   server.on("session.listSkills", () => session.getAllSkillNames());

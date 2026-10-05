@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-/** /agents 写入的子代理默认模型配置。 */
-export interface SubagentDefaultModel {
+import type { AgentRole } from "../swarm/types.js";
+
+/** 单个角色的模型与思考深度配置。 */
+export interface SubagentRoleSettings {
   config_name: string;
   provider: string;
   selection_key: string;
@@ -10,38 +12,48 @@ export interface SubagentDefaultModel {
   thinking_level: string;
 }
 
+/** 当前版本的子代理角色配置文件。 */
+export interface SubagentSettings {
+  version: 1;
+  roles: Partial<Record<AgentRole, SubagentRoleSettings>>;
+}
+
 /** 项目目录下当前会话的子代理配置路径。 */
 export function subagentSettingsPath(projectRoot: string, sessionDir: string): string {
   return join(projectRoot, ".swarmflow", basename(sessionDir), "agents", "subagent.json");
 }
 
-export function loadSubagentDefaultModel(path: string): SubagentDefaultModel | undefined {
+function isRoleSettings(value: unknown): value is SubagentRoleSettings {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return ["config_name", "provider", "selection_key", "model_id", "thinking_level"]
+    .every((key) => typeof raw[key] === "string" && (raw[key] as string).trim().length > 0);
+}
+
+function isRoleId(value: string): value is AgentRole {
+  return ["queen", "scout", "worker", "reviewer", "guard", "merger"].includes(value);
+}
+
+export function loadSubagentSettings(path: string): SubagentSettings | undefined {
   if (!existsSync(path)) return undefined;
   try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<SubagentDefaultModel>;
-    if (
-      typeof raw.config_name !== "string" || !raw.config_name.trim()
-      || typeof raw.provider !== "string" || !raw.provider.trim()
-      || typeof raw.selection_key !== "string" || !raw.selection_key.trim()
-      || typeof raw.model_id !== "string" || !raw.model_id.trim()
-      || typeof raw.thinking_level !== "string" || !raw.thinking_level.trim()
-    ) {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    if (raw.version !== 1 || !raw.roles || typeof raw.roles !== "object" || Array.isArray(raw.roles)) {
       return undefined;
     }
-    return {
-      config_name: raw.config_name,
-      provider: raw.provider,
-      selection_key: raw.selection_key,
-      model_id: raw.model_id,
-      thinking_level: raw.thinking_level,
-    };
+    const roles: Partial<Record<AgentRole, SubagentRoleSettings>> = {};
+    for (const [role, value] of Object.entries(raw.roles as Record<string, unknown>)) {
+      if (!isRoleId(role) || !isRoleSettings(value)) return undefined;
+      roles[role] = { ...(value as SubagentRoleSettings) };
+    }
+    return { version: 1, roles };
   } catch {
     return undefined;
   }
 }
 
 /** 原子写入，避免 TUI 进程中断时留下半份配置。 */
-export function saveSubagentDefaultModel(path: string, value: SubagentDefaultModel): void {
+export function saveSubagentSettings(path: string, value: SubagentSettings): void {
   mkdirSync(dirname(path), { recursive: true });
   const tempPath = `${path}.tmp`;
   try {

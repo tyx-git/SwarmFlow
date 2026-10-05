@@ -35,7 +35,6 @@ import { parseJsonc } from "../lib/jsonc.js";
 import type { MCPServerConfig } from "../config/config.js";
 import type { ThemeMode } from "./theme.js";
 import type { UiLanguage } from "../lib/ui-text.js";
-import type { AgentRole } from "../swarm/types.js";
 
 // ------------------------------------------------------------------
 // 常量
@@ -613,18 +612,6 @@ export interface LocalProviderConfig {
 // 新设置类型（替代 GlobalTuiPreferences）
 // ------------------------------------------------------------------
 
-/** 每角色模型固定配置：稳定的模型身份 + 思维链级别。键使用规范角色 ID。 */
-export interface AgentModelEntry {
-  /** 服务提供商 */
-  provider: string;
-  /** 选择键 */
-  selection_key: string;
-  /** 模型 ID */
-  model_id: string;
-  /** 必填。使用模型的可用级别之一，或 "none" 用于非思维链模型 */
-  thinking_level: string;
-}
-
 /** 用户可编辑的设置。存储在 settings.json（JSONC）中 */
 export interface SwarmflowSettings {
   // -- 模型 --
@@ -664,9 +651,6 @@ export interface SwarmflowSettings {
   // -- 技能 --
   /** 禁用的技能列表 */
   disabled_skills?: string[];
-
-  // -- 代理模型（按角色 ID 固定配置，全局 + 本地合并）--
-  agent_models?: Partial<Record<AgentRole, AgentModelEntry>>;
 
   // -- MCP 服务器（全局 + 本地合并）--
   mcp_servers?: Record<string, MCPServerSettingsEntry>;
@@ -1563,9 +1547,6 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
   if (local.mcp_servers) {
     merged.mcp_servers = { ...merged.mcp_servers, ...local.mcp_servers };
   }
-  if (local.agent_models) {
-    merged.agent_models = { ...merged.agent_models, ...local.agent_models };
-  }
 
   // providers：仅全局——不合并 local.providers
   return merged;
@@ -1656,7 +1637,6 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   if (settings.permission_mode !== undefined) clean.permission_mode = settings.permission_mode;
   if (settings.disabled_skills !== undefined) clean.disabled_skills = settings.disabled_skills;
   if (settings.mcp_servers !== undefined) clean.mcp_servers = settings.mcp_servers;
-  if (settings.agent_models !== undefined) clean.agent_models = settings.agent_models;
   if (settings.sub_agent_inherit_mcp !== undefined) clean.sub_agent_inherit_mcp = settings.sub_agent_inherit_mcp;
   if (settings.sub_agent_inherit_hooks !== undefined) clean.sub_agent_inherit_hooks = settings.sub_agent_inherit_hooks;
   writeFileSync(tmp, JSON.stringify(clean, null, 2));

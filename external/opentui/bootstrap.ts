@@ -153,7 +153,6 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     providerModels,
     localProviders,
     mcpServers,
-    agentModels: settings.agent_models,
     subAgentInheritMcp: settings.sub_agent_inherit_mcp,
     subAgentInheritHooks: settings.sub_agent_inherit_hooks,
   });

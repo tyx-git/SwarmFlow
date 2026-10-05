@@ -95,7 +95,9 @@ describe("/model command", () => {
     expect(cmd).toBeTruthy();
 
     const save = vi.fn();
-    const promptCommandPicker = vi.fn(async () => ({ value: "high" }));
+    const promptCommandPicker = vi.fn()
+      .mockResolvedValueOnce({ value: "my-openai" })
+      .mockResolvedValueOnce({ value: "high" });
     const session: any = {
       config: {
         modelNames: ["my-openai"],
@@ -115,22 +117,27 @@ describe("/model command", () => {
       },
       primaryAgent: { modelConfig: { name: "primary", provider: "anthropic", model: "claude" } },
       thinkingLevel: "medium",
-      getSubagentDefaultModelSettings: () => undefined,
-      setSubagentDefaultModelSettings: save,
+      getSubagentSettings: () => undefined,
+      setSubagentSettings: save,
     };
 
     await cmd!.handler({
       ...makeContext(registry, session),
       promptCommandPicker,
-    }, "my-openai");
+    }, "scout");
 
-    expect(promptCommandPicker).toHaveBeenCalledTimes(1);
+    expect(promptCommandPicker).toHaveBeenCalledTimes(2);
     expect(save).toHaveBeenCalledWith({
-      config_name: "my-openai",
-      provider: "openai",
-      selection_key: "gpt-5.4",
-      model_id: "gpt-5.4",
-      thinking_level: "high",
+      version: 1,
+      roles: {
+        scout: {
+          config_name: "my-openai",
+          provider: "openai",
+          selection_key: "gpt-5.4",
+          model_id: "gpt-5.4",
+          thinking_level: "high",
+        },
+      },
     });
     expect(session.primaryAgent.modelConfig.provider).toBe("anthropic");
   });
