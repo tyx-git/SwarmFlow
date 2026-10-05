@@ -57,7 +57,7 @@ describe("sub-agent role model settings", () => {
     }
   });
 
-  it("uses the configured default when no pin or tier is present", () => {
+  it("uses the shared role resolution result to construct a role agent", () => {
     const template = {
       name: "scout",
       systemPrompt: "Explore.",
@@ -72,8 +72,27 @@ describe("sub-agent role model settings", () => {
       getMcpManager: () => undefined,
       getPromptsDirs: () => undefined,
       resolveSessionArtifacts: () => ".",
-      getParentModelConfig: () => ({ ...MODEL, name: "parent-model", model: "gpt-parent" }),
-      getSubagentRoleModel: (role: string) => role === "scout" ? ({ modelConfig: MODEL, thinkingLevel: "high" }) : undefined,
+      resolveRoleModel: (role: string) => role === "scout"
+        ? {
+            role,
+            source: "role",
+            configName: MODEL.name,
+            provider: MODEL.provider,
+            selectionKey: MODEL.model,
+            modelId: MODEL.model,
+            modelConfig: MODEL as any,
+            thinkingLevel: "high",
+          }
+        : {
+            role,
+            source: "queen",
+            configName: "parent-model",
+            provider: "openai",
+            selectionKey: "gpt-parent",
+            modelId: "gpt-parent",
+            modelConfig: { ...MODEL, name: "parent-model", model: "gpt-parent" } as any,
+            thinkingLevel: "off",
+          },
     });
 
     const result = factory.createFromPredefined("scout", "worker-1");

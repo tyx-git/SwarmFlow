@@ -157,7 +157,7 @@ describe("/model command", () => {
     expect(options.map((option) => option.value)).toEqual([
       "queen", "scout", "worker", "reviewer", "guard", "merger",
     ]);
-    expect(options.find((option) => option.value === "scout")?.label).toMatch(/(?:继承 Queen 当前模型|Inherit Queen current model) \(openai\/gpt-5\.4\)/);
+    expect(options.find((option) => option.value === "scout")?.label).toMatch(/(?:继承 Queen 当前模型|Inherit Queen current model) \(openai\/gpt-5\.4 off\)/);
 
     const saves = vi.fn();
     const picker = vi.fn()
@@ -186,6 +186,37 @@ describe("/model command", () => {
       version: 1,
       roles: { guard: expect.objectContaining({ model_id: "gpt-5.4", thinking_level: "high" }) },
     }));
+  });
+
+  it("shows an unresolved configured role in the picker instead of presenting it as inherited", () => {
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/agents");
+    const options = cmd!.options!({
+      session: {
+        primaryAgent: { modelConfig: { provider: "openai", model: "gpt-5.4" } },
+        config: {
+          modelNames: [],
+          listModelEntries: () => [],
+          getModel: () => { throw new Error("missing configured model"); },
+        },
+        getSubagentSettings: () => ({
+          version: 1,
+          roles: {
+            scout: {
+              config_name: "removed-model",
+              provider: "unknown-provider",
+              selection_key: "removed-model",
+              model_id: "removed-model",
+              thinking_level: "high",
+            },
+          },
+        }),
+      },
+    });
+
+    const scout = options.find((option) => option.value === "scout");
+    expect(scout?.label).toMatch(/model unavailable|模型不可用/i);
+    expect(scout?.detail).toContain("scout");
   });
 
   it.each([

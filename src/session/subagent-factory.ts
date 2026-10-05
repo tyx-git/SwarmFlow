@@ -2,18 +2,18 @@
  * SubAgentFactory —— 为子会话构建 Agent 实例（P2.4a）。
  *
  * 拥有模板查找（预定义 + 磁盘）、按角色模型解析、comm 工具剥离、
- * 以及子会话 system-prompt 分层。模型条目解析和状态回退
- * 通过 deps 闭包回调 Session。
+ * 以及子会话 system-prompt 分层。角色模型统一由 RoleModelResolver 解析。
  */
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { Agent } from "../agents/agent.js";
-import type { Config, ModelConfig } from "../config/config.js";
+import type { Config } from "../config/config.js";
 import type { MCPClientManager } from "../clients/mcp-client.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
+import type { ResolvedRoleModel } from "./role-model-resolver.js";
 
 /** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
 const COMM_TOOL_NAMES = new Set([
@@ -21,20 +21,14 @@ const COMM_TOOL_NAMES = new Set([
   "bash_background", "bash_output", "kill_shell", "send",
 ]);
 
-export interface ResolvedSubAgentModel {
-  modelConfig: ModelConfig;
-  thinkingLevel?: string;
-}
-
 export interface SubAgentFactoryDeps {
   getAgentTemplates(): Record<string, Agent>;
   getConfig(): Config;
   getMcpManager(): MCPClientManager | undefined;
   getPromptsDirs(): string[] | undefined;
   resolveSessionArtifacts(): string;
-  getParentModelConfig(): ModelConfig;
-  /** 按角色读取当前会话的模型与思考深度。 */
-  getSubagentRoleModel?(role: string): ResolvedSubAgentModel | undefined;
+  /** 角色模型解析的统一入口。 */
+  resolveRoleModel(role: string): ResolvedRoleModel;
 }
 
 /**
@@ -64,7 +58,7 @@ export class SubAgentFactory {
       );
     }
 
-    const { modelConfig, thinkingLevel } = this._resolveSubAgentModel(templateName);
+    const { modelConfig, thinkingLevel } = this.deps.resolveRoleModel(templateName);
     const tools = [...templateAgent.tools]; // 使用模板的工具，非主 Agent 的
 
     const agent = new Agent({
@@ -93,7 +87,7 @@ export class SubAgentFactory {
       this.deps.getMcpManager(),
       this.deps.getPromptsDirs(),
     );
-    const { modelConfig, thinkingLevel } = this._resolveSubAgentModel(templateAgent.name);
+    const { modelConfig, thinkingLevel } = this.deps.resolveRoleModel(templateAgent.name);
 
     const agent = new Agent({
       name: taskId,
@@ -173,14 +167,6 @@ export class SubAgentFactory {
     }
     // 生命周期特定约束通过 buildSubAgentSystemPrompt 注入，
     // 不在此处——以避免 one-shot 语言泄漏到交互式 Agent。
-  }
-
-  /**
-   * 解析角色模型；未配置时继承主会话模型。
-   */
-  private _resolveSubAgentModel(role: string): ResolvedSubAgentModel {
-    return this.deps.getSubagentRoleModel?.(role)
-      ?? { modelConfig: this.deps.getParentModelConfig() };
   }
 
   /** 从 promptsDirs 读取提示文件（可选）。 */

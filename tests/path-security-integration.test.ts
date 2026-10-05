@@ -23,8 +23,16 @@ function makeTemplateFactory(artifactsDir: string): SubAgentFactory {
     getMcpManager: () => undefined,
     getPromptsDirs: () => undefined,
     resolveSessionArtifacts: () => artifactsDir,
-    getParentModelConfig: () => ({}) as never,
-    getSubagentRoleModel: () => undefined,
+    resolveRoleModel: () => ({
+      role: "queen",
+      source: "queen",
+      configName: "parent",
+      provider: "openai",
+      selectionKey: "parent",
+      modelId: "parent",
+      modelConfig: {} as never,
+      thinkingLevel: "off",
+    }),
   });
 }
 

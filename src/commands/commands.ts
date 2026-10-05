@@ -55,7 +55,8 @@ import { THEME_MODES, normalizeThemeMode, type ThemeMode } from "../config/theme
 import { THINKING_LEVEL_LIST } from "../config/thinking.js";
 import { createUiText, getUiLanguage, hasUiText, normalizeUiLanguage, UI_LANGUAGES, type UiLanguage, type UiText } from "../lib/ui-text.js";
 import type { SubagentRoleSettings, SubagentSettings } from "../session/subagent-settings.js";
-import { AGENT_ROLE_IDS, AGENT_ROLE_LABELS, isAgentRoleId } from "../swarm/types.js";
+import { resolveRoleModel, type ResolvedRoleModel } from "../session/role-model-resolver.js";
+import { AGENT_ROLE_IDS, AGENT_ROLE_LABELS, isAgentRoleId, type AgentRole } from "../swarm/types.js";
 
 // ------------------------------------------------------------------
 // 类型
@@ -539,15 +540,31 @@ function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
 function subagentRoleOptions(ctx: CommandOptionsContext): CommandOption[] {
   const saved = ctx.session.getSubagentSettings?.() as SubagentSettings | undefined;
   const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
-  const queenModel = `${ctx.session.primaryAgent?.modelConfig?.provider ?? "unknown"}/${ctx.session.primaryAgent?.modelConfig?.model ?? "unknown"}`;
   return AGENT_ROLE_IDS.map((role) => {
-    const roleSettings = saved?.roles[role];
-    const inherited = role === "queen"
-      ? `${text.get(["Views", "commandPicker", "queenCurrentModel"])} (${queenModel})`
-      : `${text.get(["Views", "commandPicker", "inheritQueenModel"])} (${queenModel})`;
-    const suffix = roleSettings ? ` · ${roleSettings.provider}/${roleSettings.model_id} ${roleSettings.thinking_level}` : ` · ${inherited}`;
-    return { label: `${AGENT_ROLE_LABELS[role]}${suffix}`, value: role };
+    try {
+      const resolved = resolveRoleModel(ctx.session, role, saved);
+      return {
+        label: `${AGENT_ROLE_LABELS[role]} · ${describeRoleModel(role, resolved, text)}`,
+        value: role,
+      };
+    } catch (error) {
+      return {
+        label: `${AGENT_ROLE_LABELS[role]} · ${text.get(["Views", "commandPicker", "roleModelUnavailable"])}`,
+        value: role,
+        detail: error instanceof Error ? error.message : String(error),
+        detailColor: "error",
+      };
+    }
   });
+}
+
+function describeRoleModel(role: AgentRole, resolved: ResolvedRoleModel, text: UiText): string {
+  const model = `${resolved.provider}/${resolved.modelId} ${resolved.thinkingLevel}`;
+  if (resolved.source === "role") return model;
+  const inheritance = role === "queen"
+    ? text.get(["Views", "commandPicker", "queenCurrentModel"])
+    : text.get(["Views", "commandPicker", "inheritQueenModel"]);
+  return `${inheritance} (${model})`;
 }
 
 type ModelPickerOverrides = Omit<ModelPickerTreeContext, "session">;
@@ -769,14 +786,11 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
     const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
     const configured = AGENT_ROLE_IDS
       .map((id) => {
-        const entry = settings?.roles[id];
-        const queenModel = `${session.primaryAgent?.modelConfig?.provider ?? "unknown"}/${session.primaryAgent?.modelConfig?.model ?? "unknown"}`;
-        const inherited = id === "queen"
-          ? `${text.get(["Views", "commandPicker", "queenCurrentModel"])} (${queenModel})`
-          : `${text.get(["Views", "commandPicker", "inheritQueenModel"])} (${queenModel})`;
-        return entry
-          ? `${AGENT_ROLE_LABELS[id]}: ${entry.provider}/${entry.model_id} ${entry.thinking_level}`
-          : `${AGENT_ROLE_LABELS[id]}: ${inherited}`;
+        try {
+          return `${AGENT_ROLE_LABELS[id]}: ${describeRoleModel(id, resolveRoleModel(session, id, settings), text)}`;
+        } catch (error) {
+          return `${AGENT_ROLE_LABELS[id]}: ${error instanceof Error ? error.message : String(error)}`;
+        }
       })
       .join("\n");
     ctx.showMessage(configured);
@@ -794,6 +808,12 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
       return;
     }
     const current = settings?.roles[selectedRole];
+    let currentResolution: ResolvedRoleModel | undefined;
+    try {
+      currentResolution = resolveRoleModel(session, selectedRole, settings);
+    } catch (error) {
+      ctx.showHint?.(error instanceof Error ? error.message : String(error));
+    }
     const modelTarget = target.slice(role.length).trim();
     const resolved = await pickResolvedModelSelection(ctx, {
       initialTarget: modelTarget,
@@ -802,7 +822,14 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
         title: text.get(["Views", "commandPicker", "selectProviderAndModel"]),
         inputArea: true,
       },
-      treeOverrides: current ? {
+      treeOverrides: currentResolution ? {
+        currentSelection: {
+          configName: currentResolution.configName,
+          provider: currentResolution.provider,
+          selectionKey: currentResolution.selectionKey,
+          modelId: currentResolution.modelId,
+        },
+      } : current ? {
         currentSelection: {
           configName: current.config_name,
           provider: current.provider,
@@ -817,7 +844,7 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
     }
 
     const thinkingLevel = await promptThinkingLevel(ctx, {
-      current: current?.thinking_level ?? "off",
+      current: current?.thinking_level ?? currentResolution?.thinkingLevel ?? session.thinkingLevel ?? "off",
       applyToSession: false,
     });
     if (!thinkingLevel) {

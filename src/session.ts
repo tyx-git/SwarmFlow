@@ -57,9 +57,9 @@ import {
   loadSubagentSettings,
   saveSubagentSettings,
   subagentSettingsPath,
-  type SubagentRoleSettings,
   type SubagentSettings,
 } from "./session/subagent-settings.js";
+import { resolveRoleModel as resolveRoleModelConfig } from "./session/role-model-resolver.js";
 import {
   COMPACT_PROMPT_OUTPUT,
   COMPACT_PROMPT_TOOLCALL,
@@ -6532,25 +6532,7 @@ export class Session {
       getMcpManager: () => this._mcpManager,
       getPromptsDirs: () => this._promptsDirs,
       resolveSessionArtifacts: () => this._resolveSessionArtifacts(),
-      getParentModelConfig: () => this.primaryAgent.modelConfig,
-      getSubagentRoleModel: (role) => {
-        const saved = this.getSubagentSettings()?.roles[role as keyof SubagentSettings["roles"]] as SubagentRoleSettings | undefined;
-        if (!saved) return undefined;
-        try {
-          const resolved = resolvePersistedModelSelection(this, {
-            modelConfigName: saved.config_name,
-            modelProvider: saved.provider,
-            modelSelectionKey: saved.selection_key,
-            modelId: saved.model_id,
-          });
-          return {
-            modelConfig: this.config.getModel(resolved.selectedConfigName),
-            thinkingLevel: saved.thinking_level,
-          };
-        } catch (error) {
-          return undefined;
-        }
-      },
+      resolveRoleModel: (role) => resolveRoleModelConfig(this, role, this.getSubagentSettings()),
     });
   }
 

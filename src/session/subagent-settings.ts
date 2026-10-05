@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
-import type { AgentRole } from "../swarm/types.js";
+import { isAgentRoleId, type AgentRole } from "../swarm/types.js";
 
 /** 单个角色的模型与思考深度配置。 */
 export interface SubagentRoleSettings {
@@ -30,10 +30,6 @@ function isRoleSettings(value: unknown): value is SubagentRoleSettings {
     .every((key) => typeof raw[key] === "string" && (raw[key] as string).trim().length > 0);
 }
 
-function isRoleId(value: string): value is AgentRole {
-  return ["queen", "scout", "worker", "reviewer", "guard", "merger"].includes(value);
-}
-
 export function loadSubagentSettings(path: string): SubagentSettings | undefined {
   if (!existsSync(path)) return undefined;
   try {
@@ -43,7 +39,7 @@ export function loadSubagentSettings(path: string): SubagentSettings | undefined
     }
     const roles: Partial<Record<AgentRole, SubagentRoleSettings>> = {};
     for (const [role, value] of Object.entries(raw.roles as Record<string, unknown>)) {
-      if (!isRoleId(role) || !isRoleSettings(value)) return undefined;
+      if (!isAgentRoleId(role) || !isRoleSettings(value)) return undefined;
       roles[role] = { ...(value as SubagentRoleSettings) };
     }
     return { version: 1, roles };
