@@ -164,6 +164,12 @@ describe("theme modes", () => {
     expect(getCommonColors().workedStatus).toMatch(/^#[0-9a-f]{6,8}$/i);
     for (const mode of ["brief", "dark", "light"] as const) {
       expect(getThemeColors(mode).colors.accent).toMatch(/^#[0-9a-f]{6,8}$/i);
+      const theme = getThemeColors(mode);
+      expect(theme.markdown.syntax.strong).toMatch(/^#[0-9a-f]{6,8}$/i);
+      expect(theme.markdown.syntax.strong.toLowerCase()).not.toBe(theme.colors.text.toLowerCase());
+      expect(theme.markdown.syntax.headingPrimary).toMatch(/^#[0-9a-f]{6,8}$/i);
+      expect(theme.markdown.syntax.raw).toMatch(/^#[0-9a-f]{6,8}$/i);
+      expect(theme.markdown.syntax.raw.toLowerCase()).not.toBe(theme.colors.text.toLowerCase());
     }
   });
   it("only exposes brief / dark / light", () => {

@@ -185,9 +185,10 @@
           "operator": "#d0d0d0",
           "literal": "#d0d0d0",
           "variable": "#ffffff",
+          "strong": "#FFAF5F",
           "headingPrimary": "#ffffff",
           "headingSecondary": "#ffffff",
-          "raw": "#d0d0d0"
+          "raw": "#74C7EC"
         },
         "hljs": {
           "hljs-keyword": "#ffffff",
@@ -334,9 +335,10 @@
           "operator": "#9098a8",
           "literal": "#6aa8a0",
           "variable": "#b0b8c4",
-          "headingPrimary": "#b8d4ff",
+          "strong": "#FFAF5F",
+          "headingPrimary": "#FFFFFF",
           "headingSecondary": "#6ea8e8",
-          "raw": "#b4a0ec"
+          "raw": "#74C7EC"
         },
         "hljs": {
           "hljs-keyword": "#e0a050",
@@ -483,9 +485,10 @@
           "operator": "#656d76",
           "literal": "#0a4f4a",
           "variable": "#1f2328",
+          "strong": "#b35900",
           "headingPrimary": "#0a5db8",
           "headingSecondary": "#1a7ce0",
-          "raw": "#6f42c1"
+          "raw": "#8250DF"
         },
         "hljs": {
           "hljs-keyword": "#b35900",

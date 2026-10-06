@@ -168,6 +168,55 @@ describe("session storage lifecycle", () => {
     }
   });
 
+  it("keeps provider and model identity out of the system prompt", () => {
+    const baseDir = makeTempDir("swarmflow-model-prompt-base-");
+    const projectRoot = makeTempDir("swarmflow-model-prompt-project-");
+    try {
+      const store = new SessionStore({ baseDir, projectPath: projectRoot });
+      const session = makeSession(projectRoot, store, {
+        initialModelConfigName: "jucode-model",
+        modelConfigs: {
+          "jucode-model": {
+            name: "jucode-model",
+            provider: "jucode",
+            model: "gpt-6.1-luna",
+            apiKey: "sk-test",
+            maxTokens: 256,
+            contextLength: 8192,
+            supportsMultimodal: false,
+          },
+          "deepseek-model": {
+            name: "deepseek-model",
+            provider: "deepseek",
+            model: "deepseek-flash",
+            apiKey: "sk-test",
+            maxTokens: 256,
+            contextLength: 8192,
+            supportsMultimodal: false,
+          },
+        },
+      });
+      session.primaryAgent.systemPrompt = "You are SwarmFlow Queen. Focus on the coding task. {INITIAL_MODEL}";
+      (session as any)._reloadPromptAndTools();
+
+      const startupPrompt = (session as any)._getSystemPrompt() as string;
+      expect(startupPrompt).toContain("You are SwarmFlow Queen. Focus on the coding task.");
+      expect(startupPrompt).not.toContain("INITIAL_MODEL");
+      expect(startupPrompt).not.toContain("Jucode");
+      expect(startupPrompt).not.toContain("gpt-6.1-luna");
+
+      session.switchModel("deepseek-model");
+      const requestPrompt = (session as any)._getSystemPrompt() as string;
+      expect(requestPrompt).not.toContain("Deepseek Flash");
+      expect(requestPrompt).not.toContain("deepseek-flash");
+      expect(session.primaryAgent.modelConfig.provider).toBe("deepseek");
+      expect(session.primaryAgent.modelConfig.model).toBe("deepseek-flash");
+    } finally {
+      rmSync(baseDir, { recursive: true, force: true });
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("creates session storage on the first turn and hydrates system paths", async () => {
     const baseDir = makeTempDir("swarmflow-lifecycle-base-");
     const projectRoot = makeTempDir("swarmflow-lifecycle-project-");

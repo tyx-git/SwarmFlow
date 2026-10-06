@@ -119,6 +119,7 @@ export interface DisplayThemeMarkdownTokens {
     operator: string;
     literal: string;
     variable: string;
+    strong: string;
     headingPrimary: string;
     headingSecondary: string;
     raw: string;

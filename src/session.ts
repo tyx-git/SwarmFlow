@@ -6118,7 +6118,6 @@ export class Session {
         ?? this._resolveSessionArtifacts({ allowUnresolved: true }),
       systemData: this._resolveSystemData({ allowUnresolved: true }),
       sessionStartedAt: this._createdAt,
-      initialModel: this._initialModel,
       shellNotes: buildShellNotes(shell.kind),
     });
   }

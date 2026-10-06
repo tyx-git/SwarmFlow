@@ -8,7 +8,7 @@
  *     agent.prompt                    → 来自模板（角色 + 工具 + 知识）
  *     + 记忆层 (AGENTS.md)            → 来自磁盘，每次重新加载时刷新
  *     + 代理模型固定配置               → 来自配置
- *     + 变量渲染                      → {PROJECT_ROOT}/{SESSION_ARTIFACTS}/{SYSTEM_DATA}/{INITIAL_MODEL}/{SESSION_STARTED} → 实际值
+ *     + 变量渲染                      → {PROJECT_ROOT}/{SESSION_ARTIFACTS}/{SYSTEM_DATA}/{SESSION_STARTED} → 实际值
  *
  * 所有层在此组装 —— Session 不再做临时的字符串拼接。
  */
@@ -43,8 +43,6 @@ export interface PromptVariables {
   systemData: string;
   /** ISO timestamp of when this session began (its first message). Stable across resumes. */
   sessionStartedAt?: string;
-  /* 会话创建时的模型标识。跨简历和/模型切换稳定。 */
-  initialModel?: string;
   /* 将特定于shell的注释注入到工具提示符中（bash vs PowerShell）。 */
   shellNotes?: string;
 }
@@ -92,7 +90,8 @@ export function renderPromptVariables(prompt: string, vars: PromptVariables): st
     .replace(/\{SESSION_ARTIFACTS\}/g, vars.sessionArtifacts)
     .replace(/\{SYSTEM_DATA\}/g, vars.systemData)
     .replace(/\{SHELL_NOTES\}/g, vars.shellNotes ?? "")
-    .replace(/\{INITIAL_MODEL\}/g, vars.initialModel ?? "unknown")
+    // 旧模板里的模型身份占位符统一清空，不向模型提示供应商或型号。
+    .replace(/\{INITIAL_MODEL\}/g, "")
     .replace(/\{SESSION_STARTED\}/g, buildSessionStartedVar(vars.sessionStartedAt));
 }
 
@@ -144,8 +143,6 @@ export interface AssembleOptions {
   systemData: string;
   /* 此会话开始时的ISO时间戳（它的第一条消息）。在简历中保持稳定。 */
   sessionStartedAt?: string;
-  /* 会话创建时的模型标识。跨简历和/模型切换稳定。 */
-  initialModel?: string;
   /* {SHELL_NOTES}变量的特定于shell的注释（bash vs PowerShell）。 */
   shellNotes?: string;
   /* 额外的提示层（钩子，注入转弯等）。 */
@@ -164,7 +161,6 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
     sessionArtifacts: opts.sessionArtifacts,
     systemData: opts.systemData,
     sessionStartedAt: opts.sessionStartedAt,
-    initialModel: opts.initialModel,
     shellNotes: opts.shellNotes,
   };
 
