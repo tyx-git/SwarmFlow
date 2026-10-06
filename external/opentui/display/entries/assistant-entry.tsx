@@ -16,9 +16,6 @@ export function AssistantEntry({
   markdownStyle,
 }: AssistantEntryProps): React.ReactNode {
   const text = entry.assistantText ?? "";
-  // 保持 Markdown 的增量解析模式，避免最后一个块在收尾时被整体重建。
-  // 高度保留单独跟随真实流式状态，完成后不会留下额外的高度。
-  const renderedStreaming = true;
   const reserveHeight = entry.assistantStreaming ?? false;
   return (
     <box width="100%" flexShrink={0}>
@@ -29,7 +26,7 @@ export function AssistantEntry({
           content={text}
           syntaxStyle={markdownStyle}
           treeSitterClient={getTreeSitterClient()}
-          streaming={renderedStreaming}
+          streaming={entry.assistantStreaming ?? false}
           reserveHeightWhileStreaming={reserveHeight}
           conceal={true}
           concealCode={false}
