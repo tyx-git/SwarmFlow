@@ -58,12 +58,6 @@ export interface UiColorCommonTokens {
     timeToFirstDraw: string;
     invalidColor: string;
     namedColors: Record<string, string>;
-    markdownFallback: string;
-    markdownBorder: string;
-    markdownBorderHover: string;
-    markdownLabel: string;
-    markdownCopy: string;
-    markdownCopyFlash: string;
     console: {
       info: string;
       warning: string;

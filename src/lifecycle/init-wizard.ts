@@ -140,7 +140,7 @@ const SEARCH_API_OPTIONS = [
   { env: "BRAVE_SEARCH_API_KEY", name: "Brave Search", url: "https://brave.com/search/api/", free: "$5 credit" },
 ] as const;
 
-async function stageWebSearch(run: WizardRuntime): Promise<"next" | Back> {
+async function stageWebSearch(homeDir: string, run: WizardRuntime): Promise<"next" | Back> {
   const { t } = run;
   const configured = SEARCH_API_OPTIONS.find(({ env }) => process.env[env]?.trim());
   if (configured) {
@@ -172,7 +172,7 @@ async function stageWebSearch(run: WizardRuntime): Promise<"next" | Back> {
   if (key === BACK) return BACK;
 
   if (key.trim()) {
-    setDotenvKey(selected.env, key.trim());
+    setDotenvKey(selected.env, key.trim(), homeDir);
     console.log(t.get(["Init", "search", "saved"]));
   } else {
     console.log(t.get(["Init", "search", "skipped"]));
@@ -302,8 +302,7 @@ async function stageCustomProvider(homeDir: string, run: WizardRuntime): Promise
 
 const BANNER_WIDTH = 40;
 
-export async function runInitWizard(): Promise<WizardResult> {
-  const homeDir = getSwarmflowHomeDir();
+export async function runInitWizard(homeDir = getSwarmflowHomeDir()): Promise<WizardResult> {
 
   // Stage 0：语言选择（放在最前面，后续文案都由它决定）
   const pickedLanguage = await stageLanguage();
@@ -330,7 +329,7 @@ export async function runInitWizard(): Promise<WizardResult> {
 
   // Stage 1: 联网搜索
   {
-    const result = await stageWebSearch(run);
+    const result = await stageWebSearch(homeDir, run);
     if (result === BACK) {
       console.log(`\n${t.get(["Init", "wizard", "skipped"])}`);
       return { homeDir, language };

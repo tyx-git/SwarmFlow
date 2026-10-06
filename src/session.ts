@@ -679,6 +679,18 @@ export class Session {
     return this._turnInFlight !== null;
   }
 
+  /** 命令等待项只能在主会话及其自动续跑完全结束后执行。 */
+  canRunDeferredCommand(): boolean {
+    return this._turnInFlight === null
+      && !this._autoResumeScheduled
+      && this._agentState === "idle"
+      && !this._compactInProgress
+      && !this._activeAsk
+      && !this._pendingTurnState
+      && !this._hasWakingInboxMessages()
+      && !this._hasUnprocessedUserMessage();
+  }
+
   /** Current input/turn index (1-based; advances as user inputs are delivered). */
   get turnCount(): number {
     return this._turnCount;
@@ -6830,16 +6842,21 @@ export class Session {
   // All persistence is now via getLogForPersistence() / restoreFromLog().
 
   private _generateSummary(): string {
-    if (this._cachedSummary !== undefined) return this._cachedSummary;
     for (const entry of this._log) {
       if (entry.type !== "user_message") continue;
+      // 切换类/注入类命令回显使用 user_message 作为日志载体，但
+      // apiRole 为 null，不能成为会话自动标题或摘要。
+      if (entry.apiRole !== "user") continue;
       if (entry.discarded) continue;
       const display = entry.display;
       if (!display) continue;
       if (SYSTEM_PREFIXES.some((prefix) => display.startsWith(prefix))) continue;
+      // 每次从真实用户消息重新校验，避免旧版本把 command_echo 写进
+      // meta.summary 后，恢复会话时继续沿用错误的自动标题。
       this._cachedSummary = stripContextTags(display).slice(0, 100).trim();
       return this._cachedSummary;
     }
+    this._cachedSummary = undefined;
     return "New session";
   }
 

@@ -25,7 +25,7 @@ function TurnSummaryEntryInner(
   if (!interrupted && !failed) return null;
 
   return (
-    <box flexDirection="column" width="100%" paddingTop={1} gap={0}>
+    <box flexDirection="column" width="100%" gap={0}>
       <ErrorMessage text={failed ? (entry.turnSummaryText ?? "Turn failed") : interruptionText} colors={colors} />
       {hints.length > 0 ? (
         <box flexDirection="column" paddingLeft={2} gap={0}>

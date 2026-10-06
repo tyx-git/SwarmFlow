@@ -152,7 +152,6 @@ function ToolOperationEntryInner(
     <box flexDirection="column" width="100%" gap={0}>
       <box
         flexDirection="row"
-        paddingTop={1}
         width="100%"
       >
         <text fg={indicatorColor} content={`${indicator} `} flexShrink={0} />

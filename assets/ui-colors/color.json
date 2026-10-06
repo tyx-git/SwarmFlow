@@ -93,12 +93,6 @@
           "brightmagenta": "#FF66FF",
           "brightwhite": "#FFFFFF"
         },
-        "markdownFallback": "#a0a8b4",
-        "markdownBorder": "#2a2630",
-        "markdownBorderHover": "#504860",
-        "markdownLabel": "#636a76",
-        "markdownCopy": "#454a54",
-        "markdownCopyFlash": "#8ab4f8",
         "console": {
           "info": "#00FFFF",
           "warning": "#FFFF00",
@@ -180,11 +174,6 @@
         ]
       },
       "markdown": {
-        "codeBorder": "#3a3a3a",
-        "codeBorderHover": "#555555",
-        "codeLabelForeground": "#7f7f7f",
-        "codeCopyForeground": "#555555",
-        "codeCopyFlash": "#ffffff",
         "codeForeground": "#d0d0d0",
         "syntax": {
           "keyword": "#ffffff",
@@ -334,11 +323,6 @@
         ]
       },
       "markdown": {
-        "codeBorder": "#2a2630",
-        "codeBorderHover": "#504860",
-        "codeLabelForeground": "#636a76",
-        "codeCopyForeground": "#454a54",
-        "codeCopyFlash": "#8ab4f8",
         "codeForeground": "#a0a8b4",
         "syntax": {
           "keyword": "#e0a050",
@@ -488,11 +472,6 @@
         ]
       },
       "markdown": {
-        "codeBorder": "#d0d7de",
-        "codeBorderHover": "#8c959f",
-        "codeLabelForeground": "#656d76",
-        "codeCopyForeground": "#afb8c1",
-        "codeCopyFlash": "#0969da",
         "codeForeground": "#1f2328",
         "syntax": {
           "keyword": "#b35900",

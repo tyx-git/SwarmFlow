@@ -108,11 +108,6 @@ export interface DisplayThemeBrandingTokens {
 }
 
 export interface DisplayThemeMarkdownTokens {
-  codeBorder: string;
-  codeBorderHover: string;
-  codeLabelForeground: string;
-  codeCopyForeground: string;
-  codeCopyFlash: string;
   codeForeground: string;
   syntax: {
     keyword: string;

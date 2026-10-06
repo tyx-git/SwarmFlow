@@ -61,20 +61,34 @@ function PresentationPanelInner(
           <text fg={colors.dim} content="Esc back to primary session · Ctrl+C interrupt child turn" />
         </box>
       ) : null}
-      {items.map((entry) => (
-        <PresentationEntryComponent
-          key={entry.id}
-          entry={entry}
-          colors={colors}
-          interruptionText={interruptionText}
-          theme={theme}
-          contentWidth={contentWidth}
-          markdownMode={markdownMode}
-          diffDisplayMode={diffDisplayMode}
-          markdownStyle={markdownStyle}
-          onAgentClick={onAgentClick}
-        />
-      ))}
+      {(() => {
+        let previousVisible = false;
+        return items.map((entry) => {
+          // 所有顶层消息的间距统一由这里负责，避免各条目组件分别添加
+          // paddingTop 后产生不一致或重复空行。
+          const isVisible = entry.kind !== "turn_summary"
+            || entry.turnSummaryInterrupted === true
+            || entry.turnSummaryError === true;
+          const needsGap = isVisible && previousVisible;
+          previousVisible ||= isVisible;
+          return (
+            <React.Fragment key={entry.id}>
+              {needsGap ? <box height={1} /> : null}
+              <PresentationEntryComponent
+                entry={entry}
+                colors={colors}
+                interruptionText={interruptionText}
+                theme={theme}
+                contentWidth={contentWidth}
+                markdownMode={markdownMode}
+                diffDisplayMode={diffDisplayMode}
+                markdownStyle={markdownStyle}
+                onAgentClick={onAgentClick}
+              />
+            </React.Fragment>
+          );
+        });
+      })()}
     </box>
   );
 }

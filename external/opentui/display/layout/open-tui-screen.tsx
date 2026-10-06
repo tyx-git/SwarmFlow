@@ -320,6 +320,14 @@ export function OpenTuiScreen({
       maxVisible={pickerMaxVisible}
       onItemClick={onPromptSelectItemClick}
     />
+  ) : promptSecret?.inputArea ? (
+    <PromptSecretView
+      prompt={promptSecret}
+      inputRef={promptSecretInputRef}
+      focused={Boolean(promptSecret)}
+      onSubmit={onPromptSecretSubmit}
+      theme={theme}
+    />
   ) : undefined;
 
   // Shared InputArea element — rendered inside scrollbox for main view, outside for detail tabs
@@ -435,7 +443,7 @@ export function OpenTuiScreen({
         onItemClick={onPromptSelectItemClick}
       />
       <PromptSecretView
-        prompt={promptSecret}
+        prompt={promptSecret?.inputArea ? null : promptSecret}
         inputRef={promptSecretInputRef}
         focused={Boolean(promptSecret)}
         onSubmit={onPromptSecretSubmit}

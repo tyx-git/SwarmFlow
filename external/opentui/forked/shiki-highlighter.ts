@@ -44,7 +44,7 @@ export function setShikiTheme(mode: ThemeMode): void {
 
 /**
  * Tokenization is the dominant cost in syntax highlighting, and callers
- * (file-modify body, markdown code blocks) re-highlight the *same* line text
+ * (file-modify body and tool output rows) re-highlight the *same* line text
  * repeatedly — every streaming rebuild re-runs the whole visible file through
  * `codeToTokens`, even though only the appended tail actually changed. This
  * LRU memoizes `(theme, lang, code) -> raw tokens` so stable lines become
@@ -97,7 +97,7 @@ function chunksFromRawTokens(tokens: RawToken[]): TextChunk[] {
  * startup memory; everything else loads on-demand via `ensureLanguage()`
  * the first time a code block with that language is rendered.  Languages
  * not in this list, and not yet loaded, fall through to highlight.js
- * (see patch-opentui-markdown.ts) until the async load completes.
+ * until the async load completes.
  */
 const PRELOAD_LANGS = [
   "typescript", "tsx", "javascript", "jsx",
@@ -195,8 +195,7 @@ async function ensureLanguage(lang: string): Promise<boolean> {
  * Synchronous tokenization.  Returns `TextChunk[]` with fg colors from the
  * Shiki theme, or `null` if Shiki is not initialized / language unavailable.
  *
- * Signature mirrors `highlightToChunks()` from patch-opentui-markdown.ts so
- * it can be used as a drop-in replacement.
+ * Signature mirrors the standalone tool-row highlighter adapter.
  */
 export function shikiHighlightToChunks(
   code: string,

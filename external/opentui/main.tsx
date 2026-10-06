@@ -3,9 +3,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  getAssistantRenderer,
   getOpenTuiDiagPath,
-  isMarkdownPatchDisabled,
   isOpenTuiDiagEnabled,
   resetOpenTuiDiagLog,
   writeOpenTuiDiag,
@@ -140,8 +138,6 @@ export async function launchTui(): Promise<void> {
       cwd: process.cwd(),
       diagPath: getOpenTuiDiagPath(),
       platform: process.platform,
-      assistantRenderer: getAssistantRenderer(),
-      markdownPatchDisabled: isMarkdownPatchDisabled(),
     });
   }
 

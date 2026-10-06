@@ -463,15 +463,14 @@ export function PromptSecretView(
 ): React.ReactNode {
   if (!prompt) return null;
 
-  const promptHeight = Math.max(3, prompt.message.split("\n").length + 2);
-
-  return (
-    <OverlayFrame theme={theme} height={promptHeight}>
+  const content = (
+    <>
       <text fg={theme.colors.accent} content={prompt.message} />
       <input
         ref={(node) => {
           inputRef.current = node;
         }}
+        width="100%"
         placeholder={prompt.allowEmpty ? "Press Enter to confirm, Esc to cancel" : "Enter a value"}
         focused={focused}
         textColor={theme.colors.text}
@@ -480,8 +479,15 @@ export function PromptSecretView(
         onSubmit={onSubmit as any}
       />
       <text fg={theme.colors.dim} content="Enter confirm · Esc cancel" />
-    </OverlayFrame>
+    </>
   );
+
+  if (prompt.inputArea) {
+    return <box flexDirection="column" gap={0} width="100%" flexShrink={0}>{content}</box>;
+  }
+
+  const promptHeight = Math.max(3, prompt.message.split("\n").length + 2);
+  return <OverlayFrame theme={theme} height={promptHeight}>{content}</OverlayFrame>;
 }
 
 export function OAuthOverlayView(

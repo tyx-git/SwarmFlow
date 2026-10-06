@@ -224,6 +224,8 @@ export interface SlashCommand {
   category?: CommandCategory;
   /** Shared picker presentation contract for command-owned selectors. */
   picker?: CommandPickerPresentation;
+  /** 命令分流：查看类命令始终直达；部分命令在工作中直达或等工作结束后执行。 */
+  executionMode?: "always" | "whenBusy" | "queued";
 }
 
 /** Resolve an installed command description from language.json when available. */
@@ -390,6 +392,9 @@ function persistModelSelection(ctx: CommandContext): void {
 /** 将通过 provider:model 临时创建的模型保存到用户目录，避免重启后丢失。 */
 function persistRuntimeModelConfig(ctx: CommandContext, selection: ResolvedModelSelection): boolean {
   if (!selection.selectedConfigName.startsWith("runtime-")) return true;
+  // UI 运行时总会注入明确的 homeDir；缺失时通常是无持久化能力的
+  // 测试/嵌入调用，不能把临时模型写进当前用户的全局配置。
+  if (!ctx.swarmflowHomeDir) return true;
 
   const providerId = selection.modelProvider;
   const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
@@ -910,9 +915,10 @@ function applyCredentialChange(ctx: CommandContext, providerId: string): void {
  * OAuth 和本地 provider 由同一个 /provider 入口管理。
  */
 async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
+  const t = providerText(ctx.swarmflowHomeDir);
   const adapter = createCommandPromptAdapter(ctx);
   if (!adapter || !ctx.promptCommandPicker) {
-    ctx.showMessage("API key management is not available in this UI.");
+    ctx.showMessage(t.get(["Commands", "/provider", "credential", "unavailable"]));
     return;
   }
 
@@ -920,11 +926,11 @@ async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
   if (!providerId) {
     const picked = await ctx.promptCommandPicker(
       keyOptions({ session: ctx.session, store: ctx.store }),
-      { title: "Manage API key" },
+      { title: t.get(["Commands", "/provider", "credential", "title"]) },
     );
     providerId = picked?.value ?? "";
     if (!providerId) {
-      ctx.showMessage("Cancelled.");
+      ctx.showMessage(t.get(["Commands", "/provider", "credential", "cancel"]));
       return;
     }
   }
@@ -939,25 +945,25 @@ async function cmdKey(ctx: CommandContext, args: string): Promise<void> {
     });
 
     if (result.status === "skipped") {
-      ctx.showMessage("No changes made.");
+      ctx.showMessage(t.get(["Commands", "/provider", "credential", "noChanges"]));
       return;
     }
 
     applyCredentialChange(ctx, providerId);
 
     if (result.status === "removed") {
-      let msg = `Removed the saved key for ${result.label}.`;
+      let msg = t.get(["Commands", "/provider", "credential", "removed"], { label: result.label });
       if (result.shellMayResurface) {
-        msg += `\nNote: ${result.envVar} may still be exported in your shell — `
-          + "it will be used again on next launch. To fully disable, unset it in your shell.";
+        msg += `\n${t.get(["Commands", "/provider", "credential", "removedNote"], { envVar: result.envVar })}`;
       }
       ctx.showMessage(msg);
     } else {
-      const verb = result.source === "imported" ? "Imported" : "Updated";
-      ctx.showMessage(`${verb} the API key for ${result.label}.`);
+      ctx.showMessage(result.source === "imported"
+        ? t.get(["Commands", "/provider", "credential", "imported"], { label: result.label })
+        : t.get(["Commands", "/provider", "credential", "updated"], { label: result.label }));
     }
   } catch (e) {
-    ctx.showMessage(`Failed to manage API key: ${e instanceof Error ? e.message : String(e)}`);
+    ctx.showMessage(t.get(["Commands", "/provider", "credential", "failed"], { message: e instanceof Error ? e.message : String(e) }));
   }
 }
 
@@ -965,11 +971,11 @@ type ProviderWireProtocol = "anthropic-messages" | "openai-chat-completions" | "
 
 type StoredProviderProtocol = NonNullable<ProviderEntry["protocol"]>;
 
-const WIRE_PROTOCOL_CHOICES: Array<{ label: string; value: ProviderWireProtocol; detail: string; stored: StoredProviderProtocol }> = [
-  { label: "Anthropic Messages", value: "anthropic-messages", detail: "/messages", stored: "anthropic" },
-  { label: "OpenAI Chat Completions", value: "openai-chat-completions", detail: "/chat/completions", stored: "openai-chat" },
-  { label: "OpenAI Responses API", value: "openai-responses", detail: "/responses", stored: "openai-responses" },
-  { label: "Gemini generateContent", value: "gemini-generate-content", detail: "models/*:generateContent", stored: "gemini" },
+const WIRE_PROTOCOL_CHOICES: Array<{ key: "anthropic" | "chat" | "responses" | "gemini"; value: ProviderWireProtocol; detail: string; stored: StoredProviderProtocol }> = [
+  { key: "anthropic", value: "anthropic-messages", detail: "/messages", stored: "anthropic" },
+  { key: "chat", value: "openai-chat-completions", detail: "/chat/completions", stored: "openai-chat" },
+  { key: "responses", value: "openai-responses", detail: "/responses", stored: "openai-responses" },
+  { key: "gemini", value: "gemini-generate-content", detail: "models/*:generateContent", stored: "gemini" },
 ];
 
 function storedProtocolFromWire(protocol: ProviderWireProtocol): StoredProviderProtocol {
@@ -999,7 +1005,20 @@ function canDiscoverModels(protocol: string): boolean {
   return wireProtocolFromStored(protocol) === "openai-chat-completions";
 }
 
-function commonProviderOptions(): CommandOption[] {
+function providerText(homeDir?: string): UiText {
+  return createUiText(getUiLanguage(homeDir));
+}
+
+/** 将流程完成文本按切换类命令回显渲染，而不是普通状态消息。 */
+function appendProviderSwitchEcho(ctx: CommandContext, text: string): void {
+  if (typeof ctx.session?.appendCommandEcho === "function") {
+    ctx.session.appendCommandEcho(text, "switch");
+  } else {
+    ctx.showMessage(text);
+  }
+}
+
+function commonProviderOptions(t: UiText): CommandOption[] {
   const providerPresetOptions = PROVIDER_PRESETS
     .filter((preset) => !preset.localServer)
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -1008,32 +1027,39 @@ function commonProviderOptions(): CommandOption[] {
       value: preset.id,
       detail: preset.id,
     }));
-  return providerPresetOptions.length > 0 ? providerPresetOptions : [{ label: "No provider presets found", value: "", disabled: true }];
+  return providerPresetOptions.length > 0
+    ? providerPresetOptions
+    : [{ label: t.get(["Commands", "/provider", "noPresets"]), value: "", disabled: true }];
 }
 
 function providerOptions(ctx: CommandOptionsContext, homeDir?: string): CommandOption[] {
+  const t = providerText(homeDir);
   const options: CommandOption[] = [
     {
-      label: "OpenAI Codex login",
+      label: t.get(["Commands", "/provider", "codexLogin"]),
       value: "__codex__",
-      children: codexOptions().map((option) => ({ ...option, value: `codex:${option.value}` })),
+      children: codexOptions(t).map((option) => ({ ...option, value: `codex:${option.value}` })),
     },
     {
-      label: "GitHub Copilot login",
+      label: t.get(["Commands", "/provider", "copilotLogin"]),
       value: "__copilot__",
-      children: copilotOptions().map((option) => ({ ...option, value: `copilot:${option.value}` })),
+      children: copilotOptions(t).map((option) => ({ ...option, value: `copilot:${option.value}` })),
     },
     {
-      label: "Add custom provider by protocol",
+      label: t.get(["Commands", "/provider", "addCustom"]),
       value: "__protocol__",
-      children: WIRE_PROTOCOL_CHOICES.map((p) => ({ label: p.label, value: `protocol:${p.value}`, detail: p.detail })),
+      children: WIRE_PROTOCOL_CHOICES.map((p) => ({
+        label: t.get(["Commands", "/provider", "protocol", p.key]),
+        value: `protocol:${p.value}`,
+        detail: p.detail,
+      })),
     },
     {
-      label: "Common providers",
+      label: t.get(["Commands", "/provider", "common"]),
       value: "__presets__",
-      children: commonProviderOptions(),
+      children: commonProviderOptions(t),
     },
-    { label: "Manage API keys", value: "__keys__", children: keyOptions(ctx) },
+    { label: t.get(["Commands", "/provider", "manageKeys"]), value: "__keys__", children: keyOptions(ctx) },
   ];
 
   const settings = loadGlobalSettings(homeDir);
@@ -1042,12 +1068,12 @@ function providerOptions(ctx: CommandOptionsContext, homeDir?: string): CommandO
     .sort(([a], [b]) => a.localeCompare(b));
   if (allProviders.length > 0) {
     options.push({
-      label: "Manage providers",
+      label: t.get(["Commands", "/provider", "manageProviders"]),
       value: "__custom__",
       children: allProviders.map(([id, entry]) => ({
         label: entry.label ? `${entry.label} (${id})` : id,
         value: `manage:${id}`,
-        detail: `${entry.models?.length ?? 0} model(s)`,
+        detail: t.get(["Commands", "/provider", "modelCount"], { count: entry.models?.length ?? 0 }),
       })),
     });
   }
@@ -1056,8 +1082,9 @@ function providerOptions(ctx: CommandOptionsContext, homeDir?: string): CommandO
 }
 
 async function cmdProvider(ctx: CommandContext, args: string): Promise<void> {
+  const t = providerText(ctx.swarmflowHomeDir);
   if (!ctx.promptCommandPicker) {
-    ctx.showMessage("Provider management is not available in this UI.");
+    ctx.showMessage(t.get(["Commands", "/provider", "unavailable"]));
     return;
   }
 
@@ -1065,7 +1092,7 @@ async function cmdProvider(ctx: CommandContext, args: string): Promise<void> {
   if (!action) {
     const picked = await ctx.promptCommandPicker(
       providerOptions({ session: ctx.session, store: ctx.store }, ctx.swarmflowHomeDir),
-      { title: "Providers" },
+      { title: t.get(["Commands", "/provider", "title"]) },
     );
     if (!picked) return;
     action = picked.value;
@@ -1121,7 +1148,7 @@ async function cmdProvider(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  ctx.showMessage("Run /provider and choose add, edit, delete, test, API key, or model registration actions from the interactive flow.");
+  ctx.showMessage(t.get(["Commands", "/provider", "invalidAction"]));
 }
 
 /**
@@ -1129,14 +1156,15 @@ async function cmdProvider(ctx: CommandContext, args: string): Promise<void> {
  * Scans the server, lets user pick a model, registers it, and switches.
  */
 async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): Promise<void> {
+  const t = providerText(ctx.swarmflowHomeDir);
   const session = ctx.session;
   const preset = findProviderPreset(providerId);
   if (!preset?.localServer) {
-    ctx.showMessage(`'${providerId}' is not a local provider.`);
+    ctx.showMessage(t.get(["Commands", "/provider", "local", "notLocal"], { provider: providerId }));
     return;
   }
   if (!ctx.promptSelect) {
-    ctx.showMessage("Interactive model discovery is not available in this UI.");
+    ctx.showMessage(t.get(["Commands", "/provider", "custom", "notAvailable"]));
     return;
   }
 
@@ -1144,10 +1172,10 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
 
   // 让用户确认或更改URL
   const urlChoice = await ctx.promptSelect({
-    message: `${preset.name}: Server URL`,
+    message: t.get(["Commands", "/provider", "local", "serverUrl"], { provider: preset.name }),
     options: [
-      { label: `Use default (${defaultUrl})`, value: defaultUrl },
-      { label: "Enter custom URL...", value: "__custom__" },
+      { label: t.get(["Commands", "/provider", "local", "useDefault"], { url: defaultUrl }), value: defaultUrl },
+      { label: t.get(["Commands", "/provider", "local", "customUrl"]), value: "__custom__" },
     ],
   });
   if (!urlChoice) return;
@@ -1155,20 +1183,20 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
   let baseUrl = urlChoice;
   if (urlChoice === "__custom__") {
     const custom = await ctx.promptSecret?.({
-      message: `${preset.name}: Enter server URL`,
+        message: t.get(["Commands", "/provider", "local", "enterUrl"], { provider: preset.name }),
     });
     if (!custom?.trim()) return;
     baseUrl = custom.trim();
   }
 
   // 发现模型——先不带钥匙试一试，然后再问是否需要
-  ctx.showMessage(`Scanning ${baseUrl} ...`);
+  ctx.showMessage(t.get(["Commands", "/provider", "local", "scan"], { url: baseUrl }));
   let apiKey = "local";
   let discovered = await fetchModelsFromServer(baseUrl, 5000, apiKey);
   if (discovered.length === 0) {
     // 可能是一个验证问题-要求API密钥
     const keyInput = await ctx.promptSecret?.({
-      message: `${preset.name}: API key (Enter to skip if none required)`,
+      message: t.get(["Commands", "/provider", "local", "apiKey"], { provider: preset.name }),
       allowEmpty: true,
     });
     if (keyInput?.trim()) {
@@ -1178,15 +1206,14 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
   }
   if (discovered.length === 0) {
     ctx.showMessage(
-      `No models found at ${baseUrl}.\n` +
-      "Make sure the server is running and has at least one model loaded.",
+      t.get(["Commands", "/provider", "local", "noneFound"], { url: baseUrl }),
     );
     return;
   }
 
   // 让用户选择一个模型
   const modelChoice = await ctx.promptSelect({
-    message: `${preset.name}: ${discovered.length} model(s) found`,
+    message: t.get(["Commands", "/provider", "local", "found"], { provider: preset.name, count: discovered.length }),
     options: discovered.map((m) => ({
       label: m.contextLength
         ? `${m.id} (${Math.round(m.contextLength / 1024)}K ctx)`
@@ -1201,19 +1228,19 @@ async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): P
     // 大多数本地服务器不会通过/v1/models报告上下文长度。
     // 提示用户指定它（与init向导相同）。
     const ctxChoice = await ctx.promptSelect({
-      message: `${preset.name}: Context length not reported by server`,
+      message: t.get(["Commands", "/provider", "local", "contextUnknown"], { provider: preset.name }),
       options: [
         { label: "8K", value: "8192" },
         { label: "32K", value: "32768" },
         { label: "64K", value: "65536" },
         { label: "128K", value: "131072" },
-        { label: "Enter custom...", value: "__custom__" },
+        { label: t.get(["Commands", "/provider", "local", "enterContext"]), value: "__custom__" },
       ],
     });
     if (!ctxChoice) return;
     if (ctxChoice === "__custom__") {
       const ctxInput = await ctx.promptSecret?.({
-        message: `${preset.name}: Context length (tokens)`,
+        message: t.get(["Commands", "/provider", "local", "contextTokens"], { provider: preset.name }),
       });
       contextLength = parseInt(ctxInput ?? "", 10) || 32768;
     } else {
@@ -1322,9 +1349,9 @@ export function normalizeEndpointUrl(raw: string): {
 }
 
 /* 自定义端点的最佳可达性探测。 */
-async function testEndpoint(baseUrl: string, apiKey: string | undefined, protocol: string): Promise<{ ok: boolean; detail: string }> {
+async function testEndpoint(baseUrl: string, apiKey: string | undefined, protocol: string, t: UiText): Promise<{ ok: boolean; detail: string }> {
   if (wireProtocolFromStored(protocol) !== "openai-chat-completions") {
-    return { ok: true, detail: "skipped (this protocol does not expose a standard /models endpoint)" };
+    return { ok: true, detail: t.get(["Commands", "/provider", "custom", "endpointSkipped"]) };
   }
   try {
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
@@ -1334,10 +1361,20 @@ async function testEndpoint(baseUrl: string, apiKey: string | undefined, protoco
     if (apiKey && apiKey !== "local") headers["Authorization"] = `Bearer ${apiKey}`;
     const res = await fetch(url, { headers, signal: controller.signal });
     clearTimeout(timer);
-    if (res.ok) return { ok: true, detail: `reachable (HTTP ${res.status})` };
-    return { ok: false, detail: `HTTP ${res.status}${res.status === 401 || res.status === 403 ? " — check API key" : ""}` };
+    if (res.ok) {
+      return { ok: true, detail: t.get(["Commands", "/provider", "custom", "endpointHttp"], { status: res.status }) };
+    }
+    const suffix = res.status === 401 || res.status === 403
+      ? t.language === "zh" ? " — 请检查 API 密钥" : " — check API key"
+      : "";
+    return { ok: false, detail: t.get(["Commands", "/provider", "custom", "endpointHttpError"], { status: res.status, suffix }) };
   } catch (e) {
-    return { ok: false, detail: `unreachable: ${e instanceof Error ? e.message : String(e)}` };
+    return {
+      ok: false,
+      detail: t.get(["Commands", "/provider", "custom", "endpointUnreachable"], {
+        message: e instanceof Error ? e.message : String(e),
+      }),
+    };
   }
 }
 
@@ -1347,18 +1384,19 @@ async function promptTokenCount(
   message: string,
   suggested: number | undefined,
   opts: { allowSkip?: boolean },
+  t: UiText,
 ): Promise<number | undefined> {
   const choices: CommandOption[] = [];
-  if (suggested && suggested > 0) choices.push({ label: `${fmtTokens(suggested)}  (from models.dev)`, value: String(suggested) });
-  if (opts.allowSkip) choices.push({ label: "Use default (skip)", value: "__skip__" });
+  if (suggested && suggested > 0) choices.push({ label: `${fmtTokens(suggested)}  (${t.language === "zh" ? "接口返回" : "reported by endpoint"})`, value: String(suggested) });
+  if (opts.allowSkip) choices.push({ label: t.language === "zh" ? "使用默认值（跳过）" : "Use default (skip)", value: "__skip__" });
   for (const v of [8192, 32768, 65536, 131072, 200000, 1_000_000]) {
     if (v !== suggested) choices.push({ label: fmtTokens(v), value: String(v) });
   }
-  choices.push({ label: "Enter custom...", value: "__custom__" });
+  choices.push({ label: t.get(["Commands", "/provider", "custom", "enterCustom"]), value: "__custom__" });
   const c = await ctx.promptSelect!({ message, options: choices });
   if (!c || c === "__skip__") return undefined;
   if (c === "__custom__") {
-    const inp = (await ctx.promptSecret!({ message: "Enter number of tokens" }))?.trim();
+    const inp = (await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "custom", "tokenCount"]) }))?.trim();
     const n = parseInt(inp ?? "", 10);
     return Number.isFinite(n) && n > 0 ? n : undefined;
   }
@@ -1375,9 +1413,10 @@ async function addModelsInteractive(
   opts: { label: string; baseUrl: string; protocol: string; apiKey?: string; existingIds?: Set<string> },
 ): Promise<CustomModelEntry[] | null> {
   const { label, baseUrl, protocol, apiKey } = opts;
+  const t = providerText(ctx.swarmflowHomeDir);
   let discovered: Array<{ id: string; contextLength?: number }> = [];
   if (canDiscoverModels(protocol)) {
-    ctx.showMessage(`Scanning ${baseUrl} for models...`);
+    ctx.showMessage(t.get(["Commands", "/provider", "custom", "scan"], { baseUrl }));
     discovered = await fetchModelsFromServer(baseUrl, 6000, apiKey || "local");
   }
   const added: CustomModelEntry[] = [];
@@ -1386,39 +1425,56 @@ async function addModelsInteractive(
     const remaining = discovered.filter((d) => !addedIds.has(d.id));
     const choices: CommandOption[] = [];
     for (const d of remaining) {
-      choices.push({ label: d.contextLength ? `${d.id}  (${fmtTokens(d.contextLength)} ctx)` : d.id, value: `pick:${d.id}` });
+      choices.push({ label: d.contextLength
+        ? `${d.id}  (${fmtTokens(d.contextLength)} ${t.get(["Commands", "/provider", "custom", "contextSuffix"])})`
+        : d.id, value: `pick:${d.id}` });
     }
-    choices.push({ label: "+ Enter a model id manually", value: "__manual__" });
-    if (added.length > 0) choices.push({ label: `✓ Done — save ${added.length} model${added.length > 1 ? "s" : ""}`, value: "__done__" });
-    choices.push({ label: added.length > 0 ? "Cancel (discard)" : "Cancel", value: "__cancel__" });
+    choices.push({ label: t.get(["Commands", "/provider", "custom", "manualModel"]), value: "__manual__" });
+    if (added.length > 0) choices.push({ label: t.get(["Commands", "/provider", "custom", "done"], { count: added.length }), value: "__done__" });
+    choices.push({ label: added.length > 0
+      ? t.get(["Commands", "/provider", "custom", "cancel"])
+      : t.get(["Commands", "/provider", "custom", "cancelShort"]), value: "__cancel__" });
     const choice = await ctx.promptSelect!({
-      message: discovered.length ? `${label} — pick a model to add (${remaining.length} available)` : `${label} — add a model`,
+      message: discovered.length
+        ? t.get(["Commands", "/provider", "custom", "pickModel"], { label, count: remaining.length })
+        : t.get(["Commands", "/provider", "custom", "addModel"], { label }),
       options: choices,
     });
     if (!choice || choice === "__cancel__") return null;
     if (choice === "__done__") return added;
     const modelId = choice === "__manual__"
-      ? ((await ctx.promptSecret!({ message: `${label} — model id` }))?.trim() ?? "")
+      ? ((await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "custom", "modelId"], { label }) }))?.trim() ?? "")
       : choice.slice("pick:".length);
     if (!modelId || addedIds.has(modelId)) continue;
     const reportedCtx = discovered.find((d) => d.id === modelId)?.contextLength;
-    const ctxLen = await promptTokenCount(ctx, `${label} / ${modelId} — context length (required)`, reportedCtx, { allowSkip: false });
-    if (!ctxLen) { ctx.showMessage("Context length is required — model not added."); continue; }
+    const ctxLen = await promptTokenCount(
+      ctx,
+      t.get(["Commands", "/provider", "custom", "contextLength"], { label, model: modelId }),
+      reportedCtx,
+      { allowSkip: false },
+      t,
+    );
+    if (!ctxLen) { ctx.showMessage(t.get(["Commands", "/provider", "custom", "contextLengthMissing"])); continue; }
     const mmChoice = await ctx.promptSelect!({
-      message: `${label} / ${modelId} — multimodal (image input)?`,
+      message: t.get(["Commands", "/provider", "custom", "multimodal"], { label, model: modelId }),
       options: [
-        { label: "No  (default)", value: "no" },
-        { label: "Yes", value: "yes" },
+        { label: t.get(["Commands", "/provider", "custom", "no"]), value: "no" },
+        { label: t.get(["Commands", "/provider", "custom", "yes"]), value: "yes" },
       ],
     });
     if (mmChoice === undefined) continue;
-    const maxOut = await promptTokenCount(ctx, `${label} / ${modelId} — max output tokens (optional)`, undefined, { allowSkip: true });
+    const maxOut = await promptTokenCount(
+      ctx,
+      t.get(["Commands", "/provider", "custom", "maxOutput"], { label, model: modelId }),
+      undefined,
+      { allowSkip: true },
+      t,
+    );
     const entry: CustomModelEntry = { id: modelId, context_length: ctxLen };
     if (mmChoice === "yes") entry.multimodal = true;
     if (maxOut) entry.max_output_tokens = maxOut;
     added.push(entry);
     addedIds.add(modelId);
-    ctx.showMessage(`Added ${modelId}. Pick another or choose Done.`);
   }
 }
 
@@ -1438,14 +1494,15 @@ function registerCustomModel(config: any, providerId: string, baseUrl: string, p
 }
 
 async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: ProviderWireProtocol): Promise<boolean> {
+  const t = providerText(ctx.swarmflowHomeDir);
   if (!ctx.promptSecret || !ctx.promptSelect) {
-    ctx.showMessage("Interactive provider setup is not available in this UI.");
+    ctx.showMessage(t.get(["Commands", "/provider", "custom", "notAvailable"]));
     return false;
   }
   const config = ctx.session.config;
 
   // 1. 显示名称→唯一提供者id
-  const label = (await ctx.promptSecret({ message: "Custom provider — display name (e.g. My LLM)" }))?.trim();
+  const label = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "displayName"]) }))?.trim();
   if (!label) return false;
   const existingProviders = loadGlobalSettings(ctx.swarmflowHomeDir).providers ?? {};
   const baseId = slugifyProviderId(label);
@@ -1455,23 +1512,22 @@ async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: Provi
   }
 
   // 2. 端点URL -从提供者文档中接受完整的端点并进行规范化。
-  const rawUrl = (await ctx.promptSecret({ message: `${label} — endpoint URL (paste the full URL from the docs, e.g. https://api.example.com/v1/chat/completions)` }))?.trim();
+  const rawUrl = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "endpoint"], { label }) }))?.trim();
   if (!rawUrl) return false;
   const norm = normalizeEndpointUrl(rawUrl);
   const baseUrl = norm.baseUrl;
-  if (norm.changed) ctx.showMessage(`ℹ Using base URL ${baseUrl}`);
+  if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl }));
 
   // 3. 协议-先显示四个通用接口；当URL后缀可识别时提供默认值。
   let protocol: StoredProviderProtocol | undefined;
   if (initialProtocol) {
     protocol = storedProtocolFromWire(initialProtocol);
-    ctx.showMessage(`ℹ Protocol set to ${initialProtocol}.`);
   } else {
     const detected = norm.protocol ? wireProtocolFromStored(norm.protocol) : undefined;
     const picked = await ctx.promptSelect({
-      message: `${label} — API protocol`,
+      message: t.get(["Commands", "/provider", "custom", "protocol"], { label }),
       options: WIRE_PROTOCOL_CHOICES.map((choice) => ({
-        label: `${choice.label}${choice.value === detected ? "  (detected)" : ""}`,
+        label: `${t.get(["Commands", "/provider", "protocol", choice.key])}${choice.value === detected ? `  ${t.get(["Commands", "/provider", "custom", "detected"])}` : ""}`,
         value: choice.value,
       })),
     });
@@ -1481,11 +1537,7 @@ async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: Provi
   if (!protocol) return false;
 
   // 4. API密钥（可选）
-  const apiKey = (await ctx.promptSecret({ message: `${label} — API key (Enter to skip if none required)`, allowEmpty: true }))?.trim();
-
-  // 可达性探测（信息；用户仍然可以以任何一种方式继续）。
-  const probe = await testEndpoint(baseUrl, apiKey, protocol);
-  ctx.showMessage(probe.ok ? `✓ Endpoint ${probe.detail}` : `⚠ Endpoint ${probe.detail} — you can still continue and add models manually.`);
+  const apiKey = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "apiKey"], { label }), allowEmpty: true }))?.trim();
 
   // 5 - 6。发现+添加模型（多模型循环，不关闭后每个）。
   const added = await addModelsInteractive(ctx, { label, baseUrl, protocol, apiKey });
@@ -1504,28 +1556,29 @@ async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: Provi
   persistSettingsPatch({ providers: { ...(cur.providers ?? {}), [providerId]: entry } }, ctx.swarmflowHomeDir);
 
   for (const m of added) registerCustomModel(config, providerId, baseUrl, protocol, apiKeyRef, m);
-  ctx.showMessage(`✓ Added custom provider "${label}" with ${added.length} model${added.length > 1 ? "s" : ""}.`);
+  appendProviderSwitchEcho(ctx, t.get(["Commands", "/provider", "custom", "addedProvider"], { label, count: added.length }));
   return true;
 }
 
 /* 管理一个现有的自定义提供者：添加/删除模型，删除提供者。 */
 async function cmdManageCustomProvider(ctx: CommandContext, providerId: string): Promise<void> {
-  if (!ctx.promptSelect) { ctx.showMessage("Not available in this UI."); return; }
+  const t = providerText(ctx.swarmflowHomeDir);
+  if (!ctx.promptSelect) { ctx.showMessage(t.get(["Commands", "/provider", "custom", "notAvailable"])); return; }
   const config = ctx.session.config;
   const settings = loadGlobalSettings(ctx.swarmflowHomeDir);
   const entry = settings.providers?.[providerId];
-  if (!entry) { ctx.showMessage(`Provider "${providerId}" not found.`); return; }
+  if (!entry) { ctx.showMessage(t.get(["Commands", "/provider", "manage", "notFound"], { provider: providerId })); return; }
   const label = entry.label ?? providerId;
   const models = entry.models ?? [];
 
   const action = await ctx.promptSelect({
-    message: `Manage "${label}" (${models.length} model${models.length === 1 ? "" : "s"})`,
+    message: t.get(["Commands", "/provider", "manage", "title"], { label, count: models.length }),
     options: [
-      { label: "Add model(s)", value: "add" },
-      { label: "Edit endpoint / API key", value: "edit" },
-      { label: "Remove a model", value: "rm" },
-      { label: "Delete this provider", value: "del" },
-      { label: "Cancel", value: "cancel" },
+      { label: t.get(["Commands", "/provider", "manage", "add"]), value: "add" },
+      { label: t.get(["Commands", "/provider", "manage", "edit"]), value: "edit" },
+      { label: t.get(["Commands", "/provider", "manage", "remove"]), value: "rm" },
+      { label: t.get(["Commands", "/provider", "manage", "delete"]), value: "del" },
+      { label: t.get(["Commands", "/provider", "manage", "cancel"]), value: "cancel" },
     ],
   });
   if (!action || action === "cancel") return;
@@ -1537,13 +1590,13 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     persistSettingsPatch({ providers: next }, ctx.swarmflowHomeDir);
 
   if (action === "edit") {
-    const newUrl = (await ctx.promptSecret!({ message: `${label} — new endpoint URL (Enter to keep "${entry.base_url}")`, allowEmpty: true }))?.trim();
-    const newKey = (await ctx.promptSecret!({ message: `${label} — new API key (Enter to keep current)`, allowEmpty: true }))?.trim();
+    const newUrl = (await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "manage", "newEndpoint"], { label, current: entry.base_url ?? "" }), allowEmpty: true }))?.trim();
+    const newKey = (await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "manage", "newApiKey"], { label }), allowEmpty: true }))?.trim();
     let newBaseUrl = entry.base_url || "";
     if (newUrl) {
       const norm = normalizeEndpointUrl(newUrl);
       newBaseUrl = norm.baseUrl;
-      if (norm.changed) ctx.showMessage(`ℹ Using base URL ${newBaseUrl}`);
+      if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl: newBaseUrl }));
     }
     let apiKeyField = entry.api_key;
     if (newKey) {
@@ -1556,8 +1609,13 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     const ref = apiKeyField ?? "local";
     for (const m of models) registerCustomModel(config, providerId, newBaseUrl, protocol, ref, m);
     const probeKey = newKey || (apiKeyField?.startsWith("${") ? process.env[apiKeyField.slice(2, -1)] : apiKeyField);
-    const probe = await testEndpoint(newBaseUrl, probeKey, protocol);
-    ctx.showMessage(`Updated "${label}". ${probe.ok ? "✓ " + probe.detail : "⚠ " + probe.detail}`);
+    const probe = await testEndpoint(newBaseUrl, probeKey, protocol, t);
+    ctx.showMessage(t.get(["Commands", "/provider", "manage", "updated"], {
+      label,
+      detail: probe.ok
+        ? t.get(["Commands", "/provider", "custom", "endpointReachable"], { detail: probe.detail })
+        : t.get(["Commands", "/provider", "custom", "endpointUnavailable"], { detail: probe.detail }),
+    }));
     return;
   }
 
@@ -1570,14 +1628,14 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     const merged = [...models, ...newModels];
     saveProviders({ ...settings.providers, [providerId]: { ...entry, models: merged } });
     for (const m of newModels) registerCustomModel(config, providerId, entry.base_url ?? "", protocol, apiKeyRef, m);
-    ctx.showMessage(`Added ${newModels.length} model${newModels.length > 1 ? "s" : ""} to "${label}".`);
+    ctx.showMessage(t.get(["Commands", "/provider", "manage", "addResult"], { count: newModels.length, label }));
     return;
   }
 
   if (action === "rm") {
-    if (models.length === 0) { ctx.showMessage("No models to remove."); return; }
+    if (models.length === 0) { ctx.showMessage(t.get(["Commands", "/provider", "manage", "noneToRemove"])); return; }
     const pick = await ctx.promptSelect({
-      message: `Remove which model from "${label}"?`,
+      message: t.get(["Commands", "/provider", "manage", "removeWhich"], { label }),
       options: models.map((m) => ({ label: m.id, value: m.id })),
     });
     if (!pick) return;
@@ -1590,20 +1648,26 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
       saveProviders({ ...settings.providers, [providerId]: { ...entry, models: kept } });
     }
     config.removeModel?.(`${providerId}:${pick}`);
-    ctx.showMessage(`Removed model ${pick}${kept.length === 0 ? ` and deleted empty provider "${label}"` : ""}.`);
+    ctx.showMessage(t.get(["Commands", "/provider", "manage", "removed"], {
+      model: pick,
+      extra: kept.length === 0 ? t.get(["Commands", "/provider", "manage", "deletedEmpty"], { label }) : "",
+    }) + (t.language === "zh" ? "。" : "."));
     return;
   }
 
   if (action === "del") {
     const confirm = await ctx.promptSelect({
-      message: `Delete provider "${label}" and its ${models.length} model(s)?`,
-      options: [{ label: "Yes, delete", value: "yes" }, { label: "No, keep it", value: "no" }],
+      message: t.get(["Commands", "/provider", "manage", "deleteConfirm"], { label, count: models.length }),
+      options: [
+        { label: t.get(["Commands", "/provider", "manage", "yesDelete"]), value: "yes" },
+        { label: t.get(["Commands", "/provider", "manage", "noKeep"]), value: "no" },
+      ],
     });
     if (confirm !== "yes") return;
     const next = { ...settings.providers }; delete next[providerId];
     saveProviders(next);
     for (const m of models) config.removeModel?.(`${providerId}:${m.id}`);
-    ctx.showMessage(`Deleted provider "${label}".`);
+    ctx.showMessage(t.get(["Commands", "/provider", "manage", "deleted"]));
   }
 }
 
@@ -1780,10 +1844,7 @@ async function cmdLanguage(ctx: CommandContext, args: string): Promise<void> {
 
 async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;
-  if (!session || (session.turnCount ?? 0) === 0) {
-    ctx.showMessage("Start a conversation first before renaming.");
-    return;
-  }
+  if (!session) return;
 
   const trimmed = args.trim();
   if (trimmed) {
@@ -1822,93 +1883,95 @@ async function cmdRename(ctx: CommandContext, args: string): Promise<void> {
 // /法典命令
 // ------------------------------------------------------------------
 
-function codexOptions(): CommandOption[] {
+function codexOptions(t: UiText = providerText()): CommandOption[] {
   const token = readOAuthAccessToken();
   const loggedIn = hasOAuthTokens() && token && !isTokenExpiring(token);
   const options: CommandOption[] = [];
   if (loggedIn) {
-    options.push({ label: "status", value: "status" });
-    options.push({ label: "logout", value: "logout" });
+    options.push({ label: t.get(["Commands", "/provider", "oauth", "status"]), value: "status" });
+    options.push({ label: t.get(["Commands", "/provider", "oauth", "logout"]), value: "logout" });
   } else {
-    options.push({ label: "login", value: "login" });
+    options.push({ label: t.get(["Commands", "/provider", "oauth", "login"]), value: "login" });
   }
   return options;
 }
 
 async function cmdCodex(ctx: CommandContext, args: string): Promise<void> {
+  const t = providerText(ctx.swarmflowHomeDir);
   const sub = args.trim().toLowerCase();
 
   if (sub === "login" || sub === "") {
     const token = readOAuthAccessToken();
     const loggedIn = hasOAuthTokens() && token && !isTokenExpiring(token);
     if (loggedIn && sub !== "login") {
-      ctx.showMessage("Already logged in to OpenAI ChatGPT.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "codexAlready"]));
       return;
     }
     if (ctx.requestOAuthLogin) {
       const tokens = await ctx.requestOAuthLogin("codex");
       if (!tokens) {
-        ctx.showMessage("Login cancelled.");
+        ctx.showMessage(t.get(["Commands", "/provider", "oauth", "loginCancelled"]));
       }
     } else {
-      ctx.showMessage("OAuth login is not available in this environment.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "unavailable"]));
     }
     return;
   }
 
   if (sub === "logout") {
     clearOAuthTokens();
-    ctx.showMessage("OpenAI ChatGPT tokens cleared.");
+    ctx.showMessage(t.get(["Commands", "/provider", "oauth", "codexCleared"]));
     return;
   }
 
   if (sub === "status") {
     const token = readOAuthAccessToken();
     if (!token || !hasOAuthTokens()) {
-      ctx.showMessage("Not logged in.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "notLoggedIn"]));
       return;
     }
     if (isTokenExpiring(token)) {
-      ctx.showMessage("Logged in (token expiring soon).");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "expiring"]));
     } else {
-      ctx.showMessage("Logged in.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "loggedIn"]));
     }
     return;
   }
 
-  ctx.showMessage(`Unknown Codex login action: ${sub}`);
+  ctx.showMessage(t.get(["Commands", "/provider", "oauth", "unknownCodex"], { action: sub }));
 }
 
 // ------------------------------------------------------------------
 // /副驾驶员命令
 // ------------------------------------------------------------------
 
-function copilotOptions(): CommandOption[] {
+function copilotOptions(t: UiText = providerText()): CommandOption[] {
   const options: CommandOption[] = [];
   if (hasGitHubTokens()) {
-    options.push({ label: "status", value: "status" });
-    options.push({ label: "logout", value: "logout" });
+    options.push({ label: t.get(["Commands", "/provider", "oauth", "status"]), value: "status" });
+    options.push({ label: t.get(["Commands", "/provider", "oauth", "logout"]), value: "logout" });
   } else {
-    options.push({ label: "login", value: "login" });
+    options.push({ label: t.get(["Commands", "/provider", "oauth", "login"]), value: "login" });
   }
   return options;
 }
 
 async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
+  const t = providerText(ctx.swarmflowHomeDir);
   const sub = args.trim().toLowerCase();
 
   if (sub === "login" || sub === "") {
     if (hasGitHubTokens() && sub !== "login") {
-      ctx.showMessage("Already logged in to GitHub Copilot.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "copilotAlready"]));
       return;
     }
     if (ctx.requestOAuthLogin) {
       const result = await ctx.requestOAuthLogin("copilot");
       if (!result) {
-        ctx.showMessage("Login cancelled.");
+        ctx.showMessage(t.get(["Commands", "/provider", "oauth", "loginCancelled"]));
       }
     } else {
-      ctx.showMessage("OAuth login is not available in this environment.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "unavailable"]));
     }
     return;
   }
@@ -1925,20 +1988,20 @@ async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
     } catch {
       // 忽略
     }
-    ctx.showMessage("GitHub Copilot tokens cleared.");
+    ctx.showMessage(t.get(["Commands", "/provider", "oauth", "copilotCleared"]));
     return;
   }
 
   if (sub === "status") {
     if (!hasGitHubTokens()) {
-      ctx.showMessage("Not logged in.");
+      ctx.showMessage(t.get(["Commands", "/provider", "oauth", "notLoggedIn"]));
       return;
     }
-    ctx.showMessage("Logged in.");
+    ctx.showMessage(t.get(["Commands", "/provider", "oauth", "loggedIn"]));
     return;
   }
 
-  ctx.showMessage(`Unknown Copilot login action: ${sub}`);
+  ctx.showMessage(t.get(["Commands", "/provider", "oauth", "unknownCopilot"], { action: sub }));
 }
 
 
@@ -2428,24 +2491,24 @@ async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
  */
 export function buildDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-  registerBuiltin(registry, { name: "/help", handler: cmdHelp, category: "Session" });
-  registerBuiltin(registry, { name: "/usage", handler: cmdUsage, category: "Session" });
-  registerBuiltin(registry, { name: "/new", handler: cmdNew, category: "Session" });
-  registerBuiltin(registry, { name: "/rename", handler: cmdRename, category: "Session" });
-  registerBuiltin(registry, { name: "/status", handler: cmdStatus, category: "Session" });
+  registerBuiltin(registry, { name: "/help", handler: cmdHelp, executionMode: "whenBusy", category: "Session" });
+  registerBuiltin(registry, { name: "/usage", handler: cmdUsage, executionMode: "always", category: "Session" });
+  registerBuiltin(registry, { name: "/new", handler: cmdNew, executionMode: "always", category: "Session" });
+  registerBuiltin(registry, { name: "/rename", handler: cmdRename, executionMode: "whenBusy", category: "Session" });
+  registerBuiltin(registry, { name: "/status", handler: cmdStatus, executionMode: "always", category: "Session" });
 
-  registerBuiltin(registry, { name: "/compact", handler: cmdCompact, category: "Context" });
-  registerBuiltin(registry, { name: "/clear", handler: cmdClear, category: "Context" });
+  registerBuiltin(registry, { name: "/compact", handler: cmdCompact, executionMode: "queued", category: "Context" });
+  registerBuiltin(registry, { name: "/clear", handler: cmdClear, executionMode: "always", category: "Context" });
   registerBuiltin(registry, { name: "/fork", handler: cmdFork, category: "Context" });
-  registerBuiltin(registry, { name: "/ps", handler: cmdShells, category: "Context" });
+  registerBuiltin(registry, { name: "/ps", handler: cmdShells, executionMode: "always", category: "Context" });
   registerBuiltin(registry, { name: "/ask", handler: cmdAsk, category: "Context" });
 
   registerBuiltin(registry, { name: "/init", handler: cmdInit, category: "Workflow" });
-  registerBuiltin(registry, { name: "/plan", handler: cmdPlan, category: "Workflow" });
+  registerBuiltin(registry, { name: "/plan", handler: cmdPlan, executionMode: "queued", category: "Workflow" });
   registerBuiltin(registry, { name: "/goal", handler: cmdGoal, category: "Workflow" });
   registerBuiltin(registry, { name: "/fix", handler: cmdFix, category: "Workflow" });
   registerBuiltin(registry, { name: "/reviewer", handler: cmdReviewer, options: reviewOptions, picker: { title: "Reviewer", inputArea: true }, category: "Workflow" });
-  registerBuiltin(registry, { name: "/diff", handler: cmdDiff, category: "Workflow" });
+  registerBuiltin(registry, { name: "/diff", handler: cmdDiff, executionMode: "whenBusy", category: "Workflow" });
 
   registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
   registerBuiltin(registry, { name: "/model", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
@@ -2456,10 +2519,10 @@ export function buildDefaultRegistry(): CommandRegistry {
   registerBuiltin(registry, { name: "/skills-creater", handler: cmdSkillsCreater, category: "Ecosystem" });
   registerBuiltin(registry, { name: "/mcp", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
   registerBuiltin(registry, { name: "/hooks", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
-  registerBuiltin(registry, { name: "/memory", handler: cmdMemory, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/memory", handler: cmdMemory, executionMode: "always", category: "Ecosystem" });
   registerBuiltin(registry, { name: "/rules", handler: cmdRules, category: "Project Configuration" });
-  registerBuiltin(registry, { name: "/theme", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, category: "UI" });
-  registerBuiltin(registry, { name: "/language", handler: cmdLanguage, options: languageOptions, picker: { inputArea: true }, category: "UI" });
+  registerBuiltin(registry, { name: "/theme", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, executionMode: "whenBusy", category: "UI" });
+  registerBuiltin(registry, { name: "/language", handler: cmdLanguage, options: languageOptions, picker: { inputArea: true }, executionMode: "whenBusy", category: "UI" });
   registerBuiltin(registry, { name: "/rewind", handler: cmdRewind, options: rewindOptions, picker: { title: "Rewind", inputArea: true }, category: "Context" });
   return registry;
 }

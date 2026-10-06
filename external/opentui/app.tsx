@@ -11,6 +11,7 @@ import type { SessionStore } from "../../src/config/persistence.js";
 import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
 import { saveLog } from "../../src/config/persistence.js";
 import { projectQueuedInputs } from "../../src/context/log-projection.js";
+import { enqueueDeferredCommand, takeReadyDeferredCommand, type DeferredCommand } from "../../src/ui/deferred-command.js";
 import { ProgressReporter, type ProgressEvent } from "../../src/lib/progress.js";
 import { getLocalizedCommandDescription } from "../../src/commands/commands.js";
 import { scanCandidates } from "../../src/lib/file-attach.js";
@@ -53,11 +54,9 @@ import {
   type TextareaRenderable,
 } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
-import "./forked/patch-opentui-markdown.js";
-import { applyMarkdownTheme } from "./forked/patch-opentui-markdown.js";
+import { setShikiTheme } from "./forked/shiki-highlighter.js";
+import { setSyntaxHighlightTheme } from "./components/syntax-highlighter.js";
 import {
-  getAssistantRenderer,
-  isMarkdownPatchDisabled,
   isOpenTuiDiagEnabled,
   writeOpenTuiDiag,
 } from "./forked/core/lib/diagnostic.js";
@@ -166,7 +165,6 @@ const GOODBYE_MESSAGES = [
   "Off I go!",
   "Later, gator!",
 ] as const;
-const ASSISTANT_RENDERER_MODE = getAssistantRenderer();
 const DISABLED_TEXTAREA_ACTION = "__disabled__" as unknown as KeyBinding["action"];
 const COMPOSER_KEY_BINDINGS: KeyBinding[] = [
   { name: "return", action: "submit" },
@@ -448,6 +446,10 @@ export function OpenTuiApp({
   useEffect(() => {
     queuedInputsRef.current = queuedInputs;
   }, [queuedInputs]);
+  // Commands that must wait for the active turn to finish are kept outside
+  // Session's user-message inbox so they are never projected to the model.
+  const queuedCommandRef = useRef<DeferredCommand | null>(null);
+  const [queuedCommand, setQueuedCommand] = useState<DeferredCommand | null>(null);
 
   // Work spans are persisted in the session log, so the stopped status also
   // survives restoring a historical session and does not depend on a React
@@ -642,11 +644,10 @@ export function OpenTuiApp({
     composerTokenVisualsRef.current = createComposerTokenVisuals(colors);
   }
   const composerTokenVisuals = composerTokenVisualsRef.current;
-  // Bind markdown render colors (codeBorder/codeFg/HLJS) to the live theme so
-  // mode switches reflect immediately on the next markdown render.
   useEffect(() => {
-    applyMarkdownTheme(theme);
-  }, [theme]);
+    setShikiTheme(theme.mode);
+    setSyntaxHighlightTheme(theme.mode);
+  }, [theme.mode]);
   // -- Usage poller lifecycle (Codex + Copilot) --
   // Start/stop based on current provider. The poller survives model switches
   // within the same session, but must be torn down and rebuilt when the user
@@ -955,8 +956,6 @@ export function OpenTuiApp({
       lastAssistantLength: lastAssistant?.assistantText?.length ?? 0,
       processing,
       markdownMode,
-      assistantRenderer: ASSISTANT_RENDERER_MODE,
-      markdownPatchDisabled: isMarkdownPatchDisabled(),
       activeAgents: childSessions.length,
     });
   }, [childSessions.length, presentationEntries, markdownMode, processing]);
@@ -1347,6 +1346,8 @@ export function OpenTuiApp({
   const beginClosing = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
+    queuedCommandRef.current = null;
+    setQueuedCommand(null);
     clearNetworkStatus();
     setProcessing(false);
     setPhase("closing");
@@ -1661,6 +1662,7 @@ export function OpenTuiApp({
           setPromptSecret({
             message: request.message,
             allowEmpty: request.allowEmpty ?? false,
+            inputArea: request.inputArea ?? true,
           });
           queueMicrotask(() => {
             promptSecretInputRef.current?.focus();
@@ -1760,32 +1762,49 @@ export function OpenTuiApp({
     if (!composer) return draftValue;
     return serializeComposerText(composer, ensureComposerTokenType(composer));
   }, [draftValue]);
-  // Commands that run regardless of streaming state.
-  const UI_ONLY_COMMANDS = new Set(["/new", "/clear", "/usage", "/status", "/memory", "/ps"]);
-  // These commands cannot be queued while a turn is active. `/compact` uses
-  // the same guard so it is never deferred and started after the turn ends.
-  const NON_QUEUEABLE_COMMANDS = new Set(["/mcp", "/skills", "/skills-creater", "/provider", "/model", "/agents", "/permission", "/theme", "/hooks", "/compact"]);
   const handleSubmit = useCallback(async (submittedValue: string) => {
     const input = submittedValue.trim();
     if (!input) return;
     const cmdToken = input.startsWith("/") ? input.split(/\s/)[0] : "";
-    const isUiOnlyCommand = Boolean(cmdToken && UI_ONLY_COMMANDS.has(cmdToken));
-    const isNonQueueableCommand = Boolean(cmdToken && NON_QUEUEABLE_COMMANDS.has(cmdToken));
-    // UI-only commands: always intercept, even when processing
-    if (isUiOnlyCommand) {
+    const slashCommand = cmdToken ? commandRegistry.lookup(cmdToken) : undefined;
+    // 命令注册信息决定能否在工作中执行；不能把斜杠命令当普通消息送入队列。
+    if (slashCommand?.executionMode === "always"
+      || (processingRef.current && slashCommand?.executionMode === "whenBusy")) {
+      if (cmdToken === "/new") {
+        queuedCommandRef.current = null;
+        setQueuedCommand(null);
+      }
       appendPromptHistory(input);
       clearInput();
-      const command = commandRegistry.lookup(cmdToken);
-      if (command) {
-        const args = input.slice(cmdToken.length).trim();
-        try {
-          await command.handler(buildCommandContext(), args);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          session.appendErrorMessage?.(`Command failed (${cmdToken}): ${message}`, "command");
-        }
-        setModelUiRevision((revision) => revision + 1);
+      const args = input.slice(cmdToken.length).trim();
+      try {
+        await slashCommand.handler(buildCommandContext(), args);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        session.appendErrorMessage?.(t.get(["Error", "commandFailed"], { command: cmdToken, message }), "command");
       }
+      setModelUiRevision((revision) => revision + 1);
+      return;
+    }
+    // 等待中的 /plan 已先于后续输入提交；不能在轮次结束与定时分派
+    // 之间让新消息插队，也不能让另一条 /plan 覆盖它。
+    if (queuedCommandRef.current && !processingRef.current) {
+      showHint(t.get(["Error", "alreadyQueued"]));
+      return;
+    }
+    if (processingRef.current && slashCommand?.executionMode === "queued") {
+      const item = enqueueDeferredCommand(
+        commandRegistry, session, input, queuedCommandRef.current, queuedInputsRef.current.length > 0,
+      );
+      if (!item) {
+        showHint(t.get(["Error", "alreadyQueued"]));
+        return;
+      }
+      queuedCommandRef.current = item;
+      setQueuedCommand(item);
+      appendPromptHistory(input);
+      clearInput();
+      showHint(t.get(["Views", "queue", "queued"]));
       return;
     }
     if (pendingAsk) {
@@ -1814,11 +1833,15 @@ export function OpenTuiApp({
     // re-create useCallback closures on every state change.
     const isProcessing = processingRef.current;
     if (isProcessing) {
-      if (isNonQueueableCommand) {
-        showHint(t.get(["Error", "waitForFinish"]));
+      if (cmdToken) {
+        if (!slashCommand) {
+          session.appendErrorMessage?.(t.get(["Error", "unknownCommand"], { command: cmdToken }), "command");
+        } else {
+          showHint(t.get(["Error", "waitForFinish"]));
+        }
         return;
       }
-      if (queuedInputsRef.current.length > 0) {
+      if (queuedInputsRef.current.length > 0 || queuedCommandRef.current) {
         showHint(t.get(["Error", "alreadyQueued"]));
         return;
       }
@@ -1862,7 +1885,10 @@ export function OpenTuiApp({
         session.appendErrorMessage?.(t.get(["Error", "unknownCommand"], { command: cmdName }), "command");
         return;
       }
-      const deferredEcho = cmdName === "/rename" || cmdName === "/compact";
+      // Provider 是多步配置流程；在流程入口回显
+      // "供应商切换为 protocol:..." 会把中间参数误认为最终结果。
+      // 成功/失败信息由 provider 命令流程自己显示。
+      const deferredEcho = cmdName === "/rename" || cmdName === "/compact" || cmdName === "/provider";
       if (!deferredEcho) {
         const echo = resolveCommandEchoDisplay(input, uiText.language);
         if (session.appendCommandEcho) {
@@ -1897,6 +1923,39 @@ export function OpenTuiApp({
     dismissSettledAgents,
     showHint,
   ]);
+  // 普通消息可在同一轮末尾自动续跑；等待 Session 及其消息队列完全空闲。
+  useEffect(() => {
+    if (!queuedCommand) return;
+    const drain = () => {
+      if (closingRef.current || processingRef.current) return;
+      const item = queuedCommandRef.current;
+      const command = takeReadyDeferredCommand(item, session, session.canRunDeferredCommand?.() === true);
+      if (!command) return;
+      if (selectedChildId) return;
+      queuedCommandRef.current = null;
+      setQueuedCommand(null);
+      const cmdToken = command.split(/\s/, 1)[0] ?? "";
+      const handler = commandRegistry.lookup(cmdToken)?.handler;
+      if (!handler) return;
+      const args = command.slice(cmdToken.length).trim();
+      const echo = resolveCommandEchoDisplay(command, uiText.language);
+      if (session.appendCommandEcho) session.appendCommandEcho(echo ?? command, echo ? "switch" : "injected");
+      else session.appendUserInputDisplay?.(echo ?? command);
+      void Promise.resolve()
+        .then(() => handler(buildCommandContext(), args))
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          session.appendErrorMessage?.(uiText.get(["Error", "commandFailed"], { command: cmdToken, message }), "command");
+        });
+    };
+    const timer = setInterval(drain, 100);
+    drain();
+    return () => clearInterval(timer);
+  }, [buildCommandContext, commandRegistry, queuedCommand, selectedChildId, session, uiText]);
+  useEffect(() => {
+    queuedCommandRef.current = null;
+    setQueuedCommand(null);
+  }, [session]);
   const runInjectedCommand = useCallback(async (displayText: string, content: string) => {
     const s = session as any;
     if (typeof s.runInjectedCommand !== "function") {
@@ -3233,7 +3292,7 @@ export function OpenTuiApp({
           />
         );
       })()}
-      pendingMessages={queuedInputs.length > 0 ? (
+      pendingMessages={queuedInputs.length > 0 || queuedCommand ? (
         <box flexDirection="column" gap={0}>
           {queuedInputs.map((queued) => (
             <box key={queued.id} flexDirection="row">
@@ -3243,6 +3302,14 @@ export function OpenTuiApp({
               </box>
             </box>
           ))}
+          {queuedCommand ? (
+            <box flexDirection="row">
+              <box width={1} backgroundColor={theme.colors.accent} />
+              <box paddingLeft={1} paddingRight={1} flexGrow={1} backgroundColor={theme.colors.userWash}>
+                <text fg={theme.colors.dim} content={queuedCommand.text} wrapMode="word" width="100%" />
+              </box>
+            </box>
+          ) : null}
         </box>
       ) : undefined}
       shellRunningCount={shellSnapshots.filter((s) => s.status === "running").length}

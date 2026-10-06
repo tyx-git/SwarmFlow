@@ -6,7 +6,7 @@
  *   `./core/` 是 OpenTUI `packages/core/src` 的源码镜像，只用于类型与阅读
  *   参照；运行期真正加载的是 `node_modules/@opentui/core` 的预编译产物
  *   （build 时原样拷进 runtime/）。因此凡是需要生效的行为修正，都必须像
- *   `patch-opentui-markdown.ts` 一样在运行期对成品包打猴子补丁。
+ *   在运行期对成品包打边界补丁。
  *
  * 修复的崩溃（~/.swarmflow/stderr.log 实录）：
  *   TypeError: Argument 3 must be a uint32

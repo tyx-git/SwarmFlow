@@ -117,6 +117,8 @@ export interface Session {
   setProgressReporter?(reporter: ProgressReporter | undefined): void;
   clearProgressReporter?(reporter: ProgressReporter): void;
   turnCount?: number;
+  currentTurnRunning?: boolean;
+  canRunDeferredCommand?(): boolean;
   compactCount?: number;
   createdAt?: string;
   lastInputTokens: number;

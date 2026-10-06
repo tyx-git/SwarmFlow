@@ -21,20 +21,6 @@ registerEnvVar({
   default: join(homedir(), ".swarmflow", "opentui-diag.jsonl"),
 })
 
-registerEnvVar({
-  name: "OPENTUI_DISABLE_MARKDOWN_PATCH",
-  description: "Disable SwarmFlow's local OpenTUI markdown monkey patch.",
-  type: "boolean",
-  default: false,
-})
-
-registerEnvVar({
-  name: "OPENTUI_ASSISTANT_RENDERER",
-  description: "Assistant message renderer: 'markdown' or 'code'.",
-  type: "string",
-  default: "markdown",
-})
-
 const MAX_DIAG_BYTES = 8 * 1024 * 1024
 /** 同一次运行内允许写到单个日志文件的最大字节数，超出后丢弃后续记录。 */
 /** 启动时把上一次的日志归档成 .1/.2/...，最多保留这么多份。 */
@@ -93,13 +79,6 @@ export function isOpenTuiDiagEnabled(): boolean {
 }
 export function getOpenTuiDiagPath(): string {
   return String(env.OPENTUI_DIAG_PATH)
-}
-export function isMarkdownPatchDisabled(): boolean {
-  return Boolean(env.OPENTUI_DISABLE_MARKDOWN_PATCH)
-}
-export function getAssistantRenderer(): "markdown" | "code" {
-  const value = String(env.OPENTUI_ASSISTANT_RENDERER ?? "markdown").trim().toLowerCase()
-  return value === "code" ? "code" : "markdown"
 }
 export function resetOpenTuiDiagLog(context: Record<string, unknown> = {}): void {
   if (!isOpenTuiDiagEnabled()) return
@@ -161,4 +140,3 @@ export function previewLatin1Sequence(input: string, maxChars: number = 160): st
 export function previewLatin1Hex(input: string, maxBytes: number = 64): string {
   return Buffer.from(input, "latin1").subarray(0, maxBytes).toString("hex")
 }
-

@@ -1210,3 +1210,46 @@ describe("/model command", () => {
     expect(resetForNewSession).not.toHaveBeenCalled();
   });
 });
+
+describe("/provider command", () => {
+  it("uses the Chinese language table for the third-party provider flow by default", () => {
+    const registry = buildDefaultRegistry();
+    const provider = registry.lookup("/provider");
+    expect(provider?.options).toBeTruthy();
+
+    const options = provider!.options!({
+      session: { config: new Config({}) },
+      swarmflowHomeDir: "F:/tmp/swarmflow-provider-language-home",
+    });
+    const custom = options.find((option) => option.value === "__protocol__");
+
+    expect(custom?.label).toBe("按协议添加第三方供应商");
+    expect(custom?.children?.map((option) => option.label)).toEqual([
+      "Anthropic Messages 接口",
+      "OpenAI Chat Completions 接口",
+      "OpenAI Responses API 接口",
+      "Gemini generateContent 接口",
+    ]);
+  });
+});
+
+describe("/rename command", () => {
+  it("allows naming an empty session before the first conversation turn", async () => {
+    const registry = buildDefaultRegistry();
+    const rename = registry.lookup("/rename");
+    const session = {
+      turnCount: 0,
+      setTitle: vi.fn(),
+      getDisplayName: () => "New session",
+    };
+    const appendSwitchCommandEcho = vi.fn();
+
+    await rename!.handler({
+      ...makeContext(registry, session),
+      appendSwitchCommandEcho,
+    }, "Before chat");
+
+    expect(session.setTitle).toHaveBeenCalledWith("Before chat");
+    expect(appendSwitchCommandEcho).toHaveBeenCalledWith("/rename", "Before chat");
+  });
+});

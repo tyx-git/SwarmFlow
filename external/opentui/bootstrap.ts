@@ -270,22 +270,12 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   session.applySettings(settings, modelState);
   await refreshActiveOpenAICodexToken(session);
 
-  // ── Shiki syntax highlighter (disable with SHIKI=0) ──
+  // 预加载独立工具行使用的成熟 Shiki 高亮器。原生 MarkdownRenderable
+  // 自己负责 Tree-sitter 高亮，不再需要应用层补丁。
   if (opts?.initHighlighter !== false) {
-    if (process.env.SHIKI !== "0") {
-      import("./forked/shiki-highlighter.js").then(async ({ initShikiHighlighter }) => {
-        await initShikiHighlighter();
-      }).catch(() => {
-        // Shiki unavailable — silently fall back to hljs.
-        import("./forked/patch-opentui-markdown.js").then(({ setUseShikiHighlighter }) => {
-          setUseShikiHighlighter(false);
-        });
-      });
-    } else {
-      import("./forked/patch-opentui-markdown.js").then(({ setUseShikiHighlighter }) => {
-        setUseShikiHighlighter(false);
-      });
-    }
+    import("./forked/shiki-highlighter.js")
+      .then(({ initShikiHighlighter }) => initShikiHighlighter())
+      .catch(() => undefined);
   }
 
   const commandRegistry = buildDefaultRegistry();

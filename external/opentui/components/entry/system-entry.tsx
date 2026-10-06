@@ -47,7 +47,7 @@ function SystemEntryInner(
     // Strip any prefix like "[No reply] " from text to get the message part
     const message = text.replace(/^\[.*?\]\s*/, "");
     return (
-      <box paddingTop={1} width="100%" flexDirection="row">
+      <box width="100%" flexDirection="row">
         <text content={gradientLabel} attributes={ATTRS_BOLD} />
         <text fg={colors.text} content={`  ${message}`} />
       </box>
@@ -57,14 +57,14 @@ function SystemEntryInner(
   switch (severity) {
     case "error":
       return (
-        <box paddingTop={1} width="100%">
+        <box width="100%">
           <ErrorMessage text={text} colors={colors} />
         </box>
       );
 
     case "interrupted":
       return (
-        <box width="100%" paddingTop={1}>
+        <box width="100%">
           <ErrorMessage text={text} colors={colors} />
         </box>
       );
@@ -78,14 +78,14 @@ function SystemEntryInner(
 
     case "compact":
       return (
-        <box paddingTop={1} width="100%">
+        <box width="100%">
           <text fg={fg} content={text} />
         </box>
       );
 
     default:
       return (
-        <box paddingTop={1} width="100%">
+        <box width="100%">
           <text fg={fg} content={text} />
         </box>
       );

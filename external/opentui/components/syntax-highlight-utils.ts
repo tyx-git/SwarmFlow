@@ -12,7 +12,7 @@ import { extname } from "node:path";
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
 import { displayWidthWithNewlines } from "../composer-token-logic.js";
 import { getUiCommonColors } from "../../../src/config/ui-colors.js";
-import { highlightToChunks } from "../forked/patch-opentui-markdown.js";
+import { highlightToChunks } from "./syntax-highlighter.js";
 import { inferCodeFiletype } from "../forked/core/lib/tree-sitter/resolve-ft.js";
 
 const COMMENT_EXEMPT_COLOR_VALUES = getUiCommonColors().syntaxCommentExempt;

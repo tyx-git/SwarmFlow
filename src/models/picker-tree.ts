@@ -1,9 +1,6 @@
 ﻿import { hasOAuthTokens } from "../auth/openai-oauth.js";
 import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
-import {
-  getCachedCopilotModelIds,
-  isModelVisibleForCurrentPlan,
-} from "../providers/copilot-models-cache.js";
+import { isModelVisibleForCurrentPlan } from "../providers/copilot-models-cache.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
@@ -226,16 +223,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   // `/model` limited to models the user has actually added or registered.
   for (const entry of entries) {
     addModel(entry.provider, entry.model, entry.model);
-  }
-
-  try {
-    if (hasGitHubTokens()) {
-      for (const modelId of getCachedCopilotModelIds() ?? []) {
-        addModel("copilot", modelId, modelId);
-      }
-    }
-  } catch {
-    // 登录状态或模型缓存读取失败时保留用户手动配置的模型。
   }
 
   const presetById = new Map(PROVIDER_PRESETS.map((preset) => [preset.id, preset] as const));

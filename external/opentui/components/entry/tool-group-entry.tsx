@@ -62,7 +62,6 @@ function ToolGroupEntryInner(
       {active ? (
         <box
           flexDirection="row"
-          paddingTop={1}
           width="100%"
         >
           <text fg={indicatorColor} content={`${indicator} `} flexShrink={0} />
@@ -73,7 +72,7 @@ function ToolGroupEntryInner(
           <text fg={colors.dim} content={entry.groupLatestToolText ?? ""} truncate flexGrow={1} flexShrink={1} />
         </box>
       ) : (
-        <box paddingTop={1}>
+        <box>
           <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpand}>
             <box flexDirection="row" width="100%">
               <text fg={indicatorColor} content={`${indicator} `} flexShrink={0} />

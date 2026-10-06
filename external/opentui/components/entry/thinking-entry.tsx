@@ -48,7 +48,7 @@ function ThinkingEntryInner(
   const chevron = expanded ? "▼ " : "▶ ";
 
   return (
-    <box flexDirection="column" paddingTop={1} width="100%" gap={0}>
+    <box flexDirection="column" width="100%" gap={0}>
       <box
         flexDirection="row"
         width="100%"

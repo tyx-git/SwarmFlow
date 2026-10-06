@@ -9,6 +9,7 @@ import {
 import { findProviderPreset } from "../providers/presets.js";
 import { loadGlobalSettings, saveGlobalSettingsPatch } from "../config/persistence.js";
 import type { InputAreaPickerConfig } from "../ui/picker.js";
+import { createUiText, getUiLanguage, type UiText } from "../lib/ui-text.js";
 
 export interface PromptChoice {
   label: string;
@@ -21,7 +22,7 @@ export interface PromptSelectRequest extends InputAreaPickerConfig {
   options: PromptChoice[];
 }
 
-export interface PromptSecretRequest {
+export interface PromptSecretRequest extends InputAreaPickerConfig {
   message: string;
   allowEmpty?: boolean;
 }
@@ -113,9 +114,11 @@ export function maskKey(key: string): string {
   return tail ? `ends —{tail}` : "saved";
 }
 
-function describeCurrentKey(slot: CredentialSlot): string {
+function describeCurrentKey(slot: CredentialSlot, t: UiText): string {
   const key = currentCredentialKey(slot);
-  return key ? `Keep current key (${maskKey(key)})` : `Continue using ${slot.envVar}`;
+  return key
+    ? `${t.get(["Commands", "/provider", "credential", "keepCurrent"])} (${maskKey(key)})`
+    : t.get(["Commands", "/provider", "credential", "currentDescription"], { envVar: slot.envVar });
 }
 
 // ------------------------------------------------------------------
@@ -197,28 +200,29 @@ async function configureNewKey(
   options: EnsureCredentialOptions,
   cancelLabel: string,
 ): Promise<EnsureCredentialResult> {
+  const t = createUiText(getUiLanguage(options.homeDir));
   const candidates = credentialImportCandidates(slot);
   const choice = await adapter.select({
     message: candidates.length > 0
-      ? `${slot.label}: Choose how to configure the API key`
-      : `${slot.label}: No saved key found`,
+      ? `${slot.label}：${t.language === "zh" ? "选择 API 密钥配置方式" : "Choose how to configure the API key"}`
+      : `${slot.label}：${t.language === "zh" ? "没有找到已保存的密钥" : "No saved key found"}`,
     options: [
       ...candidates.map((candidate) => ({
-        label: `Import detected ${candidate.envVar}`,
+        label: t.get(["Commands", "/provider", "credential", "import"], { envVar: candidate.envVar }),
         value: `import:${candidate.envVar}`,
-        description: `Copy ${candidate.envVar} into ${slot.envVar}`,
+        description: t.get(["Commands", "/provider", "credential", "importDescription"], { from: candidate.envVar, to: slot.envVar }),
       })),
       {
-        label: "Paste a key",
+        label: t.get(["Commands", "/provider", "credential", "paste"]),
         value: "paste",
-        description: `Save it as ${slot.envVar}`,
+        description: t.get(["Commands", "/provider", "credential", "saveAs"], { envVar: slot.envVar }),
       },
       {
         label: cancelLabel,
         value: "cancel",
         description: options.mode === "init"
-          ? "Leave this provider unconfigured for now"
-          : "Abort model switching",
+          ? (t.language === "zh" ? "暂时不配置此供应商" : "Leave this provider unconfigured for now")
+          : (t.language === "zh" ? "取消模型切换" : "Abort model switching"),
       },
     ],
   });
@@ -238,7 +242,10 @@ async function configureNewKey(
   }
 
   while (true) {
-    const pasted = await adapter.secret({ message: `${slot.label}: Paste API key`, allowEmpty: false });
+    const pasted = await adapter.secret({
+      message: t.get(["Commands", "/provider", "credential", "pasteMessage"], { label: slot.label }),
+      allowEmpty: false,
+    });
     if (pasted === undefined) {
       return { status: "skipped", envVar: slot.envVar };
     }
@@ -258,12 +265,15 @@ export async function ensureProviderCredential(
   adapter: CredentialPromptAdapter,
   options: EnsureCredentialOptions,
 ): Promise<EnsureCredentialResult> {
+  const t = createUiText(getUiLanguage(options.homeDir));
   const slot = resolveCredentialSlot(providerId, { label: options.label });
   if (!slot) {
     throw new Error(`Provider '${providerId}' does not use a manageable API key.`);
   }
 
-  const cancelLabel = options.mode === "init" ? "Skip" : "Cancel";
+  const cancelLabel = options.mode === "init"
+    ? (t.language === "zh" ? "跳过" : "Skip")
+    : t.get(["Commands", "/provider", "credential", "cancel"]);
 
   if (isCredentialConfigured(slot)) {
     if (!options.allowReplaceExisting) {
@@ -271,17 +281,17 @@ export async function ensureProviderCredential(
     }
 
     const existingChoice = await adapter.select({
-      message: `${slot.label}: An API key is already saved`,
+      message: t.get(["Commands", "/provider", "credential", "savedExists"], { label: slot.label }),
       options: [
-        { label: "Keep current key", value: "keep", description: describeCurrentKey(slot) },
+        { label: t.get(["Commands", "/provider", "credential", "keepCurrent"]), value: "keep", description: describeCurrentKey(slot, t) },
         {
-          label: "Replace key",
+          label: t.get(["Commands", "/provider", "credential", "replace"]),
           value: "replace",
           description: slot.kind === "managed"
-            ? "Import a detected key or paste a new one"
-            : "Paste a new key",
+            ? t.get(["Commands", "/provider", "credential", "replaceDetectedDescription"])
+            : t.get(["Commands", "/provider", "credential", "replaceDescription"]),
         },
-        { label: cancelLabel, value: "cancel", description: "Leave this provider unchanged" },
+        { label: cancelLabel, value: "cancel", description: t.get(["Commands", "/provider", "credential", "unchanged"]) },
       ],
     });
 
@@ -319,6 +329,7 @@ export async function runCredentialManageFlow(
   adapter: CredentialPromptAdapter,
   opts?: { homeDir?: string; label?: string },
 ): Promise<ManageCredentialResult> {
+  const t = createUiText(getUiLanguage(opts?.homeDir));
   const slot = resolveCredentialSlot(providerId, { label: opts?.label });
   if (!slot) {
     throw new Error(`Provider '${providerId}' does not use a manageable API key.`);
@@ -329,23 +340,23 @@ export async function runCredentialManageFlow(
 
   const options: PromptChoice[] = [];
   if (configured) {
-    options.push({ label: "Replace key", value: "replace", description: describeCurrentKey(slot) });
+    options.push({ label: t.get(["Commands", "/provider", "credential", "replace"]), value: "replace", description: describeCurrentKey(slot, t) });
   } else {
-    options.push({ label: "Set key", value: "set", description: `Save it as ${slot.envVar}` });
+    options.push({ label: t.get(["Commands", "/provider", "credential", "set"]), value: "set", description: t.get(["Commands", "/provider", "credential", "saveAs"], { envVar: slot.envVar }) });
   }
   for (const candidate of candidates) {
     options.push({
-      label: `Import detected ${candidate.envVar}`,
+      label: t.get(["Commands", "/provider", "credential", "import"], { envVar: candidate.envVar }),
       value: `import:${candidate.envVar}`,
-      description: `Copy ${candidate.envVar} into ${slot.envVar}`,
+      description: t.get(["Commands", "/provider", "credential", "importDescription"], { from: candidate.envVar, to: slot.envVar }),
     });
   }
   if (configured) {
-    options.push({ label: "Remove key", value: "remove", description: `Delete ${slot.envVar}` });
+    options.push({ label: t.get(["Commands", "/provider", "credential", "remove"]), value: "remove", description: t.get(["Commands", "/provider", "credential", "removeSaved"], { envVar: slot.envVar }) });
   }
-  options.push({ label: "Cancel", value: "cancel" });
+  options.push({ label: t.get(["Commands", "/provider", "credential", "cancel"]), value: "cancel" });
 
-  const action = await adapter.select({ message: `${slot.label} —API key`, options });
+  const action = await adapter.select({ message: `${slot.label} — ${t.get(["Commands", "/provider", "credential", "title"])}`, options });
   if (!action || action === "cancel") {
     return { status: "skipped", envVar: slot.envVar, label: slot.label };
   }
@@ -362,10 +373,10 @@ export async function runCredentialManageFlow(
 
   if (action === "remove") {
     const confirm = await adapter.select({
-      message: `Remove the saved key for ${slot.label}?`,
+      message: t.get(["Commands", "/provider", "credential", "confirmRemove"], { label: slot.label }),
       options: [
-        { label: "Yes, remove it", value: "yes" },
-        { label: "Cancel", value: "no" },
+        { label: t.get(["Commands", "/provider", "credential", "yesRemove"]), value: "yes" },
+        { label: t.get(["Commands", "/provider", "credential", "cancelAction"]), value: "no" },
       ],
     });
     if (confirm !== "yes") {
@@ -377,7 +388,10 @@ export async function runCredentialManageFlow(
 
   // set / replace →paste loop
   while (true) {
-    const pasted = await adapter.secret({ message: `${slot.label}: Paste API key`, allowEmpty: false });
+    const pasted = await adapter.secret({
+      message: t.get(["Commands", "/provider", "credential", "pasteMessage"], { label: slot.label }),
+      allowEmpty: false,
+    });
     if (pasted === undefined) {
       return { status: "skipped", envVar: slot.envVar, label: slot.label };
     }

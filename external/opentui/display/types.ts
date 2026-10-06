@@ -43,7 +43,7 @@ export interface PromptSelectState extends InputAreaPickerConfig {
   footerHint?: string;
 }
 
-export interface PromptSecretState {
+export interface PromptSecretState extends InputAreaPickerConfig {
   message: string;
   allowEmpty: boolean;
 }

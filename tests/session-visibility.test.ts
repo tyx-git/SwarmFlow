@@ -30,6 +30,17 @@ function visibleErrors(h: SessionHarness): Array<{ display: string; errorType: u
 }
 
 describe("runtime-owned error entries", () => {
+  it("does not derive the automatic session name from a model switch echo", () => {
+    const h = makeScriptedSession();
+    try {
+      (h.session as any)._cachedSummary = "模型切换为 ju";
+      h.session.appendCommandEcho("模型切换为 ju", "switch");
+      expect(h.session.getDisplayName()).toBe("New session");
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("writes the error log entry when the provider fails mid-turn", async () => {
     const h = makeScriptedSession({
       rounds: [{ onCall: () => { throw new Error("insufficient balance"); } }],

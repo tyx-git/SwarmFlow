@@ -31,7 +31,6 @@ import { loadDotenv } from "./lifecycle/dotenv.js";
 import { applySystemProxyToEnv } from "./lib/system-proxy.js";
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
 import { VERSION } from "./version.js";
-import { hasAnyManagedCredential } from "./config/managed-provider-credentials.js";
 import { findSessionById, findSessionByName, listSessionsForProject, formatSize } from "./session-resume.js";
 
 /**
@@ -78,7 +77,7 @@ export interface MainDeps {
   homeDir?: string;
   loadDotenv?: (homeDir?: string) => void;
   loadGlobalSettings?: typeof loadGlobalSettings;
-  runInitWizard?: () => Promise<unknown>;
+  runInitWizard?: (homeDir?: string) => Promise<unknown>;
   /** 服务模式入口（Electron 主进程调用）。 */
   runServerMode?: (opts: {
     workDir: string;
@@ -89,7 +88,6 @@ export interface MainDeps {
     configOverrides?: readonly string[];
   }) => Promise<void>;
   findSessionById?: typeof findSessionById;
-  hasAnyManagedCredential?: typeof hasAnyManagedCredential;
   hasGitHubTokens?: () => boolean;
 }
 
@@ -595,29 +593,32 @@ function normalizeLegacyVersionAlias(argv: string[]): void {
 
 /**
  * 确保初始化向导已运行（首次启动）。
- * 向导只配置联网搜索和主题；供应商通过 /provider 配置。
+ * `homeDir` 就是 `~/.swarmflow`：目录存在时读取现有配置，目录不存在时进入向导。
  */
 async function ensureProvidersConfigured(
   homeDir: string,
-  deps: Pick<MainDeps, "loadGlobalSettings" | "runInitWizard" | "hasAnyManagedCredential">,
+  deps: Pick<MainDeps, "loadGlobalSettings" | "runInitWizard">,
 ): Promise<ReturnType<typeof loadGlobalSettings>> {
   const loadSettings = deps.loadGlobalSettings ?? loadGlobalSettings;
-  const globalSettings = loadSettings(homeDir);
-
-  const hasConfiguredProvider = Object.keys(globalSettings.providers ?? {}).length > 0;
-  const hasManagedCredential = (deps.hasAnyManagedCredential ?? hasAnyManagedCredential)();
-
-  // UI-only settings do not prove that initialization ran.
-  if (hasConfiguredProvider || hasManagedCredential) {
-    return globalSettings;
+  let homeDirExists = false;
+  try {
+    homeDirExists = existsSync(homeDir) && statSync(homeDir).isDirectory();
+  } catch {
+    homeDirExists = false;
   }
 
-  // 首次运行 → 启动向导（联网搜索 + 主题）
+  if (homeDirExists) {
+    return loadSettings(homeDir);
+  }
+
+  // 首次运行：~/.swarmflow 尚不存在，启动向导。
   try {
     const runInitWizard = deps.runInitWizard ?? (await import("./lifecycle/init-wizard.js")).runInitWizard;
-    await runInitWizard();
-  } catch {
-    // 向导被取消或出错，继续进入主界面
+    await runInitWizard(homeDir);
+  } catch (error) {
+    // 取消由向导自身处理；真正的异常需要可见，避免引导静默消失。
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`swarmflow: 初始化向导未完成：${message}\n`);
   }
 
   return loadSettings(homeDir);
@@ -769,7 +770,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     .action(async () => {
       ranSubcommand = true;
       const runInitWizard = deps.runInitWizard ?? (await import("./lifecycle/init-wizard.js")).runInitWizard;
-      await runInitWizard();
+      await runInitWizard(homeDir);
     });
 
   // oauth：OAuth 登录管理（Codex / Copilot）

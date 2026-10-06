@@ -1,7 +1,7 @@
 import { extname } from "node:path";
 
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
-import { highlightToChunks } from "../forked/patch-opentui-markdown.js";
+import { highlightToChunks } from "./syntax-highlighter.js";
 
 import type { ConversationEntry } from "../../../src/ui/contracts.js";
 import type { ConversationPalette } from "./conversation-types.js";

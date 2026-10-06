@@ -22,7 +22,7 @@
 import React, { useMemo } from "react";
 
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
-import { highlightToChunks } from "../../forked/patch-opentui-markdown.js";
+import { highlightToChunks } from "../syntax-highlighter.js";
 import type { FileModifyDisplayData } from "../../../../src/lib/diff-hunk.js";
 import type { ConversationPalette } from "../conversation-types.js";
 import { SelectableRow } from "../../display/primitives/selectable-row.js";

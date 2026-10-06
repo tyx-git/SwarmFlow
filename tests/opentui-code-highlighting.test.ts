@@ -11,7 +11,7 @@ import {
 import { registerSwarmFlowTreeSitterParsers } from "../external/opentui/tree-sitter-parsers.js";
 import { buildCommandStyledText } from "../external/opentui/components/syntax-highlight-utils.js";
 import { RGBA } from "@opentui/core";
-import { highlightToChunks } from "../external/opentui/forked/patch-opentui-markdown.js";
+import { highlightToChunks } from "../external/opentui/components/syntax-highlighter.js";
 
 afterEach(async () => {
   await destroyTreeSitterClient();
