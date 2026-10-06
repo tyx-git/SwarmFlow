@@ -1021,6 +1021,11 @@ describe("/model command", () => {
           glm: { api_key_env: "GLM_API_KEY" },
           "glm-code": {
             api_key_env: "SWARMFLOW_GLM_CODE_API_KEY",
+            currentModel: {
+              configName: "runtime-glm-code-glm-5",
+              model: "glm-5",
+              thinkingDepth: "default",
+            },
             models: [{ id: "glm-5", context_length: 128000 }],
           },
           lmstudio: {
@@ -1030,6 +1035,7 @@ describe("/model command", () => {
           },
         },
         context_budget_percent: 75,
+        currentProvider: "glm-code",
       });
 
       const persistedState = JSON.parse(

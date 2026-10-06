@@ -617,6 +617,8 @@ export interface SwarmflowSettings {
   // -- 模型 --
   /** 声明式默认模型。覆盖 state/model-selection.json */
   default_model?: string;
+  /** 上次退出时使用的供应商。 */
+  currentProvider?: string;
   /** 主代理的默认思维链级别 */
   thinking_level?: string;
   /** /model 最后一步显示的思考深度选项；不配置时使用内置默认列表 */
@@ -692,6 +694,12 @@ export interface ProviderEntry {
   protocol?: "openai-chat" | "anthropic" | "openai-responses" | "gemini" | "anthropic-messages" | "openai-chat-completions" | "gemini-generate-content";
   /** 一个自定义提供商下的多个模型（优先于单个 `model`） */
   models?: CustomModelEntry[];
+  /** 用户上次在该供应商下使用的模型和思考深度。 */
+  currentModel?: {
+    model: string;
+    thinkingDepth?: string;
+    configName?: string;
+  };
 }
 
 /** 自定义提供商下的单个模型（settings.json 形状） */
@@ -1577,6 +1585,7 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
 
   // 标量——如果存在则本地覆盖
   if (local.default_model !== undefined) merged.default_model = local.default_model;
+  if (local.currentProvider !== undefined) merged.currentProvider = local.currentProvider;
   if (local.thinking_level !== undefined) merged.thinking_level = local.thinking_level;
   if (local.thinking_levels !== undefined) merged.thinking_levels = local.thinking_levels;
   if (local.context_budget_percent !== undefined) merged.context_budget_percent = local.context_budget_percent;
@@ -1673,6 +1682,7 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   // 构建不含 undefined 值的干净对象
   const clean: Record<string, unknown> = {};
   if (settings.default_model !== undefined) clean.default_model = settings.default_model;
+  if (settings.currentProvider !== undefined) clean.currentProvider = settings.currentProvider;
   if (settings.thinking_level !== undefined) clean.thinking_level = settings.thinking_level;
   if (settings.thinking_levels !== undefined) clean.thinking_levels = settings.thinking_levels;
   if (settings.context_budget_percent !== undefined) clean.context_budget_percent = settings.context_budget_percent;
@@ -1694,6 +1704,46 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
 export function saveGlobalSettingsPatch(patch: Partial<SwarmflowSettings>, homeDir?: string): void {
   const existing = loadGlobalSettings(homeDir);
   saveSettings({ ...existing, ...patch }, globalSettingsPath(homeDir));
+}
+
+/** 保存当前供应商及其最近使用的模型/思考深度。 */
+export function persistCurrentModelSelection(
+  selection: {
+    provider: string;
+    model: string;
+    configName?: string;
+    thinkingDepth?: string;
+  },
+  homeDir?: string,
+): void {
+  const provider = selection.provider.trim();
+  const model = selection.model.trim();
+  if (!provider || !model) return;
+
+  const settings = loadGlobalSettings(homeDir);
+  const existingProvider = settings.providers?.[provider] ?? {};
+  saveGlobalSettingsPatch({
+    currentProvider: provider,
+    providers: {
+      ...(settings.providers ?? {}),
+      [provider]: {
+        ...existingProvider,
+        currentModel: {
+          model,
+          ...(selection.configName ? { configName: selection.configName } : {}),
+          ...(selection.thinkingDepth ? { thinkingDepth: selection.thinkingDepth } : {}),
+        },
+      },
+    },
+  }, homeDir);
+
+  saveModelSelectionState({
+    config_name: selection.configName,
+    provider,
+    selection_key: model,
+    model_id: model,
+    thinking_level: selection.thinkingDepth,
+  }, homeDir);
 }
 
 /** 获取全局 settings.json 路径 */
@@ -1723,19 +1773,23 @@ export function settingsToConfigInputs(settings: SwarmflowSettings): {
 
   if (settings.providers) {
     for (const [id, entry] of Object.entries(settings.providers)) {
-      if (entry.api_key_env || (!entry.base_url && entry.models?.length)) {
+      if (entry.api_key_env || (!entry.base_url && (entry.models?.length || entry.currentModel?.model))) {
         // 无 base_url 的条目属于内置 provider；凭据可来自 API key、托管槽或 OAuth 登录。
         if (entry.api_key_env) providerEnvVars[id] = entry.api_key_env;
-        if (entry.models?.length) {
-          providerModels[id] = entry.models.map((m) => ({
+        if (entry.models?.length || entry.currentModel?.model) {
+          const models: LocalModelEntry[] = (entry.models ?? []).map((m) => ({
             id: m.id,
             contextLength: m.context_length ?? 128_000,
             maxOutputTokens: m.max_output_tokens,
             multimodal: m.multimodal,
             webSearch: m.web_search,
           }));
+          if (entry.currentModel?.model && !models.some((m) => m.id === entry.currentModel?.model)) {
+            models.push({ id: entry.currentModel.model, contextLength: 128_000 });
+          }
+          providerModels[id] = models;
         }
-      } else if (entry.base_url && (entry.models?.length || entry.model)) {
+      } else if (entry.base_url && (entry.models?.length || entry.model || entry.currentModel?.model)) {
         // 自定义/本地提供商：优先使用 models[]；回退到旧版单模型。
         const models: LocalModelEntry[] = entry.models?.length
           ? entry.models.map((m) => ({
@@ -1745,7 +1799,13 @@ export function settingsToConfigInputs(settings: SwarmflowSettings): {
               multimodal: m.multimodal,
               webSearch: m.web_search,
             }))
-          : [{ id: entry.model!, contextLength: entry.context_length ?? 128_000 }];
+            : [{
+                id: entry.model ?? entry.currentModel!.model,
+                contextLength: entry.context_length ?? 128_000,
+              }];
+        if (entry.currentModel?.model && !models.some((m) => m.id === entry.currentModel?.model)) {
+          models.push({ id: entry.currentModel.model, contextLength: 128_000 });
+        }
         localProviders[id] = {
           baseUrl: entry.base_url,
           protocol: entry.protocol ?? "openai-chat",

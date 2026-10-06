@@ -108,4 +108,37 @@ describe("OpenTUI runtime bootstrap", () => {
       await fresh.session.close();
     }
   });
+
+  it("restores the provider currentModel and thinking depth from settings.json", async () => {
+    writeFileSync(
+      join(swarmflowHome, "settings.json"),
+      JSON.stringify({
+        providers: {
+          openai: {
+            api_key_env: TEST_KEY_ENV,
+            models: [{ id: "gpt-5.4-mini", context_length: 400_000 }],
+            currentModel: {
+              model: "gpt-5.4-mini",
+              thinkingDepth: "high",
+            },
+          },
+        },
+        currentProvider: "openai",
+      }, null, 2),
+    );
+
+    const runtime = await bootstrapOpenTuiRuntime({
+      configOverrides: [],
+      homeDir: swarmflowHome,
+      projectPath: projectRoot,
+      initHighlighter: false,
+    });
+    try {
+      expect(runtime.session.primaryAgent.modelConfig.provider).toBe("openai");
+      expect(runtime.session.primaryAgent.modelConfig.model).toBe("gpt-5.4-mini");
+      expect(runtime.session.thinkingLevel).toBe("high");
+    } finally {
+      await runtime.session.close();
+    }
+  });
 });

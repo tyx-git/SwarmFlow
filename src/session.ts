@@ -3489,6 +3489,7 @@ export class Session {
   set thinkingLevel(value: string) {
     this._preferredThinkingLevel = value;
     this._thinkingLevel = value || "off";
+    this.onSaveRequest?.();
   }
 
   get accentColor(): string | undefined {

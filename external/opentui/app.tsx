@@ -9,7 +9,7 @@ import type {
 } from "../../src/ui/contracts.js";
 import type { SessionStore } from "../../src/config/persistence.js";
 import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
-import { saveLog } from "../../src/config/persistence.js";
+import { saveLog, persistCurrentModelSelection } from "../../src/config/persistence.js";
 import { projectQueuedInputs } from "../../src/context/log-projection.js";
 import { enqueueDeferredCommand, takeReadyDeferredCommand, type DeferredCommand } from "../../src/ui/deferred-command.js";
 import { ProgressReporter, type ProgressEvent } from "../../src/lib/progress.js";
@@ -713,6 +713,23 @@ export function OpenTuiApp({
     setOptionNotes(new Map());
   }, [pendingAsk?.id]);
   const autoSave = useCallback(() => {
+    if (typeof session.getGlobalPreferences === "function") {
+      try {
+        const prefs = session.getGlobalPreferences();
+        if (prefs.modelProvider && prefs.modelId) {
+          persistCurrentModelSelection({
+            provider: prefs.modelProvider,
+            model: prefs.modelId,
+            configName: prefs.modelConfigName,
+            thinkingDepth: prefs.thinkingLevel && prefs.thinkingLevel !== "none"
+              ? prefs.thinkingLevel
+              : undefined,
+          }, getSwarmflowHomeDir());
+        }
+      } catch {
+        // 选择状态保存失败不应阻断会话日志保存。
+      }
+    }
     if (!store || !store.sessionDir || typeof session.getLogForPersistence !== "function") return;
     try {
       const { meta, entries: persistedEntries } = session.getLogForPersistence();
@@ -1542,6 +1559,7 @@ export function OpenTuiApp({
     return {
       session,
       store: store ?? undefined,
+      swarmflowHomeDir: getSwarmflowHomeDir(),
       commandRegistry,
       autoSave,
       showMessage: (message: string) => {

@@ -19,7 +19,7 @@ const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { CommandPickerPresentation } from "../ui/picker.js";
 import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry } from "../config/persistence.js";
-import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings } from "../config/persistence.js";
+import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings, persistCurrentModelSelection } from "../config/persistence.js";
 import { applySessionRestore } from "../session-resume.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
@@ -383,7 +383,18 @@ function persistModelSelection(ctx: CommandContext): void {
         ? prefs.thinkingLevel
         : undefined,
     };
-    saveModelSelectionState(state, ctx.swarmflowHomeDir);
+    const provider = state.provider?.trim();
+    const model = state.model_id?.trim() || state.selection_key?.trim();
+    if (provider && model) {
+      persistCurrentModelSelection({
+        provider,
+        model,
+        configName: state.config_name,
+        thinkingDepth: state.thinking_level,
+      }, ctx.swarmflowHomeDir);
+    } else {
+      saveModelSelectionState(state, ctx.swarmflowHomeDir);
+    }
   } catch {
     // 忽略命令执行期间的持久性失败。
   }
@@ -768,6 +779,16 @@ async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
 
     // 适当地切换活动运行时；会话历史记录保持完整。
     session.switchModel(selectedConfigName);
+    const activeConfig = session.primaryAgent?.modelConfig;
+    if (
+      !activeConfig
+      || activeConfig.provider !== resolvedSelection.modelProvider
+      || activeConfig.model !== resolvedSelection.modelId
+    ) {
+      throw new Error(
+        `Model switch did not take effect: expected ${resolvedSelection.modelProvider}/${resolvedSelection.modelId}`,
+      );
+    }
     session.setPersistedModelSelection?.({
       modelConfigName: selectedConfigName,
       modelProvider: resolvedSelection.modelProvider,

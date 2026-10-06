@@ -160,7 +160,22 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   // Restore the selected model before templates are instantiated so templates
   // without an explicit model do not force Config.defaultModel token resolution.
   const modelState = loadModelSelectionState(homeDir);
-  const effectiveModelConfigName = settings.default_model ?? modelState.config_name;
+  // A model explicitly selected in the running TUI is newer than the
+  // declarative default in settings.json. Only use default_model when no
+  // persisted current selection exists.
+  const currentProvider = settings.currentProvider?.trim();
+  const currentModel = currentProvider
+    ? settings.providers?.[currentProvider]?.currentModel
+    : undefined;
+  const currentConfigName = currentModel?.configName && config.modelNames.includes(currentModel.configName)
+    ? currentModel.configName
+    : undefined;
+  const effectiveModelConfigName = currentConfigName
+    ?? (currentProvider && currentModel?.model
+      ? config.findModelConfigName(currentProvider, currentModel.model)
+      : undefined)
+    ?? modelState.config_name
+    ?? settings.default_model;
   const templateFallbackModel = resolveTemplateFallbackModel(
     config,
     effectiveModelConfigName,
@@ -247,16 +262,16 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   } catch { /* hooks module optional */ }
 
   // ── Restore model selection ──
-  // Priority: settings.default_model > state/model-selection.json
+  // Priority: providers[currentProvider].currentModel > legacy state file > default_model.
   try {
     if (effectiveModelConfigName) {
       applyPersistedModelSelectionToSession(
         session,
         {
           modelConfigName: effectiveModelConfigName,
-          modelProvider: modelState.provider,
-          modelSelectionKey: modelState.selection_key,
-          modelId: modelState.model_id,
+          modelProvider: currentProvider ?? modelState.provider,
+          modelSelectionKey: currentModel?.model ?? modelState.selection_key,
+          modelId: currentModel?.model ?? modelState.model_id,
         } satisfies PersistedModelSelection,
       );
     }
@@ -267,7 +282,10 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   }
 
   // ── Apply settings to session ──
-  session.applySettings(settings, modelState);
+  session.applySettings(settings, {
+    ...modelState,
+    thinking_level: currentModel?.thinkingDepth ?? modelState.thinking_level,
+  });
   await refreshActiveOpenAICodexToken(session);
 
   // 预加载独立工具行使用的成熟 Shiki 高亮器。原生 MarkdownRenderable
