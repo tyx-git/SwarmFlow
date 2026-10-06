@@ -17,7 +17,6 @@ export interface PresentationEntryItemProps {
   interruptionText: string;
   theme: DisplayTheme;
   contentWidth: number;
-  markdownMode: "rendered" | "raw";
   diffDisplayMode: "compact" | "full";
   markdownStyle: SyntaxStyle;
   onAgentClick?: (agentId: string) => void;
@@ -30,7 +29,6 @@ export interface PresentationPanelProps {
   interruptionText: string;
   theme: DisplayTheme;
   contentWidth: number;
-  markdownMode: "rendered" | "raw";
   diffDisplayMode: "compact" | "full";
   markdownStyle: SyntaxStyle;
   processing: boolean;

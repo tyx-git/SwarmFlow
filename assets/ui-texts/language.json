@@ -302,10 +302,6 @@
       "indicators": {
         "shells": " 后台 Shell（{count} 运行中） "
       },
-      "markdownRaw": {
-        "on": "Markdown 原文：开",
-        "off": "Markdown 原文：关"
-      },
       "sidebar": {
         "switched": "侧栏：{mode}"
       },
@@ -700,10 +696,6 @@
       },
       "indicators": {
         "shells": " Shells ({count} running) "
-      },
-      "markdownRaw": {
-        "on": "Markdown raw: ON",
-        "off": "Markdown raw: OFF"
       },
       "sidebar": {
         "switched": "Sidebar: {mode}"

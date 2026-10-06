@@ -66,7 +66,6 @@ export interface OpenTuiScreenProps {
   permissionMode?: string;
   presentationEntries: readonly PresentationEntry[];
   processing: boolean;
-  markdownMode: "rendered" | "raw";
   diffDisplayMode: "compact" | "full";
   mainScrollRef: React.RefObject<ScrollBoxRenderable | null>;
   detailScrollRef: React.RefObject<ScrollBoxRenderable | null>;
@@ -178,7 +177,6 @@ export function OpenTuiScreen({
   permissionMode,
   presentationEntries,
   processing,
-  markdownMode,
   diffDisplayMode,
   mainScrollRef,
   detailScrollRef,
@@ -509,7 +507,6 @@ export function OpenTuiScreen({
                 items={presentationEntries}
                 processing={processing}
                 contentWidth={Math.max(20, conversationContentWidth - effectiveSidebarWidth)}
-                markdownMode={markdownMode}
                 diffDisplayMode={diffDisplayMode}
                 colors={theme.colors}
                 interruptionText={uiText.get(["Views", "interrupt", "conversation"])}

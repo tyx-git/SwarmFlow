@@ -581,7 +581,6 @@ export function OpenTuiApp({
   const [usageStatsData, setUsageStatsData] = useState<import("./display/overlays/usage-panel.js").UsageStatsData | null>(null);
   const [statusPanel, setStatusPanel] = useState(false);
   const [memoryPanel, setMemoryPanel] = useState(false);
-  const [markdownMode, setMarkdownMode] = useState<"rendered" | "raw">("rendered");
   const [permissionModeState, setPermissionModeState] = useState<string>(session.permissionMode ?? "reversible");
   const [pendingAsk, setPendingAsk] = useState<PendingAskUi | null>(
     typeof session.getPendingAsk === "function" ? session.getPendingAsk() : null,
@@ -972,10 +971,9 @@ export function OpenTuiApp({
       assistantEntries: assistantPEs.length,
       lastAssistantLength: lastAssistant?.assistantText?.length ?? 0,
       processing,
-      markdownMode,
       activeAgents: childSessions.length,
     });
-  }, [childSessions.length, presentationEntries, markdownMode, processing]);
+  }, [childSessions.length, presentationEntries, processing]);
   const handleProgressRef = useRef<(event: ProgressEvent) => void>(() => { });
   handleProgressRef.current = (event) => {
     if (closingRef.current) return;
@@ -1564,14 +1562,6 @@ export function OpenTuiApp({
       autoSave,
       showMessage: (message: string) => {
         // Intercept magic messages from UI-only commands
-        if (message === "__toggle_markdown_raw__") {
-          setMarkdownMode((current) => {
-            const next = current === "rendered" ? "raw" : "rendered";
-            showHint(t.get(["Views", "markdownRaw", next === "raw" ? "on" : "off"]));
-            return next;
-          });
-          return;
-        }
         if (message === "__toggle_todo_panel__") {
           return;
         }
@@ -2918,17 +2908,6 @@ export function OpenTuiApp({
       showHint(t.get(["Views", "interrupt", "allShells"]));
       return;
     }
-    // Ctrl+G: toggle markdown raw/rendered
-    if (event.name === "g" && event.ctrl) {
-      setMarkdownMode((current) => {
-        const next = current === "rendered" ? "raw" : "rendered";
-        showHint(t.get(["Views", "markdownRaw", next === "raw" ? "on" : "off"]));
-        return next;
-      });
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     // Tab switching: Ctrl+Left/Right to cycle, Ctrl+Up to return to Main Session
     if (event.name === "left" && event.ctrl && tabs.length > 1) {
       const idx = tabs.findIndex((t) => t.id === activeTabId);
@@ -3217,7 +3196,6 @@ export function OpenTuiApp({
       permissionMode={permissionModeState}
       presentationEntries={effectiveEntries}
       processing={effectiveProcessing}
-      markdownMode={markdownMode}
       diffDisplayMode={diffDisplayMode}
       mainScrollRef={mainScrollRef}
       detailScrollRef={detailScrollRef}
