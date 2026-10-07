@@ -48,6 +48,7 @@ export interface ChildSessionSnapshot {
   modelConfigName: string;
   modelProvider: string;
   modelDisplayLabel?: string;
+  thinkingLevel?: string;
   pendingAskId?: string | null;
   pendingAskKind?: "agent_question" | "approval" | null;
   activeLogEntryId: string | null;

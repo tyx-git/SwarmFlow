@@ -224,6 +224,8 @@ export interface SlashCommand {
   category?: CommandCategory;
   /** Shared picker presentation contract for command-owned selectors. */
   picker?: CommandPickerPresentation;
+  /** The handler owns a multi-step picker flow instead of submitting an option as a command. */
+  pickerFlow?: "handler";
   /** 命令分流：查看类命令始终直达；部分命令在工作中直达或等工作结束后执行。 */
   executionMode?: "always" | "whenBusy" | "queued";
 }
@@ -575,6 +577,31 @@ function subagentRoleOptions(ctx: CommandOptionsContext): CommandOption[] {
   });
 }
 
+const MANAGE_SUBAGENTS_VALUE = "__manage_subagents__";
+
+function subagentActionOptions(ctx: CommandOptionsContext): CommandOption[] {
+  const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
+  return [
+    {
+      label: text.get(["Views", "commandPicker", "manageSubagents"]),
+      value: MANAGE_SUBAGENTS_VALUE,
+    },
+    ...subagentRoleOptions(ctx),
+  ];
+}
+
+function activeSubagentOptions(
+  children: Array<{ id: string; template: string; lifecycle: string; lastToolCallSummary?: string }>,
+): CommandOption[] {
+  return children
+    .filter((child) => child.lifecycle === "running" || child.lifecycle === "blocked")
+    .map((child) => ({
+      label: `${child.id} · ${AGENT_ROLE_LABELS[child.template as AgentRole] ?? child.template}`,
+      value: child.id,
+      detail: child.lastToolCallSummary || undefined,
+    }));
+}
+
 function describeRoleModel(role: AgentRole, resolved: ResolvedRoleModel, text: UiText): string {
   const model = `${resolved.provider}/${resolved.modelId} ${resolved.thinkingLevel}`;
   if (resolved.source === "role") return model;
@@ -835,9 +862,30 @@ async function cmdAgents(ctx: CommandContext, args: string): Promise<void> {
   try {
     const text = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
     const selectedRole = role || (ctx.promptCommandPicker ? (await ctx.promptCommandPicker(
-      subagentRoleOptions({ session, store: ctx.store }),
-      { title: text.get(["Views", "commandPicker", "selectRole"]), inputArea: true },
+      subagentActionOptions({ session, store: ctx.store, swarmflowHomeDir: ctx.swarmflowHomeDir }),
+      { title: text.get(["Views", "commandPicker", "selectRoleOrManage"]), inputArea: true },
     ))?.value ?? "" : "");
+    if (selectedRole === MANAGE_SUBAGENTS_VALUE) {
+      const children = activeSubagentOptions(session.getChildSessionSnapshots?.() ?? []);
+      if (children.length === 0) {
+        ctx.showHint?.(text.get(["Views", "commandPicker", "noActiveSubagents"]));
+        return;
+      }
+      const selectedChildId = (await ctx.promptCommandPicker?.(children, {
+        title: text.get(["Views", "commandPicker", "manageSubagentsTitle"]),
+        inputArea: true,
+      }))?.value;
+      if (!selectedChildId) return;
+      const result = session.killChildSession?.(selectedChildId);
+      if (result?.accepted) {
+        ctx.showHint?.(text.get(["Views", "agents", "killed"], { agentId: selectedChildId }));
+      } else {
+        ctx.showHint?.(text.get(["Error", "killSubagentFailed"], {
+          reason: result?.reason ?? text.get(["Common", "unknown"]),
+        }));
+      }
+      return;
+    }
     if (!isAgentRoleId(selectedRole)) {
       if (role) ctx.showMessage(`Unknown sub-agent role '${role}'.`);
       return;
@@ -2533,7 +2581,7 @@ export function buildDefaultRegistry(): CommandRegistry {
 
   registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
   registerBuiltin(registry, { name: "/model", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
-  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentRoleOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentRoleOptions, picker: { inputArea: true, mode: "single" }, pickerFlow: "handler", category: "Provider and Model" });
   registerBuiltin(registry, { name: "/permission", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
 
   registerBuiltin(registry, { name: "/skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, category: "Ecosystem" });

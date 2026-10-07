@@ -25,10 +25,6 @@ import {
 import type { CommandRegistry } from "../../src/commands/commands.js";
 import type { PersistedModelSelection } from "../../src/models/selection.js";
 import { applyPersistedModelSelectionToSession } from "../../src/models/restore.js";
-import {
-  hasAnyManagedCredential,
-} from "../../src/config/managed-provider-credentials.js";
-
 function identifyPrimaryAgent(
   agents: Record<string, Agent>,
   config: Config,

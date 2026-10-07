@@ -573,8 +573,6 @@ const HELP_SHORTCUTS: Array<{ key: string; action: string }> = [
   { key: "Option+Enter", action: "Insert newline" },
   { key: "Ctrl+C", action: "Cancel / Exit" },
   { key: "Ctrl+V / Ctrl+Y", action: "Paste image (Ctrl+Y for Windows Terminal)" },
-  { key: "Ctrl+X", action: "Kill all sub-agents" },
-  { key: "Ctrl+K", action: "Kill all background shells" },
   { key: "PageUp/Down", action: "Scroll half page" },
   { key: "↑ / ↓", action: "Browse prompt history" },
   { key: "@filename", action: "Attach file" },

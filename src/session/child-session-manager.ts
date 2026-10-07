@@ -312,6 +312,7 @@ export class ChildSessionManager {
         modelConfigName: "",
         modelProvider: "",
         modelDisplayLabel: "",
+        thinkingLevel: "off",
         pendingAskId: null,
         pendingAskKind: null,
         activeLogEntryId: null,
@@ -370,6 +371,7 @@ export class ChildSessionManager {
       modelConfigName: modelConfig?.name ?? "",
       modelProvider: modelConfig?.provider ?? "",
       modelDisplayLabel: modelDescriptor?.scopedLabel ?? modelConfig?.model ?? "",
+      thinkingLevel: session.thinkingLevel === "none" ? "off" : session.thinkingLevel,
       pendingAskId: pendingAsk?.id ?? null,
       pendingAskKind: pendingAsk?.kind ?? null,
       activeLogEntryId: session.activeLogEntryId,
@@ -1245,57 +1247,31 @@ export class ChildSessionManager {
     });
   }
 
-  /** kill_agent tool 实现。 */
+  killAgent(id: string): { accepted: boolean; reason?: string } {
+    const result = this._killAgent(id);
+    if (result.accepted) {
+      this.deps.notifyLogListeners();
+      this.deps.requestSave();
+    }
+    return result;
+  }
+
+  /** kill_agent 工具批量终止多个子代理。 */
   killAgents(ids: string[]): ToolResult {
     const killed: string[] = [];
     const notFound: string[] = [];
     const alreadyArchived: string[] = [];
 
-    for (const name of ids) {
-      const handle = this._handles.get(name);
-      if (!handle) {
-        if (this._archived.has(name)) {
-          alreadyArchived.push(name);
-        } else {
-          notFound.push(name);
-        }
-        continue;
-      }
+    for (const id of ids) {
+      const result = this._killAgent(id);
+      if (result.accepted) killed.push(id);
+      else if (result.reason === "already_archived") alreadyArchived.push(id);
+      else notFound.push(id);
+    }
 
-      handle.abortController?.abort();
-      handle.lifecycle = "archived";
-      handle.status = "terminated";
-      handle.lastOutcome = "interrupted";
-      handle.lastActivityAt = Date.now();
-      if (handle.session) {
-        this.deps.recordChildEvent(handle.session, "terminated by parent");
-      }
-      // released handle 面板状态来自 frozen snapshot——在快照中镜像 kill 状态，否则会持续显示已结束状态。
-      if (handle.frozenSnapshot) {
-        handle.frozenSnapshot = {
-          ...handle.frozenSnapshot,
-          lifecycle: handle.lifecycle,
-          outcome: handle.lastOutcome,
-          lastActivityAt: handle.lastActivityAt,
-          running: false,
-        };
-      }
-      this.deps.saveChildSession(handle);
-      killed.push(name);
-
-      const progress = this.deps.getProgress();
-      if (progress) {
-        progress.emit({
-          step: this.deps.getTurnCount(),
-          agent: name,
-          action: "agent_killed",
-          message: `  [#${handle.numericId} ${name}] archived`,
-          level: "normal" as ProgressLevel,
-          timestamp: Date.now() / 1000,
-          usage: {},
-          extra: { sub_agent_id: handle.numericId },
-        });
-      }
+    if (killed.length > 0) {
+      this.deps.notifyLogListeners();
+      this.deps.requestSave();
     }
 
     const parts: string[] = [];
@@ -1303,6 +1279,50 @@ export class ChildSessionManager {
     if (alreadyArchived.length) parts.push(`Already archived: ${alreadyArchived.join(", ")}.`);
     if (notFound.length) parts.push(`Not found: ${notFound.join(", ")}.`);
     return new ToolResult({ content: parts.join(" ") });
+  }
+
+  private _killAgent(id: string): { accepted: boolean; reason?: string } {
+    const handle = this._handles.get(id);
+    if (!handle) {
+      return this._archived.has(id)
+        ? { accepted: false, reason: "already_archived" }
+        : { accepted: false, reason: "not_found" };
+    }
+
+    handle.abortController?.abort();
+    handle.lifecycle = "archived";
+    handle.status = "terminated";
+    handle.lastOutcome = "interrupted";
+    handle.lastActivityAt = Date.now();
+    if (handle.session) {
+      this.deps.recordChildEvent(handle.session, "terminated by parent");
+    }
+    // 已释放的 handle 以 frozen snapshot 作为展示数据源。
+    if (handle.frozenSnapshot) {
+      handle.frozenSnapshot = {
+        ...handle.frozenSnapshot,
+        lifecycle: handle.lifecycle,
+        outcome: handle.lastOutcome,
+        lastActivityAt: handle.lastActivityAt,
+        running: false,
+      };
+    }
+    this.deps.saveChildSession(handle);
+
+    const progress = this.deps.getProgress();
+    if (progress) {
+      progress.emit({
+        step: this.deps.getTurnCount(),
+        agent: id,
+        action: "agent_killed",
+        message: `  [#${handle.numericId} ${id}] archived`,
+        level: "normal" as ProgressLevel,
+        timestamp: Date.now() / 1000,
+        usage: {},
+        extra: { sub_agent_id: handle.numericId },
+      });
+    }
+    return { accepted: true };
   }
 
   /** send tool 实现：直接发送或复活 archived persistent 子会话。 */

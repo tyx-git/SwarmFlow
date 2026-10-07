@@ -31,6 +31,7 @@
       "imagePasteFailed": "图片粘贴失败：{message}",
       "interruptFailed": "中断失败：{reason}",
       "interruptChildFailed": "中断子代理失败：{reason}",
+      "killSubagentFailed": "终止子代理失败：{reason}",
       "backToPrimary": "请先返回主会话再发送消息。",
       "subAgentModelFixed": "子代理模型由模板或模型层级固定，不能手动修改。"
     },
@@ -272,6 +273,10 @@
         "queenCurrentModel": "使用当前模型",
         "inheritQueenModel": "继承 Queen 当前模型",
         "roleModelUnavailable": "角色模型不可用 · 进入可重新配置",
+        "selectRoleOrManage": "选择角色或管理子代理:",
+        "manageSubagents": "管理子代理",
+        "manageSubagentsTitle": "选择要终止的子代理:",
+        "noActiveSubagents": "当前没有运行中的子代理",
         "thinkingTitle": "思考深度",
         "thinkingDepth": "选择思考深度:",
         "skills": "技能:",
@@ -284,6 +289,9 @@
         "instructions": "说明：",
         "typeInstructions": "输入你的说明",
         "reviewInstructions": "添加审查说明…"
+      },
+      "agents": {
+        "killed": "已终止子代理 {agentId}"
       },
       "statusBar": {
         "permission": "权限",
@@ -314,9 +322,7 @@
       },
       "interrupt": {
         "conversation": "会话已中断 - 告诉模型要做哪些不同的事情。出了什么问题？",
-        "child": "已中断 {agentId}",
-        "allAgents": "已中断全部子代理",
-        "allShells": "已停止全部后台 shell"
+        "child": "已中断 {agentId}"
       },
       "exit": {
         "pressAgain": "再按一次 Ctrl+C 退出"
@@ -426,6 +432,7 @@
       "imagePasteFailed": "Image paste failed: {message}",
       "interruptFailed": "Interrupt failed: {reason}",
       "interruptChildFailed": "Interrupt failed: {reason}",
+      "killSubagentFailed": "Failed to terminate sub-agent: {reason}",
       "backToPrimary": "Return to the primary session to send messages.",
       "subAgentModelFixed": "Sub-Agent models are fixed by their template or tier and cannot be changed manually."
     },
@@ -667,6 +674,10 @@
         "queenCurrentModel": "Current model",
         "inheritQueenModel": "Inherit Queen current model",
         "roleModelUnavailable": "Role model unavailable · select to reconfigure",
+        "selectRoleOrManage": "Select role or manage sub-agents:",
+        "manageSubagents": "Manage sub-agents",
+        "manageSubagentsTitle": "Select a sub-agent to terminate:",
+        "noActiveSubagents": "There are no active sub-agents",
         "thinkingTitle": "Thinking depth",
         "thinkingDepth": "Select thinking depth:",
         "skills": "Skills:",
@@ -679,6 +690,9 @@
         "instructions": "Instructions:",
         "typeInstructions": "Type your instructions",
         "reviewInstructions": "Add review instructions…"
+      },
+      "agents": {
+        "killed": "Terminated sub-agent {agentId}"
       },
       "statusBar": {
         "permission": "Permission",
@@ -709,9 +723,7 @@
       },
       "interrupt": {
         "conversation": "Conversation interrupted - tell the model what to do differently. Something went wrong?",
-        "child": "Interrupted {agentId}",
-        "allAgents": "All sub-agents interrupted",
-        "allShells": "All background shells killed"
+        "child": "Interrupted {agentId}"
       },
       "exit": {
         "pressAgain": "Press Ctrl+C again to exit"

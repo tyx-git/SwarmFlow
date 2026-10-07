@@ -1,7 +1,7 @@
 /**
  * Node.js HTTP server for the browser module.
  *
- * Serves static files (GET) and handles theme save requests (POST /save-theme).
+ * Serves static files over localhost.
  * Runs in-process using the built-in `http` module — no external dependencies.
  */
 
@@ -11,7 +11,6 @@ import { join, extname } from "node:path";
 import net from "node:net";
 
 let activeServer: Server | null = null;
-let currentPort: number = 0;
 
 // ── MIME types ─────────────────────────────────────────────────────
 
@@ -50,24 +49,6 @@ function isPortFree(port: number): Promise<boolean> {
 }
 
 // ── Request handling ───────────────────────────────────────────────
-
-function readBody(req: import("node:http").IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    req.on("error", reject);
-  });
-}
-
-function sendJson(res: import("node:http").ServerResponse, status: number, data: unknown): void {
-  const body = JSON.stringify(data);
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-  });
-  res.end(body);
-}
 
 function serveStatic(rootDir: string, urlPath: string, res: import("node:http").ServerResponse): void {
   // Default to index.html
@@ -137,7 +118,6 @@ export async function startServer(rootDir: string): Promise<ServerInfo> {
   server.unref();
 
   activeServer = server;
-  currentPort = port;
 
   // Give the server a moment to bind
   await new Promise((r) => setTimeout(r, 100));
@@ -154,7 +134,5 @@ export function stopServer(): void {
       // already closed
     }
     activeServer = null;
-    currentPort = 0;
   }
 }
-

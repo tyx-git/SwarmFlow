@@ -34,10 +34,6 @@ export class AnthropicProvider extends BaseAnthropicProvider {
   private static readonly _NO_SAMPLING_PARAMS_RE =
     /^claude-(opus|sonnet)-4[.-]7/;
 
-  /** Opus 4.7 引入了 `xhigh` effort 级别（位于 high 和 max 之间）。 */
-  private static readonly _XHIGH_EFFORT_RE =
-    /^claude-(opus|sonnet)-4[.-]7/;
-
   protected override _emitSignature(): boolean {
     return true;
   }

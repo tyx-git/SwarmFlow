@@ -25,6 +25,18 @@ export class RoleModelResolutionError extends Error {
   }
 }
 
+export function resolveInheritedThinkingLevel(session: any): string {
+  const runtimeLevel = session.thinkingLevel;
+  if (typeof runtimeLevel === "string" && runtimeLevel && runtimeLevel !== "none") {
+    return runtimeLevel;
+  }
+
+  const preferredLevel = session.getGlobalPreferences?.()?.thinkingLevel;
+  return typeof preferredLevel === "string" && preferredLevel && preferredLevel !== "none"
+    ? preferredLevel
+    : "off";
+}
+
 /** Resolve every role from its session setting or the active Queen model. */
 export function resolveRoleModel(
   session: any,
@@ -63,7 +75,7 @@ export function resolveRoleModel(
       selectionKey: modelConfig.model,
       modelId: modelConfig.model,
       modelConfig,
-      thinkingLevel: session.thinkingLevel || "off",
+      thinkingLevel: resolveInheritedThinkingLevel(session),
     };
   }
 

@@ -98,7 +98,6 @@ function ToolOperationEntryInner(
   const toolNameRgba = React.useMemo(() => RGBA.fromHex(toolNameColor), [toolNameColor]);
   const displayName = entry.toolDisplayName ?? "Tool";
   const argColor = colors.toolArg;
-  const resultColor = colors.toolResultBody;
   const barColor = colors.toolBar;
   const shimmer = useShimmer(displayName, toolNameRgba, active, ATTRS_BOLD);
   const interrupted = entry.toolInterrupted === true;

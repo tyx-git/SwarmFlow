@@ -186,7 +186,6 @@ export async function launchTui(): Promise<void> {
   } catch {
     // best effort
   }
-  const _origStderrWrite = process.stderr.write.bind(process.stderr);
   process.stderr.write = ((chunk: any, encodingOrCb?: any, cb?: any): boolean => {
     const buf = typeof chunk === "string" ? Buffer.from(chunk, typeof encodingOrCb === "string" ? encodingOrCb as BufferEncoding : "utf8") : chunk;
     try { writeSync(stderrLogFd, buf); } catch { /* best effort */ }

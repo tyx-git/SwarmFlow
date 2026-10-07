@@ -9,6 +9,7 @@ import type {
 } from "../../src/ui/contracts.js";
 import type { SessionStore } from "../../src/config/persistence.js";
 import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
+import { resolveInheritedThinkingLevel } from "../../src/session/role-model-resolver.js";
 import { saveLog, persistCurrentModelSelection } from "../../src/config/persistence.js";
 import { projectQueuedInputs } from "../../src/context/log-projection.js";
 import { enqueueDeferredCommand, takeReadyDeferredCommand, type DeferredCommand } from "../../src/ui/deferred-command.js";
@@ -234,6 +235,7 @@ function sameChildSessionList(
       left?.lifetimeToolCallCount !== right?.lifetimeToolCallCount ||
       left?.lastTotalTokens !== right?.lastTotalTokens ||
       left?.lastToolCallSummary !== right?.lastToolCallSummary ||
+      left?.thinkingLevel !== right?.thinkingLevel ||
       left?.pendingInboxCount !== right?.pendingInboxCount
     ) {
       return false;
@@ -489,11 +491,6 @@ export function OpenTuiApp({
     }
     return null;
   }, [rootLogRevision, session]);
-  // Frozen child view — protects display when viewed child becomes archived
-  const [frozenChildView, setFrozenChildView] = useState<{
-    snapshot: ChildSessionSnapshot;
-    entries: readonly import("./presentation/types.js").PresentationEntry[];
-  } | null>(null);
   // Tab state for sidebar
   const [tabs, setTabs] = useState<TabState[]>([
     { id: "main", label: "Main Session", icon: "●", closeable: false, kind: "main" },
@@ -502,7 +499,7 @@ export function OpenTuiApp({
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [sidebarMode, setSidebarMode] = useState<"open" | "close" | "auto">("close");
   // Sync child session tabs — child tabs are now temporary (created on enter, removed on exit).
-  // Only clean up tabs for children that no longer exist and aren't frozen.
+  // Keep the selected child tab until the user leaves it; released logs remain readable.
   useEffect(() => {
     setTabs((prev) => {
       const currentChildIds = new Set(childSessions.map((s) => s.id));
@@ -510,11 +507,10 @@ export function OpenTuiApp({
         if (t.kind !== "child") return true;
         // Extract child id from tab id (format: "child:{agentId}")
         const childId = t.id.startsWith("child:") ? t.id.slice(6) : t.id;
-        // Keep if child still active, or if user is viewing it (frozen view handles archived)
-        return currentChildIds.has(childId) || (selectedChildId === childId) || (frozenChildView !== null && selectedChildId === childId);
+        return currentChildIds.has(childId) || selectedChildId === childId;
       });
     });
-  }, [childSessions, selectedChildId, frozenChildView]);
+  }, [childSessions, selectedChildId]);
   // Derive selectedChildId from active tab
   // Tab id format is "child:{agentId}" — strip prefix to get the raw session id
   useEffect(() => {
@@ -630,7 +626,6 @@ export function OpenTuiApp({
   const [pickerNoteValue, setPickerNoteValue] = useState("");
   const colors = theme.colors;
   const composerTokenColorsRef = useRef(colors);
-  const markdownStyle = theme.markdownStyle;
   if (!composerTokenVisualsRef.current || composerTokenColorsRef.current !== colors) {
     composerTokenColorsRef.current = colors;
     composerTokenVisualsRef.current = createComposerTokenVisuals(colors);
@@ -938,8 +933,7 @@ export function OpenTuiApp({
       setChildSessions((previous) => sameChildSessionList(previous, nextChildSessions) ? previous : nextChildSessions);
       const nextShells = (session.getBackgroundShellSnapshots?.() ?? []) as ShellSnapshotUi[];
       setShellSnapshots((previous) => sameShellSnapshotList(previous, nextShells) ? previous : nextShells);
-      // Archived children stay in _childSessions (Session instance alive), so they always
-      // appear in snapshots. No need for frozenChildView protection here.
+      // Child snapshots include released sessions when their logs remain available.
       setPendingAsk(session.getPendingAsk?.() ?? null);
       setPermissionModeState(session.permissionMode ?? "reversible");
       setRootLogRevision(session.getLogRevision?.() ?? 0);
@@ -1380,6 +1374,7 @@ export function OpenTuiApp({
   const commandListMaxVisible = Math.min(pickerMaxVisible, MAX_COMMAND_LIST_VISIBLE);
   const startCommandPicker = useCallback((cmdName: string): boolean => {
     const command = commandRegistry.lookup(cmdName);
+    if (command?.pickerFlow === "handler") return false;
     const options = buildCommandOptions(cmdName);
     if (options.length === 0) return false;
     const canonicalCommandName = command?.name ?? cmdName;
@@ -2897,22 +2892,6 @@ export function OpenTuiApp({
       showHint(t.get(["Views", "exit", "pressAgain"]));
       return;
     }
-    // Ctrl+X: kill all sub-agents (any state)
-    if (event.name === "x" && event.ctrl) {
-      event.preventDefault();
-      event.stopPropagation();
-      session.interruptAllChildAgents?.();
-      showHint(t.get(["Views", "interrupt", "allAgents"]));
-      return;
-    }
-    // Ctrl+K: kill all background shells (any state)
-    if (event.name === "k" && event.ctrl) {
-      event.preventDefault();
-      event.stopPropagation();
-      session.killAllShells?.();
-      showHint(t.get(["Views", "interrupt", "allShells"]));
-      return;
-    }
     // Tab switching: Ctrl+Left/Right to cycle, Ctrl+Up to return to Main Session
     if (event.name === "left" && event.ctrl && tabs.length > 1) {
       const idx = tabs.findIndex((t) => t.id === activeTabId);
@@ -3045,18 +3024,15 @@ export function OpenTuiApp({
   );
   const modelName = modelDescriptor?.compactScopedLabel ?? "unknown";
   const modelNameColor = resolveModelNameColor(modelDescriptor, theme);
+  const childSnapshot = selectedChildId
+    ? (childSessions.find((s) => s.id === selectedChildId) ?? null)
+    : null;
   // 输入框右上角："供应商/模型 思考深度"。
   // 深度档位统一来自 src/config/thinking.ts（low/medium/high/xhigh/max，不提供 ultra）；
   // 非思考模型不显示深度，off 原样显示。
-  const runtimeThinkingLevel = session.thinkingLevel ?? "";
-  const preferredThinkingLevel = typeof session.getGlobalPreferences === "function"
-    ? session.getGlobalPreferences()?.thinkingLevel ?? ""
-    : "";
   // Keep the selected depth visible exactly as chosen. Capability validation
   // belongs to the provider response, not to the local model registry.
-  const thinkingLevel = runtimeThinkingLevel && runtimeThinkingLevel !== "none"
-    ? runtimeThinkingLevel
-    : preferredThinkingLevel;
+  const thinkingLevel = childSnapshot?.thinkingLevel ?? resolveInheritedThinkingLevel(session);
   const thinkingSuffix = (() => {
     if (!thinkingLevel || thinkingLevel === "none") return ""; // 非思考模型
     if (thinkingLevel === "off") return "off";                 // 显式关闭
@@ -3073,9 +3049,6 @@ export function OpenTuiApp({
     setActiveTabId(tabId);
   }, []);
   // Data source switching: use child snapshot when viewing a child page
-  const childSnapshot = selectedChildId
-    ? (childSessions.find((s) => s.id === selectedChildId) ?? null)
-    : null;
   const effectivePhase: ActivityPhase = childSnapshot
     ? (childSnapshot.running ? "Working" : "idle")
     : phase;
@@ -3242,7 +3215,7 @@ export function OpenTuiApp({
       inputRef={inputRef}
       phase={effectivePhase}
       modelName={effectiveModelName}
-      thinkingSuffix={childSnapshot ? "" : thinkingSuffix}
+      thinkingSuffix={thinkingSuffix}
       uiText={uiText}
       modelColor={effectiveModelColor}
       turnElapsed={effectiveElapsed}

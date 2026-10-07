@@ -100,11 +100,9 @@ export interface Session {
   close(): Promise<void>;
   requestTurnInterrupt?(): { accepted: true };
   cancelCurrentTurn?(): void;
-  interruptAllChildAgents?(): void;
   hasRunningChildAgents?(): boolean;
   denyPendingAsk?(): boolean;
   denyAndInterruptPendingAsk?(): { accepted: boolean; reason?: string; turnFinished?: boolean };
-  killAllShells?(): void;
   primaryAgent: {
     name: string;
     modelConfig?: {
@@ -201,6 +199,7 @@ export interface Session {
   getChildSessionSnapshots?(): ChildSessionSnapshot[];
   getChildSessionLog?(childId: string): readonly LogEntry[] | null;
   interruptChildSession?(childId: string): { accepted: boolean; reason?: string };
+  killChildSession?(childId: string): { accepted: boolean; reason?: string };
   restoreFromLog?(meta: LogSessionMeta, entries: LogEntry[], idAllocator: LogIdAllocator): void;
   getLogForPersistence?(): { meta: LogSessionMeta; entries: readonly LogEntry[] };
   resetForNewSession?(newStore?: any): void;

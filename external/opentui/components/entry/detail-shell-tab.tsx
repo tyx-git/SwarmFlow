@@ -4,7 +4,6 @@ import React from "react";
 
 import type { ConversationPalette } from "../conversation-types.js";
 import { ScrollViewport } from "../../display/primitives/scroll-viewport.js";
-import { SectionHeader } from "../../display/primitives/section-header.js";
 import { formatDuration } from "../../display/utils/format.js";
 import { CommandText } from "./command-text.js";
 

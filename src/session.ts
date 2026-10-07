@@ -1686,8 +1686,8 @@ export class Session {
    */
   requestTurnInterrupt(): { accepted: true } {
     // Abort main turn ONLY. Sub-agents and background shells are independent
-    // background work —they continue running. Explicit Ctrl+X / Ctrl+K
-    // kills them separately.
+    // background work —they continue running. They can be stopped through
+    // their dedicated management APIs.
     //
     // A pending ask means there is no live turn to abort —the turn already
     // returned when it suspended. Every stop entry point resolves the ask as
@@ -1737,10 +1737,7 @@ export class Session {
     return { accepted: true, turnFinished: true };
   }
 
-  /**
-   * Cascade-kill all running child agents and background shells.
-   * Called by TUI on Ctrl+X.
-   */
+  /** Stop all running child sessions for RPC and lifecycle callers. */
   interruptAllChildAgents(): void {
     if (this._childSessions.size > 0) {
       this._cascadeKillRunningChildren("user_mass_interrupt");
@@ -6364,6 +6361,10 @@ export class Session {
 
   interruptChildSession(childId: string): { accepted: boolean; reason?: string } {
     return this._childSessionManagerInstance.interruptChild(childId);
+  }
+
+  killChildSession(childId: string): { accepted: boolean; reason?: string } {
+    return this._childSessionManagerInstance.killAgent(childId);
   }
 
   private async _execSpawn(args: Record<string, unknown>): Promise<ToolResult> {
