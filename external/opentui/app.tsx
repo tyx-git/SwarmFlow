@@ -460,11 +460,6 @@ export function OpenTuiApp({
       const end = entries[index];
       if (!end || end.discarded || end.type !== "work_end") continue;
       const endMeta = end.meta as Record<string, unknown>;
-      const status = endMeta.status === "completed"
-        || endMeta.status === "interrupted"
-        || endMeta.status === "error"
-        ? endMeta.status
-        : "error";
       const workId = typeof endMeta.workId === "string" ? endMeta.workId : undefined;
       let elapsedMs = typeof endMeta.elapsedMs === "number" && Number.isFinite(endMeta.elapsedMs)
         ? endMeta.elapsedMs
@@ -481,15 +476,13 @@ export function OpenTuiApp({
           break;
         }
       }
-      // Returning a non-completed terminal status is intentional even when a
-      // corrupt/partial work_end has no duration: it prevents a previous
-      // successful turn from being shown as the current turn's Worked state.
+      // Use the latest terminal span even when its duration is incomplete, so
+      // an older turn's elapsed time is never shown as the current result.
       if (elapsedMs === undefined) {
-        return { status, elapsed: 0, startedAt: null };
+        return { elapsed: 0, startedAt: null };
       }
       const endedAt = Number.isFinite(end.timestamp) ? end.timestamp : Date.now();
       return {
-        status,
         elapsed: Math.max(0, elapsedMs / 1000),
         startedAt: startedAt ?? Math.max(0, endedAt - elapsedMs),
       };
@@ -2845,7 +2838,6 @@ export function OpenTuiApp({
         session.cancelCurrentTurn?.();
       }
       abortControllerRef.current?.abort();
-      setPhase("Working");
       return true;
     };
     // Esc / Ctrl+C on main page: close overlays → deny+abort → idle double-tap
@@ -2864,6 +2856,19 @@ export function OpenTuiApp({
       }
       // 2. Processing or pending ask → interrupt
       if (processingRef.current || pendingAsk) {
+        if (event.name === "c" && event.ctrl) {
+          const now = Date.now();
+          if (now - lastCtrlCRef.current < CTRL_C_EXIT_WINDOW_MS) {
+            lastCtrlCRef.current = 0;
+            beginClosing();
+            return;
+          }
+          lastCtrlCRef.current = now;
+          if (performInterrupt()) {
+            showHint(t.get(["Views", "exit", "pressAgain"]));
+          }
+          return;
+        }
         performInterrupt();
         return;
       }
@@ -3244,12 +3249,12 @@ export function OpenTuiApp({
       lastWorkedElapsed={childSnapshot
         ? childSnapshot.turnElapsed
         : lastWorkedStatus
-          ? lastWorkedStatus.status === "completed" ? lastWorkedStatus.elapsed : 0
+          ? lastWorkedStatus.elapsed
           : turnTimer.lastElapsed}
       lastWorkedStartedAt={childSnapshot
         ? null
         : lastWorkedStatus
-          ? lastWorkedStatus.status === "completed" ? lastWorkedStatus.startedAt : null
+          ? lastWorkedStatus.startedAt
           : turnTimer.lastStartedAt}
       hint={hint}
       composerTokenVisuals={composerTokenVisuals}

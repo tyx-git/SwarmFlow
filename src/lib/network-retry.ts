@@ -212,6 +212,13 @@ const ALL_RETRYABLE_MESSAGE_PATTERNS: readonly string[] = [
   ...RETRYABLE_MESSAGE_PATTERNS_EXTRA,
 ];
 
+const NON_RETRYABLE_QUOTA_ERROR_PATTERNS: readonly RegExp[] = [
+  /\binsufficient[_\s-]+(?:quota|credits?|balance)\b/i,
+  /\b(?:quota|credits?|balance)\b.{0,40}\b(?:exceeded|exhausted|depleted|insufficient|too low)\b/i,
+  /\b(?:exceeded|exhausted|depleted|ran out of)\b.{0,40}\b(?:current )?(?:quota|credits?|balance)\b/i,
+  /\b(?:billing|payment) (?:hard )?limit (?:has been )?(?:reached|exceeded)\b/i,
+];
+
 // ------------------------------------------------------------------
 // isRetryableNetworkError
 // ------------------------------------------------------------------
@@ -236,6 +243,13 @@ export function isRetryableNetworkError(err: unknown): boolean {
 
   // -- 显式排除：用户主动中止 --
   if ((err as Record<string, unknown>)["name"] === "AbortError") return false;
+
+  // 429 既可能是短暂限流，也可能是账户额度耗尽。后者不会因等待而恢复，
+  // 必须优先于状态码判定，否则 TUI 会在退避重试期间一直显示 Working。
+  const errorText = collectMessages(err).join("\n");
+  if (NON_RETRYABLE_QUOTA_ERROR_PATTERNS.some((pattern) => pattern.test(errorText))) {
+    return false;
+  }
 
   const statuses = collectStatusCandidates(err);
 
@@ -265,7 +279,7 @@ export function isRetryableNetworkError(err: unknown): boolean {
   if (collectCodes(err).some((code) => RETRYABLE_CODES.has(code))) return true;
 
   // -- 基于消息的兜底判断（覆盖所有嵌套层与纯对象错误） --
-  const haystack = collectMessages(err).join("\n").toLowerCase();
+  const haystack = errorText.toLowerCase();
   for (const pattern of ALL_RETRYABLE_MESSAGE_PATTERNS) {
     if (haystack.includes(pattern)) return true;
   }
