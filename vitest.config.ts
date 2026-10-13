@@ -24,6 +24,13 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     exclude: ["tests/node-runtime.test.ts", ".history/**", "external/**", "dist/**", "node_modules/**"],
+    server: {
+      deps: {
+        // The npm React renderer imports react-reconciler/constants without a
+        // file extension; bundle it for Node/Vite UI-rendering tests.
+        inline: ["@opentui/react", "react-reconciler"],
+      },
+    },
     // Keep native-heavy DOCX/web extraction tests from timing out when the
     // default fork pool matches a large workstation's logical CPU count.
     maxWorkers: 4,

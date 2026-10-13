@@ -177,6 +177,8 @@ const COMPOSER_KEY_BINDINGS: KeyBinding[] = [
   { name: "down", action: DISABLED_TEXTAREA_ACTION },
   { name: "backspace", meta: true, action: DISABLED_TEXTAREA_ACTION },
   { name: "backspace", super: true, action: DISABLED_TEXTAREA_ACTION },
+  { name: "x", ctrl: true, action: DISABLED_TEXTAREA_ACTION },
+  { name: "k", ctrl: true, action: DISABLED_TEXTAREA_ACTION },
   { name: "u", ctrl: true, action: DISABLED_TEXTAREA_ACTION },
 ];
 

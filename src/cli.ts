@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, realpathSync, readdirSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command } from "commander";
 
@@ -30,6 +30,7 @@ import {
 import { loadDotenv } from "./lifecycle/dotenv.js";
 import { applySystemProxyToEnv } from "./lib/system-proxy.js";
 import { getSwarmflowHomeDir } from "./lib/home-path.js";
+import { createUiText, getUiLanguage } from "./lib/ui-text.js";
 import { VERSION } from "./version.js";
 import { findSessionById, findSessionByName, listSessionsForProject, formatSize } from "./session-resume.js";
 
@@ -134,10 +135,10 @@ function listGlobalSessionGroups(homeDir: string): GlobalSessionGroup[] {
 function deleteGlobalSession(sessionDir: string, homeDir: string): boolean {
   const root = resolve(join(homeDir, "projects"));
   const target = resolve(sessionDir);
-  const relative = target.slice(root.length).replace(/^[\\/]+/, "");
-  const parts = relative.split(/[\\/]+/);
+  const relativePath = relative(root, target);
+  const parts = relativePath.split(/[\\/]+/);
+  if (relativePath === ".." || relativePath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) return false;
   if (parts.length !== 2 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parts[1] ?? "")) return false;
-  if (!target.startsWith(`${root}${process.platform === "win32" ? "\\" : "/"}`)) return false;
   rmSync(target, { recursive: true, force: true });
   return true;
 }
@@ -460,6 +461,9 @@ async function interactiveSessionSelect(
 /** 全局历史会话管理器：两层树结构，当前仅支持删除会话。 */
 async function interactiveGlobalSessionManager(homeDir: string): Promise<void> {
   const { stdin, stdout } = process;
+  const text = createUiText(getUiLanguage(homeDir));
+  const ui = (key: string, vars?: Record<string, string | number>): string =>
+    text.get(["Views", "sessionManager", key], vars);
   if (!stdin.isTTY || typeof stdin.setRawMode !== "function") {
     process.stderr.write("swarmflow --session requires an interactive terminal.\n");
     return;
@@ -467,105 +471,254 @@ async function interactiveGlobalSessionManager(homeDir: string): Promise<void> {
   let groups = listGlobalSessionGroups(homeDir);
   let projectIndex = 0;
   let sessionIndex = 0;
-  let focus: "project" | "session" = "session";
+  let focus: "project" | "session" = "project";
   let notice = "";
 
   const selectedSession = () => groups[projectIndex]?.sessions[sessionIndex];
+  const visibleNodes = (): Array<{ kind: "project"; project: number } | { kind: "session"; project: number; session: number }> => {
+    const nodes: Array<{ kind: "project"; project: number } | { kind: "session"; project: number; session: number }> = [];
+    groups.forEach((group, project) => {
+      nodes.push({ kind: "project", project });
+      group.sessions.forEach((_session, session) => nodes.push({ kind: "session", project, session }));
+    });
+    return nodes;
+  };
+  const selectedNodeIndex = (): number => {
+    const nodes = visibleNodes();
+    const selected = focus === "project"
+      ? nodes.findIndex((node) => node.kind === "project" && node.project === projectIndex)
+      : nodes.findIndex((node) => node.kind === "session" && node.project === projectIndex && node.session === sessionIndex);
+    return Math.max(0, selected);
+  };
+  const titleForSession = (session: NonNullable<ReturnType<typeof selectedSession>>) =>
+    session.title || session.summary.replace(/\s+/g, " ").slice(0, 48) || session.sessionId;
+  const renderHeader = () => {
+    const width = stdout.columns || 80;
+    const contentWidth = Math.max(20, width - 8);
+    const line = "━".repeat(contentWidth);
+    const title = ui("title");
+    const titlePadding = " ".repeat(Math.max(0, Math.floor((contentWidth - title.length) / 2)));
+    stdout.write(`    \x1B[90m${line}\x1B[0m\n`);
+    stdout.write(`    ${titlePadding}\x1B[1;38;2;255;255;255m${title}\x1B[0m\n`);
+    stdout.write(`    \x1B[90m${line}\x1B[0m\n\n`);
+  };
+  const renderFooter = () => {
+    const rows = stdout.rows || 24;
+    const noticeRow = Math.max(1, rows - 1);
+    const helpRow = Math.max(1, rows);
+    stdout.write(`\x1B[${noticeRow};1H\x1B[2K${notice ? `    \x1B[33m${notice}\x1B[0m` : ""}`);
+    stdout.write(`\x1B[${helpRow};1H\x1B[2K    \x1B[90m${ui("help")}\x1B[0m`);
+  };
+  const projectRow = (index: number): string => {
+    const group = groups[index];
+    if (!group) return "";
+    const selected = focus === "project" && index === projectIndex;
+    return `    ${selected ? "❯ " : "  "}${selected ? "\x1B[1;36m" : "\x1B[36m"}${group.projectPath}\x1B[0m\n`;
+  };
+  const sessionRow = (project: number, sessionIndexForRow: number): string => {
+    const session = groups[project]?.sessions[sessionIndexForRow];
+    if (!session) return "";
+    const selected = focus === "session" && project === projectIndex && sessionIndexForRow === sessionIndex;
+    const suffix = `${session.turns} turns · ${formatSize(session.sizeBytes)}`;
+    return `      ${selected ? "❯ " : "  "}${selected ? "\x1B[1;37m" : "\x1B[37m"}${titleForSession(session)}\x1B[0m  \x1B[90m${suffix}\x1B[0m\n`;
+  };
   const render = () => {
     stdout.write("\x1B[2J\x1B[H");
-    const width = stdout.columns || 80;
-    const line = "━".repeat(Math.max(20, width - 8));
-    stdout.write(`    \x1B[90m${line}\x1B[0m\n`);
-    stdout.write(`    \x1B[1;38;2;255;255;255m[ Sessions ]\x1B[0m\n`);
-    stdout.write(`    \x1B[90m${line}\x1B[0m\n\n`);
+    renderHeader();
     if (groups.length === 0) {
-      stdout.write("    No saved sessions.\n\n");
+      stdout.write(`    ${ui("empty")}\n\n`);
     } else {
-      groups.forEach((group, pi) => {
-        const projectMark = focus === "project" && pi === projectIndex ? "❯ " : "  ";
-        stdout.write(`    ${projectMark}\x1B[1;36m${group.projectPath}\x1B[0m\n`);
+      groups.forEach((group, project) => {
+        stdout.write(projectRow(project));
         group.sessions.forEach((session, si) => {
-          const selected = pi === projectIndex && si === sessionIndex;
-          const mark = selected ? "❯ " : "  ";
-          const title = session.title || session.summary.replace(/\s+/g, " ").slice(0, 48) || session.sessionId;
-          const suffix = `${session.turns} turns · ${formatSize(session.sizeBytes)}`;
-          stdout.write(`      ${mark}${selected ? "\x1B[1;37m" : "\x1B[37m"}${title}\x1B[0m  \x1B[90m${suffix}\x1B[0m\n`);
+          stdout.write(sessionRow(project, si));
         });
       });
       stdout.write("\n");
     }
-    if (notice) stdout.write(`    \x1B[33m${notice}\x1B[0m\n`);
-    stdout.write("    \x1B[90m↑↓ select · Enter focus project/session · d delete · Esc exit\x1B[0m\n");
+    renderFooter();
+  };
+  const renderChangedRows = (previous: { projectIndex: number; sessionIndex: number; focus: "project" | "session" }) => {
+    if (groups.length === 0) {
+      render();
+      return;
+    }
+    const width = stdout.columns || 80;
+    const writeRow = (row: number, content: string) => {
+      stdout.write(`\x1B[${row};1H\x1B[2K${content}\x1B[${row};${width}H`);
+    };
+    const projectRowStart = (index: number) => 5 + groups
+      .slice(0, index)
+      .reduce((total, group) => total + 1 + group.sessions.length, 0);
+    const sessionRowStart = (index: number) => projectRowStart(index) + 1;
+    const changedRows = new Map<number, string>();
+    if (previous.projectIndex !== projectIndex || previous.focus !== focus) {
+      changedRows.set(projectRowStart(previous.projectIndex), projectRow(previous.projectIndex));
+      changedRows.set(projectRowStart(projectIndex), projectRow(projectIndex));
+    }
+    if (previous.focus === "session" && (previous.projectIndex !== projectIndex || previous.sessionIndex !== sessionIndex || previous.focus !== focus)) {
+      changedRows.set(
+        sessionRowStart(previous.projectIndex) + previous.sessionIndex,
+        sessionRow(previous.projectIndex, previous.sessionIndex),
+      );
+    }
+    if (focus === "session" && (previous.projectIndex !== projectIndex || previous.sessionIndex !== sessionIndex || previous.focus !== focus)) {
+      changedRows.set(sessionRowStart(projectIndex) + sessionIndex, sessionRow(projectIndex, sessionIndex));
+    }
+    for (const [row, content] of changedRows) writeRow(row, content);
+    renderFooter();
   };
 
-  stdout.write("\x1B[?25l");
-  stdin.setRawMode(true);
-  stdin.resume();
   stdin.setEncoding("utf8");
-  render();
 
   await new Promise<void>((resolvePromise) => {
     let buffer = "";
     let timer: ReturnType<typeof setTimeout> | null = null;
     let pendingDelete: string | undefined;
+    let finished = false;
     const cleanup = () => {
       stdin.removeListener("data", onData);
+      process.removeListener("SIGINT", onSigint);
+      if (timer) clearTimeout(timer);
       if (stdin.isRaw) stdin.setRawMode(false);
       stdout.write("\x1B[?25h\n");
     };
-    const finish = () => { cleanup(); resolvePromise(); };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolvePromise();
+    };
+    const onSigint = () => finish();
+    const deleteSelectedSession = () => {
+      if (focus !== "session") {
+        notice = ui("projectFocus");
+        pendingDelete = undefined;
+        return;
+      }
+      const session = selectedSession();
+      if (!session) {
+        notice = ui("noSession");
+        pendingDelete = undefined;
+        return;
+      }
+      if (pendingDelete === session.path) {
+        if (deleteGlobalSession(session.path, homeDir)) {
+          groups = listGlobalSessionGroups(homeDir);
+          projectIndex = Math.min(projectIndex, Math.max(0, groups.length - 1));
+          sessionIndex = Math.min(sessionIndex, Math.max(0, (groups[projectIndex]?.sessions.length ?? 1) - 1));
+          notice = ui("deleted");
+        } else {
+          notice = ui("deleteFailed");
+        }
+        pendingDelete = undefined;
+        return;
+      }
+      pendingDelete = session.path;
+      notice = ui("confirmDelete", { title: titleForSession(session) });
+    };
     const onData = (key: string) => {
+      if (key.includes("\x03")) {
+        buffer = "";
+        finish();
+        return;
+      }
       buffer += key;
       if (timer) clearTimeout(timer);
-      if (buffer === "\x1B[A" || buffer === "\x1B[B") {
-        const direction = buffer === "\x1B[A" ? -1 : 1;
-        if (focus === "project") {
-          projectIndex = Math.max(0, Math.min(groups.length - 1, projectIndex + direction));
-          sessionIndex = Math.min(sessionIndex, Math.max(0, (groups[projectIndex]?.sessions.length ?? 1) - 1));
+      const previous = { projectIndex, sessionIndex, focus };
+      const arrow = buffer.match(/^\x1B(?:\[\d*(?:;\d*)*|O)([ABCD])$/)?.[1];
+      if (arrow === "A" || arrow === "B") {
+        const direction = arrow === "A" ? -1 : 1;
+        const nodes = visibleNodes();
+        const nextNode = nodes[Math.max(0, Math.min(nodes.length - 1, selectedNodeIndex() + direction))];
+        if (!nextNode) {
+          buffer = "";
+          return;
+        }
+        projectIndex = nextNode.project;
+        if (nextNode.kind === "project") {
+          focus = "project";
         } else {
-          const sessions = groups[projectIndex]?.sessions ?? [];
-          sessionIndex = Math.max(0, Math.min(sessions.length - 1, sessionIndex + direction));
+          focus = "session";
+          sessionIndex = nextNode.session;
+        }
+        if (previous.projectIndex === projectIndex && previous.sessionIndex === sessionIndex && previous.focus === focus) {
+          buffer = "";
+          return;
         }
         notice = "";
         pendingDelete = undefined;
         buffer = "";
-        render();
+        renderChangedRows(previous);
         return;
       }
-      if (buffer === "\x1B[D") { focus = "project"; buffer = ""; render(); return; }
-      if (buffer === "\x1B[C") { focus = "session"; buffer = ""; render(); return; }
-      if (buffer === "\x1B") {
-        timer = setTimeout(() => { buffer = ""; finish(); }, 40);
+      if (arrow === "D") { focus = "project"; pendingDelete = undefined; notice = ""; buffer = ""; renderChangedRows(previous); return; }
+      if (arrow === "C") { focus = "session"; pendingDelete = undefined; notice = ""; buffer = ""; renderChangedRows(previous); return; }
+      if (buffer === "\x1B[3~" || buffer === "\x7F" || buffer === "\x08") {
+        const confirming = pendingDelete === selectedSession()?.path;
+        deleteSelectedSession();
+        buffer = "";
+        if (pendingDelete) renderFooter();
+        else if (confirming) render();
+        else renderFooter();
+        return;
+      }
+      const incompleteEscape = buffer === "\x1B"
+        || buffer === "\x1BO"
+        || (buffer.startsWith("\x1B[") && !/[\x40-\x7E]$/.test(buffer.slice(2)));
+      if (incompleteEscape) {
+        timer = setTimeout(() => {
+          const isEscape = buffer === "\x1B";
+          buffer = "";
+          if (isEscape && pendingDelete) {
+            pendingDelete = undefined;
+            notice = "";
+            renderFooter();
+          } else if (isEscape) {
+            finish();
+          }
+        }, 40);
+        return;
+      }
+      if (buffer === "\x03") {
+        buffer = "";
+        finish();
         return;
       }
       if (buffer === "\r" || buffer === "\n") {
-        focus = focus === "project" ? "session" : "project";
+        if (focus === "project") {
+          focus = "session";
+          pendingDelete = undefined;
+          notice = "";
+          buffer = "";
+          renderChangedRows(previous);
+          return;
+        }
+        const confirming = pendingDelete === selectedSession()?.path;
+        deleteSelectedSession();
         buffer = "";
-        render();
+        if (pendingDelete) renderFooter();
+        else if (confirming) render();
+        else renderFooter();
         return;
       }
       if (buffer.toLowerCase() === "d") {
-        const session = selectedSession();
-        if (!session) { buffer = ""; return; }
-        notice = `Delete '${session.title || session.sessionId}'? Press d again to confirm.`;
-        if (pendingDelete === session.path) {
-          if (deleteGlobalSession(session.path, homeDir)) {
-            groups = listGlobalSessionGroups(homeDir);
-            projectIndex = Math.min(projectIndex, Math.max(0, groups.length - 1));
-            sessionIndex = Math.min(sessionIndex, Math.max(0, (groups[projectIndex]?.sessions.length ?? 1) - 1));
-            notice = "Session deleted.";
-          }
-          pendingDelete = undefined;
-        } else {
-          pendingDelete = session.path;
-        }
+        const confirming = pendingDelete === selectedSession()?.path;
+        deleteSelectedSession();
         buffer = "";
-        render();
+        if (pendingDelete) renderFooter();
+        else if (confirming) render();
+        else renderFooter();
         return;
       }
       buffer = "";
     };
     stdin.on("data", onData);
+    process.on("SIGINT", onSigint);
+    stdout.write("\x1B[?25l");
+    stdin.setRawMode(true);
+    stdin.resume();
+    render();
   });
 }
 

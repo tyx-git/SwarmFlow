@@ -13,7 +13,9 @@ export function AssistantEntry({
   colors,
   markdownStyle,
 }: AssistantEntryProps): React.ReactNode {
-  const text = entry.assistantText ?? "";
+  // 模型或历史文本可能带 BOM；它会扰乱开头 Markdown 标记的匹配和隐藏范围，
+  // 导致正文丢字或格式标记残留在界面上。
+  const text = (entry.assistantText ?? "").replace(/^\uFEFF+/, "");
   const streaming = entry.assistantStreaming === true;
   return (
     <box width="100%" flexShrink={0}>
@@ -22,7 +24,6 @@ export function AssistantEntry({
         syntaxStyle={markdownStyle}
         treeSitterClient={getTreeSitterClient()}
         streaming={streaming}
-        reserveHeightWhileStreaming={streaming}
         conceal={true}
         concealCode={false}
         internalBlockMode="top-level"

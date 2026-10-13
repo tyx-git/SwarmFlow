@@ -265,6 +265,16 @@
       "activity": {
         "compacting": "正在压缩上下文 {seconds}秒"
       },
+      "sessionManager": {
+        "title": "[Session]",
+        "empty": "没有保存的会话。",
+        "help": "↑↓ 选择 · ←→ 切换层级 · Enter 打开/确认删除 · d/Delete/Backspace 删除 · Esc 取消/退出",
+        "confirmDelete": "确定删除会话“{title}”？按 Enter 再次确认，Esc 取消。",
+        "deleted": "会话已删除。",
+        "deleteFailed": "无法删除该会话。",
+        "projectFocus": "请先选择一个会话。",
+        "noSession": "没有可删除的会话。"
+      },
       "commandPicker": {
         "selectProvider": "选择供应商:",
         "selectModel": "选择模型:",
@@ -665,6 +675,16 @@
       },
       "activity": {
         "compacting": "Compacting context for {seconds}s"
+      },
+      "sessionManager": {
+        "title": "[Session]",
+        "empty": "No saved sessions.",
+        "help": "↑↓ select · ←→ switch level · Enter open/confirm delete · d/Delete/Backspace delete · Esc cancel/exit",
+        "confirmDelete": "Delete session '{title}'? Press Enter again to confirm, Esc to cancel.",
+        "deleted": "Session deleted.",
+        "deleteFailed": "Could not delete this session.",
+        "projectFocus": "Select a session first.",
+        "noSession": "There is no session to delete."
       },
       "commandPicker": {
         "selectProvider": "Select provider:",
