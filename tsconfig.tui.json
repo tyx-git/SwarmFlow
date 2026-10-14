@@ -26,19 +26,11 @@
   "exclude": [
     "node_modules",
     "release",
-    // 内置 fork 自带的上游测试：跑在 bun 下，且不属于应用运行图
+    // 上游自带的测试/基准/测试辅助：跑在 bun 下，不属于应用运行图
+    // （2026-10-14 已从仓库删除 core/{tests,benchmark,testing} 与全部 *.test.ts，
+    //   以下模式保留是为了防止将来重新引入同类文件时污染检查）
     "**/*.test.ts",
     "**/__tests__/**",
-    "**/*.node-test.ts",
-    "external/opentui/forked/core/specs",
-    "external/opentui/forked/core/tests",
-    "external/opentui/forked/core/benchmark",
-    "external/opentui/forked/core/testing",
-    // 仅 Bun 可加载的插件运行时（只被 forked/core/package.json 的 exports 引用）
-    "external/opentui/forked/core/runtime-plugin.ts",
-    "external/opentui/forked/core/runtime-plugin-support.ts",
-    "external/opentui/forked/core/runtime-plugin-support-configure.ts",
-    // 下载 tree-sitter 资产的一次性脚本（import.meta.main 是 Bun API）
-    "external/opentui/forked/core/lib/tree-sitter/assets"
+    "**/*.node-test.ts"
   ]
 }
