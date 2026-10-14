@@ -8,11 +8,6 @@ declare module "*.wasm" {
   export default path
 }
 
-declare module "bun-ffi-structs" {
-  export function defineStruct(...args: any[]): any
-  export function defineEnum(...args: any[]): any
-}
-
 interface BunShims {
   stripANSI(text: string): string
   sleep(ms: number): Promise<void>

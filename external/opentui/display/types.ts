@@ -89,11 +89,6 @@ export interface AskPanelProps {
   contentWidth: number;
 }
 
-export interface AskQuestionState {
-  questions: AgentQuestionItem[];
-  currentQuestionIndex: number;
-}
-
 export const EMPTY_COMMAND_OVERLAY: CommandOverlayState = {
   mode: "command",
   visible: false,

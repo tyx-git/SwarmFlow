@@ -9,24 +9,6 @@ import { PresentationEntryComponent } from "./presentation-entry.js";
 const ATTRS_BOLD = createTextAttributes({ bold: true });
 
 /**
- * Brand wordmark. Horizontally centered within its container; the
- * caller controls vertical placement (welcome screen renders this in
- * an absolutely-positioned layer keyed to absolute terminal height, so
- * it never shifts when the conversation viewport resizes).
- */
-export function LogoBlock(
-  { lines, color }: { lines: readonly string[]; color: string },
-): React.ReactNode {
-  return (
-    <box flexDirection="column" width="100%" alignItems="center" paddingBottom={1}>
-      {lines.map((line, index) => (
-        <text key={`logo-${index}`} fg={color} content={line} />
-      ))}
-    </box>
-  );
-}
-
-/**
  * Pure entry list — renders logo, sub-session indicator, and conversation entries.
  * Does NOT own a scrollbox; the parent (OpenTuiScreen) wraps this in a ScrollViewport.
  */

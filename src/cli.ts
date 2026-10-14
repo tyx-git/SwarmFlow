@@ -398,6 +398,9 @@ async function interactiveSessionSelect(
       stdin.removeListener("data", onData);
       if (stdin.isRaw) stdin.setRawMode(false);
       stdout.write("\x1B[?25h"); // 显示光标
+      // 用 typeof 守卫：测试注入的假 stdin 未必实现这两个方法。
+      if (typeof stdin.pause === "function") stdin.pause();
+      if (typeof stdin.unref === "function") stdin.unref();
     };
 
     stdin.setRawMode(true);
@@ -582,6 +585,9 @@ async function interactiveGlobalSessionManager(homeDir: string): Promise<void> {
       if (timer) clearTimeout(timer);
       if (stdin.isRaw) stdin.setRawMode(false);
       stdout.write("\x1B[?25h\n");
+      // 用 typeof 守卫：测试注入的假 stdin 未必实现这两个方法。
+      if (typeof stdin.pause === "function") stdin.pause();
+      if (typeof stdin.unref === "function") stdin.unref();
     };
     const finish = () => {
       if (finished) return;

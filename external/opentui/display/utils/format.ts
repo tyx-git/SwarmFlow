@@ -22,10 +22,6 @@ export function formatCompactTokensShort(value: number | undefined): string {
   return `${(value / 1000).toFixed(1)}k`;
 }
 
-export function formatTokens(value: number | undefined): string {
-  return (value ?? 0).toLocaleString("en-US");
-}
-
 export function formatUsagePercent(contextTokens: number, contextLimit?: number): string {
   if (!contextLimit || contextLimit <= 0) return "0.0%";
   return `${((contextTokens / contextLimit) * 100).toFixed(1)}%`;

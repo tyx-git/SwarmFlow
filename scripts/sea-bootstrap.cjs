@@ -121,6 +121,23 @@ function enableCompileCache() {
   }
 }
 
+/**
+ * 与 cli.ts 的 cleanup() 保持同一套收尾：仅移除 data 监听不能让进程退出，
+ * 流仍停留在 flowing 状态，stdin 句柄会继续持有事件循环，进程从此挂住
+ * （界面静止、任何按键都不响应，只能 Ctrl+C 强杀）。
+ * 在引导层统一释放一次，避免任何入口漏掉这一步。
+ */
+function releaseStdin() {
+  try {
+    const stdin = process.stdin;
+    if (!stdin) return;
+    if (typeof stdin.pause === "function") stdin.pause();
+    if (typeof stdin.unref === "function") stdin.unref();
+  } catch {
+    // stdin 未初始化（无输入通道）时忽略。
+  }
+}
+
 async function run() {
   ensureWindowsUtf8Console();
   process.env[CONSOLE_READY_MARKER] = "1";
@@ -143,6 +160,7 @@ async function run() {
   const { main } = runtimeRequire(cliPath);
   process.argv = [process.execPath, cliPath, ...userArgs];
   await main(process.argv);
+  releaseStdin();
 }
 
 run().catch((error) => {
