@@ -19,6 +19,7 @@ import {
 } from "../external/opentui/forked/core/lib/tree-sitter/resolve-ft.js";
 import { registerSwarmFlowTreeSitterParsers } from "../external/opentui/tree-sitter-parsers.js";
 import { buildCommandStyledText } from "../external/opentui/components/syntax-highlight-utils.js";
+import { findFileReferences, paintFileReferences } from "../external/opentui/components/path-highlight.js";
 import { RGBA } from "@opentui/core";
 import { highlightToChunks } from "../external/opentui/components/syntax-highlighter.js";
 import { AssistantEntry } from "../external/opentui/display/entries/assistant-entry.js";
@@ -193,6 +194,207 @@ describe("OpenTUI code block language resolution", () => {
     expect(windows.chunks[1]?.text).toBe(":42:");
   });
 
+});
+
+describe("file reference highlighting", () => {
+  const pathFg = RGBA.fromHex("#74C7EC");
+  const lineFg = RGBA.fromHex("#FFAF5F");
+
+  it("finds relative, absolute and drive paths with optional line columns", () => {
+    const text = "见 src/providers/usage.ts:389 (/F:/Project/Rust/SwarmFlow/src/providers/usage.ts:389) 说明";
+    expect(findFileReferences(text).map((reference) => text.slice(reference.start, reference.end))).toEqual([
+      "src/providers/usage.ts:389",
+      "/F:/Project/Rust/SwarmFlow/src/providers/usage.ts:389",
+    ]);
+
+    const windows = "见 C:\\work\\src\\main.ts:42:7 与 src/a.ts";
+    expect(findFileReferences(windows).map((reference) => windows.slice(reference.start, reference.end))).toEqual([
+      "C:\\work\\src\\main.ts:42:7",
+      "src/a.ts",
+    ]);
+  });
+
+  it("ignores urls, bare file names and dotted words", () => {
+    expect(findFileReferences("访问 https://example.com/index.html:80 与 mailto:a@b.com/c.ts:1")).toEqual([]);
+    expect(findFileReferences("这是 e.g. 版本 1.5 的 README.md")).toEqual([]);
+    expect(findFileReferences("mod.ts.bak 不是文件引用")).toEqual([]);
+  });
+
+  it("splits chunks into path and locator colors while keeping surrounding text", () => {
+    const defaultFg = RGBA.fromHex("#FFFFFF");
+    const painted = paintFileReferences(
+      [{ __isChunk: true, text: "见 src/a/b.ts:12 完成", fg: defaultFg }],
+      { pathFg, lineFg },
+    );
+    expect(painted.map((chunk) => chunk.text)).toEqual(["见 ", "src/a/b.ts", ":12", " 完成"]);
+    expect(painted.map((chunk) => chunk.fg?.toString())).toEqual([
+      defaultFg.toString(),
+      pathFg.toString(),
+      lineFg.toString(),
+      defaultFg.toString(),
+    ]);
+  });
+
+  it("leaves code spans and existing links untouched", () => {
+    const rawFg = RGBA.fromHex("#9ECE6A");
+    const chunks = [
+      { __isChunk: true, text: "行内 ", fg: RGBA.fromHex("#FFFFFF") },
+      { __isChunk: true, text: "src/keep.ts:12", fg: rawFg },
+      { __isChunk: true, text: "链接 ", fg: RGBA.fromHex("#FFFFFF") },
+      { __isChunk: true, text: "docs/page.md:3", fg: RGBA.fromHex("#FFFFFF"), link: { url: "file://x" } },
+    ];
+    expect(paintFileReferences(chunks, { pathFg, lineFg }, [rawFg])).toEqual(chunks);
+  });
+
+  it("keeps file reference colors through streaming rebuilds", async () => {
+    await registerSwarmFlowTreeSitterParsers();
+    const theme = createDisplayTheme("dark");
+    const setup = await createTestRenderer({ width: 90, height: 20, useThread: false, consoleMode: "disabled" });
+    const root = createRoot(setup.renderer);
+    const full = "已修复 **核心问题**，位置 src/providers/usage.ts:389。\n\n- 列表项 src/list.ts:4";
+    const expectedPath = RGBA.fromHex(theme.colors.statusSession).toString();
+    const collectCodes = (node: { getChildren?: () => unknown[] }, out: CodeRenderable[] = []): CodeRenderable[] => {
+      if (node instanceof CodeRenderable) out.push(node);
+      for (const child of node.getChildren?.() ?? []) collectCodes(child, out);
+      return out;
+    };
+    const render = (text: string, streaming: boolean): void => {
+      flushSync(() => root.render(React.createElement(AssistantEntry, {
+        entry: {
+          id: "assistant-streaming-path",
+          contentVersion: 1,
+          kind: "assistant",
+          state: streaming ? "active" : "done",
+          assistantText: text,
+          assistantStreaming: streaming,
+        },
+        colors: theme.colors,
+        markdownStyle: theme.markdownStyle,
+      })));
+    };
+    try {
+      for (let end = 1; end < full.length; end += 5) {
+        render(full.slice(0, end), true);
+        await setup.renderOnce();
+      }
+      render(full, false);
+      await setup.renderOnce();
+      const codes = collectCodes(setup.renderer.root);
+      await Promise.all(codes.map((code) => code.highlightingDone));
+      await setup.renderOnce();
+
+      const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
+      const frame = spans.map((span) => span.text).join("");
+      expect(frame).toContain("核心问题");
+      expect(frame).not.toContain("**");
+      expect(spans.some((span) => span.text.includes("src/providers/usage.ts") && span.fg?.toString() === expectedPath)).toBe(true);
+      expect(spans.some((span) => span.text.includes("src/list.ts") && span.fg?.toString() === expectedPath)).toBe(true);
+    } finally {
+      flushSync(() => root.unmount());
+      setup.renderer.destroy();
+      theme.markdownStyle.destroy();
+    }
+  });
+
+  it("paints mid-line paths in command output previews", () => {
+    const output = buildCommandStyledText(
+      "已修复 src/providers/usage.ts:389 (/F:/Project/Rust/SwarmFlow/src/providers/usage.ts:389)",
+      {
+        mode: "output",
+        language: "txt",
+        fallbackFg: RGBA.fromHex("#FFFFFF"),
+        pathFg,
+        lineFg,
+      },
+    );
+    expect(output.chunks.filter((chunk) => chunk.fg?.toString() === pathFg.toString()).map((chunk) => chunk.text)).toEqual([
+      "src/providers/usage.ts",
+      "/F:/Project/Rust/SwarmFlow/src/providers/usage.ts",
+    ]);
+    expect(output.chunks.filter((chunk) => chunk.fg?.toString() === lineFg.toString()).map((chunk) => chunk.text)).toEqual([
+      ":389",
+      ":389",
+    ]);
+  });
+
+  it.each(["brief", "light"] as const)("paints file references inside assistant Markdown in %s", async (mode) => {
+    await registerSwarmFlowTreeSitterParsers();
+    const theme = createDisplayTheme(mode);
+    const setup = await createTestRenderer({ width: 100, height: 24, useThread: false, consoleMode: "disabled" });
+    const root = createRoot(setup.renderer);
+    const text = [
+      "已修复 src/providers/usage.ts:389 (/F:/Project/Rust/SwarmFlow/src/providers/usage.ts:389)。",
+      "",
+      "**粗体**里的 `src/keep.ts:12` 保持行内代码色。",
+      "",
+      "- 列表项里的 src/list.ts:4",
+      "- [链接文档](docs/readme.md)",
+      "",
+      "> 引用里的 src/quote.ts:9",
+      "",
+      "| 名称 | 路径 |",
+      "| --- | --- |",
+      "| usage | src/providers/usage.ts |",
+    ].join("\n");
+    try {
+      flushSync(() => root.render(React.createElement(AssistantEntry, {
+        entry: {
+          id: "assistant-path-highlight",
+          contentVersion: 1,
+          kind: "assistant",
+          state: "done",
+          assistantText: text,
+          assistantStreaming: false,
+        },
+        colors: theme.colors,
+        markdownStyle: theme.markdownStyle,
+      })));
+      await setup.renderOnce();
+      const codes: CodeRenderable[] = [];
+      const visit = (node: { getChildren?: () => unknown[] }): void => {
+        if (node instanceof CodeRenderable) codes.push(node);
+        for (const child of node.getChildren?.() ?? []) visit(child as typeof node);
+      };
+      visit(setup.renderer.root);
+      await Promise.all(codes.map((code) => code.highlightingDone));
+      await setup.renderOnce();
+
+      const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
+      const expectedPath = RGBA.fromHex(theme.colors.statusSession).toString();
+      const expectedLine = RGBA.fromHex(theme.colors.orange).toString();
+      const raw = theme.markdownStyle.getStyle("markup.raw")?.fg?.toString();
+      const pathSpans = spans
+        .filter((span) => span.fg?.toString() === expectedPath)
+        .map((span) => span.text.trim())
+        .filter((text2) => text2.length > 0);
+
+      expect(pathSpans.join("")).toContain("src/providers/usage.ts");
+      expect(pathSpans.join("")).toContain("/F:/Project/Rust/SwarmFlow/src/providers/usage.ts");
+      expect(spans.some((span) => span.text.trim() === ":389" && span.fg?.toString() === expectedLine)).toBe(true);
+      expect(spans.find((span) => span.text.includes("src/keep.ts:12"))?.fg?.toString()).toBe(raw);
+      if (mode === "light") {
+        // light 主题里行内代码色与路径色不同，可验证保护真的生效。
+        expect(raw).not.toBe(expectedPath);
+        expect(spans.find((span) => span.text.includes("src/keep.ts:12"))?.fg?.toString()).not.toBe(expectedPath);
+      }
+      expect(spans.find((span) => span.text.trim() === "粗体")?.attributes).toBe(createTextAttributes({ bold: true }));
+      expect(spans.map((span) => span.text).join("")).toContain("已修复");
+
+      // renderNode 不能影响其他块类型，也不能覆盖官方链接样式。
+      const frame = spans.map((span) => span.text).join("");
+      expect(frame).toContain("列表项里的");
+      expect(frame).toContain("链接文档");
+      expect(frame).toContain("引用里的");
+      expect(frame).toContain("usage");
+      expect(spans.some((span) => span.text.includes("src/list.ts") && span.fg?.toString() === expectedPath)).toBe(true);
+      expect(spans.some((span) => span.text.includes("src/quote.ts") && span.fg?.toString() === expectedPath)).toBe(true);
+      expect(spans.some((span) => span.text.includes("docs/readme.md") && span.fg?.toString() === expectedPath)).toBe(false);
+    } finally {
+      flushSync(() => root.unmount());
+      setup.renderer.destroy();
+      theme.markdownStyle.destroy();
+    }
+  });
 });
 
 describe("bundled OpenTUI Markdown", () => {

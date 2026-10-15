@@ -13,6 +13,7 @@ import { RGBA, StyledText, type TextChunk } from "@opentui/core";
 import { displayWidthWithNewlines } from "../composer-token-logic.js";
 import { getUiCommonColors } from "../../../src/config/ui-colors.js";
 import { highlightToChunks } from "./syntax-highlighter.js";
+import { paintFileReferences } from "./path-highlight.js";
 import { inferCodeFiletype } from "../forked/core/lib/tree-sitter/resolve-ft.js";
 
 const COMMENT_EXEMPT_COLOR_VALUES = getUiCommonColors().syntaxCommentExempt;
@@ -209,13 +210,16 @@ export function buildCommandStyledText(
       const shouldHighlight = options.mode === "command"
         ? inferCodeFiletype(commandLine) !== undefined
         : options.language !== undefined || inferCodeFiletype(commandLine) !== undefined;
-      if (shouldHighlight && language) {
-        chunks.push(...(options.mode === "command"
-          ? highlightCommandLines(line, language, fallbackFg)
-          : styledChunksForLanguage(line, language, fallbackFg)));
-      } else {
-        chunks.push(createChunk(line || " ", { fg: fallbackFg }));
-      }
+      const lineChunks = shouldHighlight && language
+        ? (options.mode === "command"
+            ? highlightCommandLines(line, language, fallbackFg)
+            : styledChunksForLanguage(line, language, fallbackFg))
+        : [createChunk(line || " ", { fg: fallbackFg })];
+      // `path:line:` 前缀已在上面的分支处理；这里补句中出现的路径引用。
+      const pathColors = options.pathFg;
+      chunks.push(...(pathColors
+        ? paintFileReferences(lineChunks, { pathFg: pathColors, lineFg: lineFg ?? pathColors })
+        : lineChunks));
     }
     if (index < lines.length - 1) chunks.push(createChunk("\n", { fg: metadataFg }));
   });
