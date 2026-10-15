@@ -79,7 +79,6 @@ export type AudioEngineHandle = NativeHandle<"audio_engine">
 const currentDir = dirname(fileURLToPath(import.meta.url))
 const realCurrentDir = isBunfsPath(currentDir) ? currentDir : realpathSync(currentDir)
 const executableDir = dirname(process.execPath)
-const repoRoot = process.cwd()
 const zigArch =
   process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch
 const zigOs =
@@ -103,8 +102,10 @@ const localNativeCandidates = [
   join(realCurrentDir, "zig", "zig-out", "lib", nativeLibFile),
   join(realCurrentDir, "zig", "lib", `${zigArch}-${zigOs}`, nativeLibFile),
   join(realCurrentDir, "native", `${process.platform}-${process.arch}`, nativeLibFile),
-  join(repoRoot, "opentui-src", "forked", "core", "zig", "zig-out", "lib", nativeLibFile),
-  join(repoRoot, "opentui-src", "forked", "core", "zig", "lib", `${zigArch}-${zigOs}`, nativeLibFile),
+  // 注：fork 早年位于仓库根的 opentui-src/，此前这里有两条
+  // join(repoRoot, "opentui-src", "forked", "core", "zig", ...) 候选路径。
+  // fork 已迁至 external/opentui/forked/，模块相对的 currentDir/realCurrentDir
+  // 候选已覆盖当前布局，旧路径永远不可能命中，故删除（连同 repoRoot 常量）。
 ]
 
 let targetLibPath: string | undefined = localNativeCandidates.find((candidate) => existsSync(candidate))
