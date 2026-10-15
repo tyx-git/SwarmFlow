@@ -7,13 +7,14 @@
 
 import { arch as osArch, platform as osPlatform, release as osRelease } from "node:os";
 import OpenAI from "openai";
-import { getCodexAccountId } from "../auth/openai-oauth.js";
+import { getCodexAccountId, forceRefreshToken } from "../auth/openai-oauth.js";
 import { getExtendedCacheSupport, type ModelConfig } from "../config/config.js";
 import { VERSION } from "../version.js";
 import {
   BaseProvider,
   Citation,
   finalizeToolCall,
+  normalizeStopReason,
   ProviderResponse,
   ToolCall,
   Usage,
@@ -62,17 +63,37 @@ export class OpenAIResponsesProvider extends BaseProvider {
   constructor(config: ModelConfig) {
     super();
     this._config = config;
+    this._client = this._createClient(config.apiKey);
+  }
+
+  /** 用给定令牌构建底层 SDK 客户端（401 刷新后需要重建）。 */
+  protected _createClient(apiKey?: string): OpenAI {
     const opts: ConstructorParameters<typeof OpenAI>[0] = {
-      apiKey: config.apiKey,
+      apiKey,
       // 关闭 SDK 内置重试：流式请求 SDK 本来就不重试，非流式则会用 0.5s/1s 的
       // 隐藏退避先跑几轮，用户看不到进度、也享受不到 5/10/20/40/80 的可观测
       // 退避。重试统一由 tool-loop 的 network-retry 层负责（与 copilot.ts 同取舍）。
       maxRetries: 0,
     };
-    if (config.baseUrl) {
-      opts.baseURL = config.baseUrl;
+    if (this._config.baseUrl) {
+      opts.baseURL = this._config.baseUrl;
     }
-    this._client = new OpenAI(opts);
+    return new OpenAI(opts);
+  }
+
+  /**
+   * openai-codex 的 access token 是 ChatGPT OAuth 签发的短命 JWT，长会话里
+   * 上游会在本地判定"还没过期"时把它拒掉。这里强制刷新换令牌并重建客户端，
+   * `asyncSendMessage` 随即重发一次。其他后端（含 copilot——它自己管理 token）
+   * 返回 false，让原始 401 直接抛给用户。
+   */
+  protected override async _reauthenticate(): Promise<boolean> {
+    if (!this._isCodexProvider()) return false;
+    const fresh = await forceRefreshToken(this._config.apiKey);
+    if (!fresh) return false;
+    this._config.apiKey = fresh;
+    this._client = this._createClient(fresh);
+    return true;
   }
 
   private _isCodexProvider(): boolean {
@@ -440,11 +461,23 @@ export class OpenAIResponsesProvider extends BaseProvider {
 
     const reasoningState = this._reasoningRoundtripState(reasoningItems as Record<string, unknown>[]);
 
+    // Responses API 不给 finish_reason，用 `status` + `incomplete_details.reason`
+    // 还原同一语义。`incomplete` 就是"没说完"，reason 缺失时按截断处理。
+    const status = response["status"] as string | undefined;
+    const incompleteDetails = response["incomplete_details"] as Record<string, unknown> | undefined;
+    let stopReason = normalizeStopReason(
+      (incompleteDetails?.["reason"] as string | undefined) ?? status,
+    );
+    if (stopReason === "end_turn" && toolCalls.length > 0) {
+      stopReason = "tool_calls";
+    }
+
     return new ProviderResponse({
       text: textParts.join("\n"),
       toolCalls,
       usage,
       raw: response,
+      stopReason,
       reasoningContent,
       reasoningState,
       thinkingArtifact: this._buildThinkingArtifact(reasoningContent, reasoningState),
@@ -932,11 +965,14 @@ export class OpenAIResponsesProvider extends BaseProvider {
 
     const reasoningText = reasoningParts.join("");
 
+    // 走到这里说明 SSE 迭代器结束却始终没有 response.completed / .incomplete /
+    // .done——典型的断流。没有终止状态就不能当成正常完成。
     return new ProviderResponse({
       text: textParts.join(""),
       toolCalls: [],
       usage: new Usage(),
       raw: null,
+      stopReason: "incomplete_stream",
       reasoningContent: reasoningText,
       reasoningState: reasoningText || null,
       thinkingArtifact: this._buildThinkingArtifact(reasoningText, reasoningText || null),

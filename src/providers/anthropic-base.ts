@@ -23,6 +23,7 @@ import {
   BaseProvider,
   Citation,
   finalizeToolCall,
+  normalizeStopReason,
   ProviderResponse,
   ToolCall,
   Usage,
@@ -455,6 +456,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       toolCalls,
       usage,
       raw: resp,
+      stopReason: normalizeStopReason(resp.stop_reason),
       reasoningContent: thinkingParts.length > 0 ? thinkingParts.join("") : "",
       reasoningState: storedReasoningState,
       thinkingArtifact: this._buildThinkingArtifact(
@@ -752,6 +754,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       toolCalls: [],
       usage,
       raw: response,
+      stopReason: normalizeStopReason(response.stop_reason),
       reasoningContent: reasoningText,
       reasoningState: storedReasoningState,
       thinkingArtifact: this._buildThinkingArtifact(reasoningText, reasoningBlocks.length > 0 ? reasoningBlocks : null),

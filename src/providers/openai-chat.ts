@@ -6,11 +6,13 @@
  */
 
 import OpenAI from "openai";
+import { forceRefreshToken } from "../auth/openai-oauth.js";
 import type { ModelConfig } from "../config/config.js";
 import {
   BaseProvider,
   Citation,
   finalizeToolCall,
+  normalizeStopReason,
   ProviderResponse,
   ToolCall,
   Usage,
@@ -54,6 +56,19 @@ export class OpenAIChatProvider extends BaseProvider {
       opts.baseURL = config.baseUrl;
     }
     return new OpenAI(opts);
+  }
+
+  /**
+   * openai-codex 经 Chat Completions 形状端点时用的仍是短命的 ChatGPT OAuth
+   * 令牌；401 后强制刷新并重建客户端，`asyncSendMessage` 随即重发一次。
+   */
+  protected override async _reauthenticate(): Promise<boolean> {
+    if (this._config.provider !== "openai-codex") return false;
+    const fresh = await forceRefreshToken(this._config.apiKey);
+    if (!fresh) return false;
+    this._config.apiKey = fresh;
+    this._client = this._buildClient(this._config);
+    return true;
   }
 
   protected _buildThinkingArtifact(
@@ -305,6 +320,7 @@ export class OpenAIChatProvider extends BaseProvider {
       toolCalls,
       usage,
       raw: resp,
+      stopReason: normalizeStopReason(choice.finish_reason),
       reasoningContent: reasoning,
       reasoningState: reasoning || null,
       thinkingArtifact: this._buildThinkingArtifact(reasoning, reasoning || null),
@@ -486,6 +502,9 @@ export class OpenAIChatProvider extends BaseProvider {
     // 对没有供应商 reasoning split 的服务器（例如 LM Studio）检测 content 中的 <think>。
     // null = 尚未看到第一个 content delta；之后为 true/false。
     let contentHasInlineThink: boolean | null = null;
+    // 最后一个带 choices 的 chunk 携带 finish_reason；null = 流里没出现过，
+    // 调用方据此区分"未暴露"和"正常结束"。
+    let streamFinishReason: string | null = null;
 
     function normalizeReasoningDetails(details: unknown): { text: string; state: unknown } | null {
       const collectText = (value: unknown): string => {
@@ -608,6 +627,7 @@ export class OpenAIChatProvider extends BaseProvider {
       }
 
       const delta = chunk.choices[0].delta;
+      streamFinishReason = chunk.choices[0].finish_reason ?? streamFinishReason;
 
       const annotations = (delta as unknown as Record<string, unknown>)[
         "annotations"
@@ -787,6 +807,7 @@ export class OpenAIChatProvider extends BaseProvider {
       toolCalls: [],
       usage,
       raw: null,
+      stopReason: normalizeStopReason(streamFinishReason),
       reasoningContent: reasoningText,
       reasoningState: latestReasoningState ?? (reasoningText || null),
       thinkingArtifact: this._buildThinkingArtifact(

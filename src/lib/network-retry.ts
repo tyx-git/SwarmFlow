@@ -25,6 +25,27 @@ export const MAX_NETWORK_RETRIES = 5;
 /** 退避基数：第一次重试等待 5 秒，之后每次翻倍。 */
 export const RETRY_BASE_DELAY_MS = 5_000;
 
+/**
+ * "回合未完成"（空响应 / 输出被 max_tokens 截断）的最大重掷次数。
+ *
+ * 与网络故障分开计数：上游是响应了的，只是产出不可用。这类故障靠退避等待
+ * 解决不了，靠重新采样（temperature>0 时输出不同）才可能解决，所以次数少、
+ * 等待短，避免把 5 次网络预算和 80 秒等待烧在一次毫无意义的停顿上。
+ */
+export const MAX_INCOMPLETE_TURN_RETRIES = 2;
+
+/** 未完成回合重掷的退避基数：0.5 秒起，每次翻倍。 */
+const INCOMPLETE_RETRY_BASE_DELAY_MS = 500;
+
+/**
+ * TurnIncompleteError 携带的标记码。
+ *
+ * 放进 RETRYABLE_CODES 是为了让这类错误复用现成的退避环：tool-loop 给错误
+ * 对象打上 `.code`，isRetryableNetworkError 通过 `.code` 路径认出它，无需
+ * 让 lib 反向依赖 agents/providers（那会造成循环引用）。
+ */
+export const TURN_INCOMPLETE_ERROR_CODE = "TURN_INCOMPLETE";
+
 /** 单次退避上限（防止抖动把等待时间放大到不可接受）。 */
 const RETRY_MAX_DELAY_MS = 120_000;
 
@@ -105,6 +126,7 @@ const RETRYABLE_CODES = new Set([
   "UND_ERR_SOCKET",
   "UND_ERR_CONNECT_TIMEOUT",
   "ERR_STREAM_PREMATURE_CLOSE",
+  TURN_INCOMPLETE_ERROR_CODE,
 ]);
 
 /** 表明连接级失败的 SDK 包装类名。 */
@@ -288,6 +310,51 @@ export function isRetryableNetworkError(err: unknown): boolean {
 }
 
 // ------------------------------------------------------------------
+// 回合未完成 / 凭据失效判定
+// ------------------------------------------------------------------
+
+/**
+ * "上游响应了、但这一轮没跑完"。
+ *
+ * 空响应、max_tokens 截断、断流都归到这里。带上 `.code` 是为了让
+ * `isRetryableNetworkError` 认出它，从而复用 tool-loop 现成的退避环
+ * （次数与延迟由 `MAX_INCOMPLETE_TURN_RETRIES` 单独控制）。
+ */
+export class TurnIncompleteError extends Error {
+  override readonly name = "TurnIncompleteError";
+  readonly code = TURN_INCOMPLETE_ERROR_CODE;
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * 是否为"上游响应了但这一轮没跑完"的错误（空响应、max_tokens 截断）。
+ * 这类错误走本文件的退避环，但用独立的次数预算。
+ */
+export function isTurnIncompleteError(err: unknown): boolean {
+  return Boolean(err)
+    && typeof err === "object"
+    && (err as Record<string, unknown>)["code"] === TURN_INCOMPLETE_ERROR_CODE;
+}
+
+/**
+ * 是否为 401/403 —— 凭据缺失或已过期。
+ *
+ * 它**不**是可重试的网络故障（`isRetryableNetworkError` 排除 4xx），只有
+ * "刷新凭据后重发一次"这一种处置方式，所以判定单独成函数。
+ *
+ * 用 `collectStatusCandidates` 而非只看 `err.status`：很多中转/SDK 只把
+ * 状态码写进 message 文本，或裹在 `error`/`cause` 里。
+ */
+export function isUnauthorizedError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  if ((err as Record<string, unknown>)["name"] === "AbortError") return false;
+  return collectStatusCandidates(err).some((status) => status === 401 || status === 403);
+}
+
+// ------------------------------------------------------------------
 // computeRetryDelay
 // ------------------------------------------------------------------
 
@@ -300,6 +367,18 @@ export function isRetryableNetworkError(err: unknown): boolean {
  */
 export function computeRetryDelay(attempt: number): number {
   const baseDelay = Math.min(RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, attempt)), RETRY_MAX_DELAY_MS);
+  const jitter = baseDelay * 0.25 * Math.random();
+  return Math.round(baseDelay + jitter);
+}
+
+/**
+ * 未完成回合重掷的退避：0.5 秒、1 秒，叠加 0–25% 抖动。
+ *
+ * 刻意比网络退避短：上游没有故障，只是这一轮的产出被截断或为空。等待改变
+ * 不了结果，重掷才可能；停顿久了只会让用户以为卡死。
+ */
+export function computeIncompleteRetryDelay(attempt: number): number {
+  const baseDelay = INCOMPLETE_RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, attempt));
   const jitter = baseDelay * 0.25 * Math.random();
   return Math.round(baseDelay + jitter);
 }

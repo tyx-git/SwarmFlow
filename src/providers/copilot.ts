@@ -19,6 +19,7 @@ import OpenAI from "openai";
 
 import type { ModelConfig } from "../config/config.js";
 import { copilotTokenManager } from "../auth/github-copilot-token-manager.js";
+import { isUnauthorizedError } from "../lib/network-retry.js";
 import {
   BaseProvider,
   type Message,
@@ -48,21 +49,6 @@ import {
  */
 function isAnthropicShapedModel(modelId: string): boolean {
   return modelId.startsWith("claude");
-}
-
-// =============================================================================
-// 辅助函数
-// =============================================================================
-
-/** 检测任一 SDK 返回的 401 Unauthorized 错误。 */
-function is401Error(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const e = err as Record<string, unknown>;
-  if (e["status"] === 401 || e["statusCode"] === 401) return true;
-  if (typeof e["message"] === "string" && /\b401\b/.test(e["message"] as string)) {
-    return true;
-  }
-  return false;
 }
 
 // =============================================================================
@@ -108,7 +94,7 @@ class CopilotAnthropicImpl extends AnthropicProvider {
     try {
       return await super.sendMessage(messages, tools, options);
     } catch (err) {
-      if (is401Error(err)) {
+      if (isUnauthorizedError(err)) {
         copilotTokenManager.invalidate();
         await this._refreshClient(vision, isAgent);
         return await super.sendMessage(messages, tools, options);
@@ -149,7 +135,7 @@ class CopilotResponsesImpl extends OpenAIResponsesProvider {
     try {
       return await super.sendMessage(messages, tools, options);
     } catch (err) {
-      if (is401Error(err)) {
+      if (isUnauthorizedError(err)) {
         copilotTokenManager.invalidate();
         await this._refreshClient(vision, isAgent);
         return await super.sendMessage(messages, tools, options);

@@ -57,16 +57,32 @@ describe("runtime-owned error entries", () => {
     }
   });
 
-  it("does not mark an empty provider response as a completed turn", async () => {
+  it("retries an empty provider response, then fails the turn", async () => {
+    // 1 次首发 + MAX_INCOMPLETE_TURN_RETRIES(2) 次重掷，全部为空才算失败。
     const h = makeScriptedSession({
-      rounds: [{ text: "" }],
+      rounds: [{ text: "" }, { text: "" }, { text: "" }],
     });
     try {
       await expect(h.session.turn("hello")).rejects.toThrow("empty response");
+      expect(h.provider.callCount).toBe(3);
       const workEnds = h.session.log.filter((e) => e.type === "work_end" && !e.discarded);
       expect(workEnds).toHaveLength(1);
       expect((workEnds[0]!.meta as Record<string, unknown>).status).toBe("error");
       expect(h.session.lastTurnEndStatus).toBe("error");
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("recovers when a retry after an empty response produces output", async () => {
+    const h = makeScriptedSession({
+      rounds: [{ text: "" }, { text: "第二次才有内容" }],
+    });
+    try {
+      const reply = await h.session.turn("hello");
+      expect(reply).toContain("第二次才有内容");
+      expect(h.provider.callCount).toBe(2);
+      expect(h.session.lastTurnEndStatus).toBe("completed");
     } finally {
       h.dispose();
     }

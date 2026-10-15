@@ -19,6 +19,7 @@ import {
   ProviderResponse,
   Usage,
   type Message,
+  type StopReason,
   type ToolCall,
   type ToolDef,
 } from "../../src/providers/base.js";
@@ -33,6 +34,8 @@ export interface ScriptedToolCall {
 export interface ScriptedRound {
   text?: string;
   toolCalls?: ScriptedToolCall[];
+  /** Terminal reason reported by the provider; null (default) means "not exposed". */
+  stopReason?: StopReason | null;
   /** Runs when the provider receives this round's request, before emitting events. */
   onCall?: (messages: Array<Record<string, unknown>>) => void;
 }
@@ -63,6 +66,7 @@ export class ScriptedProvider extends BaseProvider {
     return new ProviderResponse({
       text: round.text ?? "",
       usage: new Usage(50, 5),
+      stopReason: round.stopReason ?? null,
     });
   }
 

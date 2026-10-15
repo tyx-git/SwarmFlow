@@ -27,9 +27,13 @@ import type {
 import { ToolResult as ToolResultClass } from "../providers/base.js";
 import {
   isRetryableNetworkError,
+  isTurnIncompleteError,
   computeRetryDelay,
+  computeIncompleteRetryDelay,
   retrySleep,
   MAX_NETWORK_RETRIES,
+  MAX_INCOMPLETE_TURN_RETRIES,
+  TurnIncompleteError,
 } from "../lib/network-retry.js";
 import type { LogEntry } from "../context/log-entry.js";
 import {
@@ -633,6 +637,58 @@ function resolveDefaultToolCallTuiVisibility(
 }
 
 // ------------------------------------------------------------------
+// 未完成回合判定
+// ------------------------------------------------------------------
+
+/**
+ * 判定一次 provider 响应是否"响应了、但这一轮没跑完"。
+ *
+ * 三种缺陷都必须重掷，否则半截 JSON 或空文本会以"正常完成"的姿态写进日志：
+ * - `max_tokens` 截断：工具参数只剩半个 JSON。Anthropic 适配器压根不会为
+ *   被截断的块发出 closed 事件，OpenAI 则给出 parseError——两种情况都不能
+ *   让半成品进入执行。
+ * - 无终止状态：断流（`stopReason === "incomplete_stream"`），或参数流没有
+ *   闭合事件。
+ * - 空响应：既没有文本也没有任何已提交的 tool call。
+ *
+ * 返回 null 表示这一轮可信，可以继续。
+ */
+function detectTurnDefect(
+  resp: ProviderResponse,
+  pendingToolCalls: Map<string, PendingToolCallState>,
+): TurnIncompleteError | null {
+  const pendings = Array.from(pendingToolCalls.values());
+  const hasCommittedToolCalls = pendings.some((pending) => Boolean(pending.closedCall));
+  const unclosed = pendings.find(
+    (pending) => !pending.closedCall && pending.rawArguments.trim().length > 0,
+  );
+
+  if (resp.stopReason === "max_tokens") {
+    return new TurnIncompleteError(
+      hasCommittedToolCalls || unclosed
+        ? "Provider output was truncated at max_tokens; tool call arguments are incomplete. Raise the model's max_tokens and retry."
+        : "Provider output was truncated at max_tokens; the turn did not complete. Raise the model's max_tokens and retry.",
+    );
+  }
+  if (resp.stopReason === "incomplete_stream") {
+    return new TurnIncompleteError(
+      "Provider stream ended without a terminal status; the turn did not complete.",
+    );
+  }
+  if (unclosed) {
+    return new TurnIncompleteError(
+      `Provider stream ended before tool call "${unclosed.name}" was closed; the turn did not complete.`,
+    );
+  }
+  if (!hasCommittedToolCalls && !resp.text.trim()) {
+    return new TurnIncompleteError(
+      "Provider returned an empty response; the turn did not complete.",
+    );
+  }
+  return null;
+}
+
+// ------------------------------------------------------------------
 // ToolLoopResult
 // ------------------------------------------------------------------
 
@@ -903,6 +959,11 @@ export async function asyncRunToolLoop(
 
   // 跨 round 的网络重试计数器（连续失败计数）
   let networkRetryCount = 0;
+
+  // 跨 round 的"未完成回合"重掷计数器：上游响应了但产出不可用，
+  // 与网络故障分开预算（次数少、停顿短），否则会把 5 次网络预算和
+  // 5→80 秒的等待烧在毫无意义的停顿上。
+  let incompleteRetryCount = 0;
 
   for (let roundIdx = 0; roundIdx < maxRounds; roundIdx++) {
     const roundIndex = baseRoundIndex + roundIdx;
@@ -1493,33 +1554,54 @@ export async function asyncRunToolLoop(
             promptCacheKey,
           },
         );
-        if (networkRetryCount > 0) {
-          onRetrySuccess?.(networkRetryCount);
+        // 契约检查先行：适配器把 tool call 放在 final response 里而不是发
+        // closed 事件时，这是编程错误，不能被后面的"空响应"判定误分类。
+        if (resp.toolCalls.length > 0) {
+          throw new Error("Provider 返回了 final-response toolCalls；tool-loop 期望仅接收规范流式 tool_call_closed 事件。");
+        }
+        // 上游响应了但这一轮没跑完（截断 / 断流 / 空响应）——抛出去交给
+        // 下面的退避环，而不是带着半个 JSON 或空文本继续。
+        const defect = detectTurnDefect(resp, pendingToolCalls);
+        if (defect) throw defect;
+        if (networkRetryCount > 0 || incompleteRetryCount > 0) {
+          onRetrySuccess?.(networkRetryCount + incompleteRetryCount);
           networkRetryCount = 0;
+          incompleteRetryCount = 0;
         }
         break;
-      } catch (netErr) {
+      } catch (loopErr) {
         if (signal?.aborted) {
           throw new DOMException("操作已被中止。", "AbortError");
         }
-        if (!isRetryableNetworkError(netErr) || networkRetryCount >= MAX_NETWORK_RETRIES) {
-          if (isRetryableNetworkError(netErr)) {
-            const errMsg = netErr instanceof Error ? netErr.message : String(netErr);
-            onRetryExhausted?.(MAX_NETWORK_RETRIES, errMsg);
-          }
-          throw netErr;
+        // 未完成回合的判定必须抢在 isRetryableNetworkError 之前：它的 code
+        // 也在 RETRYABLE_CODES 里，不分流就会套用 5 次 / 5→80 秒的网络预算。
+        const isIncomplete = isTurnIncompleteError(loopErr);
+        const isNetwork = !isIncomplete && isRetryableNetworkError(loopErr);
+        if (!isIncomplete && !isNetwork) {
+          throw loopErr;
         }
-        networkRetryCount++;
+        const maxRetries = isIncomplete ? MAX_INCOMPLETE_TURN_RETRIES : MAX_NETWORK_RETRIES;
+        const failedCount = isIncomplete ? incompleteRetryCount : networkRetryCount;
+        if (failedCount >= maxRetries) {
+          const errMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
+          onRetryExhausted?.(maxRetries, errMsg);
+          throw loopErr;
+        }
+        const attempt = failedCount + 1;
+        if (isIncomplete) incompleteRetryCount = attempt;
+        else networkRetryCount = attempt;
         if (discardEntry) {
           for (const [, pending] of pendingToolCalls) {
             if (pending.entryId) discardEntry(pending.entryId);
           }
         }
         pendingToolCalls.clear();
-        const errMsg = netErr instanceof Error ? netErr.message : String(netErr);
-        const delay = computeRetryDelay(networkRetryCount - 1);
+        const errMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
+        const delay = isIncomplete
+          ? computeIncompleteRetryDelay(failedCount)
+          : computeRetryDelay(failedCount);
         const delaySec = Math.round(delay / 1000);
-        onRetryAttempt?.(networkRetryCount, MAX_NETWORK_RETRIES, delaySec, errMsg);
+        onRetryAttempt?.(attempt, maxRetries, delaySec, errMsg);
         await retrySleep(delay, signal);
       }
     }
@@ -1530,10 +1612,6 @@ export async function asyncRunToolLoop(
 
     if (onTokenUpdate) {
       onTokenUpdate(lastInput, resp.usage);
-    }
-
-    if (resp.toolCalls.length > 0) {
-      throw new Error("Provider 返回了 final-response toolCalls；tool-loop 期望仅接收规范流式 tool_call_closed 事件。");
     }
 
     const hasCommittedToolCalls = Array.from(pendingToolCalls.values()).some((pending) =>
@@ -1572,12 +1650,8 @@ export async function asyncRunToolLoop(
     if (!hasCommittedToolCalls) {
       // 无 tool call — 返回最终结果。
       // 调用方（Session）负责创建最终的 assistant_text / reasoning / no_reply 条目。
-      // Provider 流在网络断开或上游进程异常退出时，部分适配器可能只
-      // 正常结束迭代器而没有抛出异常。空响应不能被当作正常完成，否则
-      // Session 会写入 completed work_end，掩盖真实失败。
-      if (!resp.text.trim()) {
-        throw new Error("Provider returned an empty response; the turn did not complete.");
-      }
+      // 空响应、max_tokens 截断、断流都已在上面的退避环里判定并重掷，
+      // 走到这里说明这一轮是完整的。
       return {
         text: resp.text,
         toolHistory,

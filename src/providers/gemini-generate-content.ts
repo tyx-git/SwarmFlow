@@ -1,5 +1,5 @@
 import type { ModelConfig } from "../config/config.js";
-import { BaseProvider, type Message, ProviderResponse, type SendMessageOptions, type ToolDef, Usage, finalizeToolCall } from "./base.js";
+import { BaseProvider, normalizeStopReason, type Message, ProviderResponse, type SendMessageOptions, type ToolDef, Usage, finalizeToolCall } from "./base.js";
 
 function roleOf(message: Message): "user" | "model" {
   return message.role === "assistant" ? "model" : "user";
@@ -104,6 +104,9 @@ export class GeminiGenerateContentProvider extends BaseProvider {
       if (text) options.onTextChunk(text);
     }
     const usageMeta = raw.usageMetadata as Record<string, number> | undefined;
+    let stopReason = normalizeStopReason(first.finishReason as string | undefined);
+    // Gemini 带 functionCall 时 finishReason 仍是 STOP，按实际产出修正。
+    if (stopReason === "end_turn" && toolCalls.length > 0) stopReason = "tool_calls";
     return new ProviderResponse({
       text: textParts.join(""),
       toolCalls,
@@ -112,6 +115,7 @@ export class GeminiGenerateContentProvider extends BaseProvider {
         usageMeta?.candidatesTokenCount ?? 0,
       ),
       raw,
+      stopReason,
     });
   }
 }
