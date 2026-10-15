@@ -49,10 +49,9 @@ export async function resolveBundledFilePath(
     if (existsSync(path)) {
       return path
     }
-
-    return (await loadBundledFilePath(loadBundledFile, metaUrl)) ?? path
   }
 
+  // Bundlers rewrite import() callbacks, so execute the loader rather than inspecting its source.
   return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
 }
 
@@ -71,29 +70,6 @@ function normalizeLoadedFilePath(loadedPath: string, baseUrl: string): string {
   }
 
   return resolve(dirname(fileURLToPath(baseUrl)), loadedPath)
-}
-
-async function loadBundledFilePath(
-  loadBundledFile: () => Promise<FileImportModule>,
-  metaUrl: string,
-): Promise<string | undefined> {
-  const specifier = extractBundledImportSpecifier(loadBundledFile)
-  if (!specifier) {
-    return undefined
-  }
-
-  try {
-    const moduleUrl = new URL(specifier, metaUrl)
-    const loaded = (await import(moduleUrl.href)) as FileImportModule
-    return normalizeLoadedFilePath(loaded.default, moduleUrl.href)
-  } catch {
-    return undefined
-  }
-}
-
-function extractBundledImportSpecifier(loadBundledFile: () => Promise<FileImportModule>): string | undefined {
-  const match = String(loadBundledFile).match(/\bimport\(\s*(["'`])([^"'`]+)\1/)
-  return match?.[2]
 }
 
 function standardSleep(msOrDate: number | Date): Promise<void> {

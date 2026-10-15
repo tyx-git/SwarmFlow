@@ -1,4 +1,8 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 import {
   CodeRenderable,
@@ -8,7 +12,7 @@ import {
 } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import React from "react";
-import { createRoot } from "@opentui/react";
+import { createRoot, flushSync } from "@opentui/react";
 import {
   inferCodeFiletype,
   infoStringToFiletype,
@@ -189,4 +193,122 @@ describe("OpenTUI code block language resolution", () => {
     expect(windows.chunks[1]?.text).toBe(":42:");
   });
 
+});
+
+describe("bundled OpenTUI Markdown", () => {
+  let bundleDir: string;
+  let bundled: {
+    getParsers: typeof import("../external/opentui/forked/core/lib/tree-sitter/default-parsers.js").getParsers;
+    registerSwarmFlowTreeSitterParsers: typeof registerSwarmFlowTreeSitterParsers;
+    AssistantEntry: typeof AssistantEntry;
+  };
+
+  beforeAll(async () => {
+    const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+    bundleDir = mkdtempSync(join(rootDir, "tests", ".opentui-bundle-"));
+    const outfile = join(bundleDir, "main.mjs");
+    await build({
+      absWorkingDir: rootDir,
+      stdin: {
+        contents: [
+          'export { getParsers } from "./external/opentui/forked/core/lib/tree-sitter/default-parsers.ts";',
+          'export { registerSwarmFlowTreeSitterParsers } from "./external/opentui/tree-sitter-parsers.ts";',
+          'export { AssistantEntry } from "./external/opentui/display/entries/assistant-entry.tsx";',
+        ].join("\n"),
+        resolveDir: rootDir,
+        loader: "ts",
+      },
+      outfile,
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node26",
+      packages: "external",
+      jsx: "automatic",
+      loader: { ".scm": "file", ".wasm": "file" },
+      assetNames: "assets/[name]-[hash]",
+      plugins: [{
+        name: "normalize-file-import-attributes",
+        setup(build) {
+          build.onLoad({ filter: /default-parsers\.ts$/ }, (args) => ({
+            contents: readFileSync(args.path, "utf8").replace(
+              /import\((['"])([^'"]+)\1\s+as string,\s*\{\s*with:\s*\{\s*type:\s*['"]file['"]\s*\}\s*\}\s*\)/g,
+              "import($1$2$1)",
+            ),
+            loader: "ts",
+          }));
+        },
+      }],
+      logLevel: "silent",
+    });
+    bundled = await import(pathToFileURL(outfile).href);
+  });
+
+  afterAll(async () => {
+    await registerSwarmFlowTreeSitterParsers();
+    if (bundleDir) rmSync(bundleDir, { recursive: true, force: true });
+  });
+
+  it("resolves emitted parser assets after bundling relocates import.meta.url", async () => {
+    const parsers = await bundled.getParsers();
+    const missing = parsers.flatMap((parser) => [
+      parser.wasm,
+      ...parser.queries.highlights,
+      ...(parser.queries.injections ?? []),
+    ]).filter((path) => !existsSync(path));
+    expect(missing).toEqual([]);
+  });
+
+  it.each([
+    ["brief", false], ["brief", true],
+    ["dark", false], ["dark", true],
+    ["light", false], ["light", true],
+  ] as const)("renders bold, inline code and fenced code in %s (streaming=%s)", async (mode, streaming) => {
+    await bundled.registerSwarmFlowTreeSitterParsers();
+    const theme = createDisplayTheme(mode);
+    const setup = await createTestRenderer({ width: 100, height: 24, useThread: false, consoleMode: "disabled" });
+    const root = createRoot(setup.renderer);
+    const text = '# Heading\n\n**加粗**\n\n`行内代码`\n\n```typescript\nconst value: string = "**literal** and `ticks`";\n```';
+    try {
+      flushSync(() => root.render(React.createElement(bundled.AssistantEntry, {
+        entry: {
+          id: "bundled-assistant",
+          contentVersion: 1,
+          kind: "assistant",
+          state: streaming ? "active" : "done",
+          assistantText: text,
+          assistantStreaming: streaming,
+        },
+        colors: theme.colors,
+        markdownStyle: theme.markdownStyle,
+      })));
+      await setup.renderOnce();
+      const codes: CodeRenderable[] = [];
+      const visit = (node: { getChildren?: () => unknown[] }): void => {
+        if (node instanceof CodeRenderable) codes.push(node);
+        for (const child of node.getChildren?.() ?? []) visit(child as typeof node);
+      };
+      visit(setup.renderer.root);
+      expect(codes.map((code) => code.filetype)).toEqual(["markdown", "markdown", "markdown", "typescript"]);
+      await Promise.all(codes.map((code) => code.highlightingDone));
+      await setup.renderOnce();
+      const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
+      const frame = spans.map((span) => span.text).join("");
+      expect(frame).toContain("加粗");
+      expect(frame).toContain("行内代码");
+      expect(frame).not.toContain("**加粗**");
+      expect(frame).not.toContain("`行内代码`");
+      expect(frame).not.toContain("# Heading");
+      expect(frame).toContain('"**literal** and `ticks`"');
+      expect(spans.find((span) => span.text.trim() === "加粗")?.attributes).toBe(createTextAttributes({ bold: true }));
+      expect(spans.find((span) => span.text.trim() === "行内代码")?.fg.toString()).toBe(theme.markdownStyle.getStyle("markup.raw")?.fg?.toString());
+      expect(spans.find((span) => span.text.trim() === "const")?.fg.toString()).toBe(theme.markdownStyle.getStyle("keyword")?.fg?.toString());
+      expect(codes[1]?.content).toBe("**加粗**");
+      expect(codes[2]?.content).toBe("`行内代码`");
+    } finally {
+      flushSync(() => root.unmount());
+      setup.renderer.destroy();
+      theme.markdownStyle.destroy();
+    }
+  });
 });
