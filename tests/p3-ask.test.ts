@@ -11,6 +11,7 @@ import { LogIdAllocator, createToolCall } from "../src/context/log-entry.js";
 import { SessionLog } from "../src/session/session-log.js";
 import { SessionStore, saveLog, createLogSessionMeta } from "../src/config/persistence.js";
 import { asyncRunToolLoop } from "../src/agents/tool-loop.js";
+import { HookRuntime } from "../src/hooks/hook-runtime.js";
 import { BaseProvider, ProviderResponse, Usage, type ToolCall } from "../src/providers/base.js";
 
 function makeTempDir(prefix: string): string {
@@ -39,6 +40,7 @@ function makeSessionLike(projectRoot: string): any {
   s._logStore = new SessionLog();
   s._agentState = "idle";
   s._currentTurnSignal = null;
+  s.hookRuntime = new HookRuntime();
   s.onSaveRequest = undefined;
   s._ensureMcp = vi.fn(async () => {});
   s._emitAskRequestedProgress = vi.fn();

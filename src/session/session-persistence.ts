@@ -544,6 +544,8 @@ export interface RestoredSessionState {
   compactCount: number;
   createdAt: string;
   initialModel: string;
+  /** 持久化的 prompt cache 路由亲和键；旧日志可能没有。 */
+  promptCacheAffinityKey?: string;
   title: string | undefined;
   cachedSummary: string | undefined;
   lastInputTokens: number;
@@ -670,6 +672,7 @@ export function parseRestoredState(
     compactCount: meta.compactCount,
     createdAt: meta.createdAt || deps.fallbackCreatedAt,
     initialModel: ((meta as unknown as Record<string, unknown>)["initialModel"] as string | undefined) || deps.describeInitialModelFallback(),
+    promptCacheAffinityKey: meta.promptCacheAffinityKey,
     title: meta.title,
     cachedSummary: meta.summary || undefined,
     lastInputTokens,

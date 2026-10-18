@@ -136,7 +136,9 @@ export function loadSkills(skillsRoot: string): Map<string, SkillMeta> {
     return skills;
   }
 
-  for (const entry of readdirSync(skillsRoot)) {
+  // 排序后再扫描：目录枚举顺序依赖文件系统，直接使用会让 tools/system
+  // 的 skills 列表在重启后出现字节差异，破坏提示缓存。
+  for (const entry of [...readdirSync(skillsRoot)].sort()) {
     if (entry === ".staging") continue;
     const dirPath = join(skillsRoot, entry);
     if (!statSync(dirPath).isDirectory()) continue;

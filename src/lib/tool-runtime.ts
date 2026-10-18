@@ -29,7 +29,6 @@ import {
   type AdoptShellFn,
 } from "../tools/basic.js";
 import type { SessionCapabilities } from "../session-capabilities.js";
-import type { SkillMeta } from "../skills/loader.js";
 import type { MCPClientManager } from "../clients/mcp-client.js";
 import { setArgRepairSink } from "../tools/arg-repair.js";
 
@@ -60,34 +59,19 @@ export interface GateAdvisor {
 // Catalog ——模型看到哪些工具
 // ------------------------------------------------------------------
 
-export interface CatalogDeps {
-  capabilities: SessionCapabilities;
-  skills: ReadonlyMap<string, SkillMeta>;
-  disabledSkills: ReadonlySet<string>;
-}
-
 /**
- * 从可用技能构建 skill 元工具定义。
- * 若没有可供模型调用的技能则返回 null。
+ * 构建固定的 skill 元工具定义。
+ *
+ * skills 目录存放于 system prompt，而不是工具描述中：工具 schema 必须在
+ * 安装/删除 skill 时保持字节稳定，否则整个 tools 前缀的提示缓存都会失效。
  */
-export function buildSkillToolDef(
-  skills: ReadonlyMap<string, SkillMeta>,
-): ToolDef | null {
-  const available = [...skills.values()].filter(
-    (s) => !s.disableModelInvocation,
-  );
-  if (available.length === 0) return null;
-
-  const listing = available
-    .map((s) => `- ${s.name}: ${s.description}`)
-    .join("\n");
-
+export function buildSkillToolDef(): ToolDef {
   return {
     name: "skill",
     description:
       "Invoke a skill by name. The skill's full instructions are returned for you to follow.\n\n" +
-      "Available skills:\n" +
-      listing,
+      "The skills currently available to you, if any, are listed in the system prompt under " +
+      "\"Available Skills\".",
     parameters: {
       type: "object",
       properties: {
@@ -157,23 +141,19 @@ export function ensureTaskTools(
 }
 
 /**
- * 根据能力和可用技能确保 skill 工具的存在/缺失。
+ * 根据能力确保固定的 skill 工具存在/缺失。
  * 就地修改传入数组（filter+push 模式需要重新赋值）。
  * 返回新的工具数组。
  */
 export function ensureSkillTool(
   tools: ToolDef[],
   capabilities: SessionCapabilities,
-  skills: ReadonlyMap<string, SkillMeta>,
 ): ToolDef[] {
   if (!capabilities.includeSkillTools) {
     return tools.filter((t) => t.name !== "skill");
   }
   const filtered = tools.filter((t) => t.name !== "skill");
-  const skillDef = buildSkillToolDef(skills);
-  if (skillDef) {
-    filtered.push(skillDef);
-  }
+  filtered.push(buildSkillToolDef());
   return filtered;
 }
 

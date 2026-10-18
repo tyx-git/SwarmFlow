@@ -253,7 +253,7 @@
       "/rewind": { "description": "回退会话和文件修改" },
       "/skills-creater": { "description": "创建 Agent Skill" },
       "/memory": { "description": "查看当前会话记忆" },
-      "/rules": { "description": "查看或更新项目规则" }
+      "/reload": { "description": "重新扫描 skills/MCP 并重建系统提示" }
     },
     "Views": {
       "input": {
@@ -664,7 +664,7 @@
       "/rewind": { "description": "Rewind the conversation and file changes" },
       "/skills-creater": { "description": "Create an Agent Skill" },
       "/memory": { "description": "View current session memory" },
-      "/rules": { "description": "View or update project rules" }
+      "/reload": { "description": "Rescan skills/MCP and rebuild the system prompt" }
     },
     "Views": {
       "input": {

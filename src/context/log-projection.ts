@@ -598,6 +598,13 @@ export interface ApiProjectionOptions {
   requiresAlternatingRoles?: boolean;
   /** 在提交前强制执行提供商工具调用排序不变量 */
   enforceToolCallProtocol?: boolean;
+  /**
+   * 本轮动态上下文（hooks、提醒等）。
+   *
+   * 在历史消息完成角色归一化之后追加为最后一条 user 消息，并标记
+   * `_ephemeral_tail`。它不写入日志；provider 在放置缓存断点时必须跳过它。
+   */
+  ephemeralTail?: string;
 }
 
 /** 用户消息头部文本 */
@@ -785,6 +792,17 @@ export function projectToApiMessages(
 
   if (options?.requiresAlternatingRoles) {
     projected = mergeConsecutiveSameRole(projected);
+  }
+
+  // 动态尾巴必须在归一化之后追加：若先追加，严格交替的 provider 会把
+  // 它合并进最后一条历史 user 消息，下一轮就再也摘不掉了。
+  const ephemeralTail = options?.ephemeralTail?.trim();
+  if (ephemeralTail) {
+    projected.push({
+      role: "user",
+      content: ephemeralTail,
+      _ephemeral_tail: true,
+    });
   }
 
   return projected;

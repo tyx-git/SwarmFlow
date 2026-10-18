@@ -139,6 +139,7 @@ export interface SessionHarness {
   session: Session;
   provider: ScriptedProvider;
   projectRoot: string;
+  homeDir: string;
   /** Escape hatch for staging/observing private runtime state in characterization tests. */
   internals: any;
   dispose: () => void;
@@ -149,11 +150,14 @@ export interface HarnessOptions {
   tools?: ToolDef[];
   toolExecutorOverrides?: Record<string, ToolExecutor>;
   maxToolRounds?: number;
+  hooks?: import("../../src/hooks/types.js").HookManifest[];
+  forkInheritPromptCacheKey?: boolean;
 }
 
 export function makeScriptedSession(opts: HarnessOptions = {}): SessionHarness {
   const projectRoot = mkdtempSync(join(tmpdir(), "swarmflow-harness-project-"));
   const baseDir = mkdtempSync(join(tmpdir(), "swarmflow-harness-store-"));
+  const homeDir = mkdtempSync(join(tmpdir(), "swarmflow-harness-home-"));
 
   const provider = new ScriptedProvider();
   provider.rounds = opts.rounds ?? [];
@@ -186,17 +190,22 @@ export function makeScriptedSession(opts: HarnessOptions = {}): SessionHarness {
     config: config as never,
     store,
     projectRoot,
+    homeDir,
     toolExecutorOverrides: opts.toolExecutorOverrides ?? {},
+    hooks: opts.hooks,
+    forkInheritPromptCacheKey: opts.forkInheritPromptCacheKey,
   });
 
   return {
     session,
     provider,
     projectRoot,
+    homeDir,
     internals: session as any,
     dispose: () => {
       rmSync(projectRoot, { recursive: true, force: true });
       rmSync(baseDir, { recursive: true, force: true });
+      rmSync(homeDir, { recursive: true, force: true });
     },
   };
 }

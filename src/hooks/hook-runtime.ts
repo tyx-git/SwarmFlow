@@ -54,13 +54,21 @@ export class HookRuntime {
   // -- 上下文管理 -------------------------------------------
 
   /**
-   * 获取用于系统提示符注入的累积附加上下文。
-   * 返回组合的会话 + 回合 + 下一轮上下文，如果为空则返回 null。
+   * 获取本轮动态上下文，按作用域加标签并保持 session → turn → nextRound 顺序。
+   * 返回 null 表示没有可注入内容。
    */
   getAdditionalContext(): string | null {
-    const parts = [...this._sessionContext, ...this._turnContext, ...this._nextRoundContext];
-    if (parts.length === 0) return null;
-    return parts.join("\n\n");
+    const sections: string[] = [];
+    if (this._sessionContext.length > 0) {
+      sections.push(`[SESSION HOOK CONTEXT]\n${this._sessionContext.join("\n\n")}`);
+    }
+    if (this._turnContext.length > 0) {
+      sections.push(`[TURN HOOK CONTEXT]\n${this._turnContext.join("\n\n")}`);
+    }
+    if (this._nextRoundContext.length > 0) {
+      sections.push(`[NEXT ROUND HOOK CONTEXT]\n${this._nextRoundContext.join("\n\n")}`);
+    }
+    return sections.length > 0 ? sections.join("\n\n") : null;
   }
 
   /* 清除回合作用域上下文（在回合开始时调用）。 */
@@ -198,10 +206,10 @@ export class HookRuntime {
         this._turnContext.push(context);
         break;
       case "PreToolUse":
-      case "PostToolUse":
-      case "PostToolUseFailure":
         this._nextRoundContext.push(context);
         break;
+      // PostToolUse / PostToolUseFailure 是观察类事件：工具结果本身已经
+      // 包含成功/失败信息，hook 输出不进入模型上下文。
     }
   }
 }

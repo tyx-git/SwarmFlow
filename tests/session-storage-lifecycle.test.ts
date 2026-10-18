@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import { countTokens as gptCountTokens, encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
@@ -63,7 +63,7 @@ function makeSession(
 
   const primaryAgent = {
     name: "Primary",
-    systemPrompt: "ROOT={PROJECT_ROOT}\nART={SESSION_ARTIFACTS}\nSYS={SYSTEM_DATA}",
+    systemPrompt: "Primary system prompt.",
     tools: [],
     modelConfig: { ...initialModelConfig },
     _provider: {
@@ -155,13 +155,12 @@ describe("session storage lifecycle", () => {
       const systemContent = getSystemPromptContent(session);
 
       expect(store.sessionDir).toBeUndefined();
-      expect(systemContent).toContain(`ROOT=${projectRoot}`);
-      expect(systemContent).toContain(`${sep}artifacts`);
+      expect(systemContent).toContain("Primary system prompt.");
+      // 运行路径不再进入 system prompt：模型通过工具获取工作目录。
+      expect(systemContent).not.toContain(projectRoot);
       expect(systemContent).not.toContain("{PROJECT_ROOT}");
       expect(systemContent).not.toContain("{SESSION_ARTIFACTS}");
-      expect(systemContent).toContain(store.projectDir);
-      // Prompt assembled exactly once — the agent preamble must not duplicate.
-      expect(countOccurrences(systemContent, `ROOT=${projectRoot}`)).toBe(1);
+      expect(countOccurrences(systemContent, "Primary system prompt.")).toBe(1);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
@@ -217,12 +216,13 @@ describe("session storage lifecycle", () => {
     }
   });
 
-  it("creates session storage on the first turn and hydrates system paths", async () => {
+  it("creates session storage on the first turn without rebuilding the system snapshot", async () => {
     const baseDir = makeTempDir("swarmflow-lifecycle-base-");
     const projectRoot = makeTempDir("swarmflow-lifecycle-project-");
     try {
       const store = new SessionStore({ baseDir, projectPath: projectRoot });
       const session = makeSession(projectRoot, store);
+      const beforeTurn = getSystemPromptContent(session);
       stubRunActivation(session, "first-response");
 
       const result = await session.turn("hello");
@@ -232,10 +232,10 @@ describe("session storage lifecycle", () => {
       expect(result).toBe("first-response");
       expect(store.sessionDir).toBeTruthy();
       expect(artifactsDir).toBeTruthy();
-      expect(systemContent).toContain(`ROOT=${projectRoot}`);
-      expect(systemContent).not.toContain("{SESSION_ARTIFACTS}");
-      expect(systemContent).toContain(artifactsDir as string);
-      expect(countOccurrences(systemContent, `ROOT=${projectRoot}`)).toBe(1);
+      // system 是一次性快照：存储就绪不应重写它。
+      expect(systemContent).toBe(beforeTurn);
+      expect(systemContent).not.toContain(artifactsDir as string);
+      expect(countOccurrences(systemContent, "Primary system prompt.")).toBe(1);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
@@ -259,10 +259,10 @@ describe("session storage lifecycle", () => {
 
       const resetSystemContent = getSystemPromptContent(session);
       expect(store.sessionDir).toBeUndefined();
-      expect(resetSystemContent).toContain(`ROOT=${projectRoot}`);
-      expect(resetSystemContent).toContain(`${sep}artifacts`);
+      expect(resetSystemContent).toContain("Primary system prompt.");
+      expect(resetSystemContent).not.toContain(firstSessionDir as string);
       expect(resetSystemContent).not.toContain("{SESSION_ARTIFACTS}");
-      expect(countOccurrences(resetSystemContent, `ROOT=${projectRoot}`)).toBe(1);
+      expect(countOccurrences(resetSystemContent, "Primary system prompt.")).toBe(1);
 
       stubRunActivation(session, "phase-2");
       await session.turn("second");
@@ -273,10 +273,9 @@ describe("session storage lifecycle", () => {
       expect(secondSessionDir).toBeTruthy();
       expect(secondSessionDir).not.toBe(firstSessionDir);
       expect(secondArtifactsDir).toBeTruthy();
-      expect(hydratedSystemContent).toContain(`ROOT=${projectRoot}`);
-      expect(hydratedSystemContent).not.toContain("{SESSION_ARTIFACTS}");
-      expect(hydratedSystemContent).toContain(secondArtifactsDir as string);
-      expect(countOccurrences(hydratedSystemContent, `ROOT=${projectRoot}`)).toBe(1);
+      expect(hydratedSystemContent).toContain("Primary system prompt.");
+      expect(hydratedSystemContent).not.toContain(secondArtifactsDir as string);
+      expect(countOccurrences(hydratedSystemContent, "Primary system prompt.")).toBe(1);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
@@ -731,7 +730,7 @@ describe("session storage lifecycle", () => {
       };
       const templateAgent = {
         name: "scout",
-        systemPrompt: "Scout rooted at {PROJECT_ROOT}; artifacts at {SESSION_ARTIFACTS}.",
+        systemPrompt: "Scout template prompt.",
         tools: [],
         maxToolRounds: 100,
         modelConfig: { ...modelConfig },
@@ -751,10 +750,9 @@ describe("session storage lifecycle", () => {
 
       expect(childSystemContent).not.toContain("{PROJECT_ROOT}");
       expect(childSystemContent).not.toContain("{SESSION_ARTIFACTS}");
-      expect(childSystemContent).toContain(`artifacts at ${handle.artifactsDir}`);
       // Template prompt must appear exactly once — instantiation mutates the
       // agent's prompt, so a double-append would duplicate it.
-      expect(countOccurrences(childSystemContent, "Scout rooted at")).toBe(1);
+      expect(countOccurrences(childSystemContent, "Scout template prompt.")).toBe(1);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });

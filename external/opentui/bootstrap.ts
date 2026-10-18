@@ -6,6 +6,7 @@ import { Agent } from "../../src/agents/agent.js";
 import { Session } from "../../src/session.js";
 import { loadTemplates } from "../../src/templates/loader.js";
 import { ensureBuiltinSkills, loadSkillsMulti } from "../../src/skills/loader.js";
+import { ensureGlobalMemoryFile } from "../../src/lib/prompt-assembler.js";
 import {
   SessionStore,
   loadGlobalSettings,
@@ -139,6 +140,8 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   // Materialize the protected workflow skills before resolving roots so a
   // first-run home directory is included in the merged skill search path.
   ensureBuiltinSkills(join(homeDir, "skills"));
+  // 全局记忆初始化为空文件；用户之后手动维护。
+  ensureGlobalMemoryFile(homeDir);
   const paths = resolveAssetPaths({
     templatesFlag: opts?.templates,
     projectPath,
@@ -236,6 +239,8 @@ export async function bootstrapOpenTuiRuntime(opts?: {
     store: store as never,
     contextBudgetPercent,
     projectRoot: projectPath,
+    homeDir,
+    forkInheritPromptCacheKey: settings.fork_inherit_prompt_cache_key === true,
   });
 
   // Notify TUI when eager MCP connect completes

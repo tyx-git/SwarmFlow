@@ -837,6 +837,12 @@ export interface ToolLoopOptions {
   /** 每次 provider 响应后调用，报告最新输入 token 数和完整使用量。 */
   onTokenUpdate?: (inputTokens: number, usage?: import("../providers/base.js").Usage) => void;
   /**
+   * 成功收到 provider 响应后调用。
+   * Session 用它清理“下一轮”hook 上下文：这些内容已随本次请求发送，
+   * 不能让它们在后续每一轮中重复累积。
+   */
+  onProviderResponse?: () => void;
+  /**
    * 每次 provider 调用后检查是否需要压缩。
    * 返回 null 表示跳过检查（如子 Agent）。
    */
@@ -923,6 +929,7 @@ export async function asyncRunToolLoop(
     contextIdAllocator,
     toolContextIdAllocator,
     onTokenUpdate,
+    onProviderResponse,
     compactCheck,
     thinkingLevel,
     promptCacheKey,
@@ -1609,6 +1616,9 @@ export async function asyncRunToolLoop(
     lastInput = resp.usage.inputTokens;
     totalInput += resp.usage.inputTokens;
     totalOutput += resp.usage.outputTokens;
+
+    // 本轮请求已经携带了 next-round hook 上下文，消费后立即清理。
+    onProviderResponse?.();
 
     if (onTokenUpdate) {
       onTokenUpdate(lastInput, resp.usage);

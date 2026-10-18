@@ -1,10 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildDefaultRegistry } from "../src/commands/commands.js";
 import { ensureBuiltinSkills, loadSkills } from "../src/skills/loader.js";
+import { makeScriptedSession } from "./helpers/session-harness.js";
 
 describe("skills workflows", () => {
   it("registers the unified entry point and protected workflow commands", () => {
@@ -50,6 +51,73 @@ describe("skills workflows", () => {
       expect(loaded.get("skills-creater")?.userInvocable).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("marks skill changes dirty without rebuilding until reload", () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-dirty-"));
+    const harness = makeScriptedSession();
+    try {
+      const skillDir = join(root, "alpha");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), [
+        "---",
+        "name: alpha",
+        "description: Alpha skill",
+        "---",
+        "",
+        "Do alpha work.",
+      ].join("\n"), "utf-8");
+
+      harness.internals._skillRoots = [root];
+      harness.internals._skills = loadSkills(root);
+      harness.internals._ensureSkillTool();
+      expect(harness.internals._skills.has("alpha")).toBe(true);
+
+      harness.session.setSkillEnabled("alpha", false);
+      // 只标记 dirty：当前工具/system 仍是旧前缀。
+      expect(harness.internals._skillsDirty).toBe(true);
+      expect(harness.internals._skills.has("alpha")).toBe(true);
+
+      const report = harness.session.reloadSkills();
+      expect(report.removed).toContain("alpha");
+      expect(harness.internals._skillsDirty).toBe(false);
+      expect(harness.internals._skills.has("alpha")).toBe(false);
+    } finally {
+      harness.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("applies pending skill changes through explicit reload", async () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-reload-"));
+    const harness = makeScriptedSession();
+    try {
+      const skillDir = join(root, "beta");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), [
+        "---",
+        "name: beta",
+        "description: Beta skill",
+        "---",
+        "",
+        "Do beta work.",
+      ].join("\n"), "utf-8");
+
+      harness.internals._skillRoots = [root];
+      await harness.session.reloadConfigurationFromCommand();
+      expect(harness.internals._cachedSystemPrompt).toContain("- beta: Beta skill");
+
+      harness.session.setSkillEnabled("beta", false);
+      expect(harness.internals._cachedSystemPrompt).toContain("- beta: Beta skill");
+
+      const report = await harness.session.reloadConfigurationFromCommand();
+      expect(report).toContain("Skills:");
+      expect(harness.internals._cachedSystemPrompt).not.toContain("- beta: Beta skill");
+      expect(harness.internals._skillsDirty).toBe(false);
+    } finally {
+      harness.dispose();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

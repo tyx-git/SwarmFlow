@@ -248,7 +248,10 @@ function buildAgentRuntimeSettings(s: Session): AgentRuntimeSettingsPayload {
   };
 }
 
-function forkSessionDirectory(sourceDir: string): ForkSessionPayload {
+export function forkSessionDirectory(
+  sourceDir: string,
+  opts?: { inheritPromptCacheKey?: boolean },
+): ForkSessionPayload {
   if (!existsSync(join(sourceDir, "log.json"))) {
     throw new Error("session.fork: cannot fork an empty session");
   }
@@ -279,6 +282,20 @@ function forkSessionDirectory(sourceDir: string): ForkSessionPayload {
     const meta = readJsonRecord(metaPath);
     const logData = readJsonRecord(logPath);
     const sourceTitle = firstString(meta.title, logData.title, meta.summary, logData.summary);
+    const sourceCacheKey = firstString(
+      logData.prompt_cache_affinity_key,
+      meta.prompt_cache_affinity_key,
+    );
+    /**
+     * fork 的 prompt cache key 策略：
+     * - 默认路由隔离（新随机 key）：适合长期并行开发。两个分支各自
+     *   演进时不应互相挤占 provider 的缓存分区。
+     * - inheritPromptCacheKey：适合轻量级探索/短期实验。分支直接复用
+     *   父会话的前缀缓存，降低首轮重放成本。
+     */
+    const forkedCacheKey = opts?.inheritPromptCacheKey && sourceCacheKey
+      ? sourceCacheKey
+      : randomSessionId();
     const branchTitle = sourceTitle.startsWith("(branch) ")
       ? sourceTitle
       : `(branch) ${sourceTitle || sourceSessionId}`.trim();
@@ -288,6 +305,7 @@ function forkSessionDirectory(sourceDir: string): ForkSessionPayload {
     meta.last_active_at = nowIso;
     meta.title = branchTitle;
     meta.forked_from_session_id = sourceSessionId;
+    meta.prompt_cache_affinity_key = forkedCacheKey;
     writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
 
     logData.session_id = newSessionId;
@@ -295,6 +313,7 @@ function forkSessionDirectory(sourceDir: string): ForkSessionPayload {
     logData.updated_at = nowIso;
     logData.title = branchTitle;
     logData.forked_from_session_id = sourceSessionId;
+    logData.prompt_cache_affinity_key = forkedCacheKey;
     writeFileSync(logPath, `${JSON.stringify(logData, null, 2)}\n`);
 
     return {
@@ -633,8 +652,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     const p = expectObject(params, "session.setSkillEnabled");
     const name = expectString(p, "name", "session.setSkillEnabled");
     const enabled = p["enabled"] === true;
+    // 只记录选择；skills 影响 tools/system 前缀，必须等显式 /reload
+    // 或进程重启才重新扫描，避免当前会话缓存整体失效。
     session.setSkillEnabled(name, enabled);
-    const report = session.reloadSkills();
     const disabledSkills = session
       .getAllSkillNames()
       .filter((skill) => !skill.enabled)
@@ -646,8 +666,10 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     } catch {
       // 运行时 skill 状态已经更新；持久化尽力而为。
     }
-    return { ok: true, report };
+    return { ok: true, pendingReload: true };
   });
+
+  server.on("session.reloadConfiguration", () => session.reloadConfigurationFromCommand());
 
   // ── 标题 ──
   server.on("session.setTitle", (params) => {
@@ -658,7 +680,10 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return { ok: true };
   });
 
-  server.on("session.fork", () => {
+  server.on("session.fork", (params) => {
+    const p = params && typeof params === "object" && !Array.isArray(params)
+      ? params as Record<string, unknown>
+      : {};
     if (session.currentTurnRunning) {
       throw new Error("session.fork: cannot fork while a turn is running");
     }
@@ -677,7 +702,11 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     if (!currentDir) {
       throw new Error("session.fork: no active persisted session");
     }
-    return forkSessionDirectory(currentDir);
+    return forkSessionDirectory(currentDir, {
+      inheritPromptCacheKey: typeof p["inheritPromptCacheKey"] === "boolean"
+        ? p["inheritPromptCacheKey"]
+        : session.forkInheritPromptCacheKey,
+    });
   });
 
   // ── 运行时诊断 ──

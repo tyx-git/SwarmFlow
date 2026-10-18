@@ -269,6 +269,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
         }
       } else {
         const rawContent = msg.content;
+        const convertedMsg: Record<string, unknown> = { role: msg.role };
         if (Array.isArray(rawContent)) {
           const parts: Record<string, unknown>[] = [];
           for (const block of rawContent) {
@@ -286,20 +287,31 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
               });
             }
           }
-          converted.push({ role: msg.role, content: parts });
+          convertedMsg.content = parts;
         } else {
-          converted.push({ role: msg.role, content: rawContent });
+          convertedMsg.content = rawContent;
         }
+        if ((msg as Record<string, unknown>)["_ephemeral_tail"] === true) {
+          convertedMsg["_ephemeral_tail"] = true;
+        }
+        converted.push(convertedMsg);
       }
     }
 
     // 严格交替合并：多个 tool_result 回合（全部 role:"user"）
     // 以及后续的真实用户消息必须折叠为一条用户消息，
-    // 并合并内容块。
+    // 并合并内容块。ephemeral 尾巴永远保持独立：它不属于历史前缀，
+    // 也不能被下一轮当作持久消息继续携带。
     const merged: Record<string, unknown>[] = [];
     for (const msg of converted) {
       const prev = merged.length > 0 ? merged[merged.length - 1] : null;
-      if (prev && prev["role"] === msg["role"] && msg["role"] === "user") {
+      if (
+        prev &&
+        prev["role"] === msg["role"] &&
+        msg["role"] === "user" &&
+        msg["_ephemeral_tail"] !== true &&
+        prev["_ephemeral_tail"] !== true
+      ) {
         const prevContent = prev["content"];
         const curContent = msg["content"];
         if (Array.isArray(prevContent) && Array.isArray(curContent)) {
@@ -493,6 +505,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
     this._forwardExtraConfig(kwargs);
     this._applyThinkingParams(kwargs, options);
     this._applyCacheBreakpoint(kwargs);
+    this._stripInternalMessageFlags(kwargs);
 
     if (options?.onTextChunk || options?.onReasoningChunk || options?.onToolCallPartial) {
       return this._callStream(
@@ -510,6 +523,19 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       options?.signal ? { signal: options.signal } : undefined,
     );
     return this._parseResponse(resp);
+  }
+
+  /**
+   * 清除仅供内部投影/缓存断点使用的消息标记，避免泄漏到 provider。
+   */
+  private _stripInternalMessageFlags(kwargs: Record<string, unknown>): void {
+    const messages = kwargs["messages"];
+    if (!Array.isArray(messages)) return;
+    for (const msg of messages) {
+      if (msg && typeof msg === "object") {
+        delete (msg as Record<string, unknown>)["_ephemeral_tail"];
+      }
+    }
   }
 
   /**

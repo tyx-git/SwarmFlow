@@ -95,7 +95,6 @@ import {
   ensureCommTools,
   ensureTaskTools,
   ensureSkillTool,
-  buildSkillToolDef,
   registerMcpTools,
   ToolGate,
 } from "./lib/tool-runtime.js";
@@ -103,7 +102,12 @@ import { BackgroundShellManager, type BackgroundShellSnapshot, type BackgroundSh
 import { PermissionAdvisor, PermissionRuleStore, initBashParser, type PermissionMode, type PermissionRule, type ApprovalOffer } from "./permissions/index.js";
 import { HookRuntime, type HookPayload } from "./hooks/index.js";
 import type { HookManifest } from "./hooks/types.js";
-import { assembleFullSystemPrompt, readAgentsMemory } from "./lib/prompt-assembler.js";
+import {
+  assembleFullSystemPrompt,
+  formatSkillsListing,
+  readMemoryFiles,
+} from "./lib/prompt-assembler.js";
+import { getSwarmflowHomeDir } from "./lib/home-path.js";
 import { shell } from "./platform/index.js";
 import { isAgentRoleId } from "./swarm/types.js";
 import { buildShellNotes } from "./tools/shell-notes.js";
@@ -441,6 +445,14 @@ export class Session {
   private _skills = new Map<string, SkillMeta>();
   private _skillRoots: string[] = [];
   private _disabledSkills = new Set<string>();
+  /**
+   * skill 变更只标记脏位，不立即重建工具/system。
+   * 只有显式 /reload（或进程重启）才允许改变缓存前缀。
+   */
+  private _skillsDirty = false;
+
+  /** 全局记忆 ~/.swarmflow/MEMORY.md 所在目录。 */
+  private readonly _swarmflowHomeDir: string;
 
   // Cached system prompt (static between reloads for prompt cache stability)
   private _cachedSystemPrompt: string | null = null;
@@ -448,10 +460,9 @@ export class Session {
   // Artifacts / persistence
   private _store: any;
 
-  // Path variables
+  // Path resolution（仅供运行时使用，不进入 system prompt）
   private _projectRoot: string;
   private _sessionArtifactsOverride: string;
-  private _systemData: string;
 
   // Task list state ({SESSION_ARTIFACTS}/tasks.json 为权威；子会话纯内存)
   private _taskStoreScope: "session" | "memory" = "session";
@@ -508,6 +519,9 @@ export class Session {
   /** Stable key for OpenAI prompt cache routing affinity. */
   private _promptCacheKey: string;
 
+  /** fork 默认路由策略；可被 session.fork 的显式参数覆盖。 */
+  readonly forkInheritPromptCacheKey: boolean;
+
   // Agent runtime state (for message delivery mode selection)
   private _agentState: "working" | "idle" | "waiting" = "idle";
 
@@ -524,6 +538,14 @@ export class Session {
 
   // Turn serialization —prevents concurrent turn() calls from corrupting state
   private _turnInFlight: Promise<string | void> | null = null;
+
+  /**
+   * SessionStart hooks 延迟到首个 turn 前执行一次。
+   *
+   * 在构造函数里同步等待会阻塞进程启动；fire-and-forget 又会让首轮请求
+   * 看不到 hook 返回的上下文。延迟到首个 turn 前等待，两个问题都避开。
+   */
+  private _sessionStartHooksPromise: Promise<void> | null = null;
 
   /** Callback for incremental persistence —called at save-worthy checkpoints. */
   onSaveRequest?: () => void | boolean;
@@ -770,6 +792,8 @@ export class Session {
     store?: any;
     contextBudgetPercent?: number;
     projectRoot?: string;
+    /** SwarmFlow 主目录（全局 MEMORY.md 所在目录）。默认 ~/.swarmflow。 */
+    homeDir?: string;
     sessionArtifactsDir?: string;
     capabilities?: SessionCapabilities;
     /**
@@ -781,6 +805,8 @@ export class Session {
     toolExecutorOverrides?: Record<string, ToolExecutor>;
     /** Stable key for OpenAI prompt cache routing affinity. Auto-generated if omitted. */
     promptCacheKey?: string;
+    /** fork 时默认继承父 prompt cache key（settings.json 控制）；默认 false。 */
+    forkInheritPromptCacheKey?: boolean;
     /** Permission mode for this session. Default: "reversible". */
     permissionMode?: PermissionMode;
     /** Shared rule store for child sessions. If omitted, a new store is created. */
@@ -802,6 +828,7 @@ export class Session {
     this.agentTemplates = opts.agentTemplates ?? {};
     this._skills = opts.skills ?? new Map();
     this._skillRoots = opts.skillRoots ?? [];
+    this._swarmflowHomeDir = opts.homeDir ?? getSwarmflowHomeDir();
     this._progress = opts.progress;
     this._mcpManager = opts.mcpManager;
     this._mcpReadyPromise = opts.mcpReadyPromise;
@@ -828,10 +855,9 @@ export class Session {
       this._store = opts.store;
     }
 
-    // Resolve path variables
+    // Resolve runtime paths（system prompt 不再渲染这些值）
     this._projectRoot = opts.projectRoot ?? process.cwd();
     this._sessionArtifactsOverride = opts.sessionArtifactsDir ?? "";
-    this._systemData = "";
     this._shellManager = new BackgroundShellManager({
       projectRoot: this._projectRoot,
       getSessionArtifactsDir: () => this._resolveSessionArtifacts(),
@@ -860,6 +886,7 @@ export class Session {
     this._createdAt = new Date().toISOString();
     this._initialModel = this._describeInitialModel();
     this._promptCacheKey = opts.promptCacheKey ?? randomUUID();
+    this.forkInheritPromptCacheKey = opts.forkInheritPromptCacheKey === true;
     if (opts.hooks && opts.hooks.length > 0) {
       this.hookRuntime.setHooks([...opts.hooks]);
     }
@@ -872,12 +899,6 @@ export class Session {
 
     // Init tree-sitter bash parser (async, non-blocking)
     initBashParser();
-
-    // Fire SessionStart hook (fire-and-forget)
-    this.hookRuntime.fireAndForget("SessionStart", {
-      event: "SessionStart",
-      timestamp: Date.now(),
-    });
   }
 
   private _buildPersistedModelSelection(
@@ -1851,6 +1872,9 @@ export class Session {
     this._activeAsk = null;
     this._askHistory = [];
     this._pendingTurnState = null;
+    // /clear 只重置当前回合的临时上下文；session 作用域由 /new 或恢复清理。
+    this.hookRuntime.clearTurnContext();
+    this.hookRuntime.clearNextRoundContext();
     if (this._childSessions.size > 0) {
       this._archiveAllChildSessions();
     }
@@ -1859,6 +1883,15 @@ export class Session {
     }
     this._subAgentCounter = 0;
     this._shellManager.resetCounter();
+  }
+
+  /**
+   * 新会话/恢复边界：丢弃全部 hook 上下文，并允许 SessionStart 重新执行一次。
+   * 与 /clear 区分：/clear 只清理回合级临时上下文。
+   */
+  private _resetHookContextForNewSession(): void {
+    this.hookRuntime.clearAllContext();
+    this._sessionStartHooksPromise = null;
   }
 
   // ------------------------------------------------------------------
@@ -2226,6 +2259,7 @@ export class Session {
     const warnings = [...prepared.warnings];
 
     this._resetTransientState();
+    this._resetHookContextForNewSession();
     this._mcpConnected = false;
     this._currentTurnSignal = null;
     this._currentTurnAbortController = null;
@@ -2278,6 +2312,11 @@ export class Session {
     this._thinkingLevel = state.thinkingLevel;
     this._createdAt = state.createdAt;
     this._initialModel = state.initialModel;
+    // 普通 resume 必须继承原 key；缺失时保留本进程生成的 key，
+    // 并在下一次保存时写入磁盘，从此稳定。
+    if (state.promptCacheAffinityKey) {
+      this._promptCacheKey = state.promptCacheAffinityKey;
+    }
     this._title = state.title;
     this._cachedSummary = state.cachedSummary;
     this._usedContextIds = new Set(state.usedContextIds);
@@ -2349,6 +2388,7 @@ export class Session {
         modelProvider: this._persistedModelSelection.modelProvider,
         modelSelectionKey: this._persistedModelSelection.modelSelectionKey,
         modelId: this._persistedModelSelection.modelId,
+        promptCacheAffinityKey: this._promptCacheKey,
         turnCount: this._turnCount,
         compactCount: this._compactCount,
         thinkingLevel: this._thinkingLevel,
@@ -2363,8 +2403,7 @@ export class Session {
 
   setStore(store: any): void {
     this._store = store;
-    // Re-render system prompt in conversation to reflect correct paths
-    this._refreshSystemPromptPaths();
+    // 路径不再进入 system snapshot，绑定 store 不触发提示词重建。
   }
 
   /**
@@ -2379,6 +2418,7 @@ export class Session {
 
     // 1. Kill active sub-agents, reset transient flags
     this._resetTransientState();
+    this._resetHookContextForNewSession();
 
     // 2. Update store FIRST (so path resolution picks up new session)
     if (newStore !== undefined) {
@@ -2522,30 +2562,25 @@ export class Session {
     }));
   }
 
-  /** Enable or disable a skill by name. Call reloadSkills() afterwards. */
+  /** 是否存在尚未通过 /reload 应用的 skill 变更。 */
+  get skillsDirty(): boolean {
+    return this._skillsDirty;
+  }
+
+  /** Enable or disable a skill by name. The change applies on the next /reload. */
   setSkillEnabled(name: string, enabled: boolean): void {
     if (enabled) {
       this._disabledSkills.delete(name);
     } else {
       this._disabledSkills.add(name);
     }
-  }
-
-  notifySkillAvailabilityChanged(changes: {
-    enabled?: string[];
-    disabled?: string[];
-  }): void {
-    this._queueToolAvailabilityNotice({
-      reason: "the user updated skill availability",
-      skillsEnabled: changes.enabled,
-      skillsDisabled: changes.disabled,
-    });
+    this._skillsDirty = true;
   }
 
   /**
    * Rescan skill directories, apply disabled filter, and rebuild
-   * the skill tool definition. Returns change report for callers
-   * that need it (e.g. /skills command).
+   * the skill tool definition. Explicit /reload only.
+   * Returns change report for callers that need it (e.g. /skills command).
    */
   reloadSkills(): { added: string[]; removed: string[]; total: number } {
     const oldNames = new Set(this._skills.keys());
@@ -2559,14 +2594,15 @@ export class Session {
   }
 
   /**
-   * Build the `skill` tool definition dynamically from loaded skills.
-   * Returns null if no skills are available for the agent.
+   * Build the fixed `skill` tool definition.
+   *
+   * skills 列表位于 system prompt；工具的 description 不随 skills 集合变化，
+   * 从而保持 tools 段字节稳定。
    */
   private _ensureSkillTool(): void {
     this.primaryAgent.tools = ensureSkillTool(
       this.primaryAgent.tools,
       this._capabilities,
-      this._skills,
     );
   }
 
@@ -2575,7 +2611,10 @@ export class Session {
    * removed, or modified skills update the dynamic skill tool definition.
    */
   private _refreshSkills(): void {
-    if (this._skillRoots.length === 0) return;
+    if (this._skillRoots.length === 0) {
+      this._skillsDirty = false;
+      return;
+    }
     const freshAll = loadSkillsMulti(this._skillRoots);
     const filtered = new Map<string, SkillMeta>();
     for (const [name, skill] of freshAll) {
@@ -2584,6 +2623,7 @@ export class Session {
       }
     }
     this._skills = filtered;
+    this._skillsDirty = false;
     this._ensureSkillTool();
   }
 
@@ -2857,8 +2897,7 @@ export class Session {
     );
 
     // 2. Rebuild system prompt
-    this._cachedSystemPrompt = this._assembleSystemPrompt();
-    this._promptSectionEstimates = null;
+    this._rebuildSystemPrompt();
     report.push("System prompt: rebuilt");
 
     // 3. Reload MCP
@@ -2886,6 +2925,16 @@ export class Session {
     });
 
     return new ToolResult({ content: report.join("\n") });
+  }
+
+  /**
+   * Explicit user-facing reload (/reload command).
+   *
+   * 与 reload 工具共用同一条重建路径，但通过 turn lock 串行化，避免
+   * skill/MCP 变更与活动回合的工具快照重叠。
+   */
+  async reloadConfigurationFromCommand(): Promise<string> {
+    return this._withTurnLock(async () => (await this._execReload()).content);
   }
 
   // ==================================================================
@@ -3671,21 +3720,19 @@ export class Session {
     // Tool schemas (ToolDef[] serialized as provider would)
     let estToolSchemas = 0;
     for (const tool of this.primaryAgent.tools) {
-      if (tool.name === "skill") continue; // counted separately
       estToolSchemas += gptEncode(
         JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }),
       ).length;
     }
 
-    // AGENTS.md
-    const agentsMdText = readAgentsMemory(this._projectRoot);
-    const estAgentsMd = agentsMdText ? gptEncode(agentsMdText).length : 0;
+    // 记忆层（全局 MEMORY.md + 项目 AGENTS.md）
+    const memory = readMemoryFiles(this._projectRoot, this._swarmflowHomeDir);
+    const memoryText = [memory.globalContent, memory.projectContent].filter(Boolean).join("\n\n");
+    const estAgentsMd = memoryText ? gptEncode(memoryText).length : 0;
 
-    // Skill tool (description embeds the skill listing)
-    const skillDef = buildSkillToolDef(this._skills);
-    const estSkills = skillDef
-      ? gptEncode(JSON.stringify({ name: skillDef.name, description: skillDef.description, parameters: skillDef.parameters })).length
-      : 0;
+    // skills 目录位于 system prompt，不再计入工具 schema
+    const skillsListing = formatSkillsListing([...this._skills.values()]);
+    const estSkills = skillsListing ? gptEncode(skillsListing).length : 0;
 
     // Tools = tool docs (inline in prompt) + tool schemas (API tools[])
     const tools = estToolDocs + estToolSchemas;
@@ -4146,6 +4193,8 @@ export class Session {
    * Caller must hold the turn lock and have cleared _pendingTurnState.
    */
   private async _resumeActivationStage(options?: { signal?: AbortSignal }): Promise<string> {
+    // 恢复路径会绕过 _turnInner；同样保证 SessionStart 上下文只执行一次。
+    await this._ensureSessionStartHooks();
     // The suspended turn never closed its work, so the previous turn's end
     // status is stale here; null it like every other turn entry point so the
     // error path below can tell whether work still needs closing.
@@ -4829,6 +4878,23 @@ export class Session {
     });
   }
 
+  /**
+   * 在首个 turn 前执行一次 SessionStart hooks。
+   *
+   * 返回的 additionalContext 会进入本轮 ephemeral 尾巴，而不是永久 system。
+   * 每个 hook 仍受自身 timeoutMs 约束，因此不会无限阻塞首个 turn。
+   */
+  private async _ensureSessionStartHooks(): Promise<void> {
+    this._sessionStartHooksPromise ??= (async () => {
+      if (!this.hookRuntime.hooks.some((hook) => hook.event === "SessionStart")) return;
+      await this.hookRuntime.evaluate("SessionStart", {
+        event: "SessionStart",
+        timestamp: Date.now(),
+      });
+    })();
+    await this._sessionStartHooksPromise;
+  }
+
   /** Inner turn logic, called from within the turn lock. */
   private async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
     // A pending ask owns the conversation: the turn cannot run until the user
@@ -4846,6 +4912,7 @@ export class Session {
     }
 
     this._ensureSessionStorageReady();
+    await this._ensureSessionStartHooks();
 
     const signal = options?.signal;
     if (this._pendingTurnState) {
@@ -4893,6 +4960,8 @@ export class Session {
       // Fire UserPromptSubmit hooks (can deny or modify the prompt)
       if (this.hookRuntime.hooks.length > 0) {
         this.hookRuntime.clearTurnContext();
+        // 上一轮若因异常退出，next-round 上下文可能残留；新用户输入前清理。
+        this.hookRuntime.clearNextRoundContext();
         const hookResult = await this.hookRuntime.evaluate("UserPromptSubmit", {
           event: "UserPromptSubmit",
           timestamp: Date.now(),
@@ -5503,6 +5572,7 @@ export class Session {
     const getMessages = (): Array<Record<string, unknown>> => {
       return projectToApiMessages(this._log, {
         systemPrompt: this._getSystemPrompt(),
+        ephemeralTail: this.hookRuntime.getAdditionalContext() ?? undefined,
         resolveImageRef: (refPath) => this._resolveImageRef(refPath),
         requiresAlternatingRoles: (this.primaryAgent as any)._provider?.requiresAlternatingRoles,
         enforceToolCallProtocol: true,
@@ -5618,6 +5688,7 @@ export class Session {
       toolContextIdAllocator: () => this._allocateContextId(),
       compactCheck: this._buildCompactCheck(),
       onTokenUpdate,
+      onProviderResponse: () => this.hookRuntime.clearNextRoundContext(),
       thinkingLevel: this._thinkingLevel,
       promptCacheKey: this._promptCacheKey,
       onSaveCheckpoint: this._compactInProgress ? undefined : (() => this.onSaveRequest?.()),
@@ -6000,15 +6071,6 @@ export class Session {
     return undefined;
   }
 
-  private _getPredictedArtifactsDirIfAvailable(): string | undefined {
-    if (!this._store || typeof this._store.predictNextArtifactsDir !== "function") return undefined;
-    try {
-      return this._store.predictNextArtifactsDir();
-    } catch {
-      return undefined;
-    }
-  }
-
   private _createMissingSessionDirOrThrow(): void {
     if (!this._store) return;
     if (this._store.sessionDir) return;
@@ -6032,7 +6094,6 @@ export class Session {
 
   private _ensureSessionStorageReady(): void {
     if (this._sessionArtifactsOverride) {
-      this._refreshSystemPromptPaths();
       return;
     }
     if (!this._store) {
@@ -6052,7 +6113,6 @@ export class Session {
         "(3) permission issues creating the artifacts directory.",
       );
     }
-    this._refreshSystemPromptPaths();
   }
 
   private _getArtifactsDir(): string {
@@ -6072,20 +6132,9 @@ export class Session {
   // Path variable resolution
   // ==================================================================
 
-  private _resolveSessionArtifacts(options?: { allowUnresolved?: boolean }): string {
+  private _resolveSessionArtifacts(): string {
     if (this._sessionArtifactsOverride) return this._sessionArtifactsOverride;
-    const d = this._getArtifactsDirIfAvailable();
-    if (d) return d;
-    if (options?.allowUnresolved) return "{SESSION_ARTIFACTS}";
     return this._getArtifactsDir();
-  }
-
-  private _resolveSystemData(options?: { allowUnresolved?: boolean }): string {
-    if (this._systemData) return this._systemData;
-    if (this._store?.projectDir) return this._store.projectDir;
-    if (options?.allowUnresolved) return "{SYSTEM_DATA}";
-    const artifacts = this._getArtifactsDir();
-    return join(artifacts, "..");
   }
 
   /**
@@ -6111,10 +6160,8 @@ export class Session {
     return assembleFullSystemPrompt({
       agentPrompt,
       projectRoot: this._projectRoot,
-      sessionArtifacts: this._getPredictedArtifactsDirIfAvailable()
-        ?? this._resolveSessionArtifacts({ allowUnresolved: true }),
-      systemData: this._resolveSystemData({ allowUnresolved: true }),
-      sessionStartedAt: this._createdAt,
+      homeDir: this._swarmflowHomeDir,
+      skills: [...this._skills.values()],
       shellNotes: buildShellNotes(shell.kind),
     });
   }
@@ -6122,36 +6169,31 @@ export class Session {
   /**
    * Get the cached system prompt. Computed once and reused across API calls
    * for prompt cache stability. Refreshed only by _reloadPromptAndTools().
+   *
+   * 动态 hooks/提醒不再拼接到 system：它们由消息投影追加到 ephemeral 尾巴，
+   * 否则每次请求都会改变 system 前缀，使整段历史失去缓存。
    */
   private _getSystemPrompt(): string {
     if (!this._cachedSystemPrompt) {
       this._cachedSystemPrompt = this._assembleSystemPrompt();
     }
-    // Append hook additional context (dynamic, not cached)
-    const hookCtx = this.hookRuntime.getAdditionalContext();
-    if (hookCtx) {
-      return this._cachedSystemPrompt + "\n\n" + hookCtx;
-    }
     return this._cachedSystemPrompt;
   }
 
   /**
-   * Reload system prompt, skills, and tool definitions.
-   * Called at session init, on `/reload`, and after AGENTS.md writes.
-   * Invalidates the prompt cache so the next API call gets a fresh prompt.
+   * Reload skills and rebuild the system snapshot.
+   * Called at session init and by explicit /reload only; file edits and
+   * store binding do not change the cached prefix.
    */
   _reloadPromptAndTools(): void {
     this._refreshSkills();
-    this._cachedSystemPrompt = this._assembleSystemPrompt();
-    this._promptSectionEstimates = null;
+    this._rebuildSystemPrompt();
   }
 
-  /**
-   * Update the system message in the conversation with re-rendered paths.
-   * Called by setStore() to fix paths after the store is linked.
-   */
-  private _refreshSystemPromptPaths(): void {
-    this._reloadPromptAndTools();
+  /** Rebuild the cached system snapshot after tools/skills/memory change. */
+  private _rebuildSystemPrompt(): void {
+    this._cachedSystemPrompt = this._assembleSystemPrompt();
+    this._promptSectionEstimates = null;
   }
 
   // ==================================================================
@@ -6560,6 +6602,7 @@ export class Session {
       fireHook: (event, payload) => this.hookRuntime.fireAndForget(event, payload),
       resolveSessionArtifacts: () => this._resolveSessionArtifacts(),
       getArtifactsDir: () => this._getArtifactsDir(),
+      getPromptCacheKey: () => this._promptCacheKey,
       getPreferredThinkingLevel: () => this._preferredThinkingLevel,
       getPrimaryAgent: () => this.primaryAgent,
       getAgentTemplates: () => this.agentTemplates,
@@ -6576,6 +6619,7 @@ export class Session {
           config: this.config,
           promptsDirs: this._promptsDirs,
           projectRoot: this._projectRoot,
+          homeDir: this._swarmflowHomeDir,
           sessionArtifactsDir: o.artifactsDir,
           capabilities: CHILD_SESSION_CAPABILITIES,
           // 子代理不写持久化文件：清单只在内存里，随子会话消亡

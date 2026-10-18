@@ -26,6 +26,7 @@ import { Agent } from "../agents/agent.js";
 import { Session } from "../session.js";
 import { loadTemplates } from "../templates/loader.js";
 import { ensureBuiltinSkills, loadSkillsMulti } from "../skills/loader.js";
+import { ensureGlobalMemoryFile } from "../lib/prompt-assembler.js";
 import {
   SessionStore,
   loadGlobalSettings,
@@ -104,6 +105,8 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
 
   // Keep the protected workflow skills available even during first-run init.
   ensureBuiltinSkills(join(homeDir, "skills"));
+  // 全局记忆初始化为空文件；用户之后手动维护。
+  ensureGlobalMemoryFile(homeDir);
 
   const store = new SessionStore({ projectPath });
 
@@ -225,7 +228,9 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     mcpReadyPromise,
     promptsDirs,
     store: store as never,
+    homeDir,
     contextBudgetPercent,
+    forkInheritPromptCacheKey: settings.fork_inherit_prompt_cache_key === true,
   });
 
   if (hooksLoaded.length > 0) {

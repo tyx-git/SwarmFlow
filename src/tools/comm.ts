@@ -12,8 +12,7 @@ export const SPAWN_TOOL: ToolDef = {
   name: "spawn",
   description:
     "Queen-only orchestration action: spawn a single sub-agent for a root task already tracked in Queen's task list. Before spawn, bind that root task with task_update by setting owner and metadata.agentId to the chosen child ID; wait for the update to succeed because the child may finish before spawn returns. Child results and unfinished local tasks are linked through metadata.agentId. Child agents cannot spawn or delegate. " +
-    "Check pre-defined templates (e.g. 'scout', 'worker', 'reviewer', 'guard', 'merger') before creating custom ones. " +
-    "See system prompt for available templates and their capabilities.",
+    "Prefer a predefined template when one matches the task; use template_path only for user-managed custom templates.",
   parameters: {
     type: "object",
     properties: {
@@ -23,11 +22,12 @@ export const SPAWN_TOOL: ToolDef = {
       },
       template: {
         type: "string",
-        description: "Pre-defined template name: 'scout', 'worker', 'reviewer', 'guard', or 'merger'.",
+        description: "Name of a predefined agent template loaded by the runtime.",
       },
       template_path: {
         type: "string",
-        description: "Path to a custom template directory relative to {SESSION_ARTIFACTS}.",
+        description:
+          "Path to a user-managed custom template directory. Relative paths resolve against the session artifacts directory.",
       },
       task: {
         type: "string",

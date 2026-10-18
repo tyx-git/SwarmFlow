@@ -402,6 +402,13 @@ export class OpenAIChatProvider extends BaseProvider {
       }
     }
 
+    // OpenAI 的 prompt cache 是自动前缀匹配；prompt_cache_key 只是
+    // 路由/分区提示。持久化同一个 key 能让恢复后的同一会话继续落到
+    // 相同的缓存分区。放在 config.extra 之前，允许自定义端点覆盖。
+    if (options?.promptCacheKey) {
+      kwargs["prompt_cache_key"] = options.promptCacheKey;
+    }
+
     // 在思考参数之前应用 config.extra（思考有最终控制权）
     if (this._config.extra) {
       const extraBody = this._config.extra["extra_body"] as

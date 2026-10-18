@@ -8,7 +8,10 @@ describe("tool availability system notices", () => {
     session._conversationStarted = false;
     session._deliverMessage = vi.fn(() => ({ accepted: true }));
 
-    session.notifySkillAvailabilityChanged({ disabled: ["docx"] });
+    session._queueToolAvailabilityNotice({
+      reason: "the user updated skill availability",
+      skillsDisabled: ["docx"],
+    });
     expect(session._deliverMessage).toHaveBeenCalledTimes(0);
   });
 
@@ -17,8 +20,14 @@ describe("tool availability system notices", () => {
     session._conversationStarted = true;
     session._deliverMessage = vi.fn(() => ({ accepted: true }));
 
-    session.notifySkillAvailabilityChanged({ disabled: ["docx"] });
-    session.notifySkillAvailabilityChanged({ enabled: ["xlsx"] });
+    session._queueToolAvailabilityNotice({
+      reason: "the user updated skill availability",
+      skillsDisabled: ["docx"],
+    });
+    session._queueToolAvailabilityNotice({
+      reason: "the user updated skill availability",
+      skillsEnabled: ["xlsx"],
+    });
 
     expect(session._deliverMessage).toHaveBeenCalledTimes(2);
     const first = session._deliverMessage.mock.calls[0]?.[0];

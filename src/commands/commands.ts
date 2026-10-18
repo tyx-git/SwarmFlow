@@ -2367,7 +2367,6 @@ async function cmdReviewer(ctx: CommandContext, args: string): Promise<void> {
 
 async function cmdInit(ctx: CommandContext, _args: string): Promise<void> {
   const agentsPath = join(process.cwd(), "AGENTS.md");
-  const rulesPath = join(process.cwd(), ".rules");
   if (existsSync(agentsPath)) {
     ctx.showMessage("AGENTS.md already exists at the project root. /init will not overwrite it.");
     return;
@@ -2375,17 +2374,14 @@ async function cmdInit(ctx: CommandContext, _args: string): Promise<void> {
   const prompt = [
     "Run initial project exploration for this repository.",
     "Draft a project-level AGENTS.md at the repository root with coding habits, architecture notes, commands, and constraints.",
-    "Also initialize an empty Markdown .rules file at the repository root if it does not exist.",
-    "Do not create a global AGENTS.md.",
+    "Do not create a global MEMORY.md; global memory is maintained by the user.",
   ].join("\n");
-  if (!existsSync(rulesPath)) writeFileSync(rulesPath, "", "utf-8");
   if (ctx.onInjectedTurnRequested) {
     ctx.onInjectedTurnRequested("/init", prompt);
   } else if (ctx.onTurnRequested) {
     ctx.onTurnRequested(prompt);
   } else {
-    if (!existsSync(rulesPath)) writeFileSync(rulesPath, "", "utf-8");
-    ctx.showMessage("No turn runner is available. Created .rules if missing; AGENTS.md draft requires an agent turn.");
+    ctx.showMessage("No turn runner is available. AGENTS.md draft requires an agent turn.");
   }
 }
 
@@ -2529,26 +2525,33 @@ async function cmdClear(ctx: CommandContext, _args: string): Promise<void> {
   ctx.showMessage("Screen cleared. Conversation state is reset for future turns, while the session record remains on disk.");
 }
 
-async function cmdRules(ctx: CommandContext, args: string): Promise<void> {
-  const rulesPath = join(process.cwd(), ".rules");
-  const rule = args.trim();
-  if (!rule) {
-    if (!existsSync(rulesPath)) {
-      ctx.showMessage("No .rules file at project root. Run /rules <rule description> to create one.");
-      return;
-    }
-    const content = readFileSync(rulesPath, "utf-8").trim();
-    ctx.showMessage(content ? `.rules\n\n${content}` : ".rules is empty.");
-    return;
-  }
-  const existing = existsSync(rulesPath) ? readFileSync(rulesPath, "utf-8") : "";
-  const prefix = existing.trim().length > 0 ? `${existing.trimEnd()}\n` : "";
-  writeFileSync(rulesPath, `${prefix}\n- ${rule}\n`, "utf-8");
-  ctx.showMessage(`Added project rule to .rules: ${rule}`);
-}
-
 async function cmdMemory(ctx: CommandContext, _args: string): Promise<void> {
   ctx.showMessage("__memory_panel__");
+}
+
+/**
+ * 显式 /reload：重新扫描 skills/MCP，并重建 system snapshot。
+ *
+ * 这是会话内唯一允许改变 tools/system 缓存前缀的用户入口；
+ * /skills 只记录选择，等这里才真正应用。
+ */
+async function cmdReload(ctx: CommandContext, _args: string): Promise<void> {
+  const session = ctx.session;
+  if (!session || typeof session.reloadConfigurationFromCommand !== "function") {
+    ctx.showMessage("Reload is unavailable in this runtime.");
+    return;
+  }
+
+  const oldSkills = session.skills;
+  const hadPendingSkillChanges = session.skillsDirty === true;
+  const report = await session.reloadConfigurationFromCommand();
+  if (oldSkills && session.skills && ctx.commandRegistry) {
+    reRegisterSkillCommands(ctx.commandRegistry, oldSkills, session.skills);
+  }
+  ctx.showMessage(
+    hadPendingSkillChanges ? `${report}\nPending skill changes applied.` : report,
+  );
+  (ctx.showHint ?? ctx.showMessage)("Reloaded. The next request uses the new tools/system prefix.");
 }
 
 // ------------------------------------------------------------------
@@ -2589,7 +2592,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   registerBuiltin(registry, { name: "/mcp", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
   registerBuiltin(registry, { name: "/hooks", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
   registerBuiltin(registry, { name: "/memory", handler: cmdMemory, executionMode: "always", category: "Ecosystem" });
-  registerBuiltin(registry, { name: "/rules", handler: cmdRules, category: "Project Configuration" });
+  registerBuiltin(registry, { name: "/reload", handler: cmdReload, executionMode: "queued", category: "Project Configuration" });
   registerBuiltin(registry, { name: "/theme", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, executionMode: "whenBusy", category: "UI" });
   registerBuiltin(registry, { name: "/language", handler: cmdLanguage, options: languageOptions, picker: { inputArea: true }, executionMode: "whenBusy", category: "UI" });
   registerBuiltin(registry, { name: "/rewind", handler: cmdRewind, options: rewindOptions, picker: { title: "Rewind", inputArea: true }, category: "Context" });
@@ -2959,13 +2962,9 @@ function skillsOptions(ctx: CommandOptionsContext): CommandOption[] {
 
 function persistSkillAvailability(ctx: CommandContext, name: string, enabled: boolean): void {
   const session = ctx.session;
-  const oldSkills = session.skills;
+  // 只更新选择并持久化。skills 属于 tools/system 前缀的一部分，
+  // 立即重扫会让当前会话的缓存前缀失效；显式 /reload 才应用变更。
   session.setSkillEnabled(name, enabled);
-  session.reloadSkills();
-  reRegisterSkillCommands(ctx.commandRegistry, oldSkills, session.skills);
-  if (typeof session.notifySkillAvailabilityChanged === "function") {
-    session.notifySkillAvailabilityChanged(enabled ? { enabled: [name] } : { disabled: [name] });
-  }
   const allSkills = session.getAllSkillNames?.() ?? [];
   const disabledSkills = allSkills
     .filter((skill: { enabled: boolean }) => !skill.enabled)
@@ -2992,7 +2991,7 @@ async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
     }
     persistSkillAvailability(ctx, name, !skill.enabled);
     (ctx.showHint ?? ctx.showMessage)(
-      `${name}: ${skill.enabled ? t.get(["Commands", "/skills", "disabled"]) : t.get(["Commands", "/skills", "enabled"])}`,
+      `${name}: ${skill.enabled ? t.get(["Commands", "/skills", "disabled"]) : t.get(["Commands", "/skills", "enabled"])}. Run /reload to apply.`,
     );
     return;
   }

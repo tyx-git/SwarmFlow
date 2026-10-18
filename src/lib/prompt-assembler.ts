@@ -1,193 +1,287 @@
-﻿/**
+/**
  * 系统提示组装器 —— 从各层构建完整的系统提示。
  *
- * 遵循 swarmflow 的模式：代理基础提示 + 提示层。
- *
- * 公式：
+ * 公式（顺序即缓存前缀顺序）：
  *   systemPrompt =
  *     agent.prompt                    → 来自模板（角色 + 工具 + 知识）
- *     + 记忆层 (AGENTS.md)            → 来自磁盘，每次重新加载时刷新
- *     + 代理模型固定配置               → 来自配置
- *     + 变量渲染                      → {PROJECT_ROOT}/{SESSION_ARTIFACTS}/{SYSTEM_DATA}/{SESSION_STARTED} → 实际值
+ *     + 全局记忆 (MEMORY.md)          → ~/.swarmflow/MEMORY.md
+ *     + 项目记忆 (AGENTS.md)          → <projectRoot>/AGENTS.md
+ *     + 可用 skills 目录               → 按 name 排序的 name + description
+ *     + 占位符渲染                     → {SHELL_NOTES}/{INITIAL_MODEL}
  *
- * 所有层在此组装 —— Session 不再做临时的字符串拼接。
+ * 这里只装配“会话内稳定”的内容。运行时的 hooks、任务提醒、工具可用性
+ * 通知等动态内容不属于 system prompt，它们由会话投影追加到消息尾部。
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+import { getSwarmflowHomeDir } from "./home-path.js";
 
 // ------------------------------------------------------------------
-// 提示层类型定义
+// 预算
 // ------------------------------------------------------------------
 
-export interface PromptLayer {
-  /** 层标识 */
-  id: string;
-  /** 排序序号（越小越靠前） */
-  order: number;
-  /** 返回该层内容的函数 */
-  content: () => string;
-}
+/** system 外部上下文（记忆 + skills）总预算：32 KiB。 */
+export const SYSTEM_CONTEXT_BUDGET_BYTES = 32 * 1024;
+/** 全局记忆上限：总预算的 25%。 */
+export const GLOBAL_MEMORY_BUDGET_BYTES = 8 * 1024;
+/** 项目记忆上限：总预算的 50%。 */
+export const PROJECT_MEMORY_BUDGET_BYTES = 16 * 1024;
+/** skills 目录上限：总预算的 25%。 */
+export const SKILLS_LISTING_BUDGET_BYTES = 8 * 1024;
+/**
+ * 段落标题与分隔符的预留空间。
+ *
+ * 预算按“内容字节”分配，标题和 `---` 分隔符会额外占用少量字节；
+ * 预留 1 KiB 保证完整 system 不会因为标题开销突破 32 KiB。
+ */
+const SECTION_OVERHEAD_RESERVE_BYTES = 1024;
+
+/** 全局记忆文件名。 */
+export const GLOBAL_MEMORY_FILE = "MEMORY.md";
+/** 项目记忆文件名。 */
+export const PROJECT_MEMORY_FILE = "AGENTS.md";
 
 // ------------------------------------------------------------------
-// 提示变量与会话上下文
+// 占位符
 // ------------------------------------------------------------------
 
-/** 提示模板中可替换的变量 */
+/** 提示模板中仍需要替换的运行时占位符。 */
 export interface PromptVariables {
-  /** 项目根路径 */
-  projectRoot: string;
-  /** 会话产出目录路径 */
-  sessionArtifacts: string;
-  /** 系统数据目录路径 */
-  systemData: string;
-  /** ISO timestamp of when this session began (its first message). Stable across resumes. */
-  sessionStartedAt?: string;
-  /* 将特定于shell的注释注入到工具提示符中（bash vs PowerShell）。 */
+  /* 将特定于 shell 的注释注入到工具提示符中（bash vs PowerShell）。 */
   shellNotes?: string;
 }
 
 /**
- * 格式化会话开始的锚定行，若时间戳缺失或无效则返回 null。
+ * 渲染提示正文中的 `{SHELL_NOTES}`，并清空旧模板里的模型身份占位符。
  *
- * 以运行时本地时区渲染会话开始时间，以便代理自然地进行时间推理。
- * 我们刻意不要求代理对此发表评论 —— 提供事实就足够了；
- * 强迫反应会变成一种习惯性废话。
- */
-function formatSessionStartLine(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  let tz: string;
-  try {
-    tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
-  } catch {
-    tz = "local time";
-  }
-  let formatted: string;
-  try {
-    formatted = new Intl.DateTimeFormat("en-US", {
-      weekday: "short", year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz === "local time" ? undefined : tz,
-    }).format(d);
-  } catch {
-    formatted = d.toISOString();
-  }
-  return `This conversation began on ${formatted} (${tz}). When you need the current time, call the \`time\` tool.`;
-}
-
-/**
- * 将路径变量替换为会话的实际绝对路径。
- *
- * 渲染提示正文中的 `{PROJECT_ROOT}` / `{SESSION_ARTIFACTS}` / `{SYSTEM_DATA}`，
- * 让模型在工具调用示例和指令中看到具体路径，而非可能被原样粘贴的标记。
- * 在同一会话内（以及同一项目的多次会话中），渲染后的正文是稳定的，
- * 因此在各回合之间对缓存友好。
+ * 路径与时间不再注入 system：
+ *  - 工作目录由工具执行时的 projectRoot 决定，模型可用 `bash pwd`/`list_dir` 获取；
+ *  - 当前时间由 `time` 工具提供；
+ *  - 会话工件目录是运行时基础设施，不需要暴露给模型。
  */
 export function renderPromptVariables(prompt: string, vars: PromptVariables): string {
   return prompt
-    .replace(/\{PROJECT_ROOT\}/g, vars.projectRoot)
-    .replace(/\{SESSION_ARTIFACTS\}/g, vars.sessionArtifacts)
-    .replace(/\{SYSTEM_DATA\}/g, vars.systemData)
     .replace(/\{SHELL_NOTES\}/g, vars.shellNotes ?? "")
     // 旧模板里的模型身份占位符统一清空，不向模型提示供应商或型号。
-    .replace(/\{INITIAL_MODEL\}/g, "")
-    .replace(/\{SESSION_STARTED\}/g, buildSessionStartedVar(vars.sessionStartedAt));
-}
-
-/**
- * 构建 {SESSION_STARTED} 替换值。
- * 返回带尾换行的格式化行（模板可将其作为独立段落），
- * 若无有效时间戳则返回 ""（占位符及其周围空行将被折叠）。
- */
-function buildSessionStartedVar(iso: string | undefined): string {
-  const line = formatSessionStartLine(iso);
-  return line ? line + "\n" : "";
+    .replace(/\{INITIAL_MODEL\}/g, "");
 }
 
 // ------------------------------------------------------------------
-// 内置层
+// 记忆文件
 // ------------------------------------------------------------------
 
-/**
- * 从全局和项目路径读取 AGENTS.md 持久化记忆文件。
- * 若不存在记忆文件则返回空字符串。
- */
-export function readAgentsMemory(projectRoot: string): string {
-  const parts: string[] = [];
+/** 读取一个文本文件并 trim；不存在或为空时返回空字符串。 */
+function readTrimmed(path: string): string {
+  try {
+    if (!existsSync(path)) return "";
+    return readFileSync(path, "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
 
-  const projectPath = join(projectRoot, "AGENTS.md");
-  if (existsSync(projectPath)) {
-    try {
-      const content = readFileSync(projectPath, "utf-8").trim();
-      if (content) parts.push(`## Project Memory\n\n${content}`);
-    } catch { /* 忽略 */ }
+/** 全局记忆路径（~/.swarmflow/MEMORY.md）。 */
+export function globalMemoryPath(homeDir: string = getSwarmflowHomeDir()): string {
+  return join(homeDir, GLOBAL_MEMORY_FILE);
+}
+
+/**
+ * 确保全局记忆文件存在。
+ *
+ * 首次启动时创建一个空文件；绝不覆盖用户已有内容。创建失败不应阻止
+ * 运行时启动（只读 home 也允许继续工作）。
+ */
+export function ensureGlobalMemoryFile(homeDir: string = getSwarmflowHomeDir()): void {
+  const path = globalMemoryPath(homeDir);
+  try {
+    if (existsSync(path)) return;
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "", { encoding: "utf-8", flag: "wx" });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === "EEXIST") return;
+    console.warn(
+      `Unable to initialize global memory at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/** 读取全局记忆与项目记忆（均未做预算截断）。 */
+export function readMemoryFiles(
+  projectRoot: string,
+  homeDir: string = getSwarmflowHomeDir(),
+): { globalContent: string; projectContent: string } {
+  return {
+    globalContent: readTrimmed(globalMemoryPath(homeDir)),
+    projectContent: readTrimmed(join(projectRoot, PROJECT_MEMORY_FILE)),
+  };
+}
+
+// ------------------------------------------------------------------
+// skills 目录
+// ------------------------------------------------------------------
+
+/** system 中展示给模型的 skill 条目。 */
+export interface SkillListingEntry {
+  name: string;
+  description: string;
+  /** 仅用户可通过 /name 调用；不进入模型可调用列表。 */
+  disableModelInvocation?: boolean;
+}
+
+/** 按 name 的码元顺序排序，保证跨进程/跨文件系统字节稳定。 */
+function compareSkillNames(a: SkillListingEntry, b: SkillListingEntry): number {
+  if (a.name < b.name) return -1;
+  if (a.name > b.name) return 1;
+  return 0;
+}
+
+/** 将文本截断到不超过 maxBytes（UTF-8），并附加截断标记。 */
+export function truncateUtf8(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+
+  const marker = "\n\n[truncated]";
+  const markerBytes = Buffer.byteLength(marker, "utf8");
+  if (maxBytes <= markerBytes) {
+    return truncateUtf8Plain(text, maxBytes);
   }
 
-  return parts.join("\n\n---\n\n");
+  return truncateUtf8Plain(text, maxBytes - markerBytes) + marker;
+}
+
+/** 纯截断，不附加标记；按 Unicode code point 切分，避免拆坏代理对。 */
+function truncateUtf8Plain(text: string, maxBytes: number): string {
+  if (maxBytes <= 0) return "";
+  const chars = Array.from(text);
+  let low = 0;
+  let high = chars.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (Buffer.byteLength(chars.slice(0, mid).join(""), "utf8") <= maxBytes) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return chars.slice(0, low).join("");
+}
+
+/**
+ * 格式化“可用 skills”段落。
+ *
+ * 只列出模型可调用的 skill；按 name 排序；逐条写入直到预算耗尽。
+ * 返回内容包含段落标题，空列表返回空字符串（不生成空标题）。
+ */
+export function formatSkillsListing(
+  skills: readonly SkillListingEntry[],
+  maxBytes: number = SKILLS_LISTING_BUDGET_BYTES,
+): string {
+  const available = skills
+    .filter((skill) => !skill.disableModelInvocation)
+    .slice()
+    .sort(compareSkillNames);
+
+  if (available.length === 0 || maxBytes <= 0) return "";
+
+  const header = "# Available Skills\n\n";
+  const headerBytes = Buffer.byteLength(header, "utf8");
+  if (headerBytes >= maxBytes) return "";
+
+  const lines: string[] = [];
+  let used = headerBytes;
+  for (const skill of available) {
+    const description = skill.description.replace(/\s+/g, " ").trim();
+    const line = `- ${skill.name}: ${description}`;
+    const remaining = maxBytes - used;
+    if (remaining <= 0) break;
+
+    const lineBytes = Buffer.byteLength(line, "utf8");
+    if (lineBytes <= remaining) {
+      lines.push(line);
+      used += lineBytes + 1; // newline
+      continue;
+    }
+
+    // 单条超预算：截断这一条后停止，避免出现没有名字的残缺行。
+    const fitted = truncateUtf8Plain(line, remaining);
+    if (fitted.trim().length > 0) lines.push(fitted);
+    break;
+  }
+
+  return header + lines.join("\n");
 }
 
 // ------------------------------------------------------------------
 // 组装器
 // ------------------------------------------------------------------
 
-/** assembleFullSystemPrompt 的配置选项 */
+/** assembleFullSystemPrompt 的配置选项。 */
 export interface AssembleOptions {
   /** 基础代理提示（来自模板：角色 + 工具 + 知识）。 */
   agentPrompt: string;
-  /** 项目根路径（用于 AGENTS.md 和变量渲染）。 */
+  /** 项目根路径（用于 AGENTS.md）。 */
   projectRoot: string;
-  /** 会话产出目录路径。 */
-  sessionArtifacts: string;
-  /** 系统数据目录路径。 */
-  systemData: string;
-  /* 此会话开始时的ISO时间戳（它的第一条消息）。在简历中保持稳定。 */
-  sessionStartedAt?: string;
+  /** SwarmFlow 主目录（用于 MEMORY.md）；省略时使用 ~/.swarmflow。 */
+  homeDir?: string;
+  /** 当前会话可用的 skills。 */
+  skills?: readonly SkillListingEntry[];
   /* {SHELL_NOTES}变量的特定于shell的注释（bash vs PowerShell）。 */
   shellNotes?: string;
-  /* 额外的提示层（钩子，注入转弯等）。 */
-  extraLayers?: PromptLayer[];
 }
 
 /**
- * 从代理基础提示 + 各层 + 变量组装完整的系统提示。
+ * 从代理基础提示 + 记忆 + skills 组装完整的系统提示。
  *
- * 这是系统提示构建的唯一入口。
- * 在会话初始化和每次重新加载（AGENTS.md 编辑、/reload 等）时调用。
+ * 这是系统提示构建的唯一入口，只在会话初始化与显式 /reload 时调用。
+ * 顺序固定为：角色 → 全局 MEMORY.md → 项目 AGENTS.md → skills。
+ * 项目 AGENTS.md 位于全局记忆之后，拥有更高的近期权重。
  */
 export function assembleFullSystemPrompt(opts: AssembleOptions): string {
-  const vars = {
-    projectRoot: opts.projectRoot,
-    sessionArtifacts: opts.sessionArtifacts,
-    systemData: opts.systemData,
-    sessionStartedAt: opts.sessionStartedAt,
-    shellNotes: opts.shellNotes,
-  };
+  const memory = readMemoryFiles(opts.projectRoot, opts.homeDir);
+  const contentBudget = SYSTEM_CONTEXT_BUDGET_BYTES - SECTION_OVERHEAD_RESERVE_BYTES;
+
+  // 预算分配按优先级：项目 AGENTS.md → 全局 MEMORY.md → skills。
+  const projectContent = truncateUtf8(
+    memory.projectContent,
+    Math.min(PROJECT_MEMORY_BUDGET_BYTES, contentBudget),
+  );
+  const projectBytes = Buffer.byteLength(projectContent, "utf8");
+
+  const globalContent = truncateUtf8(
+    memory.globalContent,
+    Math.min(GLOBAL_MEMORY_BUDGET_BYTES, Math.max(0, contentBudget - projectBytes)),
+  );
+  const globalBytes = Buffer.byteLength(globalContent, "utf8");
+
+  const skillsBudget = Math.max(
+    0,
+    Math.min(SKILLS_LISTING_BUDGET_BYTES, contentBudget - projectBytes - globalBytes),
+  );
+  const skillsSection = formatSkillsListing(opts.skills ?? [], skillsBudget);
 
   let prompt = opts.agentPrompt;
 
-  // 层：AGENTS.md 持久化记忆
-  const memory = readAgentsMemory(opts.projectRoot);
-  if (memory) {
+  if (globalContent) {
+    prompt = prompt.trimEnd() +
+      "\n\n---\n\n# Global Memory (MEMORY.md)\n\n" +
+      globalContent;
+  }
+
+  if (projectContent) {
     prompt = prompt.trimEnd() +
       "\n\n---\n\n# Persistent Memory (AGENTS.md)\n\n" +
-      memory;
+      projectContent;
   }
 
-  // 层：额外层（钩子、注入回合 —— 未来的扩展点）
-  if (opts.extraLayers) {
-    const sorted = [...opts.extraLayers].sort((a, b) => a.order - b.order);
-    for (const layer of sorted) {
-      const content = layer.content();
-      if (content) {
-        prompt = prompt.trimEnd() + "\n\n" + content;
-      }
-    }
+  if (skillsSection) {
+    prompt = prompt.trimEnd() + "\n\n---\n\n" + skillsSection;
   }
 
-  // 将路径变量（{PROJECT_ROOT} 等）替换为会话的实际绝对路径。
-  // 放在最后运行，以便任何层（AGENTS.md、钩子）中的变量也能被解析。
-  prompt = renderPromptVariables(prompt, vars);
+  // 占位符渲染放在最后，任何层中的 {SHELL_NOTES} 都能被解析。
+  prompt = renderPromptVariables(prompt, { shellNotes: opts.shellNotes });
 
   return prompt;
 }

@@ -18,6 +18,24 @@
 // 钩子事件
 // ------------------------------------------------------------------
 
+/**
+ * Hook 分类（按用途）：
+ *
+ * - 决策类：UserPromptSubmit / PreToolUse / CommandExecute
+ *   可返回 allow/deny/updatedInput，直接决定当前动作是否继续。
+ * - 上下文类：SessionStart / UserPromptSubmit / CommandExecute / PreToolUse
+ *   返回的 additionalContext 进入本轮 ephemeral 尾巴：
+ *     SessionStart → session 作用域
+ *     UserPromptSubmit / CommandExecute → turn 作用域
+ *     PreToolUse → next-round 作用域（每次 provider 响应后消费并清理）
+ * - 观察类：PostToolUse / PostToolUseFailure / SessionEnd /
+ *   SubagentStart / SubagentStop / Stop
+ *   只做审计、日志、外部通知；工具结果已经携带成功/失败信息，
+ *   因此这些事件的 additionalContext 不进入模型上下文。
+ *
+ * TODO(PreFileWrite): 在文件写入前提供决策能力，用于敏感文件保护、
+ * 企业安全策略与代码规范检查。事件需携带 path/content，支持 deny。
+ */
 export type HookEvent =
   | "SessionStart"
   | "SessionEnd"
@@ -36,9 +54,9 @@ export const DECISION_EVENTS = new Set<HookEvent>(["UserPromptSubmit", "PreToolU
 /** 支持 `failClosed`（钩子失败 = 拒绝）的事件。 */
 export const FAIL_CLOSED_EVENTS = new Set<HookEvent>(["SessionStart", "UserPromptSubmit", "PreToolUse", "CommandExecute"]);
 
-/** 支持钩子输出中 `additionalContext` 的事件。 */
+/** 支持钩子输出中 `additionalContext` 的事件（仅上下文类）。 */
 export const CONTEXT_EVENTS = new Set<HookEvent>([
-  "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "CommandExecute",
+  "SessionStart", "UserPromptSubmit", "PreToolUse", "CommandExecute",
 ]);
 
 /** 支持钩子输出中 `updatedInput` 的事件。 */

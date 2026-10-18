@@ -210,7 +210,10 @@ export interface Session {
   getAllSkillNames?(): { name: string; description: string; enabled: boolean }[];
   setSkillEnabled?(name: string, enabled: boolean): void;
   reloadSkills?(): { added: string[]; removed: string[]; total: number };
-  notifySkillAvailabilityChanged?(changes: { enabled?: string[]; disabled?: string[] }): void;
+  /** 是否存在尚未通过 /reload 应用的 skill 变更。 */
+  skillsDirty?: boolean;
+  /** 显式 /reload：重扫 skills/MCP 并重建 system snapshot。 */
+  reloadConfigurationFromCommand?(): Promise<string>;
   reloadMcp?(options?: { notice?: boolean; reason?: string }): Promise<string>;
   reconnectMcpServer?(serverName: string): Promise<boolean>;
   /** 带轮次锁的包装命令变体，以便重新加载不会与活动轮次重叠。 */

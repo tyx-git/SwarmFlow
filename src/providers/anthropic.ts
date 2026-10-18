@@ -145,6 +145,9 @@ export class AnthropicProvider extends BaseAnthropicProvider {
     if (Array.isArray(messages)) {
       for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i];
+        // 缓存断点必须落在最后一个“持久化”消息上。ephemeral 尾巴每轮
+        // 都可能变化，把断点放在它上面等于每轮重写整段历史。
+        if (msg?.["_ephemeral_tail"] === true) continue;
         const content = msg?.["content"];
         if (typeof content === "string" && content.length > 0) {
           msg["content"] = [{

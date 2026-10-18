@@ -126,6 +126,11 @@ export interface ChildSessionSpawnOpts {
   onSaveRequest: () => void;
 }
 
+/** 子会话 prompt cache key：根会话亲和键 + child id。 */
+export function childPromptCacheKey(rootKey: string, childId: string): string {
+  return `${rootKey}__${childId}`;
+}
+
 export interface ChildSessionManagerDeps {
   // 父日志 & 记账
   appendEntry(entry: LogEntry, notify?: boolean): void;
@@ -160,6 +165,8 @@ export interface ChildSessionManagerDeps {
   fireHook(event: HookEvent, payload: HookPayload): void;
   resolveSessionArtifacts(): string;
   getArtifactsDir(): string;
+  /** 根会话的 prompt cache 亲和键；子会话 key = 根 key + child id。 */
+  getPromptCacheKey(): string;
   getPreferredThinkingLevel(): string;
   getPrimaryAgent(): Agent;
   getAgentTemplates(): Record<string, Agent>;
@@ -507,7 +514,9 @@ export class ChildSessionManager {
     const childSession = this.deps.createChildSession({
       primaryAgent: agent,
       artifactsDir,
-      promptCacheKey: taskId,
+      // 根会话 key + child id：同一子任务续跑保持 affinity，同时与
+      // 其他根会话/子会话隔离。恢复时若子日志已有持久化 key，会覆盖此值。
+      promptCacheKey: childPromptCacheKey(this.deps.getPromptCacheKey(), taskId),
       onTurnOutput: (text: string) => this._handleChildTurnOutput(taskId, text),
       onSaveRequest: () => this.deps.saveChildSession(handle),
     });

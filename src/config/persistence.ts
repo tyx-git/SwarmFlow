@@ -560,6 +560,12 @@ export interface LogSessionMeta {
   modelId?: string;
   /** 会话创建时的模型身份，在恢复和 /model 切换时保持稳定 */
   initialModel?: string;
+  /**
+   * Prompt cache 路由亲和键（随机 opaque id）。
+   *
+   * 同一会话跨进程恢复时必须复用；fork 默认生成新键（路由隔离）。
+   */
+  promptCacheAffinityKey?: string;
   /** 会话摘要 */
   summary: string;
   /** 会话标题 */
@@ -649,6 +655,15 @@ export interface SwarmflowSettings {
   sub_agent_inherit_mcp?: boolean;
   /** 子代理继承父代理的钩子。默认：true */
   sub_agent_inherit_hooks?: boolean;
+  /**
+   * fork 时默认继承父会话的 prompt cache 亲和键。
+   *
+   * - false（默认）：路由隔离，适合长期并行开发；
+   * - true：适合轻量级探索/短期实验，分支可复用父前缀缓存。
+   *
+   * session.fork 的显式 inheritPromptCacheKey 参数优先于本设置。
+   */
+  fork_inherit_prompt_cache_key?: boolean;
 
   // -- 技能 --
   /** 禁用的技能列表 */
@@ -813,6 +828,7 @@ export function createLogSessionMeta(
     modelProvider: undefined,
     modelSelectionKey: undefined,
     modelId: undefined,
+    promptCacheAffinityKey: undefined,
     summary: "",
     title: undefined,
     turnCount: 0,
@@ -952,6 +968,7 @@ export function saveLog(
     model_provider: meta.modelProvider ?? null,
     model_selection_key: meta.modelSelectionKey ?? null,
     model_id: meta.modelId ?? null,
+    prompt_cache_affinity_key: meta.promptCacheAffinityKey ?? null,
     summary: meta.summary,
     title: meta.title ?? null,
     turn_count: meta.turnCount,
@@ -1053,6 +1070,9 @@ export function loadLog(dir: string): LoadLogResult {
     modelProvider: raw.model_provider ?? undefined,
     modelSelectionKey: raw.model_selection_key ?? undefined,
     modelId: raw.model_id ?? undefined,
+    promptCacheAffinityKey: typeof raw.prompt_cache_affinity_key === "string"
+      ? raw.prompt_cache_affinity_key
+      : undefined,
     summary: raw.summary ?? "",
     title: raw.title ?? undefined,
     turnCount: raw.turn_count ?? 0,
@@ -1595,6 +1615,9 @@ export function mergeSettings(global: SwarmflowSettings, local: SwarmflowSetting
   if (local.permission_mode !== undefined) merged.permission_mode = local.permission_mode;
   if (local.sub_agent_inherit_mcp !== undefined) merged.sub_agent_inherit_mcp = local.sub_agent_inherit_mcp;
   if (local.sub_agent_inherit_hooks !== undefined) merged.sub_agent_inherit_hooks = local.sub_agent_inherit_hooks;
+  if (local.fork_inherit_prompt_cache_key !== undefined) {
+    merged.fork_inherit_prompt_cache_key = local.fork_inherit_prompt_cache_key;
+  }
 
   // 数组——本地替换
   if (local.disabled_skills !== undefined) merged.disabled_skills = local.disabled_skills;
@@ -1696,6 +1719,9 @@ export function saveSettings(settings: SwarmflowSettings, filePath: string): voi
   if (settings.mcp_servers !== undefined) clean.mcp_servers = settings.mcp_servers;
   if (settings.sub_agent_inherit_mcp !== undefined) clean.sub_agent_inherit_mcp = settings.sub_agent_inherit_mcp;
   if (settings.sub_agent_inherit_hooks !== undefined) clean.sub_agent_inherit_hooks = settings.sub_agent_inherit_hooks;
+  if (settings.fork_inherit_prompt_cache_key !== undefined) {
+    clean.fork_inherit_prompt_cache_key = settings.fork_inherit_prompt_cache_key;
+  }
   writeFileSync(tmp, JSON.stringify(clean, null, 2));
   renameSync(tmp, filePath);
 }

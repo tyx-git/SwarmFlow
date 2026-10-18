@@ -1,6 +1,15 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 import { Config } from "../src/config/config.js";
-import { mergeSettings, parseSettingsOverrides } from "../src/config/persistence.js";
+import {
+  loadGlobalSettings,
+  mergeSettings,
+  parseSettingsOverrides,
+  saveSettings,
+} from "../src/config/persistence.js";
 
 describe("Config preference-backed models", () => {
   it("preserves the OAuth sentinel for openai-codex presets", () => {
@@ -69,5 +78,26 @@ describe("process settings overrides", () => {
 
     expect(settings.context_budget_percent).toBe(50);
     expect(settings.thinking_level).toBe("medium");
+  });
+});
+
+describe("fork prompt cache setting", () => {
+  it("persists fork_inherit_prompt_cache_key and lets local settings override", () => {
+    const home = mkdtempSync(join(tmpdir(), "swarmflow-fork-setting-"));
+    try {
+      saveSettings(
+        { fork_inherit_prompt_cache_key: true },
+        join(home, "settings.json"),
+      );
+      expect(loadGlobalSettings(home).fork_inherit_prompt_cache_key).toBe(true);
+
+      const merged = mergeSettings(
+        { fork_inherit_prompt_cache_key: true },
+        { fork_inherit_prompt_cache_key: false },
+      );
+      expect(merged.fork_inherit_prompt_cache_key).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
