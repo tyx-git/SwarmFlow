@@ -230,20 +230,21 @@ function ToolOperationEntryInner(
                         language={entry.toolStreamLanguage}
                         wrapMode="char"
                       />
-                      {preview.truncated ? (
-                        expanded ? (
-                          <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
-                        ) : (
-                          <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpanded}>
-                            <text fg={colors.dim} content={`... (${hiddenCount} more lines, click to expand)`} />
-                          </SelectableRow>
-                        )
+                      {preview.truncated && !expanded ? (
+                        <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpanded}>
+                          <text fg={colors.dim} content={`... (${hiddenCount} more lines, click to expand)`} />
+                        </SelectableRow>
                       ) : null}
                     </box>
                   );
                 })}
                 {entry.toolRepairedFromPartial ? (
                   <text fg={colors.dim} content="(repaired from partial stream)" />
+                ) : null}
+                {expanded ? (
+                  <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpanded}>
+                    <text fg={colors.dim} content={`${INLINE_EXPANSION_ELLIPSIS} (click to collapse)`} />
+                  </SelectableRow>
                 ) : null}
               </box>
             ) : showInlineResult ? (

@@ -471,14 +471,17 @@ function FileModifyBodyInner({
         </SelectableRow>
       ) : null}
       {rows}
-      {trailingOverflow ? (
-        expanded ? (
-          <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
-        ) : (
-          <SelectableRow hoverBackgroundColor={colors.border} onPress={onToggleExpand}>
-            <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
-          </SelectableRow>
-        )
+      {expanded ? (
+        <SelectableRow
+          hoverBackgroundColor={colors.border}
+          onPress={onToggleExpand}
+        >
+          <text fg={colors.dim} content={`${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to collapse)" : ""}`} />
+        </SelectableRow>
+      ) : trailingOverflow ? (
+        <SelectableRow hoverBackgroundColor={colors.border} onPress={onToggleExpand}>
+          <text fg={colors.dim} content={`${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to expand)" : ""}`} />
+        </SelectableRow>
       ) : null}
     </box>
   );

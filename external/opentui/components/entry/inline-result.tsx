@@ -147,6 +147,7 @@ function InlineResultInner(
     ? INLINE_EXPANSION_MAX_LINES
     : Math.min(INLINE_EXPANSION_MAX_LINES, Math.max(1, data.maxLines));
   const unknownRemainder = data.truncated === true && !(displayExpanded && fullText !== undefined);
+  const collapseText = `${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to collapse)" : ""}`;
 
   const artifacts = useMemo(() => {
     if (data.toolMetadata) {
@@ -191,15 +192,15 @@ function InlineResultInner(
             wrapMode="char"
           />
         ))}
-        {hasRemainder ? (
+        {displayExpanded || hasRemainder ? (
           <FoldIndicator
             text={displayExpanded
-              ? INLINE_EXPANSION_ELLIPSIS
+              ? collapseText
               : hiddenCount > 0
                 ? `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
-                : INLINE_EXPANSION_ELLIPSIS}
+                : `${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to expand)" : ""}`}
             colors={colors}
-            onClick={!displayExpanded && (hiddenCount > 0 || unknownRemainder) ? onToggleExpand : undefined}
+            onClick={onToggleExpand}
           />
         ) : null}
       </box>
@@ -218,9 +219,11 @@ function InlineResultInner(
                 <text content={artifact.content} wrapMode="none" />
               </box>
             ))}
-            {artifacts.length > visibleArtifacts.length || unknownRemainder
-              ? <text fg={colors.dim} content={INLINE_EXPANSION_ELLIPSIS} />
-              : null}
+            <FoldIndicator
+              text={collapseText}
+              colors={colors}
+              onClick={onToggleExpand}
+            />
           </box>
         );
       }
@@ -310,9 +313,9 @@ function InlineResultInner(
         elements.push(
           <FoldIndicator
             key={`fold-${elementKey++}`}
-            text={displayExpanded ? INLINE_EXPANSION_ELLIPSIS : `${INLINE_EXPANSION_ELLIPSIS} (click to expand)`}
+            text={`${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to expand)" : ""}`}
             colors={colors}
-            onClick={!displayExpanded ? onToggleExpand : undefined}
+            onClick={onToggleExpand}
           />,
         );
       }
@@ -339,7 +342,7 @@ function InlineResultInner(
       const hasMore = moreCount > 0 || wasTruncated || unknownRemainder;
       const foldText = moreCount > 0
         ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
-        : unknownRemainder ? INLINE_EXPANSION_ELLIPSIS : `${LINE_PREFIX}...`;
+        : `${LINE_PREFIX}...${onToggleExpand ? " (click to expand)" : ""}`;
 
       return (
         <box flexDirection="column" gap={0}>
@@ -355,7 +358,7 @@ function InlineResultInner(
             <FoldIndicator
               text={foldText}
               colors={colors}
-              onClick={moreCount > 0 || unknownRemainder ? onToggleExpand : undefined}
+              onClick={hasMore ? onToggleExpand : undefined}
             />
           )}
         </box>
@@ -366,10 +369,8 @@ function InlineResultInner(
     const artifactHiddenCount = Math.max(0, artifacts.length - visibleArtifacts.length);
     const hasHiddenArtifacts = artifactHiddenCount > 0 || unknownRemainder;
     const artifactFoldText = artifactHiddenCount > 0
-      ? displayExpanded
-        ? INLINE_EXPANSION_ELLIPSIS
-        : `${LINE_PREFIX}... (${artifactHiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
-      : INLINE_EXPANSION_ELLIPSIS;
+      ? `${LINE_PREFIX}... (${artifactHiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+      : `${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to expand)" : ""}`;
 
     return (
       <box flexDirection="column" gap={0}>
@@ -387,13 +388,13 @@ function InlineResultInner(
             <text content={artifact.content} wrapMode="none" />
           </box>
         ))}
-        {hasHiddenArtifacts && (
+        {displayExpanded || hasHiddenArtifacts ? (
           <FoldIndicator
-            text={artifactFoldText}
+            text={displayExpanded ? collapseText : artifactFoldText}
             colors={colors}
-            onClick={!displayExpanded && (artifactHiddenCount > 0 || unknownRemainder) ? onToggleExpand : undefined}
+            onClick={onToggleExpand}
           />
-        )}
+        ) : null}
       </box>
     );
   }
@@ -412,7 +413,7 @@ function InlineResultInner(
     const hasMore = moreCount > 0 || wasTruncated || unknownRemainder;
     const foldText = moreCount > 0
       ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
-      : unknownRemainder ? INLINE_EXPANSION_ELLIPSIS : `${LINE_PREFIX}...`;
+      : `${LINE_PREFIX}...${onToggleExpand ? " (click to expand)" : ""}`;
 
     return (
       <box flexDirection="column" gap={0}>
@@ -424,7 +425,7 @@ function InlineResultInner(
           <FoldIndicator
             text={foldText}
             colors={colors}
-            onClick={moreCount > 0 || unknownRemainder ? onToggleExpand : undefined}
+            onClick={onToggleExpand}
           />
         )}
       </box>
@@ -435,10 +436,8 @@ function InlineResultInner(
   const hiddenCount = Math.max(0, lines.length - visibleLines.length);
   const hasHiddenLines = hiddenCount > 0 || unknownRemainder;
   const foldText = hiddenCount > 0
-    ? displayExpanded
-      ? INLINE_EXPANSION_ELLIPSIS
-      : `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
-    : INLINE_EXPANSION_ELLIPSIS;
+    ? `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+    : `${LINE_PREFIX}...${onToggleExpand ? " (click to expand)" : ""}`;
 
   return (
     <box flexDirection="column" gap={0}>
@@ -451,13 +450,13 @@ function InlineResultInner(
           <text fg={textColor} content={line} wrapMode="none" />
         </box>
       ))}
-      {hasHiddenLines && (
+      {displayExpanded || hasHiddenLines ? (
         <FoldIndicator
-          text={foldText}
+          text={displayExpanded ? collapseText : foldText}
           colors={colors}
-          onClick={!displayExpanded && (hiddenCount > 0 || unknownRemainder) ? onToggleExpand : undefined}
+          onClick={onToggleExpand}
         />
-      )}
+      ) : null}
     </box>
   );
 }
