@@ -155,5 +155,10 @@ export function resolveCommandEchoDisplay(input: string, language: UiLanguage = 
   if (!hasUiText(language, ["Commands", command, "echo"])) return null;
   const text = createUiText(language).get(["Commands", command, "echo"]);
   const args = rest.join(" ").trim();
+  // 权限模式是内部键（yolo 等），回显给用户时换成可读名称。
+  const permissionLabelKey = args === "read_only" ? "readOnly" : args === "reversible" ? "autoApprove" : args === "yolo" ? "fullAccess" : undefined;
+  if (command === "/permission" && permissionLabelKey) {
+    return `${text}: ${createUiText(language).get(["Commands", "/permission", permissionLabelKey])}`;
+  }
   return args ? `${text} ${args}` : text;
 }

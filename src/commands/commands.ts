@@ -3170,9 +3170,11 @@ async function cmdPermission(ctx: CommandContext, args: string): Promise<void> {
 
   session.permissionMode = mode;
   persistPermissionMode(ctx);
-  ctx.showMessage(t.get(["Commands", "/permission", "set"], {
-    mode: permissionLabel(mode as typeof PERMISSION_MODES[number], t),
-  }));
+  if (ctx.appendSwitchCommandEcho) {
+    ctx.appendSwitchCommandEcho("/permission", mode);
+  } else {
+    ctx.showMessage(`${t.get(["Commands", "/permission", "echo"])}: ${permissionLabel(mode as typeof PERMISSION_MODES[number], t)}`);
+  }
 }
 
 function persistPermissionMode(ctx: CommandContext): void {

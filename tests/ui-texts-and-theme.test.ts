@@ -89,6 +89,12 @@ describe("command echo display", () => {
     expect(resolveCommandEchoDisplay("/skills a b c", "zh")).toBe("技能切换为 a b c");
   });
 
+  it("localizes the /permission mode argument", () => {
+    expect(resolveCommandEchoDisplay("/permission yolo", "zh")).toBe("权限模式切换为: 完全访问");
+    expect(resolveCommandEchoDisplay("/permission reversible", "zh")).toBe("权限模式切换为: 自动审批");
+    expect(resolveCommandEchoDisplay("/permission read_only", "en")).toBe("Permission mode switched to: Read-only");
+  });
+
   it("shows the bare text when the command has no argument", () => {
     expect(resolveCommandEchoDisplay("/theme", "zh")).toBe("主题切换为");
   });

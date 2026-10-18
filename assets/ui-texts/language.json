@@ -63,7 +63,6 @@
         "autoApproveDescription": "自动审批读取和可逆写入，其他修改需要确认。",
         "fullAccessDescription": "自动审批所有操作，但灾难性操作仍需确认。",
         "current": "当前权限模式：{mode}",
-        "set": "权限模式已设置为：{mode}",
         "invalid": "未知权限模式“{mode}”。可选：{modes}"
       },
       "/sidebar": {
@@ -474,7 +473,6 @@
         "autoApproveDescription": "Read and reversible writes are auto-approved; other mutations require confirmation.",
         "fullAccessDescription": "All operations are auto-approved, except catastrophic commands.",
         "current": "Current permission mode: {mode}",
-        "set": "Permission mode set to: {mode}",
         "invalid": "Unknown permission mode \"{mode}\". Valid: {modes}"
       },
       "/sidebar": {

@@ -1893,7 +1893,8 @@ export function OpenTuiApp({
       // Provider 是多步配置流程；在流程入口回显
       // "供应商切换为 protocol:..." 会把中间参数误认为最终结果。
       // 成功/失败信息由 provider 命令流程自己显示。
-      const deferredEcho = cmdName === "/rename" || cmdName === "/compact" || cmdName === "/provider";
+      // /permission 要等选择结果落定后再回显本地化模式名，不能先按原始参数回显。
+      const deferredEcho = cmdName === "/rename" || cmdName === "/compact" || cmdName === "/provider" || cmdName === "/permission";
       if (!deferredEcho) {
         const echo = resolveCommandEchoDisplay(input, uiText.language);
         if (session.appendCommandEcho) {

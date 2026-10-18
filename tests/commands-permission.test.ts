@@ -42,4 +42,26 @@ describe("/permission command", () => {
       rmSync(homeDir, { recursive: true, force: true });
     }
   });
+
+  it("emits exactly one switch echo and no duplicate status line", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "swarmflow-permission-"));
+    try {
+      const registry = buildDefaultRegistry();
+      const cmd = registry.lookup("/permission");
+      const appendSwitchCommandEcho = vi.fn();
+      const ctx: CommandContext = {
+        ...baseContext(registry),
+        session: { permissionMode: "reversible" },
+        swarmflowHomeDir: homeDir,
+        appendSwitchCommandEcho,
+      };
+
+      await cmd!.handler(ctx, "yolo");
+
+      expect(appendSwitchCommandEcho).toHaveBeenCalledWith("/permission", "yolo");
+      expect(ctx.showMessage).not.toHaveBeenCalled();
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
 });
