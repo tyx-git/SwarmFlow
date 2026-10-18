@@ -1453,6 +1453,19 @@ export class Session {
     return this._inbox.some((msg) => msg.wake !== false);
   }
 
+  /** Remove the previous completed task list when a real user input is delivered. */
+  private _clearCompletedTasksBeforeUserInput(): void {
+    const taskStore = this._ensureTaskStore();
+    const tasks = taskStore.list();
+    if (tasks.length > 0 && tasks.every((task) => task.status === "completed")) {
+      const { cleared, saveError } = taskStore.clearAll();
+      if (cleared > 0) {
+        if (saveError) console.warn(saveError);
+        this._notifyTaskListeners();
+      }
+    }
+  }
+
   /**
    * Pre-activation prelude shared by every entry that records a NEW active
    * input (user message or /compact). The single choke point that
@@ -1473,6 +1486,9 @@ export class Session {
     display: string,
     content: unknown,
   ): { inputIndex: number; inputId: string; contextId: string } {
+    if (inputKind === "user") {
+      this._clearCompletedTasksBeforeUserInput();
+    }
     this._drainInboxAsEntries();
     return this._recordInputReceived(inputKind, display, content);
   }
@@ -1554,6 +1570,7 @@ export class Session {
               }),
             );
           }
+          this._clearCompletedTasksBeforeUserInput();
           this._turnCount = Math.max(this._turnCount, msg.inputIndex);
           this._appendDeliveredUserMessage(
             msg.inputIndex,

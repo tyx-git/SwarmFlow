@@ -1,12 +1,13 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { SessionStore } from "../src/config/persistence.js";
 import { projectQueuedInputs, projectToApiMessages, projectToTuiEntries } from "../src/context/log-projection.js";
 import { Session } from "../src/session.js";
+import { makeScriptedSession } from "./helpers/session-harness.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -233,5 +234,118 @@ describe("queued user input", () => {
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe("queued user input task cleanup", () => {
+  let harness: import("./helpers/session-harness.js").SessionHarness | undefined;
+
+  afterEach(() => {
+    harness?.dispose();
+    harness = undefined;
+  });
+
+  async function execTaskTool(name: string, args: Record<string, unknown>): Promise<string> {
+    const executors = harness!.internals._toolExecutors as Record<
+      string,
+      (a: Record<string, unknown>) => Promise<{ content?: unknown }> | { content?: unknown }
+    >;
+    const result = await executors[name](args);
+    return String(result.content ?? "");
+  }
+
+  function readPersistedTasks(): unknown[] {
+    const artifactsDir = harness!.internals._getArtifactsDirIfAvailable() as string;
+    const file = join(artifactsDir, "tasks.json");
+    expect(existsSync(file)).toBe(true);
+    return (JSON.parse(readFileSync(file, "utf-8")) as { tasks: unknown[] }).tasks;
+  }
+
+  it("clears completed tasks only when queued input is delivered to the next model activation", async () => {
+    let notifications = 0;
+    let tasksAtEnqueue: Array<{ subject: string; status: string }> = [];
+    let notificationsImmediatelyBeforeEnqueue = -1;
+    let notificationsAtEnqueue = -1;
+    let tasksAtNextModelCall: unknown;
+    let persistedTasksAtNextModelCall: unknown;
+    let notificationsAtNextModelCall = -1;
+    let queueResult: unknown;
+
+    harness = makeScriptedSession({
+      rounds: [
+        {
+          toolCalls: [{
+            id: "complete-old-task",
+            name: "task_update",
+            arguments: { task_id: "1", status: "completed" },
+          }],
+        },
+        {
+          onCall: () => {
+            // This provider request is the first turn's active model run.
+            notificationsImmediatelyBeforeEnqueue = notifications;
+            queueResult = harness!.session.deliverMessage("user", "queued");
+            tasksAtEnqueue = harness!.session.getTaskState().map(({ subject, status }) => ({ subject, status }));
+            notificationsAtEnqueue = notifications;
+          },
+          text: "first turn response",
+        },
+        {
+          onCall: () => {
+            // This provider request handles the second activation, after drain.
+            tasksAtNextModelCall = harness!.session.getTaskState();
+            persistedTasksAtNextModelCall = readPersistedTasks();
+            notificationsAtNextModelCall = notifications;
+          },
+          toolCalls: [{ id: "list-after-queued-cleanup", name: "task_list", arguments: {} }],
+        },
+        { text: "queued input handled" },
+      ],
+    });
+
+    await execTaskTool("task_create", { subject: "Old completed work", description: "already done" });
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+
+    await harness.session.turn("Start the first turn");
+
+    expect(queueResult).toEqual({ accepted: true });
+    expect(tasksAtEnqueue).toEqual([{ subject: "Old completed work", status: "completed" }]);
+    expect(notificationsAtEnqueue).toBe(notificationsImmediatelyBeforeEnqueue);
+    expect(tasksAtNextModelCall).toEqual([]);
+    expect(persistedTasksAtNextModelCall).toEqual([]);
+    expect(notificationsAtNextModelCall).toBe(notificationsAtEnqueue + 1);
+    expect(harness.provider.sawUserText("queued")).toBe(true);
+    expect(harness.provider.sawToolResultText("No tasks found")).toBe(true);
+    expect(harness.provider.sawToolResultText("Old completed work")).toBe(false);
+    expect(readPersistedTasks()).toEqual([]);
+    expect(notifications).toBe(notificationsAtEnqueue + 1);
+
+    unsubscribe();
+  });
+
+  it("preserves completed tasks when a queued input is restored before delivery", async () => {
+    harness = makeScriptedSession();
+    await execTaskTool("task_create", { subject: "Completed but not delivered", description: "keep until user input" });
+    await execTaskTool("task_update", { task_id: "1", status: "completed" });
+
+    let notifications = 0;
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+    // Keep the session working so deliverMessage queues input without starting
+    // an auto-resume activation before restoreQueuedUserInput removes it.
+    harness.internals._agentState = "working";
+
+    expect(harness.session.deliverMessage("user", "queued then restored")).toEqual({ accepted: true });
+    expect(harness.session.restoreQueuedUserInput()).toBe("queued then restored");
+
+    expect(harness.session.getTaskState().map((task: { subject: string }) => task.subject)).toEqual([
+      "Completed but not delivered",
+    ]);
+    expect(readPersistedTasks()).toHaveLength(1);
+    expect(notifications).toBe(0);
+    unsubscribe();
   });
 });

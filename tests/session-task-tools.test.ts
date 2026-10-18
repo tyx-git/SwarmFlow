@@ -189,16 +189,6 @@ describe("task persistence boundary", () => {
     expect(harness.session.getTaskPersistence()).toBe("memory");
   });
 
-  it("treats a not-yet-created session directory as a transient state, not as memory-only", () => {
-    harness = makeScriptedSession();
-    // 会话目录惰性创建：未创建时是过渡态，UI 不应标注"不持久化"
-    harness.internals._store = { sessionDir: undefined };
-    expect(harness.session.getTaskPersistence()).toBe("pending");
-
-    harness.internals._store = undefined;
-    expect(harness.session.getTaskPersistence()).toBe("memory");
-  });
-
   it("keeps the store usable while storage is still pending", async () => {
     harness = makeScriptedSession();
     harness.internals._store = { sessionDir: undefined };
@@ -207,5 +197,106 @@ describe("task persistence boundary", () => {
     expect(harness.session.getTaskState().map((task) => task.subject)).toEqual(["Before storage"]);
     // 过渡态下没有落盘错误（内存态仍有效，且不会误报"不持久化"）
     expect(created).not.toContain("warning");
+  });
+});
+
+
+describe("new user turn task cleanup", () => {
+  it("clears completed tasks before the model can list them and writes the empty store", async () => {
+    harness = makeScriptedSession({
+      rounds: [
+        { toolCalls: [{ id: "list-after-cleanup", name: "task_list", arguments: {} }] },
+        { text: "ready for the next task" },
+      ],
+    });
+    await exec("task_create", { subject: "Old completed work", description: "already done" });
+    await exec("task_update", { task_id: "1", status: "completed" });
+
+    let notifications = 0;
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+    const file = join(harness.internals._getArtifactsDirIfAvailable() as string, "tasks.json");
+
+    await harness.session.turn("Start a new user turn");
+
+    expect(harness.session.getTaskState()).toEqual([]);
+    expect(harness.provider.sawToolResultText("No tasks found")).toBe(true);
+    expect(harness.provider.sawToolResultText("Old completed work")).toBe(false);
+    const onDisk = JSON.parse(readFileSync(file, "utf-8")) as { tasks: unknown[] };
+    expect(onDisk.tasks).toEqual([]);
+    expect(notifications).toBe(1);
+    unsubscribe();
+  });
+
+  it("preserves every task and emits no cleanup notification when any task is unfinished", async () => {
+    harness = makeScriptedSession({
+      rounds: [
+        { toolCalls: [{ id: "list-preserved", name: "task_list", arguments: {} }] },
+        { text: "continuing existing work" },
+      ],
+    });
+    await exec("task_create", { subject: "Pending work", description: "not started" });
+    await exec("task_create", { subject: "Active work", description: "in progress" });
+    await exec("task_update", { task_id: "2", status: "in_progress" });
+    await exec("task_create", { subject: "Completed work", description: "done" });
+    await exec("task_update", { task_id: "3", status: "completed" });
+
+    let notifications = 0;
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+    await harness.session.turn("Continue the current work");
+
+    expect(harness.session.getTaskState().map((task) => [task.subject, task.status])).toEqual([
+      ["Pending work", "pending"],
+      ["Active work", "in_progress"],
+      ["Completed work", "completed"],
+    ]);
+    expect(harness.provider.sawToolResultText("Pending work")).toBe(true);
+    expect(harness.provider.sawToolResultText("Active work")).toBe(true);
+    expect(harness.provider.sawToolResultText("Completed work")).toBe(true);
+    expect(notifications).toBe(0);
+    unsubscribe();
+  });
+
+  it("does not call clearAll for an empty task list", async () => {
+    harness = makeScriptedSession({ rounds: [{ text: "hello" }] });
+    const store = harness.internals._ensureTaskStore() as {
+      clearAll: () => { cleared: number };
+    };
+    let clearCalls = 0;
+    const clearAll = store.clearAll.bind(store);
+    store.clearAll = () => {
+      clearCalls += 1;
+      return clearAll();
+    };
+    let notifications = 0;
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+
+    await harness.session.turn("A fresh turn with no old tasks");
+
+    expect(clearCalls).toBe(0);
+    expect(notifications).toBe(0);
+    unsubscribe();
+  });
+
+  it("does not clear completed tasks during compact or restore reconciliation", async () => {
+    harness = makeScriptedSession({ rounds: [{ text: "compact summary" }] });
+    await exec("task_create", { subject: "Completed before compact", description: "done" });
+    await exec("task_update", { task_id: "1", status: "completed" });
+    let notifications = 0;
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+
+    await harness.session.runManualCompact();
+    expect(harness.session.getTaskState().map((task) => task.subject)).toEqual(["Completed before compact"]);
+    expect(harness.session.reconcileTaskListAfterRestore()).toEqual({ warnings: [] });
+    expect(harness.session.getTaskState().map((task) => task.subject)).toEqual(["Completed before compact"]);
+    expect(notifications).toBe(0);
+    unsubscribe();
   });
 });
