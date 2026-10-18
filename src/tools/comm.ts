@@ -122,7 +122,7 @@ export const AWAIT_EVENT_TOOL: ToolDef = {
     properties: {
       seconds: {
         type: "number",
-        description: "How long to await runtime events (minimum 15, wall-clock timeout).",
+        description: "How long to await runtime events (minimum 300, wall-clock timeout).",
       },
     },
     required: ["seconds"],

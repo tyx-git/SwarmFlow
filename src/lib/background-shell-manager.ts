@@ -423,7 +423,7 @@ export class BackgroundShellManager {
         `Started background shell '${shellId}'.\n` +
         `cwd: ${cwd}\n` +
         `log: ${logPath}${archiveNote}\n` +
-        `Use \`bash_output(id="${shellId}")\` to inspect logs and \`await_event(seconds=60)\` to await shell exit.`,
+        `Use \`bash_output(id="${shellId}")\` to inspect logs and \`await_event(seconds=300)\` to await shell exit.`,
     });
   }
 

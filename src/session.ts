@@ -6527,7 +6527,7 @@ export class Session {
     if (typeof secondsRaw !== "number" || isNaN(secondsRaw)) {
       return new ToolResult({ content: "Error: 'seconds' must be a number." });
     }
-    const seconds = Math.max(15, secondsRaw);
+    const seconds = Math.max(300, secondsRaw);
     const signal = this._currentTurnSignal;
 
     if (signal?.aborted) {
