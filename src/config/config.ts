@@ -45,6 +45,8 @@ export interface ModelConfig {
   apiKey: string;
   /** 自定义 API 基础 URL（可选，为空则使用提供商默认值） */
   baseUrl?: string;
+  /** 自定义 provider 标记：true 时，即使 ID 与内置提供商冲突也按协议分派 */
+  custom?: boolean;
   /** 采样温度 */
   temperature: number;
   /** 最大输出 token 数 */
@@ -674,6 +676,7 @@ export class Config {
           base_url: local.baseUrl,
           context_length: m.contextLength,
           transport_protocol: runtimeTransportProtocol(local.protocol) ?? "chat",
+          custom: local.custom,
           supports_multimodal: m.multimodal ?? false,
           supports_web_search: m.webSearch ?? false,
           ...(m.maxOutputTokens ? { max_tokens: m.maxOutputTokens } : {}),
@@ -733,7 +736,7 @@ export class Config {
       "temperature", "max_tokens", "context_length",
       "supports_multimodal", "thinking_budget",
       "supports_web_search",
-      "transport_protocol", "thinking_encryption", "sealed_schema",
+      "transport_protocol", "thinking_encryption", "sealed_schema", "custom",
     ]);
     const extra: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(cfg)) {
@@ -746,6 +749,7 @@ export class Config {
     const thinkingBudget = optionalConfigNumberField(name, cfg, "thinking_budget") ?? 0;
     const supportsMultimodalOverride = optionalConfigBooleanField(name, cfg, "supports_multimodal");
     const supportsWebSearchOverride = optionalConfigBooleanField(name, cfg, "supports_web_search");
+    const custom = optionalConfigBooleanField(name, cfg, "custom");
     const transportProtocol = optionalConfigEnumField(
       name,
       cfg,
@@ -770,6 +774,7 @@ export class Config {
       model: modelName,
       apiKey: resolvedApiKey,
       baseUrl,
+      custom,
       temperature,
       maxTokens,
       contextLength: getContextLength(modelName, explicitCtxLen),

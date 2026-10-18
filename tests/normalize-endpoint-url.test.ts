@@ -50,6 +50,28 @@ describe("normalizeEndpointUrl", () => {
     });
   });
 
+  it.each([
+    ["openai-chat-completions", "https://api.example/v1/chat/completions/", "https://api.example/v1"],
+    ["openai-chat-completions", "https://api.example/v1/", "https://api.example/v1"],
+    ["openai-responses", "https://api.example/v1/responses", "https://api.example/v1"],
+    ["openai-responses", "https://api.example/v1/", "https://api.example/v1"],
+    ["anthropic-messages", "https://api.example/v1/messages", "https://api.example"],
+    ["anthropic-messages", "https://api.example/messages", "https://api.example"],
+    ["anthropic-messages", "https://api.example/v3/", "https://api.example"],
+    ["gemini-generate-content", "https://api.example/v1beta/models/gemini-pro:generateContent", "https://api.example/v1beta"],
+    ["gemini-generate-content", "https://api.example/v1beta/", "https://api.example/v1beta"],
+  ])("normalizes $1 endpoint/base URL $2", (protocol, input, baseUrl) => {
+    expect(normalizeEndpointUrl(input, protocol)).toMatchObject({ baseUrl, changed: baseUrl !== input });
+  });
+
+  it("strips a Gemini model endpoint while preserving its versioned base", () => {
+    expect(normalizeEndpointUrl(" https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent/ ", "gemini")).toEqual({
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      protocol: "gemini",
+      changed: true,
+    });
+  });
+
   it("reports changed=true when only trailing slashes were trimmed", () => {
     expect(normalizeEndpointUrl("https://api.example.com/v1/")).toEqual({
       baseUrl: "https://api.example.com/v1",

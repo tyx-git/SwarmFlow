@@ -608,6 +608,8 @@ export interface LocalModelEntry {
 export interface LocalProviderConfig {
   /** API 基础 URL */
   baseUrl: string;
+  /** 是否来自 settings.json 中标记为 custom 的用户定义提供商 */
+  custom?: boolean;
   /** 传输协议。默认 "openai-chat" */
   protocol?: "openai-chat" | "anthropic" | "openai-responses" | "gemini" | "anthropic-messages" | "openai-chat-completions" | "gemini-generate-content";
   /** 需要认证的端点的 API 密钥。省略时默认为 "local" */
@@ -1786,6 +1788,7 @@ export function settingsToConfigInputs(settings: SwarmflowSettings): {
         }
         localProviders[id] = {
           baseUrl: entry.base_url,
+          custom: entry.custom,
           protocol: entry.protocol ?? "openai-chat",
           apiKey: entry.api_key,
           label: entry.label,

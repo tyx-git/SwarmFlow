@@ -160,7 +160,7 @@
         },
         "custom": {
           "displayName": "自定义供应商 — 显示名称（例如 My LLM）",
-          "endpoint": "{label} — 接口地址（可粘贴文档中的完整地址，例如 https://api.example.com/v1/chat/completions）",
+          "endpoint": "{label} — {protocol} 接口地址（可粘贴完整端点或 base URL）",
           "protocol": "{label} — API 协议",
           "detected": "（已识别）",
           "apiKey": "{label} — API 密钥（若无需密钥可直接回车）",
@@ -199,7 +199,7 @@
           "delete": "删除供应商",
           "cancel": "取消",
           "notFound": "找不到供应商“{provider}”。",
-          "newEndpoint": "{label} — 新接口地址（直接回车保留“{current}”）",
+          "newEndpoint": "{label} — 新接口地址（{protocol}，可粘贴完整端点或 base URL；直接回车保留“{current}”）",
           "newApiKey": "{label} — 新 API 密钥（直接回车保留当前值）",
           "updated": "已更新“{label}”。{detail}",
           "addResult": "已向“{label}”添加 {count} 个模型。",
@@ -395,7 +395,7 @@
         "yes": "是 — 配置自定义供应商端点",
         "later": "跳过 — 稍后用 /provider 配置",
         "label": "供应商显示名称（例如 My LLM）",
-        "endpointUrl": "{label} — 接口地址（例如 https://api.example.com/v1）",
+        "endpointUrl": "{label} — 接口地址（完整端点或 base URL，例如 https://api.example.com/v1；协议：{protocol}）",
         "protocol": "{label} — API 协议",
         "protocolChoices": {
           "openai-chat": "OpenAI Chat Completions",
@@ -570,7 +570,7 @@
         },
         "custom": {
           "displayName": "Custom provider — display name (e.g. My LLM)",
-          "endpoint": "{label} — endpoint URL (paste the full URL from the docs, e.g. https://api.example.com/v1/chat/completions)",
+          "endpoint": "{label} — {protocol} endpoint URL (paste a full endpoint or base URL)",
           "protocol": "{label} — API protocol",
           "detected": " (detected)",
           "apiKey": "{label} — API key (Enter to skip if none required)",
@@ -609,7 +609,7 @@
           "delete": "Delete this provider",
           "cancel": "Cancel",
           "notFound": "Provider \"{provider}\" not found.",
-          "newEndpoint": "{label} — new endpoint URL (Enter to keep \"{current}\")",
+          "newEndpoint": "{label} — new endpoint URL ({protocol}; paste a full endpoint or base URL, or press Enter to keep \"{current}\")",
           "newApiKey": "{label} — new API key (Enter to keep current)",
           "updated": "Updated \"{label}\". {detail}",
           "addResult": "Added {count} model(s) to \"{label}\".",
@@ -805,7 +805,7 @@
         "yes": "Yes — configure a custom provider endpoint",
         "later": "Skip — I'll configure later via /provider",
         "label": "Provider display name (e.g. My LLM)",
-        "endpointUrl": "{label} — endpoint URL (e.g. https://api.example.com/v1)",
+        "endpointUrl": "{label} — endpoint URL (full endpoint or base URL, e.g. https://api.example.com/v1; protocol: {protocol})",
         "protocol": "{label} — API protocol",
         "protocolChoices": {
           "openai-chat": "OpenAI Chat Completions",

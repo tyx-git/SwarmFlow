@@ -133,7 +133,9 @@ describe("init wizard texts", () => {
     ["search", "prompt"], ["search", "detected"], ["search", "signUp"],
     ["theme", "prompt"], ["theme", "brief"], ["theme", "dark"], ["theme", "light"], ["theme", "saved"],
     ["provider", "ask"], ["provider", "yes"], ["provider", "later"], ["provider", "label"],
-    ["provider", "endpointUrl"], ["provider", "protocol"], ["provider", "apiKey"],
+    ["provider", "endpointUrl"], ["provider", "protocol"], ["provider", "protocolChoices", "openai-chat"],
+    ["provider", "protocolChoices", "openai-responses"], ["provider", "protocolChoices", "anthropic"],
+    ["provider", "protocolChoices", "gemini"], ["provider", "apiKey"],
     ["provider", "modelId"], ["provider", "contextLength"], ["provider", "added"],
     ["wizard", "complete"], ["wizard", "hintProviders"],
   ];
@@ -153,9 +155,9 @@ describe("init wizard texts", () => {
 
   it("the baseURL example no longer includes the endpoint path", () => {
     for (const lang of ["zh", "en"] as const) {
-      const example = createUiText(lang).get(["Init", "provider", "endpointUrl"], { label: "X" });
+      const example = createUiText(lang).get(["Init", "provider", "endpointUrl"], { label: "X", protocol: "OpenAI Chat Completions" });
       expect(example).toContain("https://api.example.com/v1");
-      expect(example).not.toContain("chat/completions");
+      expect(example).toContain("OpenAI Chat Completions");
     }
   });
 });

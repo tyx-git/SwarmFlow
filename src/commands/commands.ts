@@ -1372,44 +1372,40 @@ function slugifyProviderId(label: string): string {
 }
 
 /**
- * Normalize a user-pasted endpoint into the base URL its SDK expects, and
- * infer the wire protocol from a recognized suffix.
- *
- * Provider docs almost always show the *full* endpoint (e.g.
- * `https://openrouter.ai/api/v1/chat/completions`), but both SDKs append their
- * own path to `baseURL` — OpenAI adds `/chat/completions`, Anthropic adds
- * `/v1/messages`. Pasting the full endpoint therefore double-appends and 404s.
- * We strip the recognized tail so the base is what the SDK wants:
- *   - `.../v1/chat/completions` → base `.../v1`         protocol `openai-chat`
- *   - `.../v1/messages`         → base `...` (no /v1)    protocol `anthropic`
- * `changed` reports whether we rewrote the input (so the caller can tell the
- * user). `protocol` is null when no suffix matched — caller still asks.
+ * Normalize a user-pasted endpoint into the base URL its selected SDK expects.
+ * The optional protocol keeps suffix inference available for callers that have
+ * not selected a protocol yet; provider setup passes the selected protocol.
+ * `changed` reports whitespace, trailing slash, or endpoint suffix cleanup.
  */
-export function normalizeEndpointUrl(raw: string): {
+export function normalizeEndpointUrl(raw: string, selectedProtocol?: string): {
   baseUrl: string;
   protocol?: StoredProviderProtocol | null;
   changed: boolean;
 } {
-  const trimmed = raw.trim().replace(/\/+$/, "");
-  // Anthropic Messages API: SDK附加了‘ /v1/ Messages ’，所以base必须
-  // 完全删除它（包括‘ /v1 ’）。
-  if (/\/messages$/i.test(trimmed)) {
-    const baseUrl = trimmed.replace(/\/(?:v\d+\/)?messages$/i, "");
-    return { baseUrl, protocol: "anthropic", changed: baseUrl !== trimmed };
+  const cleaned = raw.trim().replace(/\/+$/, "");
+  const wireProtocol = selectedProtocol ? wireProtocolFromStored(selectedProtocol) : undefined;
+  let protocol: StoredProviderProtocol | null = selectedProtocol
+    ? storedProtocolFromWire(wireProtocol!)
+    : null;
+  let baseUrl = cleaned;
+
+  if (wireProtocol === "anthropic-messages" || (!wireProtocol && /\/(?:v\d+\/)?messages$/i.test(cleaned))) {
+    baseUrl = baseUrl.replace(/\/(?:v\d+\/)?messages$/i, "");
+    baseUrl = baseUrl.replace(/\/v\d+$/i, "");
+    protocol ??= "anthropic";
+  } else if (wireProtocol === "openai-chat-completions" || (!wireProtocol && /\/chat\/completions$/i.test(cleaned))) {
+    baseUrl = baseUrl.replace(/\/chat\/completions$/i, "");
+    protocol ??= "openai-chat";
+  } else if (wireProtocol === "openai-responses" || (!wireProtocol && /\/responses$/i.test(cleaned))) {
+    baseUrl = baseUrl.replace(/\/responses$/i, "");
+    protocol ??= "openai-responses";
+  } else if (wireProtocol === "gemini-generate-content" || (!wireProtocol && /\/models\/[^/]+:generateContent$/i.test(cleaned))) {
+    baseUrl = baseUrl.replace(/\/models\/[^/]+:generateContent$/i, "");
+    baseUrl = baseUrl.replace(/:generateContent$/i, "");
+    protocol ??= "gemini";
   }
-  // OpenAI聊天完成：SDK附加‘ / Chat / Completions ’；保留‘ /v1 ’。
-  if (/\/chat\/completions$/i.test(trimmed)) {
-    const baseUrl = trimmed.replace(/\/chat\/completions$/i, "");
-    return { baseUrl, protocol: "openai-chat", changed: baseUrl !== trimmed };
-  }
-  if (/\/responses$/i.test(trimmed)) {
-    const baseUrl = trimmed.replace(/\/responses$/i, "");
-    return { baseUrl, protocol: "openai-responses", changed: baseUrl !== trimmed };
-  }
-  if (/\/generateContent$/i.test(trimmed) || /:generateContent$/i.test(trimmed)) {
-    return { baseUrl: trimmed, protocol: "gemini", changed: trimmed !== raw.trim() };
-  }
-  return { baseUrl: trimmed, protocol: null, changed: trimmed !== raw.trim() };
+
+  return { baseUrl, protocol, changed: baseUrl !== raw };
 }
 
 /* 自定义端点的最佳可达性探测。 */
@@ -1547,6 +1543,7 @@ function registerCustomModel(config: any, providerId: string, baseUrl: string, p
   config.upsertModelRaw(`${providerId}:${m.id}`, {
     provider: providerId,
     model: m.id,
+    custom: true,
     api_key: apiKeyRef,
     base_url: baseUrl,
     context_length: m.context_length,
@@ -1575,23 +1572,15 @@ async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: Provi
     providerId = `${baseId}-${i}`;
   }
 
-  // 2. 端点URL -从提供者文档中接受完整的端点并进行规范化。
-  const rawUrl = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "endpoint"], { label }) }))?.trim();
-  if (!rawUrl) return false;
-  const norm = normalizeEndpointUrl(rawUrl);
-  const baseUrl = norm.baseUrl;
-  if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl }));
-
-  // 3. 协议-先显示四个通用接口；当URL后缀可识别时提供默认值。
+  // 2. 先确定协议，再按协议解释和规范化用户输入的 URL。
   let protocol: StoredProviderProtocol | undefined;
   if (initialProtocol) {
     protocol = storedProtocolFromWire(initialProtocol);
   } else {
-    const detected = norm.protocol ? wireProtocolFromStored(norm.protocol) : undefined;
     const picked = await ctx.promptSelect({
       message: t.get(["Commands", "/provider", "custom", "protocol"], { label }),
       options: WIRE_PROTOCOL_CHOICES.map((choice) => ({
-        label: `${t.get(["Commands", "/provider", "protocol", choice.key])}${choice.value === detected ? `  ${t.get(["Commands", "/provider", "custom", "detected"])}` : ""}`,
+        label: t.get(["Commands", "/provider", "protocol", choice.key]),
         value: choice.value,
       })),
     });
@@ -1599,6 +1588,19 @@ async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?: Provi
     protocol = storedProtocolFromWire(picked as ProviderWireProtocol);
   }
   if (!protocol) return false;
+  const protocolChoice = WIRE_PROTOCOL_CHOICES.find((choice) => choice.stored === protocol)!;
+
+  // 3. 接口地址：接受完整端点或 base URL，并保存为所选协议需要的 base URL。
+  const rawUrl = (await ctx.promptSecret({
+    message: t.get(["Commands", "/provider", "custom", "endpoint"], {
+      label,
+      protocol: t.get(["Commands", "/provider", "protocol", protocolChoice.key]),
+    }),
+  }))?.trim();
+  if (!rawUrl) return false;
+  const norm = normalizeEndpointUrl(rawUrl, protocol);
+  const baseUrl = norm.baseUrl;
+  if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl }));
 
   // 4. API密钥（可选）
   const apiKey = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "apiKey"], { label }), allowEmpty: true }))?.trim();
@@ -1654,14 +1656,20 @@ async function cmdManageCustomProvider(ctx: CommandContext, providerId: string):
     persistSettingsPatch({ providers: next }, ctx.swarmflowHomeDir);
 
   if (action === "edit") {
-    const newUrl = (await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "manage", "newEndpoint"], { label, current: entry.base_url ?? "" }), allowEmpty: true }))?.trim();
+    const protocolChoice = WIRE_PROTOCOL_CHOICES.find((choice) => choice.value === wireProtocolFromStored(protocol))!;
+    const newUrl = (await ctx.promptSecret!({
+      message: t.get(["Commands", "/provider", "manage", "newEndpoint"], {
+        label,
+        current: entry.base_url ?? "",
+        protocol: t.get(["Commands", "/provider", "protocol", protocolChoice.key]),
+      }),
+      allowEmpty: true,
+    }))?.trim();
     const newKey = (await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "manage", "newApiKey"], { label }), allowEmpty: true }))?.trim();
-    let newBaseUrl = entry.base_url || "";
-    if (newUrl) {
-      const norm = normalizeEndpointUrl(newUrl);
-      newBaseUrl = norm.baseUrl;
-      if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl: newBaseUrl }));
-    }
+    const retainedUrl = newUrl || entry.base_url || "";
+    const norm = normalizeEndpointUrl(retainedUrl, protocol);
+    const newBaseUrl = norm.baseUrl;
+    if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl: newBaseUrl }));
     let apiKeyField = entry.api_key;
     if (newKey) {
       const envVar = customProviderEnvVar(providerId);

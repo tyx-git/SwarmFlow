@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelConfig } from "../src/config/config.js";
+import { DeepSeekAnthropicProvider } from "../src/providers/deepseek-anthropic.js";
+import { createProvider } from "../src/providers/registry.js";
 import { OpenAIChatProvider } from "../src/providers/openai-chat.js";
 import { OpenAIResponsesProvider } from "../src/providers/openai-responses.js";
 
@@ -21,6 +23,35 @@ function modelConfig(overrides: Partial<ModelConfig>): ModelConfig {
     ...overrides,
   };
 }
+
+describe("provider factory custom provider precedence", () => {
+  it("dispatches a custom provider with a built-in ID by transport protocol", () => {
+    const provider = createProvider(modelConfig({
+      provider: "deepseek",
+      model: "deepseek-chat",
+      baseUrl: "https://example/v1",
+      custom: true,
+      transportProtocol: "responses",
+    }));
+
+    expect(provider).toBeInstanceOf(OpenAIResponsesProvider);
+  });
+
+  it.each([undefined, false] as const)(
+    "keeps non-custom DeepSeek on its dedicated provider when custom is %s",
+    (custom) => {
+      const provider = createProvider(modelConfig({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        baseUrl: "https://example/v1",
+        custom,
+        transportProtocol: "responses",
+      }));
+
+      expect(provider).toBeInstanceOf(DeepSeekAnthropicProvider);
+    },
+  );
+});
 
 async function* streamOf(events: unknown[]): AsyncGenerator<unknown> {
   for (const e of events) {

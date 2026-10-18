@@ -53,6 +53,14 @@ const PROVIDER_CLASS_BY_ID: Map<string, ProviderClassKind> = (() => {
 
 export function createProvider(config: ModelConfig): BaseProvider {
   const provider = config.provider.toLowerCase();
+  // settings.json 明确标记的自定义提供商优先按协议分派，允许复用内置 provider ID。
+  if (config.custom === true && config.baseUrl) {
+    if (config.transportProtocol === "anthropic") return new AnthropicProvider(config);
+    if (config.transportProtocol === "responses") return new OpenAIResponsesProvider(config);
+    if (config.transportProtocol === "gemini") return new GeminiGenerateContentProvider(config);
+    return new OpenAIChatProvider(config);
+  }
+
   const providerClass = PROVIDER_CLASS_BY_ID.get(provider);
   if (providerClass) {
     return new CTOR_BY_CLASS[providerClass](config);

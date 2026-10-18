@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Config } from "../src/config/config.js";
+import { settingsToConfigInputs } from "../src/config/persistence.js";
 
 describe("Config model validation", () => {
   function makeConfigWithRaw(name: string, raw: Record<string, unknown>): Config {
@@ -8,6 +9,26 @@ describe("Config model validation", () => {
     cfg.upsertModelRaw(name, raw);
     return cfg;
   }
+
+  it("preserves custom provider markers from settings through runtime model config", () => {
+    const inputs = settingsToConfigInputs({
+      providers: {
+        deepseek: {
+          custom: true,
+          base_url: "https://example/v1",
+          protocol: "openai-responses",
+          api_key: "test-key",
+          models: [{ id: "deepseek-chat", context_length: 128_000 }],
+        },
+      },
+    });
+
+    expect(inputs.localProviders.deepseek?.custom).toBe(true);
+
+    const model = new Config(inputs).getModel("deepseek:deepseek-chat");
+    expect(model.custom).toBe(true);
+    expect(model.transportProtocol).toBe("responses");
+  });
 
   it("throws a clear error when provider is missing", () => {
     const cfg = makeConfigWithRaw("bad", {

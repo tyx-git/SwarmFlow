@@ -29,6 +29,7 @@ import {
   loadGlobalSettings,
 } from "../config/persistence.js";
 import { customProviderEnvVar } from "../providers/credential-flow.js";
+import { normalizeEndpointUrl } from "../commands/commands.js";
 
 // ------------------------------------------------------------------
 // 向导结果
@@ -243,17 +244,23 @@ async function stageCustomProvider(homeDir: string, run: WizardRuntime): Promise
   if (!label.trim()) return "next";
   const displayLabel = label.trim();
 
-  // 2. 接口地址：端点路径由下一步选择的协议决定，因此示例只给到 /v1
-  const rawUrl = await inputStep(run, { message: t.get(["Init", "provider", "endpointUrl"], { label: displayLabel }) });
-  if (rawUrl === BACK) return BACK;
-  if (!rawUrl.trim()) return "next";
-
-  // 3. 协议
+  // 2. 先选择协议，以便按所选 SDK 规范化完整端点或 base URL。
   const protocol = await selectStep(run, {
     message: t.get(["Init", "provider", "protocol"], { label: displayLabel }),
     choices: protocolChoicesFor(t),
   });
   if (protocol === BACK) return BACK;
+
+  // 3. 输入地址；提示会明确说明所选协议及其可接受的 URL 形式。
+  const rawUrl = await inputStep(run, {
+    message: t.get(["Init", "provider", "endpointUrl"], {
+      label: displayLabel,
+      protocol: t.get(["Init", "provider", "protocolChoices", protocol]),
+    }),
+  });
+  if (rawUrl === BACK) return BACK;
+  if (!rawUrl.trim()) return "next";
+  const baseUrl = normalizeEndpointUrl(rawUrl, protocol).baseUrl;
 
   // 4. API key（可选）
   const apiKey = await inputStep(run, { message: t.get(["Init", "provider", "apiKey"], { label: displayLabel }) });
@@ -277,7 +284,7 @@ async function stageCustomProvider(homeDir: string, run: WizardRuntime): Promise
   const entry: ProviderEntry = {
     custom: true,
     label: displayLabel,
-    base_url: rawUrl.trim(),
+    base_url: baseUrl,
     protocol: protocol as ProviderEntry["protocol"],
     models: [{ id: modelId.trim(), context_length: ctxLen }],
   };
