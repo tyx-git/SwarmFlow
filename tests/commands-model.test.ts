@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1038,16 +1038,8 @@ describe("/model command", () => {
         currentProvider: "glm-code",
       });
 
-      const persistedState = JSON.parse(
-        readFileSync(join(swarmflowHome, "state", "model-selection.json"), "utf-8"),
-      );
-      expect(persistedState).toEqual({
-        config_name: "runtime-glm-code-glm-5",
-        provider: "glm-code",
-        selection_key: "glm-5",
-        model_id: "glm-5",
-        thinking_level: "default",
-      });
+      // 模型选择只落 settings.json；旧的 state/model-selection.json 不再生成。
+      expect(existsSync(join(swarmflowHome, "state", "model-selection.json"))).toBe(false);
     } finally {
       rmSync(tempHome, { recursive: true, force: true });
     }

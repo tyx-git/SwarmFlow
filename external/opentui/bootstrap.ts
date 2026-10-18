@@ -12,7 +12,6 @@ import {
   loadGlobalSettings,
   loadLocalSettings,
   mergeSettings,
-  loadModelSelectionState,
   parseSettingsOverrides,
   settingsToConfigInputs,
 } from "../../src/config/persistence.js";
@@ -26,6 +25,10 @@ import {
 import type { CommandRegistry } from "../../src/commands/commands.js";
 import type { PersistedModelSelection } from "../../src/models/selection.js";
 import { applyPersistedModelSelectionToSession } from "../../src/models/restore.js";
+import {
+  resolveStartupModelSelection,
+  resolveTemplateFallbackModel,
+} from "../../src/models/startup-selection.js";
 function identifyPrimaryAgent(
   agents: Record<string, Agent>,
   config: Config,
@@ -70,20 +73,6 @@ function identifyPrimaryAgent(
 
 function formatOAuthRefreshError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function resolveTemplateFallbackModel(
-  config: Config,
-  effectiveModelConfigName: string | undefined,
-  modelState: ReturnType<typeof loadModelSelectionState>,
-): string | undefined {
-  if (effectiveModelConfigName && config.modelNames.includes(effectiveModelConfigName)) {
-    return effectiveModelConfigName;
-  }
-  const provider = modelState.provider?.trim();
-  const model = modelState.model_id?.trim() || modelState.selection_key?.trim();
-  if (!provider || !model) return undefined;
-  return config.findModelConfigName(provider, model);
 }
 
 async function refreshActiveOpenAICodexToken(session: Session): Promise<void> {
@@ -158,28 +147,9 @@ export async function bootstrapOpenTuiRuntime(opts?: {
 
   // Restore the selected model before templates are instantiated so templates
   // without an explicit model do not force Config.defaultModel token resolution.
-  const modelState = loadModelSelectionState(homeDir);
-  // A model explicitly selected in the running TUI is newer than the
-  // declarative default in settings.json. Only use default_model when no
-  // persisted current selection exists.
-  const currentProvider = settings.currentProvider?.trim();
-  const currentModel = currentProvider
-    ? settings.providers?.[currentProvider]?.currentModel
-    : undefined;
-  const currentConfigName = currentModel?.configName && config.modelNames.includes(currentModel.configName)
-    ? currentModel.configName
-    : undefined;
-  const effectiveModelConfigName = currentConfigName
-    ?? (currentProvider && currentModel?.model
-      ? config.findModelConfigName(currentProvider, currentModel.model)
-      : undefined)
-    ?? modelState.config_name
-    ?? settings.default_model;
-  const templateFallbackModel = resolveTemplateFallbackModel(
-    config,
-    effectiveModelConfigName,
-    modelState,
-  );
+  // 唯一数据源是 settings.json：currentProvider.currentModel > default_model。
+  const startupSelection = resolveStartupModelSelection(config, settings);
+  const templateFallbackModel = resolveTemplateFallbackModel(config, startupSelection);
 
   // ── MCP client (connect eagerly, await lazily on first turn) ──
   let mcpManager: unknown = null;
@@ -263,16 +233,16 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   } catch { /* hooks module optional */ }
 
   // ── Restore model selection ──
-  // Priority: providers[currentProvider].currentModel > legacy state file > default_model.
+  // settings.json-only: currentProvider.currentModel > default_model.
   try {
-    if (effectiveModelConfigName) {
+    if (startupSelection.modelConfigName) {
       applyPersistedModelSelectionToSession(
         session,
         {
-          modelConfigName: effectiveModelConfigName,
-          modelProvider: currentProvider ?? modelState.provider,
-          modelSelectionKey: currentModel?.model ?? modelState.selection_key,
-          modelId: currentModel?.model ?? modelState.model_id,
+          modelConfigName: startupSelection.modelConfigName,
+          modelProvider: startupSelection.modelProvider,
+          modelSelectionKey: startupSelection.modelSelectionKey,
+          modelId: startupSelection.modelId,
         } satisfies PersistedModelSelection,
       );
     }
@@ -284,8 +254,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
 
   // ── Apply settings to session ──
   session.applySettings(settings, {
-    ...modelState,
-    thinking_level: currentModel?.thinkingDepth ?? modelState.thinking_level,
+    thinkingLevel: startupSelection.thinkingLevel,
   });
   await refreshActiveOpenAICodexToken(session);
 

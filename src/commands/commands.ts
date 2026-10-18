@@ -18,8 +18,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { CommandPickerPresentation } from "../ui/picker.js";
-import type { SessionStore, ModelSelectionState, SwarmflowSettings, ProviderEntry, CustomModelEntry } from "../config/persistence.js";
-import { randomSessionId, saveModelSelectionState, saveGlobalSettingsPatch, loadGlobalSettings, persistCurrentModelSelection } from "../config/persistence.js";
+import type { SessionStore, SwarmflowSettings, ProviderEntry, CustomModelEntry } from "../config/persistence.js";
+import { randomSessionId, saveGlobalSettingsPatch, loadGlobalSettings, persistCurrentModelSelection } from "../config/persistence.js";
 import { applySessionRestore } from "../session-resume.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
@@ -364,38 +364,35 @@ function currentSessionModelDisplayName(session: any): string {
 }
 
 /**
- * Persist model selection state to state/model-selection.json.
- * Reads the current model selection from the session and the thinking level,
- * then writes them to the new state file.
+ * 将会话的模型/思考深度持久化到 settings.json。
+ *
+ * 唯一数据源：currentProvider + providers[currentProvider].currentModel。
+ * 不再写 state/model-selection.json。
  */
 function persistModelSelection(ctx: CommandContext): void {
   try {
     const session = ctx.session;
-    // 使用getGlobalPreferences（）公开持久的模型选择
     const prefs = typeof session.getGlobalPreferences === "function"
       ? session.getGlobalPreferences()
       : undefined;
     if (!prefs) return;
-    const state: ModelSelectionState = {
-      config_name: prefs.modelConfigName ?? undefined,
-      provider: prefs.modelProvider ?? undefined,
-      selection_key: prefs.modelSelectionKey ?? undefined,
-      model_id: prefs.modelId ?? undefined,
-      thinking_level: prefs.thinkingLevel && prefs.thinkingLevel !== "none"
-        ? prefs.thinkingLevel
-        : undefined,
-    };
-    const provider = state.provider?.trim();
-    const model = state.model_id?.trim() || state.selection_key?.trim();
+
+    const provider = prefs.modelProvider?.trim();
+    const model = prefs.modelId?.trim() || prefs.modelSelectionKey?.trim();
+    const thinkingDepth = prefs.thinkingLevel && prefs.thinkingLevel !== "none"
+      ? prefs.thinkingLevel
+      : undefined;
+
     if (provider && model) {
       persistCurrentModelSelection({
         provider,
         model,
-        configName: state.config_name,
-        thinkingDepth: state.thinking_level,
+        configName: prefs.modelConfigName,
+        thinkingDepth,
       }, ctx.swarmflowHomeDir);
-    } else {
-      saveModelSelectionState(state, ctx.swarmflowHomeDir);
+    } else if (thinkingDepth) {
+      // 模型身份缺失时仍保留用户刚选择的思考深度。
+      saveGlobalSettingsPatch({ thinking_level: thinkingDepth }, ctx.swarmflowHomeDir);
     }
   } catch {
     // 忽略命令执行期间的持久性失败。

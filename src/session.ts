@@ -166,7 +166,6 @@ import {
   type GlobalTuiPreferences,
   type LogSessionMeta,
   type SwarmflowSettings,
-  type ModelSelectionState,
 } from "./config/persistence.js";
 import {
   CHILD_SESSION_CAPABILITIES,
@@ -3605,11 +3604,13 @@ export class Session {
   }
 
   /**
-   * Apply settings from the new SwarmflowSettings + ModelSelectionState system.
-   * This replaces applyGlobalPreferences for the new config architecture.
+   * 应用 settings.json 中的启动设置。
+   *
+   * thinkingLevel 由启动解析器从 currentProvider.currentModel 取得；
+   * 缺失时回退 settings.thinking_level，再回退 off。
    */
-  applySettings(settings: SwarmflowSettings, modelState: ModelSelectionState): void {
-    const thinkingLevel = modelState.thinking_level ?? settings.thinking_level ?? "";
+  applySettings(settings: SwarmflowSettings, opts?: { thinkingLevel?: string }): void {
+    const thinkingLevel = opts?.thinkingLevel || settings.thinking_level || "";
     this._preferredThinkingLevel = thinkingLevel;
     this._preferredAccentColor = settings.accent_color;
     this._thinkingLevel = thinkingLevel || "off";
@@ -3621,6 +3622,9 @@ export class Session {
     if (settings.disabled_skills && settings.disabled_skills.length > 0) {
       this._disabledSkills = new Set(settings.disabled_skills);
       this.reloadSkills();
+      // skills 列表属于 system 快照；启动时应用 disabled_skills 后必须同步重建，
+      // 否则首轮 system 仍会列出已禁用的 skill。
+      this._rebuildSystemPrompt();
     }
 
     // Restore permission mode

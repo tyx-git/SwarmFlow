@@ -32,7 +32,6 @@ import {
   loadGlobalSettings,
   loadLocalSettings,
   mergeSettings,
-  loadModelSelectionState,
   parseSettingsOverrides,
   settingsToConfigInputs,
 } from "../config/persistence.js";
@@ -40,6 +39,10 @@ import { loadDotenv } from "../lifecycle/dotenv.js";
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import type { PersistedModelSelection } from "../models/selection.js";
 import { applyPersistedModelSelectionToSession } from "../models/restore.js";
+import {
+  resolveStartupModelSelection,
+  resolveTemplateFallbackModel,
+} from "../models/startup-selection.js";
 import { hasAnyManagedCredential } from "../config/managed-provider-credentials.js";
 
 export interface ServerModeOptions {
@@ -157,6 +160,13 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     subAgentInheritHooks: settings.sub_agent_inherit_hooks,
   });
 
+  // 新会话的模型/思考深度必须在模板实例化前确定，唯一数据源是 settings.json：
+  // currentProvider.currentModel > default_model。
+  const startupSelection = resolveStartupModelSelection(config, settings, {
+    selectedModel: opts.selectedModel,
+  });
+  const templateFallbackModel = resolveTemplateFallbackModel(config, startupSelection);
+
   // OAuth token 刷新 — 尽力而为，失败时不让引导失败
   const oauthEntries = config.listModelEntries().filter((e) => e.apiKeyRaw === "oauth:openai-codex");
   if (oauthEntries.length > 0) {
@@ -196,6 +206,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     promptsDirs,
     paths.templatesPath ?? undefined,
     paths.projectTemplatesPath ?? undefined,
+    templateFallbackModel,
   );
   const primary = identifyPrimaryAgent(agents, opts.selectedAgent);
 
@@ -237,18 +248,16 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     session.hookRuntime.setHooks(hooksLoaded);
   }
 
-  // 恢复模型选择
-  const modelState = loadModelSelectionState(homeDir);
-  const effectiveModelConfigName = opts.selectedModel ?? settings.default_model ?? modelState.config_name;
-  if (effectiveModelConfigName) {
+  // 恢复模型选择（包括 currentModel 的思考深度）
+  if (startupSelection.modelConfigName) {
     try {
       applyPersistedModelSelectionToSession(
         session,
         {
-          modelConfigName: effectiveModelConfigName,
-          modelProvider: modelState.provider,
-          modelSelectionKey: modelState.selection_key,
-          modelId: modelState.model_id,
+          modelConfigName: startupSelection.modelConfigName,
+          modelProvider: startupSelection.modelProvider,
+          modelSelectionKey: startupSelection.modelSelectionKey,
+          modelId: startupSelection.modelId,
         } satisfies PersistedModelSelection,
       );
     } catch (err) {
@@ -258,7 +267,9 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     }
   }
 
-  session.applySettings(settings, modelState);
+  session.applySettings(settings, {
+    thinkingLevel: startupSelection.thinkingLevel,
+  });
 
   // ── Start RPC server ──
   const rpc = createRpcServer(process.stdin, process.stdout);

@@ -42,10 +42,6 @@ import type { UiLanguage } from "../lib/ui-text.js";
 
 /** 设置文件名 */
 const SETTINGS_FILE = "settings.json";
-/** 状态目录名 */
-const STATE_DIR = "state";
-/** 模型选择文件名 */
-const MODEL_SELECTION_FILE = "model-selection.json";
 
 // ------------------------------------------------------------------
 // 辅助函数
@@ -621,7 +617,7 @@ export interface LocalProviderConfig {
 /** 用户可编辑的设置。存储在 settings.json（JSONC）中 */
 export interface SwarmflowSettings {
   // -- 模型 --
-  /** 声明式默认模型。覆盖 state/model-selection.json */
+  /** 声明式默认模型；仅在 currentProvider.currentModel 不可用时使用。 */
   default_model?: string;
   /** 上次退出时使用的供应商。 */
   currentProvider?: string;
@@ -749,20 +745,6 @@ export interface MCPServerSettingsEntry {
   sensitive_tools?: string[];
   /** 是否禁用 */
   disabled?: boolean;
-}
-
-/** 系统管理的模型选择状态。存储在 state/model-selection.json 中 */
-export interface ModelSelectionState {
-  /** 模型配置名称 */
-  config_name?: string;
-  /** 服务提供商 */
-  provider?: string;
-  /** 选择键 */
-  selection_key?: string;
-  /** 模型 ID */
-  model_id?: string;
-  /** 思维链级别 */
-  thinking_level?: string;
 }
 
 // ------------------------------------------------------------------
@@ -1664,36 +1646,6 @@ export function parseSettingsOverrides(overrides: readonly string[] = []): Swarm
   return settings;
 }
 
-/** 从 state/model-selection.json 加载模型选择状态 */
-export function loadModelSelectionState(homeDir?: string): ModelSelectionState {
-  const dir = homeDir ?? getSwarmflowHomeDir();
-  const path = join(dir, STATE_DIR, MODEL_SELECTION_FILE);
-  if (!existsSync(path)) return {};
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf-8"));
-    return {
-      config_name: raw.config_name ?? undefined,
-      provider: raw.provider ?? undefined,
-      selection_key: raw.selection_key ?? undefined,
-      model_id: raw.model_id ?? undefined,
-      thinking_level: raw.thinking_level ?? undefined,
-    };
-  } catch {
-    return {};
-  }
-}
-
-/** 保存模型选择状态到 state/model-selection.json。原子写入。 */
-export function saveModelSelectionState(state: ModelSelectionState, homeDir?: string): void {
-  const dir = homeDir ?? getSwarmflowHomeDir();
-  const stateDir = join(dir, STATE_DIR);
-  mkdirSync(stateDir, { recursive: true });
-  const file = join(stateDir, MODEL_SELECTION_FILE);
-  const tmp = file + ".tmp";
-  writeFileSync(tmp, JSON.stringify(state, null, 2));
-  renameSync(tmp, file);
-}
-
 /**
  * 保存 settings.json（全局或本地）。原子写入。
  * 仅写入已定义的字段——undefined 字段会被省略。
@@ -1761,14 +1713,6 @@ export function persistCurrentModelSelection(
         },
       },
     },
-  }, homeDir);
-
-  saveModelSelectionState({
-    config_name: selection.configName,
-    provider,
-    selection_key: model,
-    model_id: model,
-    thinking_level: selection.thinkingDepth,
   }, homeDir);
 }
 

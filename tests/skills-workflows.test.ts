@@ -120,4 +120,33 @@ describe("skills workflows", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("rebuilds the system snapshot when startup settings disable a skill", async () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-settings-"));
+    const harness = makeScriptedSession();
+    try {
+      const skillDir = join(root, "gamma");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), [
+        "---",
+        "name: gamma",
+        "description: Gamma skill",
+        "---",
+        "",
+        "Do gamma work.",
+      ].join("\n"), "utf-8");
+
+      harness.internals._skillRoots = [root];
+      await harness.session.reloadConfigurationFromCommand();
+      expect(harness.internals._cachedSystemPrompt).toContain("- gamma: Gamma skill");
+
+      harness.session.applySettings({ disabled_skills: ["gamma"] }, {});
+
+      expect(harness.internals._cachedSystemPrompt).not.toContain("- gamma: Gamma skill");
+      expect(harness.internals._skills.has("gamma")).toBe(false);
+    } finally {
+      harness.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

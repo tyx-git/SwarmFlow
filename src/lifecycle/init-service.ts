@@ -21,7 +21,6 @@ import {
   type ProviderEntry,
   saveSettings,
   globalSettingsPath,
-  saveModelSelectionState,
   loadGlobalSettings,
 } from "../config/persistence.js";
 import {
@@ -267,7 +266,26 @@ export class InitService {
       providers[id] = entry;
     });
 
+    // 模型与思考深度只写入 settings.json：currentProvider + currentModel。
+    // state/model-selection.json 已废弃，不再生成。
+    const selection = opts.modelSelection;
+    const selectedProvider = selection?.providerId?.trim();
+    const selectedModel = selection?.modelId?.trim() || selection?.selectionKey?.trim();
+    let currentProvider: string | undefined;
+    if (selection && selectedProvider && selectedModel && providers[selectedProvider]) {
+      providers[selectedProvider] = {
+        ...providers[selectedProvider],
+        currentModel: {
+          model: selectedModel,
+          ...(selection.configName ? { configName: selection.configName } : {}),
+          ...(opts.thinkingLevel ? { thinkingDepth: opts.thinkingLevel } : {}),
+        },
+      };
+      currentProvider = selectedProvider;
+    }
+
     const settings: SwarmflowSettings = {
+      currentProvider,
       thinking_level:
         opts.thinkingLevel && opts.thinkingLevel !== "off"
           ? opts.thinkingLevel
@@ -276,16 +294,6 @@ export class InitService {
     };
 
     saveSettings(settings, globalSettingsPath(this.homeDir));
-
-    if (opts.modelSelection) {
-      saveModelSelectionState({
-        config_name: opts.modelSelection.configName,
-        provider: opts.modelSelection.providerId,
-        selection_key: opts.modelSelection.selectionKey,
-        model_id: opts.modelSelection.modelId,
-        thinking_level: opts.thinkingLevel,
-      });
-    }
 
     mkdirSync(join(this.homeDir, "prompts", "templates"), { recursive: true });
     mkdirSync(join(this.homeDir, "skills"), { recursive: true });
