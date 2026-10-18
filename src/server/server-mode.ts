@@ -15,7 +15,7 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { getLogger, initLogger } from "../lib/logger.js";
 import { createRpcServer } from "./rpc-transport.js";
@@ -97,7 +97,9 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   const homeDir = getSwarmflowHomeDir();
   loadDotenv(homeDir);
 
-  const projectPath = opts.workDir;
+  // 先归一化为绝对路径，再 chdir：否则相对 work-dir 会在切换目录后被
+  // 二次拼接（例如 --work-dir project 变成 <project>/project）。
+  const projectPath = resolve(opts.workDir);
   if (!existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
     throw new Error(`work-dir does not exist or is not a directory: ${projectPath}`);
   }

@@ -13,9 +13,6 @@
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
 import type { CommandPickerResult } from "../ui/command-picker.js";
 import type { CommandPickerPresentation } from "../ui/picker.js";
 import type { SessionStore, SwarmflowSettings, ProviderEntry, CustomModelEntry } from "../config/persistence.js";
@@ -23,7 +20,8 @@ import { randomSessionId, saveGlobalSettingsPatch, loadGlobalSettings, persistCu
 import { applySessionRestore } from "../session-resume.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
-import { runtimeTransportProtocol } from "../config/config.js";
+import { getBundledAssetsDir, resolveAssetPaths, runtimeTransportProtocol } from "../config/config.js";
+import { loadHooksFromDir } from "../hooks/index.js";
 import {
   PROVIDER_PRESETS,
   findProviderPreset,
@@ -2076,7 +2074,6 @@ async function cmdCopilot(ctx: CommandContext, args: string): Promise<void> {
 // ------------------------------------------------------------------
 
 function loadReviewPromptTemplate(): string {
-  const { getBundledAssetsDir } = require("../config/config.js") as { getBundledAssetsDir: () => string };
   const promptPath = join(getBundledAssetsDir(), "prompts", "review.md");
   try {
     return readFileSync(promptPath, "utf-8");
@@ -3401,15 +3398,16 @@ async function cmdRewind(ctx: CommandContext, args: string): Promise<void> {
 // /钩子命令
 // ------------------------------------------------------------------
 
-function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: string; args?: string[]; disabled?: boolean; _sourcePath?: string; _scope?: string; matcher?: { toolNames?: string[]; agentIds?: string[] }; failClosed?: boolean }> {
+function loadAllHooksFromDisk(ctx: Pick<CommandContext, "swarmflowHomeDir">): Array<{ name: string; event: string; command: string; args?: string[]; disabled?: boolean; _sourcePath?: string; _scope?: string; matcher?: { toolNames?: string[]; agentIds?: string[] }; failClosed?: boolean }> {
   try {
-    const { resolveAssetPaths } = require("./config.js") as typeof import("../config/config.js");
-    const paths = resolveAssetPaths();
+    const paths = resolveAssetPaths({
+      homeDir: ctx.swarmflowHomeDir,
+      projectPath: process.cwd(),
+    });
     // loadhooksmti按名称进行重复数据删除（项目覆盖全局）
     // 我们希望所有包括禁用，所以我们从磁盘加载raw
     const allHooks: any[] = [];
     for (const { dir, scope } of paths.hookRoots) {
-      const { loadHooksFromDir } = require("./hooks/index.js") as typeof import("../hooks/index.js");
       for (const h of loadHooksFromDir(dir, scope as "project" | "global")) {
         allHooks.push(h);
       }
@@ -3423,8 +3421,8 @@ function loadAllHooksFromDisk(): Array<{ name: string; event: string; command: s
   }
 }
 
-function hooksOptions(_ctx: CommandOptionsContext): CommandOption[] {
-  const allHooks = loadAllHooksFromDisk();
+function hooksOptions(ctx: CommandOptionsContext): CommandOption[] {
+  const allHooks = loadAllHooksFromDisk(ctx);
   if (allHooks.length === 0) {
     return [{ label: "No hooks found", value: "", disabled: true }];
   }
@@ -3470,7 +3468,7 @@ async function cmdHooks(ctx: CommandContext, args: string): Promise<void> {
     return;
   }
 
-  const allHooks = loadAllHooksFromDisk();
+  const allHooks = loadAllHooksFromDisk(ctx);
   const activeCount = allHooks.filter((h) => !h.disabled).length;
   ctx.showMessage(allHooks.length === 0
     ? "No hooks registered."

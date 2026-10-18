@@ -855,7 +855,7 @@ export class Session {
     }
 
     // Resolve runtime paths（system prompt 不再渲染这些值）
-    this._projectRoot = opts.projectRoot ?? process.cwd();
+    this._projectRoot = resolve(opts.projectRoot ?? process.cwd());
     this._sessionArtifactsOverride = opts.sessionArtifactsDir ?? "";
     this._shellManager = new BackgroundShellManager({
       projectRoot: this._projectRoot,

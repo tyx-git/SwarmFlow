@@ -27,7 +27,7 @@ import {
 } from "node:fs";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { getSwarmflowHomeDir } from "../lib/home-path.js";
 import { LogIdAllocator, type LogEntry, type LogEntryType, type TuiDisplayKind } from "../context/log-entry.js";
 import type { ChildSessionMetaRecord } from "../session-tree-types.js";
@@ -47,10 +47,17 @@ const SETTINGS_FILE = "settings.json";
 // 辅助函数
 // ------------------------------------------------------------------
 
-/** 生成项目路径的 slug 格式：<name>_<sha256前6位> */
+/**
+ * 生成项目路径的 slug 格式：<name>_<sha256前6位>。
+ *
+ * 先解析成绝对路径，避免 `.`、`a/..`、末尾分隔符等写法产生不同的项目目录。
+ * Windows 上不同大小写盘符仍会产生不同 slug；这是历史既有行为，改动会让
+ * 已有会话失联，故不做大小写折叠。
+ */
 export function projectSlug(projectPath: string): string {
-  const name = basename(projectPath) || "root";
-  const h = createHash("sha256").update(projectPath).digest("hex").slice(0, 6);
+  const absolute = resolve(projectPath);
+  const name = basename(absolute) || "root";
+  const h = createHash("sha256").update(absolute).digest("hex").slice(0, 6);
   return `${name}_${h}`;
 }
 
@@ -147,9 +154,10 @@ export class SessionStore {
   private _predictedSessionDir: string | undefined;
 
   constructor(opts?: { projectPath?: string; baseDir?: string }) {
-    this._projectPath = opts?.projectPath;
-    this._projectSlug = opts?.projectPath
-      ? projectSlug(opts.projectPath)
+    // 元数据与 slug 都保存绝对路径，避免 GUI 传入 `.` 时与 TUI 的 cwd 不一致。
+    this._projectPath = opts?.projectPath ? resolve(opts.projectPath) : undefined;
+    this._projectSlug = this._projectPath
+      ? projectSlug(this._projectPath)
       : "general";
     this._preferredBaseDir = resolvePreferredBaseDir(opts?.baseDir);
     this._projectDir = join(this._preferredBaseDir, "projects", this._projectSlug);

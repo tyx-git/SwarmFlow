@@ -105,15 +105,15 @@ export const JQ: ToolDef = {
   tuiPolicy: { partialReveal: { completeArgs: ["query"] } },
 };
 
-function bundledJqPath(): string | null {
-  const moduleRoot = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.join(moduleRoot, "intools", "jq", "jq.exe"),
-    path.join(moduleRoot, "..", "tools", "intools", "jq", "jq.exe"),
-    path.join(process.cwd(), "src", "tools", "intools", "jq", "jq.exe"),
-    path.join(process.cwd(), "dist", "src", "tools", "intools", "jq", "jq.exe"),
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+/**
+ * 定位随包分发的 jq。与搜索二进制一致，只按模块目录解析，
+ * 避免把用户项目里的同名 exe 误当成随包工具。
+ */
+export function bundledJqPath(
+  moduleDir: string = path.dirname(fileURLToPath(import.meta.url)),
+): string | null {
+  const candidate = path.join(moduleDir, "intools", "jq", "jq.exe");
+  return existsSync(candidate) ? candidate : null;
 }
 
 function formatJsonValue(value: unknown, raw: boolean, compact: boolean): string {

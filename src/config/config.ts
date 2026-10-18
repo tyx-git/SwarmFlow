@@ -3,8 +3,7 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { basename, dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readOAuthAccessToken, hasOAuthTokens } from "../auth/openai-oauth.js";
 import { loadGitHubTokens, hasGitHubTokens } from "../auth/github-copilot-oauth.js";
@@ -17,7 +16,7 @@ import {
   MANAGED_PROVIDER_CREDENTIAL_SPECS,
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
-import type { LocalModelEntry, LocalProviderConfig } from "../config/persistence.js";
+import { projectSlug, type LocalModelEntry, type LocalProviderConfig } from "../config/persistence.js";
 import {
   type SealedSchema,
   type ThinkingEncryption,
@@ -424,10 +423,10 @@ export function resolveAssetPaths(opts?: {
   homeDir?: string;
 }): ResolvedPaths {
   const home = opts?.homeDir ?? getSwarmflowHomeDir();
-  const projectPath = opts?.projectPath ?? process.cwd();
+  const projectPath = resolve(opts?.projectPath ?? process.cwd());
 
   // 计算项目哈希目录：~/.swarmflow/projects/<name>_<hash>/
-  const slug = makeProjectSlug(projectPath);
+  const slug = projectSlug(projectPath);
   const projectStoreDir = join(home, "projects", slug);
 
   // 四个扩展层根目录
@@ -448,7 +447,7 @@ export function resolveAssetPaths(opts?: {
     templatesPath = isDir(opts.templatesFlag) ? opts.templatesFlag : null;
   } else {
     const homeTemplates = join(home, "prompts", "templates");
-    const cwdTemplates = join(process.cwd(), "prompts", "templates");
+    const cwdTemplates = join(projectPath, "prompts", "templates");
     if (isDir(homeTemplates)) {
       templatesPath = homeTemplates;
     } else if (isDir(cwdTemplates)) {
@@ -464,7 +463,7 @@ export function resolveAssetPaths(opts?: {
   }
   if (!promptsPath) {
     const homePrompts = join(home, "prompts");
-    const cwdPrompts = join(process.cwd(), "prompts");
+    const cwdPrompts = join(projectPath, "prompts");
     if (isDir(homePrompts)) promptsPath = homePrompts;
     else if (isDir(cwdPrompts)) promptsPath = cwdPrompts;
   }
@@ -528,20 +527,21 @@ function isDir(p: string): boolean {
   }
 }
 
-/** 生成项目路径的 slug 格式：<name>_<sha256前6位> */
-function makeProjectSlug(projectPath: string): string {
-  const name = basename(projectPath) || "root";
-  const h = createHash("sha256").update(projectPath).digest("hex").slice(0, 6);
-  return `${name}_${h}`;
-}
-
 // ------------------------------------------------------------------
 // 内置资源路径
 // ------------------------------------------------------------------
 
-/** 返回已安装包的根目录（dist/ 的父目录） */
-export function getBundledAssetsDir(): string {
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
+/**
+ * 返回内置资源根目录（dist/ 的父目录）。
+ *
+ * 源码布局：<repo>/src/config/config.ts → <repo>
+ * dist 布局：<dist>/src/config/config.js → <dist>
+ * SEA 布局：<runtime>/dist/src/config/config.js → <runtime>/dist
+ *
+ * `moduleUrl` 仅用于测试时模拟不同布局。
+ */
+export function getBundledAssetsDir(moduleUrl: string = import.meta.url): string {
+  const moduleDir = dirname(fileURLToPath(moduleUrl));
   return join(moduleDir, "..", "..");
 }
 

@@ -39,18 +39,22 @@ const RG_FORBIDDEN = new Set([
   "--search-path", "--no-config",
 ]);
 
-function executablePath(name: "fd" | "rg"): string | null {
+/**
+ * 定位随包分发的搜索二进制。
+ *
+ * 只按模块目录解析：源码布局命中 `src/tools/intools`，编译布局命中
+ * `dist/src/tools/intools`。不再回退到 `process.cwd()`，否则在缺少随包
+ * 二进制的安装里可能执行用户项目中的同名文件。
+ */
+export function resolveBundledSearchExecutable(
+  name: "fd" | "rg",
+  moduleDir: string = path.dirname(fileURLToPath(import.meta.url)),
+): string | null {
   if (process.platform !== "win32") return null;
-  const moduleRoot = path.dirname(fileURLToPath(import.meta.url));
   const directory = name === "rg" ? "ripgrep" : name;
   const executable = name === "rg" ? "rg.exe" : `${name}.exe`;
-  const candidates = [
-    path.join(moduleRoot, "intools", directory, executable),
-    path.join(moduleRoot, "..", "tools", "intools", directory, executable),
-    path.join(process.cwd(), "src", "tools", "intools", directory, executable),
-    path.join(process.cwd(), "dist", "src", "tools", "intools", directory, executable),
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  const candidate = path.join(moduleDir, "intools", directory, executable);
+  return existsSync(candidate) ? candidate : null;
 }
 
 function validateOptions(
@@ -154,7 +158,7 @@ export async function runBundledFd(options: {
   absolutePath?: boolean;
   signal?: AbortSignal;
 }): Promise<NativeSearchResult> {
-  const executable = executablePath("fd");
+  const executable = resolveBundledSearchExecutable("fd");
   if (!executable) return { available: false, content: "" };
   const invalid = validateOptions("fd", options.args);
   if (invalid) return { available: true, content: invalid };
@@ -173,7 +177,7 @@ export async function runBundledRg(options: {
   args: string[];
   signal?: AbortSignal;
 }): Promise<NativeSearchResult> {
-  const executable = executablePath("rg");
+  const executable = resolveBundledSearchExecutable("rg");
   if (!executable) return { available: false, content: "" };
   const invalid = validateOptions("rg", options.args);
   if (invalid) return { available: true, content: invalid };
