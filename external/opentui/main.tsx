@@ -1,5 +1,5 @@
-import { existsSync, openSync, writeSync, mkdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, openSync, realpathSync, writeSync, mkdirSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -26,42 +26,6 @@ interface ParsedArgs {
 }
 
 const SESSION_CLOSE_TIMEOUT_MS = 4000;
-
-async function prewarmCompiledOpenTuiCore(): Promise<void> {
-  const thisFile = fileURLToPath(import.meta.url);
-  // Bun --compile mounts bundled JS at a virtual filesystem path:
-  // `/$bunfs/root/...` on POSIX, `B:\~BUN\root\...` on Windows. Only run
-  // the prewarm in compiled mode — in dev (`bun run dev`) the module
-  // graph evaluates in the natural order and the hack would just slow
-  // startup. Missing the Windows path form is what allowed the
-  // SpanRenderable-extends-TextNodeRenderable TDZ to surface on win32
-  // compiled binaries (see Docs/decisions.md D-Windows).
-  const isCompiled = thisFile.includes("$bunfs") || /^B:[\\/]~BUN/i.test(thisFile);
-  if (!isCompiled) return;
-
-  // Bun's compiled bundler can initialize @opentui/react before async
-  // @opentui/core re-exports settle. Import the concrete modules first so
-  // React receives initialized renderable constructors from the package barrel.
-  await Promise.all([
-    import("./forked/core/Renderable.js"),
-    import("./forked/core/renderer.js"),
-    import("./forked/core/animation/Timeline.js"),
-    import("./forked/core/renderables/ASCIIFont.js"),
-    import("./forked/core/renderables/Box.js"),
-    import("./forked/core/renderables/Code.js"),
-    import("./forked/core/renderables/Diff.js"),
-    import("./forked/core/renderables/Input.js"),
-    import("./forked/core/renderables/LineNumberRenderable.js"),
-    import("./forked/core/renderables/Markdown.js"),
-    import("./forked/core/renderables/ScrollBox.js"),
-    import("./forked/core/renderables/Select.js"),
-    import("./forked/core/renderables/TabSelect.js"),
-    import("./forked/core/renderables/Text.js"),
-    import("./forked/core/renderables/Textarea.js"),
-    import("./forked/core/renderables/TextNode.js"),
-    import("./forked/core/renderables/TimeToFirstDraw.js"),
-  ]);
-}
 
 function resolveRendererThreadSetting(): boolean {
   const override = process.env.OPENTUI_USE_THREAD?.trim().toLowerCase();
@@ -103,8 +67,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 }
 
 export async function launchTui(): Promise<void> {
-  await prewarmCompiledOpenTuiCore();
-
   const React = await import("react");
   const { createCliRenderer } = await import("@opentui/core");
   const { registerSwarmFlowTreeSitterParsers } = await import("./tree-sitter-parsers.js");
@@ -486,7 +448,7 @@ export async function launchTui(): Promise<void> {
     // Empirical: 30ms is enough for one kernel pump cycle on macOS even at
     // high mouse motion rates. If residue ever comes back, increasing the
     // window is the first thing to try; the real long-term fix would be a
-    // libc tcflush(STDIN_FILENO, TCIFLUSH) via bun:ffi, but that requires
+    // libc tcflush(STDIN_FILENO, TCIFLUSH) via node:ffi, but that requires
     // platform-specific termios constants.
     // 先用最硬的手段把鼠标模式关掉并清空控制台输入缓冲 —— 这是 renderer
     // 自己那套 reset 之外的必要补充：Windows 上残留在 ConHost 输入缓冲里的
@@ -556,23 +518,19 @@ export async function launchTui(): Promise<void> {
   process.off("unhandledRejection", handleFatal);
 }
 
-// Only auto-invoke when this module is executed directly (e.g. `bun run
-// opentui-src/main.tsx`). When it is imported by `src/cli.ts`, the CLI calls
-// `launchTui()` itself and we must not start a second instance here.
-function isDirectEntry(): boolean {
-  // Bun exposes `import.meta.main` for direct-script detection.
-  const metaMain = (import.meta as { main?: boolean }).main;
-  if (typeof metaMain === "boolean") return metaMain;
-
-  // Node fallback: compare the module URL to process.argv[1].
+// 只有把本模块当作入口直接执行时才自动启动（`npm run dev` = node --import tsx main.tsx）。
+// 被 `src/cli.ts` 作为模块引入时，CLI 自己调用 `launchTui()`，这里不能再起第二个实例。
+// 注意：不要用 `require()` 取 node 内置模块 —— tsx 与打包后的 ESM 里 `require` 都不存在，
+// 那样这条路只会静默返回 false；也不要用运行时注入的入口开关，
+// realpath 比对是唯一站得住的判断。参数留成可注入，便于回归测试。
+export function isDirectEntry(
+  moduleUrl: string = import.meta.url,
+  entryArg: string | undefined = process.argv[1],
+): boolean {
   try {
-    const entry = process.argv[1];
-    if (!entry) return false;
-    const { fileURLToPath } = require("node:url") as typeof import("node:url");
-    const { realpathSync } = require("node:fs") as typeof import("node:fs");
-    const { resolve } = require("node:path") as typeof import("node:path");
-    const moduleFile = fileURLToPath(import.meta.url);
-    const entryFile = resolve(entry);
+    if (!entryArg) return false;
+    const moduleFile = fileURLToPath(moduleUrl);
+    const entryFile = resolve(entryArg);
     try {
       return realpathSync(moduleFile) === realpathSync(entryFile);
     } catch {

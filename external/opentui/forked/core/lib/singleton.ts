@@ -1,8 +1,9 @@
 const singletonCacheSymbol = Symbol.for("@opentui/core/singleton")
 
 /**
- * Ensures a value is initialized once per process,
- * persists across Bun hot reloads, and is type-safe.
+ * 同一进程内只初始化一次，类型安全。
+ * 值挂在 globalThis 的 `Symbol.for` 槽上，所以模块被重新求值
+ * （tsx 重载、多次 import 同一入口）时仍能拿回同一个实例。
  */
 export function singleton<T>(key: string, factory: () => T): T {
   // @ts-expect-error this symbol is only used in this file and is not part of the public API

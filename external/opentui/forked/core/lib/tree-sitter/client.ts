@@ -14,10 +14,9 @@ import type {
   TreeSitterWorkerResponse,
 } from "./types.js"
 import { getParsers } from "./default-parsers.js"
-import { dirname, join, resolve, isAbsolute, parse } from "path"
+import { resolve, isAbsolute } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env.js"
-import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
 import {
   type PlatformWorkerHandle,
   type WorkerErrorEvent,
@@ -210,12 +209,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       return OTUI_TREE_SITTER_WORKER_PATH
     }
 
-    // : in a bun --compile single-file binary, import.meta lives under
-    // /$bunfs/; resolve the worker next to the executable instead.
+    // 注：原先这里有 isBunfsPath(moduleDir) 分支，把 worker 解析到可执行文件同级的
+    // tree-sitter/parser.worker.js —— 那是 Bun 单文件产物把模块挂到 /$bunfs/ 虚拟盘时
+    // 的补偿。Node 布局下 import.meta 一直是真实目录，分支恒不成立，故删除。
     const moduleDir = import.meta.dirname
-    if (isBunfsPath(moduleDir)) {
-      return join(dirname(process.execPath), "tree-sitter", "parser.worker.js")
-    }
 
     let workerPath = new URL("./parser.worker.js", import.meta.url).href
 
@@ -354,9 +351,6 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private resolvePath(path: string): string {
     if (isUrl(path)) {
       return path
-    }
-    if (isBunfsPath(path)) {
-      return normalizeBunfsPath(parse(path).base)
     }
     if (!isAbsolute(path)) {
       return resolve(path)

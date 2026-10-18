@@ -21,12 +21,6 @@ type StreamEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint
 
 export type DataHandler = (data: Uint8Array) => void | Promise<void>
 
-const canThrowAcrossNativeCallback =
-  typeof process !== "undefined" &&
-  typeof process.versions === "object" &&
-  process.versions !== null &&
-  typeof process.versions.bun === "string"
-
 /**
  * Zero-copy wrapper over Zig memory; not a full stream interface.
  * Chunk and state typed-array views are borrowed and invalid after destroy.
@@ -351,12 +345,12 @@ export class NativeSpanFeed {
     }
 
     if (firstError) {
-      if (!this.inCallback || canThrowAcrossNativeCallback) {
+      // 不在原生回调栈里时可以直接抛。node:ffi 会让跨回调边界上抛的 JS 异常直接终止进程，
+      // 所以那种情况下改挂成 pending error，等回调返回后再抛出去，而不是吞掉。
+      if (!this.inCallback) {
         throw firstError
       }
 
-      // Node FFI terminates when JS exceptions cross a native callback boundary.
-      // Surface the error after the callback returns instead of swallowing it.
       this.queuePendingHandlerError(firstError)
     }
 

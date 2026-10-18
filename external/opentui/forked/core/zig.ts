@@ -64,7 +64,6 @@ import type {
   AllocatorStats,
   NativeRenderStats,
 } from "./zig-structs.js"
-import { isBunfsPath } from "./lib/bunfs.js"
 
 export type NativeHandle<T extends string> = Pointer & { readonly __nativeHandle: T }
 export type RendererHandle = NativeHandle<"renderer">
@@ -77,25 +76,18 @@ export type SyntaxStyleHandle = NativeHandle<"syntax_style">
 export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 const currentDir = dirname(fileURLToPath(import.meta.url))
-const realCurrentDir = isBunfsPath(currentDir) ? currentDir : realpathSync(currentDir)
-const executableDir = dirname(process.execPath)
+const realCurrentDir = realpathSync(currentDir)
 const zigArch =
   process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch
 const zigOs =
   process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : process.platform
 const nativeLibFile =
   process.platform === "darwin" ? "libopentui.dylib" : process.platform === "win32" ? "opentui.dll" : "libopentui.so"
-const isCompiledBinary = isBunfsPath(currentDir)
 const localNativeCandidates = [
-  // Executable-adjacent paths only make sense for the compiled binary;
-  // in dev mode executableDir points at bun's own directory where a
-  // stale dylib from a previous version could shadow the npm package.
-  ...(isCompiledBinary
-    ? [
-        join(executableDir, "native", `${process.platform}-${process.arch}`, nativeLibFile),
-        join(executableDir, nativeLibFile),
-      ]
-    : []),
+  // 注：这里原有两条 join(dirname(process.execPath), ...) 可执行文件同级候选，
+  // 只服务于 Bun 单文件产物（模块路径挂在 $bunfs / B:\~BUN 虚拟盘下）。
+  // Node SEA 布局的 native 库来自 runtime/node_modules 的 @opentui/core-<target> 包，
+  // 由下面的预编译包导入分支解析，因此同级候选连同 isCompiledBinary 判定一并删除。
   join(currentDir, "zig", "zig-out", "lib", nativeLibFile),
   join(currentDir, "zig", "lib", `${zigArch}-${zigOs}`, nativeLibFile),
   join(currentDir, "native", `${process.platform}-${process.arch}`, nativeLibFile),
@@ -126,10 +118,6 @@ const nativeTarget = `${process.platform}-${process.arch}`
 if (!targetLibPath && PREBUILT_NATIVE_TARGETS.has(nativeTarget)) {
   const nativePackage = await import(`@opentui/core-${nativeTarget}`)
   targetLibPath = nativePackage.default as string
-
-  if (isBunfsPath(targetLibPath)) {
-    targetLibPath = targetLibPath.replace("../", "")
-  }
 }
 
 if (!targetLibPath || !existsSync(targetLibPath)) {

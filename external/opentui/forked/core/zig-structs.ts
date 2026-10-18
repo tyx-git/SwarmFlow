@@ -1,3 +1,6 @@
+// 注意：`bun-ffi-structs` 是已发布的 npm 包名（历史命名），它是 @opentui/core 自己声明的
+// 依赖、并被 inline 进该包的 Node 产物，包内错误文案就写着 "requires Bun or Node.js with
+// node:ffi enabled"。这里只能按真实包名导入，别当 Bun 残留清理掉。
 import { defineStruct, defineEnum } from "bun-ffi-structs"
 import { ptr, toArrayBuffer, type Pointer } from "./platform/ffi.js"
 import { RGBA, normalizeColorValue } from "./lib/RGBA.js"

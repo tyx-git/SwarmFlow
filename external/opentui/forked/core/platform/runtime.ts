@@ -11,47 +11,43 @@ export interface WriteFileOptions {
   mode?: number
 }
 
-interface BunLike {
-  sleep(msOrDate: number | Date): Promise<void>
-  stringWidth(text: string): number
-  stripANSI(text: string): string
-  write(destination: string | URL, data: string | ArrayBufferView, options?: WriteFileOptions): Promise<number>
-}
-
 interface FileImportModule {
   default: string
 }
 
 type FilePathFallback = string | URL | (() => string | URL)
 
-type GlobalWithBun = typeof globalThis & { Bun?: BunLike }
-
 const TEXT_ENCODER = new TextEncoder()
-const bun = (globalThis as GlobalWithBun).Bun
 
-export const sleep: (msOrDate: number | Date) => Promise<void> = bun?.sleep ?? standardSleep
-export const stringWidth: (text: string) => number = bun?.stringWidth ?? stringWidthLib
-export const stripANSI: (text: string) => string = bun?.stripANSI ?? stripAnsiLib
+// 本项目只跑在 Node 上（tsx 开发态与打包后的 SEA exe），因此这里不再做运行时探测，
+// 每个能力直接用 Node 实现。上游 fork 的 Bun 分支不在我们的运行图里。
+export const sleep: (msOrDate: number | Date) => Promise<void> = standardSleep
+export const stringWidth: (text: string) => number = stringWidthLib
+export const stripANSI: (text: string) => string = stripAnsiLib
 export const writeFile: (
   destination: string | URL,
   data: string | ArrayBufferView,
   options?: WriteFileOptions,
-) => Promise<number> = bun?.write ?? writeFilePortable
+) => Promise<number> = writeFilePortable
 
-// Bun only discovers bundled file-like assets from the literal import expression at the call site.
+/**
+ * 解析随包的 tree-sitter 资产（.scm / .wasm）路径。
+ *
+ * 打包器会把 `import()` 回调重写成发射产物（`./assets/<name>-<hash>`）的路径，
+ * 所以只能执行 loader 拿结果，不能去读它的源码。开发态（tsx）没有重写，
+ * import 的是源文件本身，回退路径就是正确答案 —— 先试回退路径存在与否，
+ * 覆盖两种布局。
+ */
 export async function resolveBundledFilePath(
   loadBundledFile: () => Promise<FileImportModule>,
   fallbackPath: FilePathFallback,
   metaUrl: string,
 ): Promise<string> {
-  if (!bun) {
-    const path = resolveFallbackFilePath(fallbackPath, metaUrl)
-    if (existsSync(path)) {
-      return path
-    }
+  const path = resolveFallbackFilePath(fallbackPath, metaUrl)
+  if (existsSync(path)) {
+    return path
   }
 
-  // Bundlers rewrite import() callbacks, so execute the loader rather than inspecting its source.
   return normalizeLoadedFilePath((await loadBundledFile()).default, metaUrl)
 }
 

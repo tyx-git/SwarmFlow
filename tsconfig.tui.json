@@ -2,9 +2,9 @@
   // TUI（external/opentui）的独立类型检查配置。
   //
   // 为什么不并入根 tsconfig：
-  //   * 根配置只覆盖 src/**（Node 侧），TUI 是浏览器/终端侧的 JSX 代码，两者依赖面不同
-  //   * TUI 目录里含大量内置 fork 自带的上游测试（依赖 bun:test）与仅 Bun 运行时可用的
-  //     插件运行时，它们不在应用的运行图里，纳入检查只会产生噪音
+  //   * 根配置只覆盖 src/**（Node 侧），TUI 是终端侧的 JSX 代码，依赖面不同
+  //     （@opentui/react 的 jsxImportSource、fork 镜像的 ambient 声明等）
+  //   * 两边混在一个配置里，src 侧的报错会被 TUI 的噪声淹没
   //
   // 本配置刻意只排除“运行时不会被加载”的部分，其余一律检查 —— 因此剩下的报错都是真问题。
   "extends": "./tsconfig.json",
@@ -13,9 +13,8 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    // TUI 只跑在 Node 22+/26 上（tsx dev 与打包后的 exe），因此允许 ES2024.Promise：
-    // 内置 fork 的 tree-sitter 测试辅助代码用了 Promise.withResolvers。
-    "lib": ["ES2022", "DOM", "ES2024.Promise"]
+    // TUI 只跑在 Node 上（tsx 开发态与打包后的 SEA exe）。
+    "lib": ["ES2022", "DOM"]
   },
   "include": [
     "external/opentui/**/*.ts",
@@ -26,7 +25,7 @@
   "exclude": [
     "node_modules",
     "release",
-    // 上游自带的测试/基准/测试辅助：跑在 bun 下，不属于应用运行图
+    // 上游自带的测试/基准/测试辅助：不属于应用运行图
     // （2026-10-14 已从仓库删除 core/{tests,benchmark,testing} 与全部 *.test.ts，
     //   以下模式保留是为了防止将来重新引入同类文件时污染检查）
     "**/*.test.ts",

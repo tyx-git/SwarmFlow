@@ -21,7 +21,9 @@ const seaConfigPath = join(outputRoot, "sea-config.json");
 const seaBlobPath = join(outputRoot, "sea-prep.blob");
 const nvmPostjectCli = join(root, "node_modules", "postject", "dist", "cli.js");
 const bootstrapPath = join(root, "scripts", "sea-bootstrap.cjs");
-const ignoredNodeModuleRoots = new Set([".bun", ".vite", ".vite-temp", ".cache"]);
+// node_modules 下点开头的目录都是包管理/构建器的本地缓存（.vite、.cache、各类安装仓等），
+// 不该跟着 runtime 发布，一律按点前缀排除，不再逐个登记包管理器名字。
+const isIgnoredNodeModuleRoot = (name) => name.startsWith(".");
 const nodeMajorVersion = Number.parseInt(process.versions.node.split(".", 1)[0] ?? "0", 10);
 
 function run(command, args, options = {}) {
@@ -65,7 +67,7 @@ function copyRuntimeNodeModules() {
       const pathFromRoot = relative(source, current);
       if (!pathFromRoot) return true;
       const firstSegment = pathFromRoot.split(sep)[0];
-      return !ignoredNodeModuleRoots.has(firstSegment);
+      return !isIgnoredNodeModuleRoot(firstSegment);
     },
   });
 }

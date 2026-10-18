@@ -4,25 +4,22 @@ import { fileURLToPath } from "node:url"
 declare const pointerBrand: unique symbol
 
 // This module owns OpenTUI's native FFI surface. Portable code imports this
-// file instead of bun:ffi, so backends can keep the same call sites.
+// file instead of requiring node:ffi directly, so pointer and type-name
+// differences are normalized once at the backend boundary.
 
 // External FFI producers may expose their own branded pointer types. Public APIs
 // that consume foreign pointers should accept the raw pointer shape and normalize
 // it before crossing OpenTUI's native boundary.
 export type PointerInput = number | bigint
 
-// Runtime pointers are numbers in Bun and bigints in Node's experimental FFI.
-// Keep both in our own type, and narrow only inside a backend that requires it.
+// node:ffi 的指针是 bigint，但调用方（Yoga/zig 绑定、测试夹具）也会传 number，
+// 因此这里保留两种形状，只在后端内部收窄。
 export type Pointer = PointerInput & { readonly [pointerBrand]: "Pointer" }
 
 type PointerSource = ArrayBufferLike | ArrayBufferView
 
-// Bun accepts numeric pointers only. Keep this type private so Bun's pointer
-// model does not leak into the exported surface.
-type BunPointer = number
-
-// These names match the Bun FFI type strings OpenTUI uses today. Other
-// backends map them at library load time instead of wrapping every native call.
+// 类型名沿用上游 OpenTUI 的 FFI 名称；到 node:ffi 的映射在库装载时统一做一次，
+// 不包装每一次原生调用。
 export const FFIType = {
   char: "char",
   int8_t: "int8_t",
@@ -60,7 +57,7 @@ export const FFIType = {
 } as const
 
 export type FFIType = (typeof FFIType)[keyof typeof FFIType]
-// Kept as a source-shape compatibility alias for Bun-style call sites.
+// 上游调用点沿用 FFITypeOrString 这个名字；Node 后端只接受这一种形状，保留别名。
 export type FFITypeOrString = FFIType
 
 // A function definition describes one native symbol. `ptr` overrides the symbol
@@ -103,26 +100,6 @@ interface FfiBackend {
   toArrayBuffer(pointer: Pointer, offset: number | undefined, length: number): ArrayBuffer
 }
 
-interface BunFFIFunction {
-  readonly args?: readonly FFITypeOrString[]
-  readonly returns?: FFITypeOrString
-  readonly ptr?: BunPointer
-  readonly threadsafe?: boolean
-}
-
-interface BunFfiLibrary<Fns extends Record<string, BunFFIFunction>> {
-  symbols: { [K in keyof Fns]: (...args: any[]) => any }
-  close(): void
-}
-
-interface BunFfiBackend {
-  JSCallback: new (callback: (...args: any[]) => any, definition: BunFFIFunction) => FFICallbackInstance
-  dlopen<Fns extends Record<string, BunFFIFunction>>(path: string | URL, symbols: Fns): BunFfiLibrary<Fns>
-  ptr(value: PointerSource): Pointer
-  suffix: string
-  toArrayBuffer(pointer: BunPointer, offset: number | undefined, length: number): ArrayBuffer
-}
-
 interface NodeFFIFunction {
   readonly arguments: readonly string[]
   readonly return: string
@@ -147,11 +124,10 @@ interface NodeFfiBackend {
 }
 
 export const FFI_UNAVAILABLE = "OpenTUI native FFI is not available for this runtime yet"
-export const BUN_DLOPEN_NULL = "Bun FFI backend does not support dlopen(null)"
 export const LIBRARY_CLOSED = "Cannot create FFI callback after library.close() has been called"
 export const NODE_CALLBACK_THREADSAFE =
   "Node FFI callbacks are same-thread only and do not support threadsafe callbacks"
-export const NODE_NAPI_UNSUPPORTED = "Node FFI backend does not support Bun N-API FFI types"
+export const NODE_NAPI_UNSUPPORTED = "Node FFI backend does not support N-API FFI types"
 export const NODE_POINTER_OVERRIDE = "Node FFI backend does not support FFIFunction.ptr overrides"
 export const NODE_POINTER_ARGUMENT = "Node FFI pointer arguments must be a Pointer, ArrayBuffer, or ArrayBufferView"
 export const NODE_PTR_VALUE =
@@ -167,7 +143,8 @@ function unavailable(cause?: unknown): never {
   throw new Error(FFI_UNAVAILABLE, { cause })
 }
 
-// The placeholder backend lets non-Bun runtimes load without errors.
+// node:ffi 拿不到时（低版本 Node，或未开 --experimental-ffi）用占位后端兜住模块加载，
+// 真正的失败推迟到第一次触碰原生边界时抛出。
 function createUnsupportedBackend(cause?: unknown): FfiBackend {
   return {
     dlopen() {
@@ -183,22 +160,10 @@ function createUnsupportedBackend(cause?: unknown): FfiBackend {
   }
 }
 
-const isBun =
-  typeof process !== "undefined" &&
-  typeof process.versions === "object" &&
-  process.versions !== null &&
-  typeof process.versions.bun === "string"
-
 const requireModule = createRequire(import.meta.url)
 const backend = loadBackend()
 
 function loadBackend(): FfiBackend {
-  // Keep the Bun module import behind the runtime check so Node does not
-  // resolve bun:ffi during import.
-  if (isBun) {
-    return createBunBackend(requireModule("bun:ffi") as BunFfiBackend)
-  }
-
   try {
     const nodeFfi = requireModule("node:ffi") as NodeFfiBackend & { default?: NodeFfiBackend }
     return createNodeBackend(nodeFfi.default ?? nodeFfi)
@@ -207,14 +172,9 @@ function loadBackend(): FfiBackend {
   }
 }
 
-// Normalize foreign pointer-like values into the current runtime's pointer
-// representation before passing them to native code.
+// 把外部指针值归一化成 node:ffi 需要的 bigint，再传给原生代码。
 export function toPointer(value: PointerInput): Pointer {
-  if (isBun && typeof value === "bigint") {
-    return toSafeNumberPointer(value) as Pointer
-  }
-
-  if (!isBun && typeof value === "number") {
+  if (typeof value === "number") {
     return toSafeBigIntPointer(value) as Pointer
   }
 
@@ -223,20 +183,6 @@ export function toPointer(value: PointerInput): Pointer {
 
 export function ffiBool(value: boolean): 0 | 1 {
   return value ? 1 : 0
-}
-
-// Convert a bigint pointer to a number only when JavaScript can represent it
-// exactly. A rounded pointer would target the wrong address.
-function toSafeNumberPointer(pointer: bigint): number {
-  if (pointer < 0n) {
-    throw new Error(POINTER_NEGATIVE)
-  }
-
-  if (pointer > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error(POINTER_UNSAFE)
-  }
-
-  return Number(pointer)
 }
 
 function toSafeBigIntPointer(pointer: number): bigint {
@@ -285,89 +231,6 @@ function createManagedCallback(raw: FFICallbackInstance, callbacks: Set<FFICallb
   callbacks.add(instance)
 
   return instance
-}
-
-function normalizeBunDefinitions<Fns extends Record<string, FFIFunction>>(
-  definitions: Fns,
-): { [K in keyof Fns]: BunFFIFunction } {
-  // Normalize all Bun definitions before `dlopen()`. Bun rejects bigint pointer
-  // overrides, so convert them once before loading the native library.
-  return Object.fromEntries(
-    Object.entries(definitions).map(([name, definition]) => [name, normalizeBunDefinition(definition)]),
-  ) as { [K in keyof Fns]: BunFFIFunction }
-}
-
-function normalizeBunDefinition(definition: FFIFunction): BunFFIFunction {
-  return {
-    args: definition.args,
-    returns: definition.returns,
-    ptr: definition.ptr == null ? undefined : toBunPointer(definition.ptr),
-    threadsafe: definition.threadsafe,
-  }
-}
-
-// Convert Pointer pointers to Bun pointers at the Bun boundary only.
-function toBunPointer(pointer: Pointer): BunPointer {
-  return typeof pointer === "bigint" ? toSafeNumberPointer(pointer) : pointer
-}
-
-// Create a Bun backend from bun:ffi.
-export function createBunBackend(bun: BunFfiBackend): FfiBackend {
-  return {
-    dlopen(path, symbols) {
-      if (path === null) {
-        throw new Error(BUN_DLOPEN_NULL)
-      }
-
-      const library = bun.dlopen(path, normalizeBunDefinitions(symbols))
-      const callbacks = new Set<FFICallbackInstance>()
-      let closed = false
-
-      return {
-        symbols: library.symbols,
-        createCallback(callback, definition) {
-          if (closed) {
-            // A closed library no longer owns native state. New callbacks would
-            // have no cleanup path.
-            throw new Error(LIBRARY_CLOSED)
-          }
-
-          // Bun callbacks are standalone objects. OpenTUI treats them as
-          // library-owned to match the future Node FFI shape and to avoid
-          // leaked trampolines.
-          const raw = new bun.JSCallback(callback, normalizeBunDefinition(definition))
-
-          return createManagedCallback(raw, callbacks)
-        },
-        close() {
-          if (closed) {
-            return
-          }
-
-          closed = true
-
-          try {
-            // Close native state while callbacks still point to live
-            // trampolines. Native teardown may call back during final cleanup.
-            library.close()
-          } finally {
-            // After native teardown, close any JS trampolines the caller did
-            // not close explicitly.
-            for (const callback of [...callbacks]) {
-              callback.close()
-            }
-          }
-        },
-      }
-    },
-    ptr: bun.ptr,
-    suffix: bun.suffix,
-    toArrayBuffer(pointer, offset, length) {
-      // Bun only accepts numeric pointers here. Keep the coercion at this
-      // backend boundary.
-      return bun.toArrayBuffer(toBunPointer(pointer), offset, length)
-    },
-  }
 }
 
 // Create a Node backend from node:ffi.
@@ -595,18 +458,10 @@ function toNodeFFIType(type: FFITypeOrString, position: "parameter" | "result"):
     case FFIType.void:
       return "void"
     case FFIType.cstring:
-      // TODO(audit): cstring vs string semantics differ between backends.
-      //
-      // The type-name mapping here is intentional, but the runtime marshalling
-      // is not equivalent:
-      //   - Bun's `cstring` parameter rejects raw JavaScript strings; callers
-      //     must pass a TypedArray, a Pointer, or a CString.
-      //   - Node's `string` parameter copies a JavaScript string to a
-      //     temporary NUL-terminated UTF-8 buffer for the duration of the
-      //     call.
-      //
-      // Callsites should encode strings into byte buffers and pass pointers
-      // instead of relying on either backend's string handling.
+      // TODO(audit): cstring 与 string 的封送语义并不等价。node:ffi 的 `string`
+      // 形参会把 JS 字符串拷进一块只在本次调用内有效的 NUL 结尾 UTF-8 缓冲区，
+      // 调用方应当自己编码成字节缓冲区再传指针，不要依赖后端的字符串处理；
+      // 作为返回值时 node:ffi 没有等价封送，直接拒绝。
       if (position === "result") {
         throw new Error(NODE_STRING_RETURN)
       }
@@ -623,7 +478,7 @@ function toNodeFFIType(type: FFITypeOrString, position: "parameter" | "result"):
       throw new Error(NODE_USIZE_UNSUPPORTED)
     case FFIType.napi_env:
     case FFIType.napi_value:
-      // Bun's N-API bridge types are not equivalent to raw Node FFI pointers.
+      // N-API 桥接类型与 node:ffi 的裸指针并不等价，映射不了就直接拒绝。
       throw new Error(NODE_NAPI_UNSUPPORTED)
     case FFIType.buffer:
       return "buffer"
