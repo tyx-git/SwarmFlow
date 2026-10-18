@@ -36,8 +36,8 @@ interface InputAreaProps {
   selectedChildId: string | null;
   hasQueuedUserInput?: boolean;
   phase: ActivityPhase;
-  /** Temporary network state shown in place of the regular activity label. */
-  networkStatus?: string | null;
+  /** Temporary retry state shown in place of the regular activity label. */
+  retryStatus?: string | null;
   modelName: string;
   /** 思考深度后缀，显示在"供应商/模型"之后（暗色）。空串 = 隐藏。 */
   thinkingSuffix: string;
@@ -112,7 +112,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     selectedChildId,
     hasQueuedUserInput = false,
     phase,
-    networkStatus = null,
+    retryStatus = null,
     modelName,
     modelColor,
     elapsed,
@@ -159,21 +159,23 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
   const spinnerConfig = getPhaseSpinnerConfig(phase);
   const activeSpinner = useSpinner(spinnerConfig.frames, spinnerConfig.interval, processing);
   const phaseColor = getPhaseColor(phase, colors);
+  // Retry 是异常状态，用警告色而不是普通 Working 色，避免一闪而过时被忽略。
+  const activityColor = retryStatus ? colors.yellow : phaseColor;
   const activityLabel = phase === "Compacting"
     ? t.get(["Views", "activity", "compacting"], { seconds: Math.floor(elapsed) })
-    : networkStatus ?? phase;
+    : retryStatus ?? phase;
   const workedStatus = typeof lastWorkedElapsed === "number" && lastWorkedStartedAt !== null
     ? `Worked for ${formatWorkedDuration(lastWorkedElapsed)} · ${formatWorkedStartTime(lastWorkedStartedAt)}`
     : null;
   const activityStatus = processing ? (
-    <box flexDirection="row" flexShrink={networkStatus ? 1 : 0}>
+    <box flexDirection="row" flexShrink={retryStatus ? 1 : 0}>
       <text
-        fg={phaseColor}
+        fg={activityColor}
         content={`${activeSpinner} ${activityLabel}`}
-        flexShrink={networkStatus ? 1 : 0}
-        truncate={Boolean(networkStatus)}
+        flexShrink={retryStatus ? 1 : 0}
+        truncate={Boolean(retryStatus)}
       />
-      {elapsed > 0 && !networkStatus && phase !== "Compacting" ? (
+      {elapsed > 0 && !retryStatus && phase !== "Compacting" ? (
         <text fg={colors.dim} content={` ${formatElapsed(elapsed)}`} />
       ) : null}
     </box>

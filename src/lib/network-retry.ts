@@ -26,13 +26,13 @@ export const MAX_NETWORK_RETRIES = 5;
 export const RETRY_BASE_DELAY_MS = 5_000;
 
 /**
- * "回合未完成"（空响应 / 输出被 max_tokens 截断）的最大重掷次数。
+ * "回合未完成"（空响应 / 输出被 max_tokens 截断 / 断流）的最大重掷次数。
  *
  * 与网络故障分开计数：上游是响应了的，只是产出不可用。这类故障靠退避等待
  * 解决不了，靠重新采样（temperature>0 时输出不同）才可能解决，所以次数少、
  * 等待短，避免把 5 次网络预算和 80 秒等待烧在一次毫无意义的停顿上。
  */
-export const MAX_INCOMPLETE_TURN_RETRIES = 2;
+export const MAX_INCOMPLETE_TURN_RETRIES = 3;
 
 /** 未完成回合重掷的退避基数：0.5 秒起，每次翻倍。 */
 const INCOMPLETE_RETRY_BASE_DELAY_MS = 500;
@@ -314,6 +314,13 @@ export function isRetryableNetworkError(err: unknown): boolean {
 // ------------------------------------------------------------------
 
 /**
+ * 重试类别：
+ * - network：连接级/瞬态 HTTP 故障；
+ * - incomplete：上游响应了，但空响应、截断或断流导致回合未完成。
+ */
+export type RetryKind = "network" | "incomplete";
+
+/**
  * "上游响应了、但这一轮没跑完"。
  *
  * 空响应、max_tokens 截断、断流都归到这里。带上 `.code` 是为了让
@@ -372,10 +379,9 @@ export function computeRetryDelay(attempt: number): number {
 }
 
 /**
- * 未完成回合重掷的退避：0.5 秒、1 秒，叠加 0–25% 抖动。
+ * 未完成回合重掷的短退避：0.5 秒、1 秒、2 秒，叠加 0–25% 抖动。
  *
- * 刻意比网络退避短：上游没有故障，只是这一轮的产出被截断或为空。等待改变
- * 不了结果，重掷才可能；停顿久了只会让用户以为卡死。
+ * 仅用于“等待改变不了结果”的缺陷；靠重新采样才可能恢复，所以停顿短。
  */
 export function computeIncompleteRetryDelay(attempt: number): number {
   const baseDelay = INCOMPLETE_RETRY_BASE_DELAY_MS * Math.pow(2, Math.max(0, attempt));

@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TurnLifecycleEvent } from "../src/session.js";
+import { MAX_INCOMPLETE_TURN_RETRIES } from "../src/lib/network-retry.js";
 import {
   ScriptedProvider,
   makeScriptedAgentObject,
@@ -58,13 +59,16 @@ describe("runtime-owned error entries", () => {
   });
 
   it("retries an empty provider response, then fails the turn", async () => {
-    // 1 次首发 + MAX_INCOMPLETE_TURN_RETRIES(2) 次重掷，全部为空才算失败。
+    // 1 次首发 + MAX_INCOMPLETE_TURN_RETRIES 次重掷，全部为空才算失败。
     const h = makeScriptedSession({
-      rounds: [{ text: "" }, { text: "" }, { text: "" }],
+      rounds: Array.from(
+        { length: MAX_INCOMPLETE_TURN_RETRIES + 1 },
+        () => ({ text: "" }),
+      ),
     });
     try {
       await expect(h.session.turn("hello")).rejects.toThrow("empty response");
-      expect(h.provider.callCount).toBe(3);
+      expect(h.provider.callCount).toBe(MAX_INCOMPLETE_TURN_RETRIES + 1);
       const workEnds = h.session.log.filter((e) => e.type === "work_end" && !e.discarded);
       expect(workEnds).toHaveLength(1);
       expect((workEnds[0]!.meta as Record<string, unknown>).status).toBe("error");
@@ -72,7 +76,7 @@ describe("runtime-owned error entries", () => {
     } finally {
       h.dispose();
     }
-  });
+  }, 15_000);
 
   it("recovers when a retry after an empty response produces output", async () => {
     const h = makeScriptedSession({

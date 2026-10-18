@@ -5526,20 +5526,29 @@ export class Session {
     };
 
     const agentName = this.primaryAgent.name;
-    const emitRetryAttempt = (attempt: number, max: number, delaySec: number, errMsg: string) => {
+    const emitRetryAttempt = (
+      attempt: number,
+      max: number,
+      delaySec: number,
+      errMsg: string,
+      kind: "network" | "incomplete" = "network",
+    ) => {
+      const label = kind === "incomplete" ? "Response retry" : "Network retry";
       if (!this._compactInProgress) {
-        // 重试过程只通过输入框状态栏显示，避免把短暂的网络状态写入主界面。
         const entry = createStatus(
           this._nextLogId("status"),
           activationTurnIndex,
-          `[Network retry ${attempt}/${max}] waiting ${delaySec}s: ${errMsg}`,
+          `[${label} ${attempt}/${max}] waiting ${delaySec}s: ${errMsg}`,
           "retry_attempt",
         );
-        entry.tuiVisible = false;
-        entry.displayKind = null;
+        // 未完成回合的重试是异常事件，应该出现在对话记录里；网络重试仍只占状态栏。
+        if (kind !== "incomplete") {
+          entry.tuiVisible = false;
+          entry.displayKind = null;
+        }
         this._appendEntry(entry, false);
       }
-      this._progress?.onRetryAttempt(agentName, attempt, max, delaySec, errMsg);
+      this._progress?.onRetryAttempt(agentName, attempt, max, delaySec, errMsg, kind);
     };
     const emitRetrySuccess = (attempt: number) => {
       if (!this._compactInProgress) {
@@ -5547,7 +5556,7 @@ export class Session {
         const entry = createStatus(
           this._nextLogId("status"),
           activationTurnIndex,
-          `[Network retry succeeded] attempt ${attempt}`,
+          "[Retry succeeded] attempt " + attempt,
           "retry_success",
         );
         entry.tuiVisible = false;
@@ -5556,19 +5565,24 @@ export class Session {
       }
       this._progress?.onRetrySuccess(agentName, attempt);
     };
-    const emitRetryExhausted = (max: number, errMsg: string) => {
+    const emitRetryExhausted = (
+      max: number,
+      errMsg: string,
+      kind: "network" | "incomplete" = "network",
+    ) => {
+      const label = kind === "incomplete" ? "Response retry exhausted" : "Network retry exhausted";
       if (!this._compactInProgress) {
         this._appendEntry(
           createErrorEntry(
             this._nextLogId("error"),
             activationTurnIndex,
-            `[Network retry exhausted after ${max} attempts] ${errMsg}`,
+            `[${label} after ${max} attempts] ${errMsg}`,
             "retry_exhausted",
           ),
           false,
         );
       }
-      this._progress?.onRetryExhausted(agentName, max, errMsg);
+      this._progress?.onRetryExhausted(agentName, max, errMsg, kind);
     };
 
     // v2: callback-based message management

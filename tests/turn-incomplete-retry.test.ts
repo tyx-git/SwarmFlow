@@ -86,7 +86,7 @@ describe("tool-loop incomplete-turn retries", () => {
     } finally {
       h.dispose();
     }
-  });
+  }, 15_000);
 
   it("accepts a truncation-free retry instead of failing the turn", async () => {
     const h = makeScriptedSession({
@@ -113,6 +113,41 @@ describe("tool-loop incomplete-turn retries", () => {
     try {
       await expect(h.session.turn("hello")).rejects.toThrow(/terminal status/);
       expect(h.provider.callCount).toBe(MAX_INCOMPLETE_TURN_RETRIES + 1);
+    } finally {
+      h.dispose();
+    }
+  }, 15_000);
+
+  it("retries an empty response through the incomplete-turn budget", async () => {
+    const rounds = Array.from(
+      { length: MAX_INCOMPLETE_TURN_RETRIES + 1 },
+      () => ({ text: "", stopReason: null }),
+    );
+    const h = makeScriptedSession({ rounds });
+    try {
+      await expect(h.session.turn("hello")).rejects.toThrow(/empty response/);
+      expect(h.provider.callCount).toBe(MAX_INCOMPLETE_TURN_RETRIES + 1);
+      const retryStatuses = h.session.log.filter(
+        (entry) => entry.type === "status" && String(entry.display).includes("Response retry"),
+      );
+      expect(retryStatuses.length).toBeGreaterThan(0);
+      expect(retryStatuses.every((entry) => entry.tuiVisible === true)).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  }, 15_000);
+
+  it("recovers when an empty response is followed by a valid retry", async () => {
+    const h = makeScriptedSession({
+      rounds: [
+        { text: "", stopReason: null },
+        { text: "重掷后正常返回", stopReason: "end_turn" },
+      ],
+    });
+    try {
+      await expect(h.session.turn("hello")).resolves.toContain("重掷后正常返回");
+      expect(h.provider.callCount).toBe(2);
+      expect(h.session.lastTurnEndStatus).toBe("completed");
     } finally {
       h.dispose();
     }

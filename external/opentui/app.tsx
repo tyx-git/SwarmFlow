@@ -355,58 +355,63 @@ export function OpenTuiApp({
     _setProcessing(v);
   }, []);
   const [phase, setPhase] = useState<ActivityPhase>("idle");
-  // 网络重试状态只覆盖输入框中的活动文字，不改变 Working 阶段本身。
-  const [networkStatus, setNetworkStatus] = useState<string | null>(null);
-  const networkRetryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const networkRetryTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const networkRetryGenerationRef = useRef(0);
-  const clearNetworkStatus = useCallback(() => {
-    networkRetryGenerationRef.current += 1;
-    if (networkRetryTimerRef.current) {
-      clearInterval(networkRetryTimerRef.current);
-      networkRetryTimerRef.current = null;
+  // 重试状态只覆盖输入框中的活动文字，不改变 Working 阶段本身。
+  const [retryStatus, setRetryStatus] = useState<string | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryGenerationRef = useRef(0);
+  const clearRetryStatus = useCallback(() => {
+    retryGenerationRef.current += 1;
+    if (retryTimerRef.current) {
+      clearInterval(retryTimerRef.current);
+      retryTimerRef.current = null;
     }
-    if (networkRetryTransitionRef.current) {
-      clearTimeout(networkRetryTransitionRef.current);
-      networkRetryTransitionRef.current = null;
+    if (retryTransitionRef.current) {
+      clearTimeout(retryTransitionRef.current);
+      retryTransitionRef.current = null;
     }
-    setNetworkStatus(null);
+    setRetryStatus(null);
   }, []);
-  const showNetworkRetryStatus = useCallback((attempt: number, maxRetries: number, delaySec: number) => {
-    clearNetworkStatus();
-    const generation = networkRetryGenerationRef.current;
+  const showRetryStatus = useCallback((
+    attempt: number,
+    maxRetries: number,
+    delaySec: number,
+    kind: "network" | "incomplete" = "network",
+  ) => {
+    clearRetryStatus();
+    const generation = retryGenerationRef.current;
     const seconds = Math.max(0, Number.isFinite(delaySec) ? Math.floor(delaySec) : 0);
     let remaining = seconds;
-    setNetworkStatus(`Network retry ${attempt}/${maxRetries} waiting ${seconds}s`);
-    if (seconds === 0) {
-      setNetworkStatus("Waiting for network 0s");
-      return;
-    }
-    // 短暂显示重试次数，再切换为简洁的倒计时状态。
-    networkRetryTransitionRef.current = setTimeout(() => {
-      networkRetryTransitionRef.current = null;
-      if (networkRetryGenerationRef.current !== generation) return;
-      setNetworkStatus(`Waiting for network ${remaining}s`);
-      networkRetryTimerRef.current = setInterval(() => {
-        if (networkRetryGenerationRef.current !== generation) return;
+    const label = kind === "incomplete" ? "Response retry" : "Network retry";
+    // 始终保留 attempt/max 与倒计时，避免退化成只有 "Waiting for network"。
+    const retryText = (waitSeconds: number) =>
+      `${label} ${attempt}/${maxRetries} waiting ${waitSeconds}s`;
+    setRetryStatus(retryText(seconds));
+    if (seconds === 0) return;
+    retryTransitionRef.current = setTimeout(() => {
+      retryTransitionRef.current = null;
+      if (retryGenerationRef.current !== generation) return;
+      setRetryStatus(retryText(remaining));
+      retryTimerRef.current = setInterval(() => {
+        if (retryGenerationRef.current !== generation) return;
         remaining -= 1;
         if (remaining <= 0) {
-          if (networkRetryTimerRef.current) {
-            clearInterval(networkRetryTimerRef.current);
-            networkRetryTimerRef.current = null;
+          if (retryTimerRef.current) {
+            clearInterval(retryTimerRef.current);
+            retryTimerRef.current = null;
           }
-          setNetworkStatus(null);
+          setRetryStatus(null);
           return;
         }
-        setNetworkStatus(`Waiting for network ${remaining}s`);
+        setRetryStatus(retryText(remaining));
       }, 1000);
     }, 250);
-  }, [clearNetworkStatus]);
+  }, [clearRetryStatus]);
   useEffect(() => {
     return () => {
-      networkRetryGenerationRef.current += 1;
-      if (networkRetryTimerRef.current) clearInterval(networkRetryTimerRef.current);
-      if (networkRetryTransitionRef.current) clearTimeout(networkRetryTransitionRef.current);
+      retryGenerationRef.current += 1;
+      if (retryTimerRef.current) clearInterval(retryTimerRef.current);
+      if (retryTransitionRef.current) clearTimeout(retryTransitionRef.current);
     };
   }, []);
   const [contextTokens, setContextTokens] = useState(0);
@@ -786,7 +791,7 @@ export function OpenTuiApp({
       }
     } finally {
       abortControllerRef.current = null;
-      clearNetworkStatus();
+      clearRetryStatus();
       const suspended = Boolean(session.getPendingAsk?.());
       if (suspended) {
         setPhase("Asking");
@@ -795,7 +800,7 @@ export function OpenTuiApp({
         setPhase("idle");
       }
     }
-  }, [autoSave, clearNetworkStatus, session]);
+  }, [autoSave, clearRetryStatus, session]);
   const getAskQuestions = useCallback((): AgentQuestionItem[] => {
     if (!pendingAsk || pendingAsk.kind !== "agent_question") return [];
     return (pendingAsk.payload["questions"] as AgentQuestionItem[]) ?? [];
@@ -971,16 +976,18 @@ export function OpenTuiApp({
         const attempt = Number(event.extra["attempt"]);
         const maxRetries = Number(event.extra["maxRetries"]);
         const delaySec = Number(event.extra["delaySec"]);
-        showNetworkRetryStatus(
+        const retryKind = event.extra["retryKind"] === "incomplete" ? "incomplete" : "network";
+        showRetryStatus(
           Number.isFinite(attempt) ? attempt : 0,
           Number.isFinite(maxRetries) ? maxRetries : 0,
           Number.isFinite(delaySec) ? delaySec : 0,
+          retryKind,
         );
         break;
       }
       case "retry_success":
       case "retry_exhausted":
-        clearNetworkStatus();
+        clearRetryStatus();
         if (event.action === "retry_success") setPhase("Working");
         break;
       case "reasoning_chunk":
@@ -1352,7 +1359,7 @@ export function OpenTuiApp({
     closingRef.current = true;
     queuedCommandRef.current = null;
     setQueuedCommand(null);
-    clearNetworkStatus();
+    clearRetryStatus();
     setProcessing(false);
     setPhase("closing");
     setHint(null);
@@ -1362,7 +1369,7 @@ export function OpenTuiApp({
       clearTimeout(closingTimerRef.current);
     }
     void performExit();
-  }, [clearNetworkStatus, performExit]);
+  }, [clearRetryStatus, performExit]);
   const buildCommandOptions = useCallback((cmdName: string) => {
     const command = commandRegistry.lookup(cmdName);
     if (!command?.options) return [];
@@ -1625,7 +1632,7 @@ export function OpenTuiApp({
         else session.appendUserInputDisplay?.(echo);
       },
       resetUiState: () => {
-        clearNetworkStatus();
+        clearRetryStatus();
         setProcessing(false);
         setPhase("idle");
         updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
@@ -1705,7 +1712,7 @@ export function OpenTuiApp({
       },
       requestOAuthLogin,
     };
-  }, [clearNetworkStatus, session, store, commandRegistry, autoSave, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState, uiText]);
+  }, [clearRetryStatus, session, store, commandRegistry, autoSave, onNewSession, resolvePromptSecret, resolvePromptSelect, requestOAuthLogin, pickerMaxVisible, updateContextTokenState, uiText]);
   const runTurn = useCallback(async (input: string, inlineImages?: InlineImageInput[]) => {
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -1721,7 +1728,7 @@ export function OpenTuiApp({
       // to add at the UI layer.
     } finally {
       abortControllerRef.current = null;
-      clearNetworkStatus();
+      clearRetryStatus();
       const suspended = Boolean(session.getPendingAsk?.());
       if (suspended) {
         setPhase("Asking");
@@ -1730,7 +1737,7 @@ export function OpenTuiApp({
         setPhase("idle");
       }
     }
-  }, [clearNetworkStatus, session, autoSave, updateContextTokenState]);
+  }, [clearRetryStatus, session, autoSave, updateContextTokenState]);
   const runManualCompact = useCallback(async (instruction: string) => {
     if (typeof session.runManualCompact !== "function") {
       session.appendStatusMessage?.("/compact is not available in this session.");
@@ -1750,11 +1757,11 @@ export function OpenTuiApp({
       // Error log entry written by the runtime (runManualCompact).
     } finally {
       abortControllerRef.current = null;
-      clearNetworkStatus();
+      clearRetryStatus();
       setProcessing(false);
       setPhase("idle");
     }
-  }, [clearNetworkStatus, session, autoSave, uiText]);
+  }, [clearRetryStatus, session, autoSave, uiText]);
   const getSerializedComposerInput = useCallback((): string => {
     const composer = inputRef.current;
     if (!composer) return draftValue;
@@ -1973,7 +1980,7 @@ export function OpenTuiApp({
       // Error log entry written by the runtime (runInjectedCommand).
     } finally {
       abortControllerRef.current = null;
-      clearNetworkStatus();
+      clearRetryStatus();
       const suspended = Boolean(session.getPendingAsk?.());
       if (suspended) {
         setPhase("Asking");
@@ -1982,7 +1989,7 @@ export function OpenTuiApp({
         setPhase("idle");
       }
     }
-  }, [clearNetworkStatus, session, autoSave, handleSubmit, updateContextTokenState]);
+  }, [clearRetryStatus, session, autoSave, handleSubmit, updateContextTokenState]);
   const acceptInputOverlaySelection = useCallback(() => {
     const selectedValue = commandOverlay.values[commandOverlay.selected];
     if (!selectedValue) {
@@ -3181,7 +3188,7 @@ export function OpenTuiApp({
       detailScrollRef={detailScrollRef}
       selectedChildId={selectedChildId}
       hasQueuedUserInput={queuedInputs.length > 0}
-      networkStatus={selectedChildId ? null : networkStatus}
+      retryStatus={selectedChildId ? null : retryStatus}
       onAgentClick={enterChildSession}
       pendingAsk={pendingAsk}
       askError={askError}

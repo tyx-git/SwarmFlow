@@ -1,9 +1,6 @@
 import type { RefObject } from "react";
 import type { InputRenderable } from "@opentui/core";
-import type {
-  PendingAskUi,
-  AgentQuestionItem,
-} from "../../../src/ask.js";
+import type { PendingAskUi } from "../../../src/ask.js";
 import type { PromptChoice } from "../../../src/providers/credential-flow.js";
 import type { OAuthTokens } from "../../../src/auth/openai-oauth.js";
 import type { GitHubOAuthTokens } from "../../../src/auth/github-copilot-oauth.js";

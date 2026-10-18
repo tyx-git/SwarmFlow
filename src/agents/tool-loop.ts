@@ -34,6 +34,7 @@ import {
   MAX_NETWORK_RETRIES,
   MAX_INCOMPLETE_TURN_RETRIES,
   TurnIncompleteError,
+  type RetryKind,
 } from "../lib/network-retry.js";
 import type { LogEntry } from "../context/log-entry.js";
 import {
@@ -866,12 +867,12 @@ export interface ToolLoopOptions {
   onToolRoundComplete?: () => void;
   /** 为 true 时，流式 text/reasoning 回调拥有对应的日志条目。 */
   streamCallbacksOwnEntries?: boolean;
-  /** 检测到网络错误并重试时调用。 */
-  onRetryAttempt?: (attempt: number, maxRetries: number, delaySec: number, errMsg: string) => void;
-  /** 重试的网络调用成功时调用。 */
+  /** 检测到可重试错误时调用。 */
+  onRetryAttempt?: (attempt: number, maxRetries: number, delaySec: number, errMsg: string, kind?: RetryKind) => void;
+  /** 重试的调用成功时调用。 */
   onRetrySuccess?: (attempt: number) => void;
-  /** 所有网络重试耗尽时调用。 */
-  onRetryExhausted?: (maxRetries: number, errMsg: string) => void;
+  /** 所有重试耗尽时调用。 */
+  onRetryExhausted?: (maxRetries: number, errMsg: string, kind?: RetryKind) => void;
   /** 工具调用参数演进时调用；provider 传递最新原始参数缓冲区。 */
   onToolCallPartial?: (callId: string, name: string, rawArguments: string) => void;
   /** 解析工具调用在 TUI 中是延迟、显示还是隐藏。 */
@@ -1591,7 +1592,7 @@ export async function asyncRunToolLoop(
         const failedCount = isIncomplete ? incompleteRetryCount : networkRetryCount;
         if (failedCount >= maxRetries) {
           const errMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
-          onRetryExhausted?.(maxRetries, errMsg);
+          onRetryExhausted?.(maxRetries, errMsg, isIncomplete ? "incomplete" : "network");
           throw loopErr;
         }
         const attempt = failedCount + 1;
@@ -1608,7 +1609,7 @@ export async function asyncRunToolLoop(
           ? computeIncompleteRetryDelay(failedCount)
           : computeRetryDelay(failedCount);
         const delaySec = Math.round(delay / 1000);
-        onRetryAttempt?.(attempt, maxRetries, delaySec, errMsg);
+        onRetryAttempt?.(attempt, maxRetries, delaySec, errMsg, isIncomplete ? "incomplete" : "network");
         await retrySleep(delay, signal);
       }
     }

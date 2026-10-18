@@ -5,6 +5,8 @@
  * 事件包括代理生命周期、工具调用、流式文本、上下文压缩和子代理状态。
  */
 
+import type { RetryKind } from "./network-retry.js";
+
 // ------------------------------------------------------------------
 // 类型定义
 // ------------------------------------------------------------------
@@ -143,7 +145,7 @@ export class ProgressReporter {
   }
 
   // ------------------------------------------------------------------
-  // 网络重试发送方法
+  // 重试事件发送方法
   // ------------------------------------------------------------------
 
   onRetryAttempt(
@@ -152,12 +154,14 @@ export class ProgressReporter {
     maxRetries: number,
     delaySec: number,
     errorMessage: string,
+    kind: RetryKind = "network",
   ): void {
+    const label = kind === "incomplete" ? "response did not complete" : "network error";
     this.emit(makeEvent({
       step: 0, agent, action: "retry_attempt",
-      message: `  [${agent}] network error, retrying (${attempt}/${maxRetries}, waiting ${delaySec}s)...`,
+      message: `  [${agent}] ${label}, retrying (${attempt}/${maxRetries}, waiting ${delaySec}s)...`,
       level: "normal", usage: {},
-      extra: { attempt, maxRetries, delaySec, errorMessage },
+      extra: { attempt, maxRetries, delaySec, errorMessage, retryKind: kind },
     }));
   }
 
@@ -169,12 +173,18 @@ export class ProgressReporter {
     }));
   }
 
-  onRetryExhausted(agent: string, maxRetries: number, errorMessage: string): void {
+  onRetryExhausted(
+    agent: string,
+    maxRetries: number,
+    errorMessage: string,
+    kind: RetryKind = "network",
+  ): void {
+    const label = kind === "incomplete" ? "response retry" : "network retry";
     this.emit(makeEvent({
       step: 0, agent, action: "retry_exhausted",
-      message: `  [${agent}] all ${maxRetries} retries failed: ${errorMessage}`,
+      message: `  [${agent}] ${label} failed after ${maxRetries} attempts: ${errorMessage}`,
       level: "normal", usage: {},
-      extra: { maxRetries, errorMessage },
+      extra: { maxRetries, errorMessage, retryKind: kind },
     }));
   }
 
