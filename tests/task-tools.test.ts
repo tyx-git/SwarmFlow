@@ -6,12 +6,12 @@ import {
   AWAIT_EVENT_TOOL,
   CHECK_STATUS_TOOL,
   KILL_AGENT_TOOL,
-  RELOAD_TOOL,
   SEND_TOOL,
   SPAWN_TOOL,
 } from "../src/tools/comm.js";
 import { TASK_CONTROL_TOOLS, TASK_TOOLS } from "../src/tools/tasks.js";
-import { ensureTaskTools } from "../src/lib/tool-runtime.js";
+import { ensureCommTools, ensureTaskTools } from "../src/lib/tool-runtime.js";
+import type { ToolDef } from "../src/providers/base.js";
 import { CHILD_SESSION_CAPABILITIES, ROOT_SESSION_CAPABILITIES } from "../src/session-capabilities.js";
 
 const ALL_TASK_TOOLS = [...TASK_TOOLS, ...TASK_CONTROL_TOOLS];
@@ -26,7 +26,9 @@ describe("task tool definitions", () => {
       CHECK_STATUS_TOOL.name,
       AWAIT_EVENT_TOOL.name,
       SEND_TOOL.name,
-      RELOAD_TOOL.name,
+      // reload 已从模型工具集移除，但 /reload 仍是用户命令名，
+      // task_* 若占用该名会与命令撞名，故保留在防重名集合中。
+      "reload",
       "skill",
       "$web_search",
     ]);
@@ -116,6 +118,53 @@ describe("ensureTaskTools", () => {
     const tools = [...TASK_TOOLS];
     ensureTaskTools(tools, CHILD_SESSION_CAPABILITIES);
     expect(tools.map((t) => t.name)).toEqual(["task_create", "task_list", "task_get", "task_update"]);
+  });
+});
+
+describe("comm tool capabilities", () => {
+  it("gives the root session await_event and check_status", () => {
+    const tools: ToolDef[] = [];
+    ensureCommTools(tools, ROOT_SESSION_CAPABILITIES);
+    const names = tools.map((t) => t.name);
+    expect(names).toContain(AWAIT_EVENT_TOOL.name);
+    expect(names).toContain(CHECK_STATUS_TOOL.name);
+  });
+
+  it("keeps await_event out of child sessions", () => {
+    // 回归锁。历史故障：CHILD_SESSION_CAPABILITIES.includeAwaitEventTool 曾为
+    // true，于是子 Session 构造函数的 ensureCommTools() 把 await_event 重新追加
+    // 回去，subagent-factory 的 COMM_TOOL_NAMES 剥离被静默推翻（tool-runtime.ts
+    // 记载的「await_event 既有陷阱」）。这里断言的是机制——ensureCommTools 不得
+    // 为子会话追加 await_event——而不是单纯钉住常量值。
+    expect(CHILD_SESSION_CAPABILITIES.includeAwaitEventTool).toBe(false);
+    const tools: ToolDef[] = [];
+    ensureCommTools(tools, CHILD_SESSION_CAPABILITIES);
+    expect(tools.some((t) => t.name === AWAIT_EVENT_TOOL.name)).toBe(false);
+  });
+});
+
+describe("reload is user-only", () => {
+  // 两层机制防护（能力位字段已删除，不再参与）：
+  //   1. ensureCommTools 的装配逻辑（曾有 if (includeReloadTool) 分支）
+  //   2. 工具定义本身（曾导出 RELOAD_TOOL，让执行器注册可被模型触达）
+  // 用户链路 /reload 走 reloadConfigurationFromCommand()，不经工具执行器，必须保持可用。
+
+  it("never registers a reload tool for any capability set", () => {
+    // 装配函数不得因任何能力配置追加 reload。
+    for (const capabilities of [ROOT_SESSION_CAPABILITIES, CHILD_SESSION_CAPABILITIES]) {
+      const tools: ToolDef[] = [];
+      ensureCommTools(tools, capabilities);
+      expect(tools.some((t) => t.name === "reload")).toBe(false);
+    }
+  });
+
+  it("no longer ships a reload tool definition", async () => {
+    // 回归锁：装配逻辑可能被改坏，但工具定义本身也应当消失。
+    // 曾有一个 `reload` 工具把 _execReload 暴露给模型，与用户的 /reload 命令
+    // 共用同一实现——那让模型能绕过用户确认触发缓存前缀失效。定义已删除，
+    // 若这里失败，说明有人把它加回来了。
+    const comm = await import("../src/tools/comm.js");
+    expect(Object.keys(comm)).not.toContain("RELOAD_TOOL");
   });
 });
 

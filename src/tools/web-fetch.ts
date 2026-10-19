@@ -27,9 +27,10 @@ const LOCAL_MAX_REDIRECTS = 10;
 export const WEB_FETCH: ToolDef = {
   name: "web_fetch",
   description:
-    "get content from url and return it as readable text." +
-    "first, use a high-quality remote extractor, and if necessary, fall back to local extraction." +
-    "the HTML page will be converted into text similar to markdown.",
+    "Fetch an http/https URL and return its content as readable text: the HTML is flattened into a " +
+    "markdown-like form, dropping navigation, ads and boilerplate. Extraction runs remotely first and falls " +
+    "back to local parsing when that fails. Large pages are truncated. " +
+    "Use this to read documentation, issues or articles by URL; use web_search when you do not have a URL yet.",
   parameters: {
     type: "object",
     properties: {
@@ -40,8 +41,8 @@ export const WEB_FETCH: ToolDef = {
       prompt: {
         type: "string",
         description:
-          "optional description, indicating what information to look for." +
-          "(included as a hint in the output header)",
+          "optional hint describing what you are looking for; " +
+          "it is recorded with the call but does not filter or alter the extracted content.",
       },
     },
     required: ["url"],
@@ -192,6 +193,10 @@ function validateFetchUrl(parsed: URL): string | null {
 // 执行器
 // ------------------------------------------------------------------
 
+/**
+ * prompt 参数目前不参与提取：远端 Jina 与本地兜底路径都不读取它。
+ * 因此工具描述只承诺“随调用记录”，不得声称会回显到输出头。
+ */
 export async function toolWebFetch(
   url: string,
   _prompt?: string,

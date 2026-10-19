@@ -214,10 +214,8 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
   await_event: {
     category: "orchestrate",
     displayName: "Wait",
-    text: (args) => {
-      const s = args.seconds;
-      return typeof s === "number" ? `${s}s` : "";
-    },
+    // 工具已无参数（seconds 已移除）；等待结果由 tool_result 汇报，这里不再回填。
+    text: () => "",
     inlineResult: false,
   },
 };

@@ -88,8 +88,9 @@ export const TASK_LIST_TOOL: ToolDef = {
     "One line per task: `#id [status] [role] subject`, plus the owner and any unfinished blockers.\n" +
     "Read it together with `task_get`, which returns the full description and dependency edges.\n\n" +
     "## Reading the status\n" +
-    "- `pending` — not started. `pending` with an `interrupted` marker means a previous run was cut\n" +
-    "  short: check `resumeHint` on the task before deciding whether to continue or re-dispatch.\n" +
+    "- `pending` — not started. A `pending` task tagged `interrupted` had a run cut short (crash, user stop,\n" +
+    "  or a failed resume); `task_get` on it returns a `resumeHint` explaining why and whether it can be\n" +
+    "  continued with `task_resume`.\n" +
     "- `in_progress` — something is working on it right now (you, or a sub-agent in `owner`).\n" +
     "- `completed` — done. Prefer working on the lowest id first; earlier tasks set up context.\n\n" +
     "This is the **session-local task list**, not runtime agent status — use `check_status` for sub-agent and\n" +

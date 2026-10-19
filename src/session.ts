@@ -2484,11 +2484,10 @@ export class Session {
         spawn: (args) => this._execSpawn(args),
         kill_agent: (args) => this._execKillAgent(args),
         check_status: (args) => this._execCheckStatus(args),
-        await_event: (args) => this._execAwaitEvent(args),
+        await_event: () => this._execAwaitEvent(),
         ask: (args) => this._execAsk(args),
         skill: (args) => this._execSkill(args),
         send: (args) => this._execSend(args),
-        reload: () => this._execReload(),
         $web_search: (args) => toolBuiltinWebSearchPassthrough(args as Record<string, unknown>),
       },
       taskExecutors: {
@@ -2678,7 +2677,7 @@ export class Session {
   }
 
   // ==================================================================
-  // reload tool executor
+  // 配置重载（/reload 用户命令；模型侧无对应工具）
   // ==================================================================
 
   private _sortedUnique(values: Iterable<string | undefined | null>): string[] {
@@ -2883,8 +2882,9 @@ export class Session {
   // Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
   // (and the ride-along notice it queues) cannot overlap a turn's tool snapshot.
   // The bare reloadMcp/reconnectMcpServer stay lock-free on purpose —the reload
-  // TOOL (_execReload) already runs inside the turn lock, and _withTurnLock is
-  // not reentrant, so re-locking there would deadlock.
+  // path that needs them runs either inside a turn's tool execution or wrapped by
+  // a command-side _withTurnLock, and _withTurnLock is not reentrant, so
+  // re-locking there would deadlock.
   async reloadMcpFromCommand(reason: string): Promise<string> {
     return this._withTurnLock(() => this.reloadMcp({ reason }));
   }
@@ -2901,7 +2901,14 @@ export class Session {
     return this._withTurnLock(() => this.ensureMcpReady());
   }
 
-  private async _execReload(): Promise<ToolResult> {
+  /**
+   * 用户显式重载（/reload 命令）的唯一实现。
+   *
+   * 历史上还有一个 `reload` 工具把同一函数暴露给模型，已移除：重载会重建
+   * system prompt 并使会话的提示缓存前缀失效，这必须由用户显式触发。此函数
+   * 现在只经由 reloadConfigurationFromCommand() 到达，因此调用方负责持锁。
+   */
+  private async _execReload(): Promise<string> {
     const report: string[] = [];
 
     // 1. Reload skills + system prompt
@@ -2921,7 +2928,7 @@ export class Session {
     try {
       report.push(await this.reloadMcp({
         notice: false,
-        reason: "the reload tool refreshed MCP configuration",
+        reason: "the /reload command refreshed MCP configuration",
       }));
     } catch (err) {
       report.push(`MCP: reload failed —${err instanceof Error ? err.message : String(err)}`);
@@ -2931,7 +2938,7 @@ export class Session {
     const mcpToolDiff = this._diffNames(mcpBefore.tools, mcpAfter.tools);
 
     this._queueToolAvailabilityNotice({
-      reason: "the reload tool refreshed skills, MCP servers, and the system prompt",
+      reason: "the /reload command refreshed skills, MCP servers, and the system prompt",
       skillsAdded: skillResult.added,
       skillsRemoved: skillResult.removed,
       mcpServersConnected: mcpServerDiff.added,
@@ -2940,17 +2947,17 @@ export class Session {
       mcpToolsRemoved: mcpToolDiff.removed,
     });
 
-    return new ToolResult({ content: report.join("\n") });
+    return report.join("\n");
   }
 
   /**
-   * Explicit user-facing reload (/reload command).
+   * 用户显式重载（/reload 命令）的入口。
    *
-   * 与 reload 工具共用同一条重建路径，但通过 turn lock 串行化，避免
-   * skill/MCP 变更与活动回合的工具快照重叠。
+   * 这是重载的唯一用户入口；通过 turn lock 串行化，避免 skill/MCP 变更与
+   * 活动回合的工具快照重叠。模型侧不存在对应工具。
    */
   async reloadConfigurationFromCommand(): Promise<string> {
-    return this._withTurnLock(async () => (await this._execReload()).content);
+    return this._withTurnLock(() => this._execReload());
   }
 
   // ==================================================================
@@ -6520,23 +6527,71 @@ export class Session {
 
   // ------------------------------------------------------------------
   // await_event —blocking wait for sub-agent completion or new messages
+  //
+  // 设计约定（2026-10-19）：本工具不接受时长参数。它阻塞到「runtime 事件落进
+  // inbox」为止，唯一的退出条件是：事件到达 / 用户中断 / 无可等对象 / 防卡死
+  // 上限。历史上模型每次传 seconds=30，导致每 30 秒超时返回一次、每返回一次
+  // 就触发一轮 provider 调用，模型于是反复重发同一份计划（实测一次 turn 内 61
+  // 次等待、38 次调用、61 分钟）。等待本身不花钱，返回后的调用才花钱。
   // ------------------------------------------------------------------
 
-  private async _execAwaitEvent(args: Record<string, unknown>): Promise<ToolResult> {
-    const secondsRaw = args["seconds"];
-    if (typeof secondsRaw !== "number" || isNaN(secondsRaw)) {
-      return new ToolResult({ content: "Error: 'seconds' must be a number." });
-    }
-    const seconds = Math.max(300, secondsRaw);
+  /**
+   * 防卡死上限（ms）：单个 await_event 最长阻塞时间。不是「超时」而是保险丝——
+   * 等的东西卡死时强制返回，让模型重新决策。做成实例字段以便测试注入，
+   * 生产环境恒为 2 小时。
+   */
+  private _awaitEventCeilingMs = 2 * 60 * 60 * 1000;
+
+  /**
+   * 是否还有「值得等下去」的对象：活跃子 agent、运行中的后台 shell，或已在
+   * inbox 排队的消息。三者皆空时阻塞毫无意义——只会白耗到上限，这正是历史上
+   * 模型对着一个已经结束的子 agent 反复 await_event 的典型场景。
+   */
+  private _hasWaitables(): boolean {
+    return this._hasActiveAgents() || this._hasRunningShells() || this._hasInboxMessages();
+  }
+
+  /**
+   * 把毫秒差格式化成模型可读的时长：`45s` / `3m20s` / `2h5m`。
+   * 仅用于 await_event 的结果头部，不引入额外的格式化依赖。
+   */
+  private _formatWaitDuration(ms: number): string {
+    const totalSeconds = Math.round(ms / 1000);
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes < 60) return seconds === 0 ? `${minutes}m` : `${minutes}m${seconds}s`;
+    const hours = Math.floor(minutes / 60);
+    const restMinutes = minutes % 60;
+    return restMinutes === 0 ? `${hours}h` : `${hours}h${restMinutes}m`;
+  }
+
+  /**
+   * 等待运行时事件（工具入口，无参数）。
+   *
+   * 轮询间隔固定 1s，仅用于观察事件；不存在按调用时长设置的超时，
+   * 退出路径见函数内注释。
+   */
+  private async _execAwaitEvent(): Promise<ToolResult> {
     const signal = this._currentTurnSignal;
 
     if (signal?.aborted) {
       throw new DOMException("The operation was aborted.", "AbortError");
     }
 
-    // Pre-check: if inbox already has messages, return immediately.
-    // Inbox content is NOT included in tool_result —the activation boundary
-    // drain writes them as individual entries after this tool_result.
+    // 短路 1：已经没有任何可等对象。不要进入阻塞——直接带着现状返回。
+    if (!this._hasWaitables()) {
+      const parts = [
+        "Returned immediately — nothing is running and no messages are pending.",
+        this._buildDetailedChildStatusReport(),
+        this._buildShellReport(),
+      ];
+      return new ToolResult({ content: parts.filter(Boolean).join("\n\n") });
+    }
+
+    // 预检：inbox 已有消息则立即返回。
+    // inbox 内容不写进 tool_result —— 激活边界会在本条 tool_result 之后
+    // 把它们作为独立条目注入。
     if (this._hasInboxMessages()) {
       const brief = this._buildDetailedChildStatusReport();
       const shell = this._buildShellReport();
@@ -6544,33 +6599,49 @@ export class Session {
       return new ToolResult({ content: parts.join("\n\n") });
     }
 
-    // 1s polling loop: check inbox every second until timeout or message.
     this._agentState = "waiting";
     this._setSelfPhase("waiting");
     const startMs = Date.now();
-    const deadline = startMs + seconds * 1000;
+    const ceilingMs = startMs + this._awaitEventCeilingMs;
+    let exitReason: "event" | "nothing_left" | "ceiling" = "ceiling";
 
-    while (Date.now() < deadline) {
-      if (this._hasInboxMessages()) break;
+    // 阻塞循环：只由「事件到达 / 无可等对象 / 用户中断 / 防卡死上限」退出。
+    // 这里刻意没有 schedule timeout——按固定时长返回是历史故障的根因。
+    for (;;) {
+      if (this._hasInboxMessages()) {
+        exitReason = "event";
+        break;
+      }
+      if (!this._hasWaitables()) {
+        exitReason = "nothing_left";
+        break;
+      }
       if (signal?.aborted) {
         this._agentState = "working";
         this._setSelfPhase("idle");
         throw new DOMException("The operation was aborted.", "AbortError");
       }
-      const sleepMs = Math.min(1000, deadline - Date.now());
-      if (sleepMs <= 0) break;
+      const now = Date.now();
+      if (now >= ceilingMs) break;
+      // 已知限制：阻塞期间没有周期性的 UI 进度刷新（_setSelfPhase 只接受固定
+      // 枚举，塞不进 elapsed）。用户看到的是「waiting」相位一直挂着，要等这次
+      // 调用返回才能在 tool_result 里看到实际等了多久。若要做成可见进度，需要
+      // 新建一条 session → UI 的通知通道，不在本次改动范围内。
+      const sleepMs = Math.min(1000, ceilingMs - now);
       await new Promise<void>((r) => setTimeout(r, sleepMs));
     }
 
     this._agentState = "working";
     this._setSelfPhase("idle");
 
-    // Build tool_result: header + status report only (no inbox content).
-    const elapsed = Math.round((Date.now() - startMs) / 1000);
-    const hasMessages = this._hasInboxMessages();
-    const header = hasMessages
-      ? `Waited for ${elapsed}s —new message arrived.`
-      : `Waited for ${elapsed}s —no new events.`;
+    // tool_result 只放头部与状态报告；inbox 内容由激活边界单独注入。
+    const waited = this._formatWaitDuration(Date.now() - startMs);
+    const header =
+      exitReason === "event"
+        ? `Waited for ${waited} —new message arrived.`
+        : exitReason === "nothing_left"
+          ? `Waited for ${waited} —nothing is still running and no event arrived.`
+          : `Waited for ${waited} (ceiling reached) —still no events.`;
     const brief = this._buildDetailedChildStatusReport();
     const shell = this._buildShellReport();
     const parts = [header, brief, shell].filter(Boolean);

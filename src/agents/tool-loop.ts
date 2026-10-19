@@ -130,7 +130,6 @@ export function generateToolCallDisplay(
   const command = compactDisplayValue(toolArgs["command"]);
   const name = compactDisplayValue(toolArgs["name"]);
   const id = compactDisplayValue(toolArgs["id"]);
-  const shell = compactDisplayValue(toolArgs["shell"]);
   const ids = Array.isArray(toolArgs["ids"])
     ? `[${(toolArgs["ids"] as unknown[]).length} ids]`
     : "";
@@ -170,12 +169,8 @@ export function generateToolCallDisplay(
     case "kill_agent":
       return ids ? `${toolName} ${ids}` : toolName;
     case "await_event":
-      if (shell) {
-        return toolArgs["seconds"] !== undefined
-          ? `${toolName} ${shell} ${String(toolArgs["seconds"])}s`
-          : `${toolName} ${shell}`;
-      }
-      return toolArgs["seconds"] !== undefined ? `${toolName} ${String(toolArgs["seconds"])}s` : toolName;
+      // 工具本身无参数可展示；实际等待时长由 tool_result 汇报。
+      return toolName;
     case "skill":
       return name ? `${toolName} ${name}` : toolName;
     default:

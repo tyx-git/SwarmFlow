@@ -15,7 +15,14 @@ import { SafePathError, safePath } from "../security/path.js";
 import { loadTemplate, validateTemplate } from "../templates/loader.js";
 import type { PersistedRoleModelSelection, ResolvedRoleModel } from "./role-model-resolver.js";
 
-/** 子会话不允许拥有的工具（send 等由 child Session 单独管理）。 */
+/**
+ * 子会话不允许拥有的工具（send 等由 child Session 单独管理）。
+ *
+ * 注意：本名单只是策略声明，不构成强制。子 Session 的构造函数会用
+ * CHILD_SESSION_CAPABILITIES 调 ensureCommTools() 重新追加 comm 工具，
+ * 因此名单里的工具要被真正剥离，对应的 capability 必须为 false
+ * （await_event 曾经就是 capability=true 导致名单失效）。
+ */
 const COMM_TOOL_NAMES = new Set([
   "spawn", "kill_agent", "check_status", "await_event", "ask", "skill",
   "bash_background", "bash_output", "kill_shell", "send",

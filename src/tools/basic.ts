@@ -521,7 +521,9 @@ const LIST_MAX_DEPTH_CAP = 6;
 const LIST: ToolDef = {
   name: "list_dir",
   description:
-    "List files and directories as a tree. Returns names with file sizes for files. " +
+    "List a directory tree, indented, with files showing their size in bytes. Directories come before files " +
+    "and entries are sorted alphabetically at each level. Depth and entry count are capped by max_depth and " +
+    "max_entries; hitting the cap appends a \"(truncated)\" notice rather than stopping silently. " +
     "Common build / cache directories (node_modules, .git, dist, target, .venv, etc.) are skipped by default; " +
     "to inspect one, pass it as the `path` argument explicitly. " +
     "If you are searching for a specific filename, prefer `glob`; for content matches, prefer `grep`.",
@@ -1007,8 +1009,10 @@ export const BASH_OUTPUT_TOOL: ToolDef = {
   name: "bash_output",
   description:
     "Read output from a tracked background shell. " +
-    "By default, returns unread output since the last bash_output call for that shell. " +
-    "Use tail_lines to inspect recent output without advancing the unread cursor.",
+    "Each shell keeps a read position: the default call returns everything produced since your previous read " +
+    "and then moves that position forward, so repeated calls give you only the new lines. " +
+    "Pass tail_lines to peek at the most recent N lines without moving the read position. " +
+    "A dead shell's full log stays readable; output longer than max_chars is cut with a notice.",
   parameters: {
     type: "object",
     properties: {

@@ -47,7 +47,13 @@ export const SPAWN_TOOL: ToolDef = {
 
 export const KILL_AGENT_TOOL: ToolDef = {
   name: "kill_agent",
-  description: "Kill one or more running sub-agents by ID.",
+  description:
+    "Stop one or more running sub-agents by ID. The agent stops mid-work: any file it has not yet written " +
+    "stays unwritten, and its in-flight tool calls are cancelled. Its conversation stays on disk: a persistent " +
+    "agent can be continued with `send`, while a one-shot agent must be re-dispatched with a new ID. " +
+    "`task_resume` only applies to tasks interrupted by a session restart, not to a killed agent. " +
+    "Use this when an agent is working on the wrong thing, has gone silent, or the user asks you to stop it — " +
+    "not as a routine way to end an agent that is simply slow.",
   parameters: {
     type: "object",
     properties: {
@@ -66,7 +72,12 @@ export const KILL_AGENT_TOOL: ToolDef = {
 export const ASK_TOOL: ToolDef = {
   name: "ask",
   description:
-    "Ask the user 1-4 structured questions with 1-4 options each.",
+    "Ask the user one structured question set when a concrete decision has a small number of alternatives. " +
+    "Up to 4 questions per call, up to 4 options each; the user always sees a free-text field, so options are " +
+    "suggestions rather than a closed set. Use it to unblock an assumption you cannot resolve from the codebase " +
+    "—for example which of two APIs to target, or whether to keep a legacy path. " +
+    "Do NOT use it for open-ended exploration, for questions the repository already answers, or to confirm a " +
+    "plan the user already stated: ask in plain conversation instead.",
   parameters: {
     type: "object",
     properties: {
@@ -111,32 +122,35 @@ export const CHECK_STATUS_TOOL: ToolDef = {
   tuiPolicy: { partialReveal: "immediate" },
 };
 
+/**
+ * 阻塞等待运行时事件。
+ *
+ * 不接受时长参数：阻塞到事件落进 inbox 为止，防卡死上限（2 小时）由
+ * Session._execAwaitEvent 的保险丝兜底。历史教训：暴露 seconds 会让模型在
+ * 每次超时返回后重新调用一轮 provider，导致同一份计划被反复重发。
+ */
 export const AWAIT_EVENT_TOOL: ToolDef = {
   name: "await_event",
   description:
-    "Pause this turn until a runtime event arrives or the timeout expires. " +
-    "Runtime events include sub-agent completion, incoming messages, and tracked background shell exit. " +
-    "Preferred over check_status when you have nothing else to do.",
+    "Block until a runtime event arrives. Events: a child agent completing or failing, an incoming message, " +
+    "or a tracked background shell exiting. Takes no arguments. " +
+    "Returns immediately when no child agent or tracked shell is running and no message is pending. " +
+    "Prefer this over check_status when waiting for child agents or background work.",
   parameters: {
     type: "object",
-    properties: {
-      seconds: {
-        type: "number",
-        description: "How long to await runtime events (minimum 300, wall-clock timeout).",
-      },
-    },
-    required: ["seconds"],
+    properties: {},
   },
   summaryTemplate: "{agent} is awaiting runtime events",
-  tuiPolicy: { partialReveal: { completeArgs: ["seconds"] } },
+  tuiPolicy: { partialReveal: "immediate" },
 };
 
 export const SEND_TOOL: ToolDef = {
   name: "send",
   description:
-    "Send a message to a persistent child agent by ID. " +
-    "The message is delivered asynchronously —you get a confirmation, not a reply. " +
-    "The target auto-activates if idle.",
+    "Hand a message to a persistent child agent by ID and return immediately. The child handles it on its next " +
+    "activation: expect a confirmation from this call, not a reply. An idle child wakes up to process the " +
+    "message; a busy one receives it into its queue. Use it to steer an agent that is already running — " +
+    "spawn a new agent when there is no existing one to talk to.",
   parameters: {
     type: "object",
     properties: {
@@ -153,18 +167,4 @@ export const SEND_TOOL: ToolDef = {
   },
   summaryTemplate: "{agent} sent message to {to}",
   tuiPolicy: { partialReveal: { completeArgs: ["to"] } },
-};
-
-export const RELOAD_TOOL: ToolDef = {
-  name: "reload",
-  description:
-    "Reload skills, MCP servers, and the system prompt from disk. " +
-    "Call after writing or editing SKILL.md files, AGENTS.md, or MCP config (settings.json mcp_servers). " +
-    "Returns a summary of what changed.",
-  parameters: {
-    type: "object",
-    properties: {},
-  },
-  summaryTemplate: "{agent} is reloading configuration",
-  tuiPolicy: { partialReveal: "immediate" },
 };

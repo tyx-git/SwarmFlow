@@ -52,7 +52,7 @@ const READ_TOOLS = new Set([
   "read_file", "list_dir", "glob", "grep", "find_symbol", "jq",
   "web_fetch", "web_search", "$web_search",
   "ask", "check_status", "await_event", "send",
-  "bash_output", "skill", "reload", "time",
+  "bash_output", "skill", "time",
   "kill_shell",
   // 任务清单是会话态，只读查看无副作用
   "task_list", "task_get",

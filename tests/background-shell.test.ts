@@ -102,7 +102,7 @@ describe("background shell tools", () => {
       }) as ToolResult;
       expect(started.content).toContain("Started background shell 'demo'");
 
-      const waited = await (session as any)._execAwaitEvent({ seconds: 15 }) as ToolResult;
+      const waited = await (session as any)._execAwaitEvent() as ToolResult;
       // await_event wakes on system_notice (shell exit) and/or shell-state racers; shell lines use
       // _buildShellReport() contains the shell status without a separate banner.
       expect(waited.content).toMatch(/Waited for \d+s —/);
@@ -353,7 +353,7 @@ describe("background shell tools", () => {
     try {
       const command = burstCommand();
       (session as any)._shellManager.execBashBackground({ id: "burst", command });
-      await (session as any)._execAwaitEvent({ seconds: 15 });
+      await (session as any)._execAwaitEvent();
 
       const first = (session as any)._shellManager.execBashOutput({ id: "burst", max_chars: 120 }) as ToolResult;
       expect(first.content).toContain("line-001");
@@ -466,7 +466,8 @@ describe("background shell tools", () => {
 
       expect(text).toContain("MOVED TO BACKGROUND");
       expect(text).toContain("shell-1");
-      expect(text).toContain("early");
+      // 不断言即时输出里含 "early"：那取决于 1s 超时窗口内进程是否已打印，
+      // 在并行测试的 CPU 竞争下不可靠。同步阶段的输出由下面的 logTail 断言覆盖。
 
       const entry = sm.getShellEntry("shell-1");
       expect(entry).toBeTruthy();
@@ -527,4 +528,90 @@ describe("background shell tools", () => {
       rmSync(root, { recursive: true, force: true });
     }
   }, 12_000);
+});
+
+describe("await_event blocking semantics", () => {
+  it("returns immediately when there is nothing left to wait for", async () => {
+    const root = makeTempDir("swarmflow-await-empty-");
+    const session = makeSession(root);
+    try {
+      const started = Date.now();
+      const result = (await (session as any)._execAwaitEvent()) as ToolResult;
+      const elapsedMs = Date.now() - started;
+
+      expect(result.content).toContain("Returned immediately — nothing is running");
+      // 没有可等对象时绝不能进入阻塞：这是防止对着已结束的子 agent 空等的熔断。
+      expect(elapsedMs).toBeLessThan(1000);
+    } finally {
+      await session.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, backgroundTestTimeout);
+
+  it("blocks until a tracked background shell exits, then reports the arrival", async () => {
+    const root = makeTempDir("swarmflow-await-shell-");
+    const session = makeSession(root);
+    try {
+      (session as any)._shellManager.execBashBackground({
+        id: "slow",
+        command: `${printCommand("go")}; ${sleepCommand(0.4)}; ${printCommand("done")}`,
+      });
+
+      const started = Date.now();
+      const result = (await (session as any)._execAwaitEvent()) as ToolResult;
+      const elapsedMs = Date.now() - started;
+
+      // 必须真的阻塞到 shell 退出，而不是立刻超时返回。
+      expect(elapsedMs).toBeGreaterThanOrEqual(350);
+      expect(result.content).toMatch(/Waited for \d+s —new message arrived\./);
+    } finally {
+      await session.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, backgroundTestTimeout);
+
+  it("wakes from the block when a user message lands in the inbox", async () => {
+    const root = makeTempDir("swarmflow-await-user-");
+    const session = makeSession(root);
+    try {
+      // 一个长跑 shell 保证 _hasWaitables() 为真，await_event 会先进入阻塞。
+      (session as any)._shellManager.execBashBackground({ id: "holder", command: sleepCommand(30) });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const pending = (session as any)._execAwaitEvent() as Promise<ToolResult>;
+      await new Promise((r) => setTimeout(r, 150));
+      expect(session.deliverMessage("user", "urgent instruction")).toEqual({ accepted: true });
+
+      const result = await pending;
+      expect(result.content).toMatch(/new message arrived/);
+    } finally {
+      (session as any)._shellManager.killShell(["holder"]);
+      await session.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, backgroundTestTimeout);
+
+  it("breaks the block at the ceiling when the awaited object is stuck", async () => {
+    const root = makeTempDir("swarmflow-await-ceiling-");
+    const session = makeSession(root);
+    try {
+      // 一个远远不会结束的 shell：唯一的退出路径就是防卡死上限。
+      (session as any)._shellManager.execBashBackground({ id: "stuck", command: sleepCommand(600) });
+      await new Promise((r) => setTimeout(r, 100));
+      (session as any)._awaitEventCeilingMs = 400;
+
+      const started = Date.now();
+      const result = (await (session as any)._execAwaitEvent()) as ToolResult;
+      const elapsedMs = Date.now() - started;
+
+      expect(elapsedMs).toBeGreaterThanOrEqual(350);
+      expect(elapsedMs).toBeLessThan(3000);
+      expect(result.content).toMatch(/ceiling reached/);
+      expect(result.content).toContain("still no events");
+    } finally {
+      (session as any)._shellManager.killShell(["stuck"]);
+      await session.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, backgroundTestTimeout);
 });
