@@ -244,7 +244,7 @@ function buildToolOperation(
   const toolStreamLanguage = typeof callMeta.toolStreamLanguage === "string"
     ? callMeta.toolStreamLanguage : undefined;
   const effectiveToolStreamLanguage = toolStreamLanguage
-    ?? (toolName === "bash" || toolName === "bash_background" || toolName === "bash_output" ? "bash" : undefined);
+    ?? (toolName === "bash" || toolName === "bash_background" ? "bash" : undefined);
   const toolStreamMode = typeof callMeta.toolStreamMode === "string"
     ? callMeta.toolStreamMode as PresentationEntry["toolStreamMode"] : undefined;
   const execFinished = toolExecState === "completed" || toolExecState === "failed";
@@ -333,7 +333,6 @@ function buildToolOperation(
         language: effectiveToolStreamLanguage,
         syntaxMode: toolName === "bash"
           || toolName === "bash_background"
-          || toolName === "bash_output"
           ? "output"
           : undefined,
       };

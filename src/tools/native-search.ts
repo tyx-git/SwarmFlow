@@ -5,79 +5,42 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { SEARCH_BUDGET_MS } from "./shared.js";
+
 const SEARCH_OUTPUT_CAP = 60_000;
-const SEARCH_TIMEOUT_MS = 15_000;
 
 export interface NativeSearchResult {
   available: boolean;
   content: string;
 }
 
-const VALUE_OPTIONS = new Set([
-  "-A", "--after-context", "-B", "--before-context", "-C", "--context",
-  "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not",
-  "--type-add", "--type-clear", "--max-depth", "-m", "--max-count",
-  "-M", "--max-columns", "-j", "--threads", "--sort", "--sortr",
-  "--engine", "--encoding", "--path-separator", "--color", "--colors",
-  "--context-separator", "--field-match-separator", "--replace", "-r",
-  "--max-filesize", "--max-columns-preview", "--dfa-size-limit", "--regex-size-limit",
-  "--max-results", "-d", "--min-depth", "--exact-depth", "-e", "--exclude",
-  "-E", "--size", "-S", "--changed-within", "--changed-before", "--format",
-  "--ignore-file", "--ignore-contain", "--threads", "--hyperlink",
-]);
-
-const FD_VALUE_OPTIONS = new Set([...VALUE_OPTIONS].filter((option) => option !== "-g" && option !== "--glob"));
-FD_VALUE_OPTIONS.add("--and");
-FD_VALUE_OPTIONS.add("--extension");
-
-const FD_FORBIDDEN = new Set([
-  "-x", "--exec", "-X", "--exec-batch", "--search-path", "-C", "--base-directory",
-]);
-
-const RG_FORBIDDEN = new Set([
-  "-e", "--regexp", "-f", "--file", "--pre", "--config", "--config-path",
-  "--search-path", "--no-config",
-]);
-
 /**
  * 定位随包分发的搜索二进制。
  *
- * 只按模块目录解析：源码布局命中 `src/tools/intools`，编译布局命中
- * `dist/src/tools/intools`。不再回退到 `process.cwd()`，否则在缺少随包
- * 二进制的安装里可能执行用户项目中的同名文件。
+ * 两条路径：源码/dist 运行按模块目录解析；SEA 单文件运行时 import.meta.url
+ * 指向可执行文件本身，模块目录推导会落空，因此再按 process.execPath 的同级
+ * 目录查找（构建脚本把 intools 放在 exe 旁边）。
+ *
+ * 不回退到 `process.cwd()`：否则在缺少随包二进制的安装里可能执行用户项目中
+ * 的同名文件。找不到时返回 null，调用方回退到内置 JS 实现。
  */
 export function resolveBundledSearchExecutable(
   name: "fd" | "rg",
   moduleDir: string = path.dirname(fileURLToPath(import.meta.url)),
+  execPath: string = process.execPath,
 ): string | null {
   if (process.platform !== "win32") return null;
   const directory = name === "rg" ? "ripgrep" : name;
   const executable = name === "rg" ? "rg.exe" : `${name}.exe`;
-  const candidate = path.join(moduleDir, "intools", directory, executable);
-  return existsSync(candidate) ? candidate : null;
-}
-
-function validateOptions(
-  toolName: "fd" | "rg",
-  options: readonly string[],
-): string | null {
-  const forbidden = toolName === "fd" ? FD_FORBIDDEN : RG_FORBIDDEN;
-  const valueOptions = toolName === "fd" ? FD_VALUE_OPTIONS : VALUE_OPTIONS;
-  let needsValue = false;
-  for (const raw of options) {
-    const option = raw.split("=", 1)[0]!;
-    if (forbidden.has(option)) return `ERROR: ${toolName} option '${option}' is not allowed in this tool.`;
-    if (needsValue) {
-      needsValue = false;
-      if (raw.startsWith("-")) return `ERROR: ${toolName} option is missing its value.`;
-      continue;
-    }
-    if (!raw.startsWith("-") || raw === "--") {
-      return `ERROR: ${toolName} options must contain flags and their values only; positional paths are controlled by the tool.`;
-    }
-    if (!raw.includes("=") && valueOptions.has(option)) needsValue = true;
+  const candidates = [
+    path.join(moduleDir, "intools", directory, executable),
+    // SEA 单文件：import.meta.url 指向 exe，改按 exe 同级查找
+    path.join(path.dirname(execPath), "intools", directory, executable),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
   }
-  return needsValue ? `ERROR: ${toolName} option is missing its value.` : null;
+  return null;
 }
 
 function runSearch(
@@ -86,6 +49,7 @@ function runSearch(
   cwd: string,
   signal?: AbortSignal,
   envOverrides?: NodeJS.ProcessEnv,
+  outputCap = SEARCH_OUTPUT_CAP,
 ): Promise<string> {
   return new Promise((resolve) => {
     if (signal?.aborted) {
@@ -106,7 +70,7 @@ function runSearch(
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
-    }, SEARCH_TIMEOUT_MS);
+    }, SEARCH_BUDGET_MS);
     const finish = (content: string): void => {
       if (settled) return;
       settled = true;
@@ -118,7 +82,7 @@ function runSearch(
     child.stdout.on("data", (chunk: string) => {
       outputChars += chunk.length;
       stdout += chunk;
-      if (outputChars > SEARCH_OUTPUT_CAP) child.kill();
+      if (outputChars > outputCap) child.kill();
     });
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
@@ -127,15 +91,15 @@ function runSearch(
     child.once("error", (error) => finish(`ERROR: ${error.message}`));
     child.once("close", (code) => {
       if (timedOut) {
-        finish(`${stdout.slice(0, SEARCH_OUTPUT_CAP)}\n\n[Search stopped after ${SEARCH_TIMEOUT_MS}ms.]`);
+        finish(`${stdout.slice(0, outputCap)}\n\n[Search stopped after ${SEARCH_BUDGET_MS}ms.]`);
         return;
       }
       if (signal?.aborted) {
-        finish(`${stdout.slice(0, SEARCH_OUTPUT_CAP)}\n\n[Search cancelled.]`);
+        finish(`${stdout.slice(0, outputCap)}\n\n[Search cancelled.]`);
         return;
       }
-      if (outputChars > SEARCH_OUTPUT_CAP) {
-        finish(`${stdout.slice(0, SEARCH_OUTPUT_CAP)}\n\n[Output truncated at ${SEARCH_OUTPUT_CAP} characters.]`);
+      if (outputChars > outputCap) {
+        finish(`${stdout.slice(0, outputCap)}\n\n[Output truncated at ${outputCap} characters.]`);
         return;
       }
       if (code === 0) {
@@ -151,6 +115,10 @@ function runSearch(
   });
 }
 
+/**
+ * options.args 由 basic.ts 的 bundledFdArgs 生成，不是模型直传；
+ * 因此这里不再维护一套永远不会触发的选项白名单/黑名单。
+ */
 export async function runBundledFd(options: {
   pattern: string;
   root: string;
@@ -160,8 +128,6 @@ export async function runBundledFd(options: {
 }): Promise<NativeSearchResult> {
   const executable = resolveBundledSearchExecutable("fd");
   if (!executable) return { available: false, content: "" };
-  const invalid = validateOptions("fd", options.args);
-  if (invalid) return { available: true, content: invalid };
   const pathMode = options.absolutePath === false ? "--relative-path" : "--absolute-path";
   const searchRoot = options.absolutePath === false ? "." : options.root;
   const args = [pathMode, ...options.args, "--color", "never", "--", options.pattern, searchRoot];
@@ -171,24 +137,28 @@ export async function runBundledFd(options: {
   };
 }
 
+/** options.args 同样由 bundledRgArgs 生成，不接受模型直传参数。 */
 export async function runBundledRg(options: {
   patterns: string[];
   root: string;
   args: string[];
   signal?: AbortSignal;
+  /** JSON 事件流需要比最终文本更大的原始预算；最终输出仍由调用方截断。 */
+  outputCap?: number;
 }): Promise<NativeSearchResult> {
   const executable = resolveBundledSearchExecutable("rg");
   if (!executable) return { available: false, content: "" };
-  const invalid = validateOptions("rg", options.args);
-  if (invalid) return { available: true, content: invalid };
   const rootIsDirectory = statSync(options.root).isDirectory();
   const cwd = rootIsDirectory ? options.root : path.dirname(options.root);
-  const target = rootIsDirectory ? "." : path.basename(options.root);
+  // 用绝对路径作为搜索目标，让 rg 输出绝对路径，与内置 JS 实现一致。
+  // rg 没有 --absolute-path，若传 "." 会输出 `.\a.ts` 这类相对路径，
+  // 模型拿它去 read_file 会基于错误的工作目录解析。
+  const target = options.root;
   const args = ["--no-config", ...options.args, "--color", "never"];
   for (const pattern of options.patterns) args.push("-e", pattern);
   args.push(target);
   return {
     available: true,
-    content: await runSearch(executable, args, cwd, options.signal, { RIPGREP_CONFIG_PATH: "" }),
+    content: await runSearch(executable, args, cwd, options.signal, { RIPGREP_CONFIG_PATH: "" }, options.outputCap),
   };
 }

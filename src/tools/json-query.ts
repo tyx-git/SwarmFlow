@@ -1,9 +1,13 @@
 /**
- * 受约束的 jq JSON 查询工具。
+ * jq JSON 查询工具。
  *
- * Windows 发布包优先使用 intools/jq/jq.exe，因而支持完整 jq 语法；
- * 没有随包提供二进制时使用一个覆盖常用字段/数组/管道访问的安全回退，
- * 仍然能避免把整个大 JSON 文件直接塞进上下文。
+ * 只使用随包分发的 intools/jq 原生二进制，不内置 JS 解释器：
+ * 一份受限的 JS 回退会静默支持一部分语法、拒绝另一部分，模型无法从结果
+ * 判断自己是拿到了真结果还是空结果。二进制缺失时明确报错，让问题可见。
+ *
+ * 二进制定位有两条路径：源码/dist 运行按模块目录解析；SEA 单文件运行时
+ * import.meta.url 指向可执行文件本身，模块目录推导会落空，因此再按
+ * process.execPath 的同级目录查找（构建脚本把 intools 放在 exe 旁边）。
  */
 
 import { spawn } from "node:child_process";
@@ -18,39 +22,70 @@ import { truncateMiddle } from "./shared.js";
 const MAX_JSON_INPUT_BYTES = 50 * 1024 * 1024;
 const MAX_JSON_OUTPUT_CHARS = 80_000;
 const MAX_QUERY_LENGTH = 2_000;
+/** jq 自身没有超时机制，由宿主进程兜底。 */
+export const JQ_TIMEOUT_MS = 8_000;
 
 function runJqBinary(
   executable: string,
   args: readonly string[],
   input: string,
   maxBuffer: number,
+  signal?: AbortSignal,
+  timeoutMs = JQ_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+      return;
+    }
     const child = spawn(executable, [...args], { windowsHide: true });
     let stdout = "";
     let stderr = "";
     let outputBytes = 0;
-    let stopped = false;
-    const stopForOutput = (): void => {
-      if (stopped) return;
-      stopped = true;
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+
+    function stop(error: Error): void {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       child.kill();
-      reject(new Error(`jq output exceeded ${maxBuffer} bytes.`));
-    };
+      reject(error);
+    }
+    function onAbort(): void {
+      stop(new DOMException("The operation was aborted.", "AbortError"));
+    }
+    timer = setTimeout(() => {
+      stop(new Error(`jq timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
       outputBytes += Buffer.byteLength(chunk, "utf8");
       if (outputBytes > maxBuffer) {
-        stopForOutput();
+        stop(new Error(`jq output exceeded ${maxBuffer} bytes.`));
         return;
       }
       stdout += chunk;
     });
     child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-    child.once("error", (error) => reject(error));
+    // jq 可能在读完 stdin 前因语法错误退出；忽略 stdin 的 EPIPE。
+    child.stdin.on("error", () => { /* ignored */ });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(error);
+    });
     child.once("close", (code) => {
-      if (stopped) return;
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       if (code !== 0) {
         reject(new Error(stderr.trim() || `jq exited with code ${code ?? "unknown"}.`));
       } else {
@@ -66,7 +101,7 @@ export const JQ: ToolDef = {
   description:
     "Extract selected fields from a JSON file or JSON text with jq syntax. " +
     "Always provide a focused query such as .items[].name or .config.provider; do not read a large JSON file wholesale. " +
-    "The bundled jq binary is used when available and supports the complete jq language.",
+    "Supports the complete jq language via the bundled jq binary. Provide either path or content, not both.",
   parameters: {
     type: "object",
     properties: {
@@ -106,118 +141,46 @@ export const JQ: ToolDef = {
 };
 
 /**
- * 定位随包分发的 jq。与搜索二进制一致，只按模块目录解析，
- * 避免把用户项目里的同名 exe 误当成随包工具。
+ * 定位随包分发的 jq。
+ *
+ * 只按「模块目录」和「可执行文件同级」解析，绝不回退到 cwd —— 否则用户项目里
+ * 的同名 exe 会被当成随包工具执行。
  */
 export function bundledJqPath(
   moduleDir: string = path.dirname(fileURLToPath(import.meta.url)),
+  execPath: string = process.execPath,
 ): string | null {
-  const candidate = path.join(moduleDir, "intools", "jq", "jq.exe");
-  return existsSync(candidate) ? candidate : null;
+  const binary = process.platform === "win32" ? "jq.exe" : "jq";
+  const candidates = [
+    // 源码 / dist 运行：二进制与模块在同一棵目录树里
+    path.join(moduleDir, "intools", "jq", binary),
+    // SEA 单文件：import.meta.url 指向 exe，模块目录推导无效，改按 exe 同级查找
+    path.join(path.dirname(execPath), "intools", "jq", binary),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
-function formatJsonValue(value: unknown, raw: boolean, compact: boolean): string {
-  if (raw && typeof value === "string") return value;
-  return JSON.stringify(value, null, compact ? undefined : 2);
+/**
+ * path 模式只校验文件存在且是普通文件；内容由 jq 自己读取，
+ * 避免这里先把最多 50MB 的 JSON 读成字符串再让 jq 读第二遍。
+ */
+async function validateJsonPath(filePath: string): Promise<void> {
+  const stat = await fs.stat(filePath);
+  if (!stat.isFile()) throw new Error(`Not a file: ${filePath}`);
 }
 
-function tokenizePath(pathExpr: string): string[] | null {
-  if (!pathExpr.startsWith(".")) return null;
-  const tokens: string[] = [];
-  let current = "";
-  for (let index = 1; index < pathExpr.length; index += 1) {
-    const ch = pathExpr[index]!;
-    if (ch === "." || ch === "[") {
-      if (current) {
-        tokens.push(current);
-        current = "";
-      }
-      if (ch === "[") {
-        const close = pathExpr.indexOf("]", index + 1);
-        if (close < 0) return null;
-        const indexToken = pathExpr.slice(index + 1, close);
-        if (indexToken === "") tokens.push("[]");
-        else if (/^\d+$/.test(indexToken)) tokens.push(`[${indexToken}]`);
-        else return null;
-        index = close;
-      }
-      continue;
-    }
-    if (!/[A-Za-z0-9_$-]/.test(ch)) return null;
-    current += ch;
-  }
-  if (current) tokens.push(current);
-  return tokens;
-}
-
-function fallbackStep(values: unknown[], token: string): unknown[] {
-  const result: unknown[] = [];
-  for (const value of values) {
-    if (token === "[]") {
-      if (Array.isArray(value)) result.push(...value);
-      continue;
-    }
-    if (/^\[\d+\]$/.test(token)) {
-      const index = Number(token.slice(1, -1));
-      if (Array.isArray(value) && index < value.length) result.push(value[index]);
-      continue;
-    }
-    if (value !== null && typeof value === "object" && token in value) {
-      result.push((value as Record<string, unknown>)[token]);
-    }
-  }
-  return result;
-}
-
-function fallbackFilter(value: unknown, query: string): unknown[] {
-  const trimmed = query.trim();
-  if (trimmed === ".") return [value];
-  if (trimmed === "length") {
-    return [Array.isArray(value) || typeof value === "string" ? value.length : Object.keys(value as object).length];
-  }
-  if (trimmed === "keys") {
-    return [value !== null && typeof value === "object" ? Object.keys(value as object) : []];
-  }
-  const selectMatch = /^select\(\.([A-Za-z0-9_$-]+)\s*(==|!=)\s*(["'].*["']|true|false|null)\)$/.exec(trimmed);
-  if (selectMatch && value !== null && typeof value === "object") {
-    const actual = (value as Record<string, unknown>)[selectMatch[1]!];
-    const rawExpected = selectMatch[3]!;
-    const expected = rawExpected === "true"
-      ? true
-      : rawExpected === "false"
-        ? false
-        : rawExpected === "null"
-          ? null
-          : rawExpected.slice(1, -1);
-    const equal = actual === expected;
-    return (selectMatch[2] === "==" ? equal : !equal) ? [value] : [];
-  }
-
-  const pipes = trimmed.split("|").map((part) => part.trim()).filter(Boolean);
-  let values: unknown[] = [value];
-  for (const pipe of pipes) {
-    const tokens = tokenizePath(pipe);
-    if (!tokens) return [];
-    for (const token of tokens) values = fallbackStep(values, token);
-  }
-  return values;
-}
-
-async function readJsonInput(filePath: string | undefined, content: string | undefined): Promise<string> {
-  if (filePath && content !== undefined) {
-    throw new Error("provide either 'path' or 'content', not both");
-  }
-  if (filePath) {
-    const stat = await fs.stat(filePath);
-    if (!stat.isFile()) throw new Error(`Not a file: ${filePath}`);
-    if (stat.size > MAX_JSON_INPUT_BYTES) throw new Error(`JSON file is too large (limit ${MAX_JSON_INPUT_BYTES} bytes).`);
-    return await fs.readFile(filePath, "utf8");
-  }
-  if (content === undefined) throw new Error("one of 'path' or 'content' is required");
-  if (Buffer.byteLength(content, "utf8") > MAX_JSON_INPUT_BYTES) {
+async function readJsonContent(content: string | undefined): Promise<string> {
+  // 空字符串等于「没提供」：模型常把 schema 里每个可选参数都填上，content 填 ""，
+  // 若按 !== undefined 判断会被误判成「同时给了 path 和 content」而必然失败。
+  const hasContent = typeof content === "string" && content.trim() !== "";
+  if (!hasContent) throw new Error("one of 'path' or 'content' is required");
+  if (Buffer.byteLength(content!, "utf8") > MAX_JSON_INPUT_BYTES) {
     throw new Error(`JSON content is too large (limit ${MAX_JSON_INPUT_BYTES} bytes).`);
   }
-  return content;
+  return content!;
 }
 
 export async function toolJq(options: {
@@ -228,38 +191,50 @@ export async function toolJq(options: {
   compact: boolean;
   slurp: boolean;
   maxChars: number;
+  signal?: AbortSignal;
+  /** 测试注入；生产使用 JQ_TIMEOUT_MS。 */
+  timeoutMs?: number;
 }): Promise<string> {
   const query = options.query.trim();
   if (!query) return "ERROR: jq query must be a non-empty string.";
   if (query.length > MAX_QUERY_LENGTH) return `ERROR: jq query exceeds max length (${MAX_QUERY_LENGTH}).`;
 
-  const input = await readJsonInput(options.path, options.content);
   const jqPath = bundledJqPath();
-  let output: string;
-  if (jqPath) {
-    const args: string[] = [];
-    if (options.raw) args.push("-r");
-    if (options.compact) args.push("-c");
-    if (options.slurp) args.push("-s");
-    args.push(query, options.path ?? "-");
-    const result = await runJqBinary(
-      jqPath,
-      args,
-      options.path ? "" : input,
-      Math.max(options.maxChars * 4, 256_000),
+  if (!jqPath) {
+    // 明确失败，不降级：受限回退会让完整语法静默返回空结果，比报错更难排查。
+    return (
+      "ERROR: bundled jq binary not found. " +
+      "Expected intools/jq/jq.exe next to the tool module or next to the executable."
     );
-    output = result.stdout;
-    if (result.stderr.trim()) output += `\n${result.stderr.trim()}`;
-  } else {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(input);
-    } catch (error) {
-      throw new Error(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    const values = fallbackFilter(parsed, query);
-    output = values.map((value) => formatJsonValue(value, options.raw, options.compact)).join("\n");
   }
+
+  const hasContent = typeof options.content === "string" && options.content.trim() !== "";
+  if (options.path && hasContent) {
+    throw new Error("provide either 'path' or 'content', not both");
+  }
+  let input = "";
+  if (options.path) {
+    await validateJsonPath(options.path);
+  } else {
+    input = await readJsonContent(options.content);
+  }
+
+  const args: string[] = [];
+  if (options.raw) args.push("-r");
+  if (options.compact) args.push("-c");
+  if (options.slurp) args.push("-s");
+  // -- 终止选项解析：以 - 开头的 filter 不能被 jq 当成自身选项。
+  args.push("--", query, options.path ?? "-");
+  const result = await runJqBinary(
+    jqPath,
+    args,
+    input,
+    Math.max(options.maxChars * 4, 256_000),
+    options.signal,
+    options.timeoutMs,
+  );
+  let output = result.stdout;
+  if (result.stderr.trim()) output += `\n${result.stderr.trim()}`;
 
   const limit = Math.max(1, options.maxChars);
   return output.length > limit

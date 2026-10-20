@@ -100,12 +100,6 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     text: (args) => truncateLines(args.command),
     inlineResult: false,
   },
-  bash_output: {
-    category: "modify",
-    displayName: "Output",
-    text: (args) => str(args.id),
-    inlineResult: { maxLines: 1 },
-  },
   kill_shell: {
     category: "modify",
     displayName: "Kill",

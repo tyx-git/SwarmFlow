@@ -25,6 +25,7 @@ import {
 } from "../tools/comm.js";
 import {
   executeTool,
+  KILL_SHELL_TOOL,
   type AdoptShellFn,
 } from "../tools/basic.js";
 import type { SessionCapabilities } from "../session-capabilities.js";
@@ -106,6 +107,7 @@ export function ensureCommTools(
   if (capabilities.includeKillTool) wanted.push(KILL_AGENT_TOOL);
   if (capabilities.includeCheckStatusTool) wanted.push(CHECK_STATUS_TOOL);
   if (capabilities.includeAwaitEventTool) wanted.push(AWAIT_EVENT_TOOL);
+  if (capabilities.includeKillShellTool) wanted.push(KILL_SHELL_TOOL);
   if (capabilities.includeAskTool) wanted.push(ASK_TOOL);
   // 注意：没有 reload 分支。重新加载是用户显式命令（/reload），
   // 模型链路已被移除；reloadConfigurationFromCommand() 不经过此处。
@@ -120,8 +122,9 @@ export function ensureCommTools(
  * 按能力确保任务工具存在于工具数组中。
  *
  * 必须在子会话约束（subagent-factory 的 COMM_TOOL_NAMES 剥离）**之后**调用：
- * 子 Session 的构造函数会按 CHILD_SESSION_CAPABILITIES 重新追加 —— 把任务工具
- * 放进剥离清单是无效的（参见 await_event 的既有陷阱）。
+ * 子 Session 的构造函数会按 CHILD_SESSION_CAPABILITIES 重新追加。剥离名单与
+ * capability 必须保持一致：名单里保留的工具要真正消失，capability 就必须为
+ * false；反之，需要授予子会话的工具应从名单移除。
  *
  * 就地修改传入的数组。
  */
@@ -177,6 +180,8 @@ export interface ExecutorDeps {
   getApprovedExternalPrefixes?: () => string[];
   /* 将超时的同步bash进程移交给后台shell管理器。 */
   adoptShell?: AdoptShellFn;
+  /* 本会话是否拥有某个工具；用于让提示文案匹配真实能力。 */
+  hasTools?: (name: string) => boolean;
 }
 
 export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecutor> {
@@ -190,6 +195,7 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     onFileWrite,
     getApprovedExternalPrefixes,
     adoptShell,
+    hasTools,
   } = deps;
 
   const scopedBuiltin = (toolName: string): ToolExecutor =>
@@ -203,6 +209,7 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
       supportsMultimodal,
       signal: rtCtx?.signal,
       adoptShell,
+      hasTools,
     });
 
   const writeFileWithReload: ToolExecutor = (args, rtCtx) => {
@@ -231,7 +238,13 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
         getSessionArtifactsDir(),
         ...(getApprovedExternalPrefixes?.() ?? []),
       ],
+      sessionArtifactsDir: getSessionArtifactsDir(),
+      supportsMultimodal,
       signal: rtCtx?.signal,
+      // 超时移交需要这两项：缺了 adoptShell，超时命令会被直接杀掉，
+      // 与 bash 工具描述承诺的「转后台 shell」不符。
+      adoptShell,
+      hasTools,
     }),
     ...commExecutors,
     ...taskExecutors,

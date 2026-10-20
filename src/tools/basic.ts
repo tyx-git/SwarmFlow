@@ -3,7 +3,7 @@
  *
  * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
  * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、bash_output、kill_shell、
+ * bash、bash_background、kill_shell、
  * time、web_search、web_fetch。
  */
 
@@ -36,11 +36,13 @@ import {
   projectedDocumentLabel,
 } from "../context/document-projection.js";
 import { classifyFile, IMAGE_MEDIA_TYPES } from "../lib/file-attach.js";
+import { readLineWindowFromFile, readLineWindowFromText, type LineWindowResult } from "../lib/line-window.js";
 import { createPatch } from "diff";
 import { hashFilesystemPath } from "../lib/filesystem-hash.js";
 import {
   isExcludedDirName,
   isHiddenName,
+  SEARCH_BUDGET_MS,
   truncateMiddle,
   truncateLine,
 } from "./shared.js";
@@ -48,6 +50,7 @@ import { coercePathString } from "./arg-repair.js";
 import { FIND_SYMBOL, toolFindSymbol, type SymbolKind } from "./symbol-search.js";
 import { JQ, toolJq } from "./json-query.js";
 import { runBundledFd, runBundledRg } from "./native-search.js";
+import { GitIgnoreStack } from "./gitignore.js";
 import {
   type FileModifyDisplayData,
   type MatchInfo,
@@ -429,8 +432,11 @@ const BASH_TIMEOUT_KILL_SIGNAL: NodeJS.Signals = "SIGKILL";
 // 读取限制
 // ------------------------------------------------------------------
 
-const READ_MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-const READ_MAX_LINES = 2000;
+// 读取、编辑、写入共用的单文件内容上限。
+const FILE_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
+// 单次读取熔断行数：普通读取与 tail_lines 共用。超过后截断，
+// 并在结果末尾给出继续读取的指引。
+const READ_MAX_LINES = 1000;
 const READ_MAX_CHARS = 80_000;
 const READ_MAX_LINE_CHARS = 5000; // default per-line cap (catches minified files); model can raise via max_line_chars
 const READ_LINE_CHARS_FLOOR = 80; // lowest accepted max_line_chars
@@ -447,11 +453,13 @@ const SEARCH_MAX_FILE_SIZE = 1 * 1024 * 1024; // 1 MB per file
 const SEARCH_MAX_TOTAL_BYTES = 16 * 1024 * 1024; // 16 MB total scanned text
 const SEARCH_MAX_PATTERN_LENGTH = 300;
 const SEARCH_MAX_PATTERNS = 16; // multi-pattern OR cap
-const SEARCH_MAX_DURATION_MS = 4_000;
 const SEARCH_DEFAULT_HEAD_LIMIT = 100; // max content lines / file paths returned
 const SEARCH_DEFAULT_PER_FILE_LIMIT = 15; // max content lines per file in content mode
 const SEARCH_LINE_MAX_CHARS = 2_000; // per-line truncation cap
 const SEARCH_OUTPUT_CHAR_CAP = 60_000; // overall output cap (head+tail middle-cut)
+// content 走 rg --json，JSON 包装比最终文本大；先给事件流更高原始预算，
+// 最终仍由 SEARCH_OUTPUT_CHAR_CAP 截断。files/count 继续使用 60k 原始上限。
+const SEARCH_NATIVE_JSON_RAW_CAP = 2_000_000;
 
 // ------------------------------------------------------------------
 // 文件写入安全（第 5 阶段）
@@ -467,12 +475,15 @@ const READ: ToolDef = {
   name: "read_file",
   description:
     "Read the contents of a text file (max 50 MB). " +
-    "Returns up to 2000 lines / 80,000 characters per call; " +
+    "Returns up to 1000 lines / 80,000 characters per call; " +
     "individual lines longer than 5000 chars are truncated by default (raise max_line_chars when you need a long line in full). " +
     "PDF, DOCX, XLSX, and similar formats are returned as auto-extracted Markdown. " +
     "Image files are returned as visual content blocks when the model supports multimodal input. " +
     "Returns file metadata (including mtime_ms) for optional optimistic concurrency checks. " +
     "Use start_line+end_line (inclusive range) or offset+limit (offset = first line, limit = number of lines) to navigate large files across multiple calls. " +
+    "Each call returns at most 1000 lines; when the file is longer, the result ends with the start_line to use next. " +
+    "Use tail_lines to read the end of a file when you do not know how many lines it has — logs especially. " +
+    "tail_lines is also capped at the latest 1000 lines. " +
     "If you know there are several files to read, prefer issuing multiple read_file calls in parallel.",
   parameters: {
     type: "object",
@@ -505,6 +516,12 @@ const READ: ToolDef = {
         description:
           "Per-line character cap (default 5000). When output marks a line as truncated, " +
           "re-read with a larger value to see it in full. The 80,000-character per-call budget still applies.",
+      },
+      tail_lines: {
+        type: "integer",
+        description:
+          "Read only the last N lines (max 1000). For logs and other files whose length you do not know. " +
+          "Overrides start_line/end_line/offset/limit.",
       },
     },
     required: ["path"],
@@ -640,18 +657,23 @@ const BASH_DESCRIPTION_BASE =
   "TIMEOUT is REQUIRED —it is the synchronous wait budget, not a kill switch. If the " +
   "command finishes in time you get its full output as usual. If the timeout elapses, " +
   "the command is NOT killed: it keeps running and is moved to a tracked background " +
-  "shell. The tool returns the output captured so far plus the shell id —poll it with " +
-  "`bash_output`, wait with `await_event`, or stop it with `kill_shell`. Never re-run a " +
-  "command just because it timed out: its side effects are still in progress —poll the " +
-  "shell instead.\n\n" +
+  "shell. The tool returns the output captured so far, the shell id, and the absolute " +
+  "log path inside the project's `.swarmflow` session directory (`<session-id>/shells`; " +
+  "child agents use `<root-session-id>/agents/<child-id>/shells`). Read that path with " +
+  "`read_file` (`tail_lines=200` shows the latest output), wait for it with `await_event`, " +
+  "or stop it with `kill_shell` as available. " +
+  "Never re-run a command just because it timed out: its side effects are still in " +
+  "progress —inspect the shell instead. When stdout/stderr is truncated, the full text " +
+  "is saved under the session artifacts directory and the result includes its absolute path.\n\n" +
   "Choose the timeout to match how long you are willing to block on the result. " +
-  "Known long-running jobs are better started with bash_background directly (clearer " +
-  "intent, cleaner logs). Persistent processes that never exit on their own —dev " +
-  "servers, file watchers, daemons, `npm run dev`, `vite`, `next dev`, `cargo watch`, " +
-  "`tail -f` —should ALWAYS use bash_background.\n\n" +
+  "Known long-running jobs are better started with your dedicated background-shell " +
+  "tool when the session provides one (clearer intent, cleaner logs). Persistent " +
+  "processes that never exit on their own —dev servers, file watchers, daemons, " +
+  "`npm run dev`, `vite`, `next dev`, `cargo watch`, `tail -f` —should ALWAYS use " +
+  "that tool when available.\n\n" +
   "After a timeout hand-off, look at the partial output: if the command appears stuck " +
-  "or was waiting for interactive input, remember to kill_shell it rather than leaving " +
-  "a zombie shell behind.";
+  "or was waiting for interactive input, stop it with `kill_shell` when available " +
+  "rather than leaving a zombie shell behind.";
 
 function shellLabel(kind: ShellKind): string {
   switch (kind) {
@@ -733,8 +755,8 @@ const GLOB: ToolDef = {
     "Find files by name/path pattern. Returns matching absolute paths sorted by modification time " +
     "(most recently modified first). Patterns without `/` are auto-prefixed with `**/` so " +
     "`*.ts` matches every `.ts` file in the tree. " +
-    "Common build / cache directories (node_modules, .git, dist, target, .venv, etc.) are skipped. " +
-    "Supports `**`, `*`, `?`, `[abc]`, and `{a,b}` brace expansion.",
+    "Respects .gitignore rules and skips common build / cache directories (node_modules, .git, dist, target, .venv, etc.) " +
+    "unless `no_ignore` is true. Supports `**`, `*`, `?`, `[abc]`, and `{a,b}` brace expansion.",
   parameters: {
     type: "object",
     properties: {
@@ -803,7 +825,7 @@ const GLOB: ToolDef = {
       },
       no_ignore: {
         type: "boolean",
-        description: "Do not skip standard ignored build/cache directories. Default false.",
+        description: "Do not skip .gitignore rules or standard build/cache directories. Default false.",
       },
       follow: {
         type: "boolean",
@@ -837,10 +859,11 @@ const GREP: ToolDef = {
   description:
     "Search file contents by regex. Pattern can be a single string OR an array of strings " +
     "(matches lines that contain ANY of the patterns —useful for snake_case/camelCase/PascalCase variants in one call). " +
-    "Smart case: an all-lowercase pattern is matched case-insensitively unless `-i` is set explicitly. " +
+    "Smart case: an all-lowercase pattern is matched case-insensitively; set `-i` explicitly to force " +
+    "case-insensitive matching for mixed-case patterns. " +
     "Defaults: returns up to 100 results overall and 15 matching lines per file in content mode; " +
     "individual lines longer than 2000 chars are truncated. " +
-    "Skips common build / cache directories (node_modules, .git, dist, target, .venv, etc.).",
+    "Respects .gitignore rules and skips common build/cache directories unless `no_ignore` is true.",
   parameters: {
     type: "object",
     properties: {
@@ -894,7 +917,7 @@ const GREP: ToolDef = {
       },
       no_ignore: {
         type: "boolean",
-        description: "Search ignored files and standard build/cache directories.",
+        description: "Search files ignored by .gitignore and standard build/cache directories.",
       },
       follow: {
         type: "boolean",
@@ -984,7 +1007,11 @@ export const BASH_BACKGROUND_TOOL: ToolDef = {
   name: "bash_background",
   description:
     "Start a background shell command tracked by the Session. " +
-    "Use for dev servers, watchers, and long-running commands whose output you want to inspect later.\n\n" +
+    "Use for dev servers, watchers, and long-running commands whose output you want to inspect later. " +
+    "Logs are saved inside the project `.swarmflow` session directory: " +
+    "`.swarmflow/<session-id>/shells/<shell-id>.log` for a root session, or " +
+    "`.swarmflow/<root-session-id>/agents/<child-id>/shells/<shell-id>.log` for a child agent. " +
+    "The result includes the exact absolute `log:` path; read that path with `read_file`.\n\n" +
     "Don't leave zombie shells behind: when a background shell is no longer needed for your work " +
     "AND has no value to the user, remember to kill_shell it. The exception is processes the user " +
     "benefits from directly —a dev server they are clicking around in (`npm run dev`, `vite`) " +
@@ -1005,41 +1032,15 @@ export const BASH_BACKGROUND_TOOL: ToolDef = {
   tuiPolicy: { partialReveal: { completeArgs: ["command"] } },
 };
 
-export const BASH_OUTPUT_TOOL: ToolDef = {
-  name: "bash_output",
-  description:
-    "Read output from a tracked background shell. " +
-    "Each shell keeps a read position: the default call returns everything produced since your previous read " +
-    "and then moves that position forward, so repeated calls give you only the new lines. " +
-    "Pass tail_lines to peek at the most recent N lines without moving the read position. " +
-    "A dead shell's full log stays readable; output longer than max_chars is cut with a notice.",
-  parameters: {
-    type: "object",
-    properties: {
-      id: { type: "string", description: "Tracked shell ID." },
-      tail_lines: {
-        type: "integer",
-        description: "Optional: return the last N lines without advancing unread state.",
-      },
-      max_chars: {
-        type: "integer",
-        description: "Optional max characters to return (default 30000, cap 80000).",
-      },
-    },
-    required: ["id"],
-  },
-  summaryTemplate: "{agent} is reading background shell output",
-  tuiPolicy: { partialReveal: { completeArgs: ["id"] } },
-};
-
 export const KILL_SHELL_TOOL: ToolDef = {
   name: "kill_shell",
   description:
     "Terminate one or more tracked background shells. " +
     "The signal is sent to the entire process group so children (npm →vite, etc.) are killed in full. " +
-    "After kill the shell entry stays so you can read its final log via bash_output, but the process is gone —" +
+    "After kill the shell entry stays so you can read its final log at the same absolute `log:` path " +
+    "returned when the shell started or in status output, but the process is gone —" +
     "killed shells do not auto-restart, and HMR / file-watching stops. " +
-    "You can reuse the same id in a new bash_background once the prior shell has stopped.",
+    "The same id can be reused once the prior shell has stopped.",
   parameters: {
     type: "object",
     properties: {
@@ -1074,7 +1075,6 @@ export const BASIC_TOOLS: ToolDef[] = [
   WRITE,
   BASH,
   BASH_BACKGROUND_TOOL,
-  BASH_OUTPUT_TOOL,
   KILL_SHELL_TOOL,
   TIME,
   WEB_SEARCH,
@@ -1100,6 +1100,7 @@ async function toolReadFile(
   artifactsDir?: string,
   supportsMultimodal?: boolean,
   maxLineChars?: number,
+  tailLines?: number,
 ): Promise<string | ToolResult> {
   const sensitiveReason = getSensitiveFileReadReason(filePath);
   if (sensitiveReason) {
@@ -1161,51 +1162,53 @@ async function toolReadFile(
     }
   }
 
-  if (stat.size > READ_MAX_FILE_SIZE) {
-    const sizeMB = (stat.size / 1024 / 1024).toFixed(1);
-    return `ERROR: File too large (${sizeMB} MB, limit ${READ_MAX_FILE_SIZE / 1024 / 1024} MB).`;
+  if (stat.size > FILE_CONTENT_MAX_BYTES) {
+    return fileTooLargeMessage(stat.size);
   }
 
   const isProjectedDocument = isProjectedDocumentPath(filePath);
 
-  let text: string;
   let mtimeMs = Math.trunc(stat.mtimeMs);
   let sizeBytes = stat.size;
   let headerPrefix = "";
+  let window: LineWindowResult;
   try {
     if (isProjectedDocument) {
       const view = await loadProjectedDocumentView(filePath, artifactsDir);
-      text = view.text;
       mtimeMs = view.mtimeMs;
       sizeBytes = view.sizeBytes;
       headerPrefix =
         `[Auto-extracted Markdown view of ${path.basename(filePath)} (${projectedDocumentLabel(filePath)} source) | ` +
         `original_path=${filePath}]` + "\n";
+      window = await readLineWindowFromText(view.text, {
+        startLine,
+        endLine,
+        tailLines,
+        maxLines: READ_MAX_LINES,
+      });
     } else {
-      text = readFileSync(filePath, { encoding: "utf-8" });
+      window = await readLineWindowFromFile(filePath, {
+        startLine,
+        endLine,
+        tailLines,
+        maxLines: READ_MAX_LINES,
+      });
     }
   } catch (e) {
     return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
   }
 
-  const lines = text.split(/\r?\n/);
-  // Keep trailing newline semantics: if file ends with \n the last split
-  // element is "" but that represents "no extra line".
-  const total = lines.length;
-  let start = startLine ?? 1;
-  let end = endLine == null || endLine === -1 ? total : endLine;
-
-  if (start < 1) return `ERROR: start_line must be >= 1, got ${start}.`;
-  if (start > total) return `ERROR: start_line ${start} exceeds total lines (${total}).`;
-  if (end > total) end = total;
-  if (end < start) return `ERROR: end_line (${end}) < start_line (${start}).`;
-
-  // Apply line limit
-  if (end - start + 1 > READ_MAX_LINES) {
-    end = start + READ_MAX_LINES - 1;
+  const total = window.totalLines;
+  const start = window.start;
+  let end = window.end;
+  let selected = window.lines;
+  // 熔断提示统一在结果末尾追加，保证它始终是最后一段可操作指引。
+  let fuseNotice = "";
+  if (window.tailCapped) {
+    fuseNotice =
+      `<--- This file has more than ${READ_MAX_LINES} lines; showing the latest ${READ_MAX_LINES} lines. ` +
+      `Request a smaller \`tail_lines\`, or omit it and page with \`start_line\` if needed. --->`;
   }
-
-  let selected = lines.slice(start - 1, end);
 
   // Per-line truncation for runaway minified lines. The cap is overridable
   // per call so a truncated long line can be recovered in-tool instead of
@@ -1238,21 +1241,30 @@ async function toolReadFile(
     }
   }
 
+  // 行熔断只对普通读取生效；tail_lines 的提示已在上面的分支生成。
+  if (window.lineCapApplied) {
+    fuseNotice =
+      `<--- This file has more than ${READ_MAX_LINES} lines. ` +
+      `Continue with \`start_line=${end + 1}\` if you need the following lines. --->`;
+  }
+
   let result =
     headerPrefix +
     `[Lines ${start}-${end} of ${total} | mtime_ms=${mtimeMs} | size_bytes=${sizeBytes}]\n` +
     selected.join("\n");
 
   if (truncatedAtLine !== null) {
+    // tail_lines 会覆盖 start_line，因此不能用同一句提示；需要明确让模型
+    // 先去掉 tail_lines 再翻页。
+    const continueHint = tailLines != null
+      ? `Request a smaller tail_lines, or omit tail_lines and use start_line=${end + 1}` +
+        (isProjectedDocument ? " to read the extracted Markdown view" : "")
+      : `Use start_line=${end + 1} to continue reading` +
+        (isProjectedDocument ? " the extracted Markdown view of the same source path" : "");
     result +=
       `\n\n[WARNING: Reached ${READ_MAX_CHARS.toLocaleString()} character limit at line ` +
       `${truncatedAtLine}. Showing lines ${start}-${end} ` +
-      `(${end - start + 1} complete lines). ` +
-      `Use start_line=${end + 1} to continue reading${isProjectedDocument ? " the extracted Markdown view of the same source path" : ""}.]`;
-  } else if (end < total) {
-    result +=
-      `\n\n[Output truncated at ${READ_MAX_LINES} lines. ` +
-      `Use start_line=${end + 1} to continue reading${isProjectedDocument ? " the extracted Markdown view of the same source path" : ""}.]`;
+      `(${end - start + 1} complete lines). ${continueHint}.]`;
   }
 
   if (lineTrimCount > 0) {
@@ -1295,6 +1307,9 @@ async function toolReadFile(
         `To read a slice of a specific long line, ${escapeHatch}]`;
     }
   }
+
+  // 熔断提示放在所有警告/行截断说明之后，确保它是最后一段可操作指引。
+  if (fuseNotice) result += `\n\n${fuseNotice}`;
 
   return result;
 }
@@ -1459,6 +1474,19 @@ function getFileVersionSnapshot(filePath: string): FileVersionSnapshot {
   };
 }
 
+function fileTooLargeMessage(sizeBytes: number): string {
+  const sizeMB = (sizeBytes / 1024 / 1024).toFixed(1);
+  return `ERROR: File too large (${sizeMB} MB, limit ${FILE_CONTENT_MAX_BYTES / 1024 / 1024} MB).`;
+}
+
+/** edit_file/write_file 在整文件读取前使用同一 50MB 上限。 */
+function existingFileTooLarge(snapshot: FileVersionSnapshot): string | null {
+  if (snapshot.exists && snapshot.size !== undefined && snapshot.size > FILE_CONTENT_MAX_BYTES) {
+    return fileTooLargeMessage(snapshot.size);
+  }
+  return null;
+}
+
 function sameFileVersion(a: FileVersionSnapshot, b: FileVersionSnapshot): boolean {
   if (a.exists !== b.exists) return false;
   if (!a.exists && !b.exists) return true;
@@ -1539,6 +1567,8 @@ async function toolEditFileAppend(
     } catch (e) {
       return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
     }
+    const tooLarge = existingFileTooLarge(initialVersion);
+    if (tooLarge) return tooLarge;
 
     let before: string;
     try {
@@ -1681,6 +1711,8 @@ async function toolEditFileMulti(
     } catch (e) {
       return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
     }
+    const tooLarge = existingFileTooLarge(initialVersion);
+    if (tooLarge) return tooLarge;
 
     let content: string;
     try {
@@ -1844,6 +1876,8 @@ async function toolWriteFile(
 
       const initialVersion = getFileVersionSnapshot(filePath);
       validateExpectedMtime(filePath, expectedMtimeMs, initialVersion);
+      const tooLarge = existingFileTooLarge(initialVersion);
+      if (tooLarge) return tooLarge;
       const mode = initialVersion.mode;
       const before = initialVersion.exists
         ? readFileSync(filePath, { encoding: "utf-8" })
@@ -2010,7 +2044,7 @@ async function toolBash(
   command: string,
   timeout: number,
   cwd = "",
-  opts: { signal?: AbortSignal; spillDir?: string; adoptShell?: AdoptShellFn } = {},
+  opts: { signal?: AbortSignal; spillDir?: string; adoptShell?: AdoptShellFn; hasTools?: (name: string) => boolean } = {},
 ): Promise<string> {
   // Clamp timeout defensively (the dispatcher already validated presence/integer).
   timeout = Math.min(Math.max(1, timeout), BASH_MAX_TIMEOUT);
@@ -2063,7 +2097,12 @@ async function toolBash(
           (out ? `==== STDOUT ====\n${out}\n` : "") +
           (err ? `==== STDERR ====\n${err}\n` : "");
         const spill = spillOutputToFile(opts.spillDir, "bash-partial", full);
-        if (spill) parts.push(`Full untruncated output saved to: ${spill}`);
+        if (spill) {
+          parts.push(
+            `Full untruncated output saved to: ${spill}\n` +
+            `(read it with \`read_file\`; \`tail_lines=200\` shows the latest output.)`,
+          );
+        }
       }
       return parts.join("\n");
     };
@@ -2113,13 +2152,24 @@ async function toolBash(
       }
       try { child.stdin?.destroy(); } catch {}
       const partial = collectPartial();
+      // 文案只点名真实存在的等待/终止工具；读日志统一走 read_file。
+      const canAwaitEvent = opts.hasTools?.("await_event") === true;
+      const canKillShell = opts.hasTools?.("kill_shell") === true;
+      const readHint = `Read the log with \`read_file\` (\`tail_lines=200\` shows the latest output)`;
+      const actionHints: string[] = [];
+      if (canAwaitEvent) actionHints.push("wait with `await_event`");
+      if (canKillShell) actionHints.push("stop it with `kill_shell`");
+      const followUp =
+        `Do not re-run it: its side effects are still in progress. ${readHint} to see how it ends.` +
+        (actionHints.length > 0 ? ` You can ${actionHints.join(", or ")}.` : "");
       const header =
         `MOVED TO BACKGROUND: the command did not finish within ${timeout}s. It was NOT killed —` +
         `it continues running as background shell '${adopted.id}' (log: ${adopted.logPath}).\n` +
-        `Do not re-run it: its side effects are still in progress. Poll with \`bash_output(id="${adopted.id}")\`, ` +
-        `wait with \`await_event\`, or stop it with \`kill_shell\` when it is no longer needed.\n` +
-        `If the partial output below suggests the command was stuck or waiting for interactive input, ` +
-        `remember to kill_shell it rather than leaving a zombie shell behind.`;
+        followUp +
+        (canKillShell
+          ? `\nIf the partial output below suggests the command was stuck or waiting for interactive input, ` +
+            `remember to kill_shell it rather than leaving a zombie shell behind.`
+          : "");
       finish(partial ? `${header}\n\n${partial}` : header, /* keepStdio */ true);
       return true;
     };
@@ -2210,7 +2260,7 @@ async function toolBash(
         if (spill) {
           parts.push(
             `Full untruncated output saved to: ${spill}\n` +
-            `(${total.toLocaleString()} total chars; use read_file or grep to inspect.)`,
+            `(${total.toLocaleString()} total chars; read it with \`read_file\`, \`tail_lines=200\` for the latest output, or grep it.)`,
           );
         }
       }
@@ -2492,6 +2542,11 @@ export interface ExecuteToolContext {
    * 被追踪的后台 shell，而不是被杀死。
    */
   adoptShell?: AdoptShellFn;
+  /**
+   * 本会话是否拥有某个工具。读日志统一走 read_file；
+   * 该谓词只用于决定是否点名 await_event / kill_shell。
+   */
+  hasTools?: (name: string) => boolean;
 }
 
 class ToolArgValidationError extends Error {
@@ -2785,9 +2840,12 @@ function normalizeGlobPattern(pattern: string): string {
   return "**/" + pattern;
 }
 
-interface GlobOptions {
+export interface GlobOptions {
   limit: number;
-  native?: boolean;
+  /** 测试注入：false 时强制 JS 回退；生产默认走随包二进制。 */
+  useNative?: boolean;
+  /** .gitignore 规则的根目录（通常是 projectRoot）。 */
+  ignoreRoot?: string;
   andPatterns?: string[];
   excludes?: string[];
   type?: string[];
@@ -2890,6 +2948,8 @@ function bundledFdArgs(options: GlobOptions): string[] {
   if (options.caseInsensitive === false) args.push("--case-sensitive");
   if (options.includeHidden) args.push("--hidden");
   if (options.noIgnore) args.push("--no-ignore");
+  // 没有 .git 目录时也要读取 .gitignore；与 JS 回退语义保持一致。
+  else args.push("--no-require-git");
   if (options.follow) args.push("--follow");
   if (options.fullPath) args.push("--full-path");
   if (options.type && options.type.length > 0) {
@@ -2912,7 +2972,10 @@ function normalizeNativeFdOutput(
   options: GlobOptions,
 ): string {
   if (!content || content.startsWith("ERROR:")) return content;
-  const lines = content.split(/\r?\n/).filter(Boolean);
+  const rawLines = content.split(/\r?\n/).filter(Boolean);
+  // runSearch 的超时/截断/取消提示不是文件路径；单独保留，避免被当成匹配项。
+  const notices = rawLines.filter((line) => /^\[(?:Output truncated|Search stopped|Search cancelled)/.test(line));
+  const lines = rawLines.filter((line) => !notices.includes(line));
   const filtered = options.noIgnore
     ? lines
     : lines.filter((entry) => {
@@ -2921,22 +2984,36 @@ function normalizeNativeFdOutput(
       const parts = relative.split(/[\\/]+/).filter(Boolean);
       return !parts.slice(0, -1).some((part) => isExcludedDirName(part));
     });
+  // 与工具描述和 JS 回退一致：按 mtime 新到旧；fd 本身不排序。
+  const sorted = filtered
+    .map((entry) => {
+      const absolute = path.isAbsolute(entry) ? entry : path.resolve(searchPath, entry);
+      let mtime = 0;
+      try {
+        mtime = statSync(absolute).mtimeMs;
+      } catch {
+        mtime = 0;
+      }
+      return { entry, mtime };
+    })
+    .sort((a, b) => b.mtime - a.mtime || a.entry.localeCompare(b.entry));
   const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
-  const shown = filtered.slice(0, cap);
+  const shown = sorted.slice(0, cap).map((item) => item.entry);
   let result = shown.join("\n");
-  if (filtered.length > cap) {
-    result += `\n\n[Showing ${cap} of ${filtered.length} matches. Pass limit=${Math.min(cap * 4, GLOB_MAX_LIMIT)} or narrow the pattern to see more.]`;
+  if (sorted.length > cap) {
+    result += `\n\n[Showing ${cap} of ${sorted.length} matches. Pass limit=${Math.min(cap * 4, GLOB_MAX_LIMIT)} or narrow the pattern to see more.]`;
   }
+  if (notices.length > 0) result += `\n\n${notices.join("\n")}`;
   return result || "No files found matching the pattern.";
 }
 
-async function toolGlob(pattern: string, searchPath: string, options: GlobOptions): Promise<string> {
+export async function toolGlob(pattern: string, searchPath: string, options: GlobOptions): Promise<string> {
   if (!existsSync(searchPath)) {
     return `ERROR: Path not found: ${searchPath}`;
   }
   const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
 
-  const native = options.native ? await runBundledFd({
+  const native = options.useNative !== false ? await runBundledFd({
     pattern,
     root: searchPath,
     args: bundledFdArgs(options),
@@ -2950,7 +3027,20 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
   const results: Array<{ path: string; mtime: number }> = [];
   let filesScanned = 0;
 
+  // JS 回退与二进制一致地尊重 .gitignore（含嵌套）；no_ignore 时禁用。
+  const ignores = new GitIgnoreStack(!options.noIgnore);
+  ignores.seedAncestors(options.ignoreRoot, searchPath);
+
   async function walk(dir: string, depth: number, relPrefix: string): Promise<void> {
+    ignores.push(dir);
+    try {
+      await walkDirectory(dir, depth, relPrefix);
+    } finally {
+      ignores.pop(dir);
+    }
+  }
+
+  async function walkDirectory(dir: string, depth: number, relPrefix: string): Promise<void> {
     if (filesScanned >= GLOB_MAX_FILES_SCANNED) return;
     // Bounded recursion guard: protects against pathological / circular
     // symlink trees that would otherwise keep recursing on directory loops
@@ -2983,6 +3073,7 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
 
       if (stat.isDirectory()) {
         if (!options.noIgnore && isExcludedDirName(name)) continue;
+        if (ignores.ignores(full, true)) continue;
         const entryDepth = depth + 1;
         let emptyDirectory = false;
         if (options.type?.some((item) => item.toLocaleLowerCase() === "empty") === true) {
@@ -3002,7 +3093,7 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
         const matchesPattern = matchesGlobEntry(pattern, rel, name, options)
           && (options.andPatterns ?? []).every((extra) => matchesGlobEntry(extra, rel, name, options));
         if (wantsDirectories && withinDepth && !matchesGlobExclusion(rel, name, options.excludes) && matchesGlobType(stat, options.type, emptyDirectory) && matchesPattern) {
-          results.push({ path: options.absolutePath === false ? rel : full, mtime: stat.mtimeMs });
+          results.push({ path: options.absolutePath === false ? (rel.startsWith(".") ? rel : `./${rel}`) : full.replace(/\\/g, "/"), mtime: stat.mtimeMs });
         }
         if (options.exactDepth === undefined || entryDepth <= options.exactDepth) {
           await walk(full, depth + 1, rel);
@@ -3010,6 +3101,7 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
           await walk(full, depth + 1, rel);
         }
       } else if (stat.isFile() || stat.isSymbolicLink()) {
+        if (ignores.ignores(full, false)) continue;
         filesScanned++;
         const entryDepth = depth + 1;
         const withinDepth = options.exactDepth !== undefined
@@ -3018,7 +3110,7 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
         const matchesPattern = matchesGlobEntry(pattern, rel, name, options)
           && (options.andPatterns ?? []).every((extra) => matchesGlobEntry(extra, rel, name, options));
         if (withinDepth && !matchesGlobExclusion(rel, name, options.excludes) && matchesGlobType(stat, options.type) && matchesPattern) {
-          results.push({ path: options.absolutePath === false ? rel : full, mtime: stat.mtimeMs });
+          results.push({ path: options.absolutePath === false ? (rel.startsWith(".") ? rel : `./${rel}`) : full.replace(/\\/g, "/"), mtime: stat.mtimeMs });
         }
       }
     }
@@ -3030,8 +3122,8 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
     return "No files found matching the pattern.";
   }
 
-  // Sort by mtime descending (most recently modified first)
-  results.sort((a, b) => b.mtime - a.mtime);
+  // Sort by mtime descending (most recently modified first); tie-break by path.
+  results.sort((a, b) => b.mtime - a.mtime || a.path.localeCompare(b.path));
   const truncated = results.length > cap;
   const shown = truncated ? results.slice(0, cap) : results;
 
@@ -3049,8 +3141,11 @@ async function toolGlob(pattern: string, searchPath: string, options: GlobOption
 // grep 执行器（增强搜索）
 // ------------------------------------------------------------------
 
-interface GrepOptions {
-  native?: boolean;
+export interface GrepOptions {
+  /** 测试注入：false 时强制 JS 回退；生产默认走随包二进制。 */
+  useNative?: boolean;
+  /** .gitignore 规则的根目录（通常是 projectRoot）。 */
+  ignoreRoot?: string;
   glob?: string[];
   fileType?: string[];
   outputMode: "content" | "files_with_matches" | "count";
@@ -3117,51 +3212,382 @@ function matchFileType(filename: string, typeFilters: readonly string[]): boolea
   });
 }
 
-function bundledRgArgs(options: GrepOptions): string[] {
+export function bundledRgArgs(options: GrepOptions): string[] {
   const args: string[] = [];
+  const isContent = options.outputMode === "content";
+  // content 使用 JSON 事件流，才能可靠处理 context / 无行号 / multiline
+  // 以及敏感文件边界；files/count 继续使用原生文本输出。
+  if (isContent) args.push("--json");
   if (options.outputMode === "files_with_matches") args.push("--files-with-matches");
   if (options.outputMode === "count") args.push(options.countMatches ? "--count-matches" : "--count");
-  if (options.afterContext === options.beforeContext && options.afterContext > 0) {
+  if (isContent && options.afterContext === options.beforeContext && options.afterContext > 0) {
     args.push("--context", String(options.afterContext));
-  } else {
+  } else if (isContent) {
     if (options.afterContext > 0) args.push("--after-context", String(options.afterContext));
     if (options.beforeContext > 0) args.push("--before-context", String(options.beforeContext));
   }
   if (options.caseInsensitive === true) args.push("--ignore-case");
-  if (options.caseInsensitive === false) args.push("--case-sensitive");
+  else if (options.caseInsensitive === false) args.push("--case-sensitive");
+  // rg 15 默认区分大小写，而 JS 实现用 smart-case（全小写 pattern 忽略大小写）。
+  // 不显式传 --smart-case 会让 `grep foobar` 漏掉 `FooBar`。
+  else args.push("--smart-case");
   if (options.fixedStrings) args.push("--fixed-strings");
   if (options.wordRegexp) args.push("--word-regexp");
   if (options.lineRegexp) args.push("--line-regexp");
   if (options.multiline) args.push("--multiline");
   if (options.hidden) args.push("--hidden");
   if (options.noIgnore) args.push("--no-ignore");
+  // 没有 .git 目录时也要读取 .gitignore；与 JS 回退语义保持一致。
+  else args.push("--no-require-git");
   if (options.follow) args.push("--follow");
-  if (options.maxDepth >= 0) args.push("--max-depth", String(options.maxDepth));
-  if (options.maxCount > 0) args.push("--max-count", String(options.maxCount));
+  if (options.maxDepth >= 0) args.push("--max-depth", String(Math.min(options.maxDepth, SEARCH_MAX_DEPTH)));
+  // 与 JS 实现对齐：超过 1 MB 的文件跳过，避免把巨大文件读进内存。
+  args.push("--max-filesize", `${Math.round(SEARCH_MAX_FILE_SIZE / 1024)}K`);
+  // rg 的 -m/--max-count 按文件生效；limit_per_file 只约束 content 模式。
+  // count/files 模式不能把 limit_per_file 混进 --max-count，否则计数会被截断。
+  const caps: number[] = [];
+  if (options.maxCount > 0) caps.push(options.maxCount);
+  if (options.outputMode === "content" && options.perFileLimit > 0) caps.push(options.perFileLimit + 1);
+  if (caps.length > 0) args.push("--max-count", String(Math.min(...caps)));
   if (options.invertMatch) args.push("--invert-match");
-  if (options.onlyMatching && options.outputMode === "content") args.push("--only-matching");
+  if (options.includeZero && options.outputMode === "count") args.push("--include-zero");
   if (options.text) args.push("--text");
-  if (!options.showLineNumbers && options.outputMode === "content") args.push("--no-line-number");
-  else if (options.showLineNumbers && options.outputMode === "content") args.push("--line-number");
   for (const glob of options.glob ?? []) args.push("--glob", glob);
   for (const type of options.fileType ?? []) args.push("--type", type);
-  if (options.sort !== "none") args.push(`--sort=${options.sort}`);
-  // rg 的 max-count 按文件生效；head_limit 在最终文本上再截断，
-  // 因而原生路径仍保留 rg 的匹配语义。
+  // 排序统一在 formatGrepContent / formatGrepSummaries 中完成，避免
+  // rg 的 --sort=modified（旧到新）与 JS 的降序语义分叉。
   return args;
 }
+// ------------------------------------------------------------------
+// grep 输出统一层
+// ------------------------------------------------------------------
+//
+// native 与 JS 回退都必须落到同一套 canonical 文本格式：
+//   content:  path:line:text（match）/ path-line-text（context）
+//   only:     每个匹配一行
+//   files:    path
+//   count:    path:count
+// 排序、每文件上限、行长截断都在这里统一处理，避免两条路径各写一套。
 
-function trimNativeGrepOutput(content: string, options: GrepOptions): string {
-  const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
-  if (!content || content.startsWith("ERROR:") || options.outputMode === "files_with_matches" || options.outputMode === "count") {
-    return content;
-  }
-  const lines = content.split(/\r?\n/);
-  if (lines.length <= cap) return content;
-  return `${lines.slice(0, cap).join("\n")}\n\n[Reached results cap (${cap}). Narrow the pattern or raise head_limit.]`;
+interface GrepOutputLine {
+  line: number;
+  text: string;
+  kind: "match" | "context";
 }
 
-async function toolGrep(
+interface GrepOutputFile {
+  file: string;
+  lines: GrepOutputLine[];
+  matchLines: number;
+  hidden?: number;
+}
+
+interface GrepFileSummary {
+  file: string;
+  count: number;
+}
+
+interface GrepMatchLine {
+  line: number;
+  text: string;
+  lineCount: number;
+  matchTexts?: string[];
+}
+
+interface GrepFileMatches {
+  file: string;
+  matches: GrepMatchLine[];
+  count: number;
+  truncatedAt?: number;
+}
+
+function isNativeSearchNotice(line: string): boolean {
+  return /^\[(?:Output truncated|Search stopped|Search cancelled)/.test(line);
+}
+
+function sortGrepFiles<T extends { file: string }>(files: T[], sort: GrepOptions["sort"]): T[] {
+  if (sort === "path") {
+    return [...files].sort((a, b) => a.file.localeCompare(b.file));
+  }
+  if (sort === "modified") {
+    const mtime = (file: string): number => {
+      try {
+        return statSync(file).mtimeMs;
+      } catch {
+        return 0;
+      }
+    };
+    // 统一方向：新 -> 旧；mtime 相同按路径稳定排序。
+    return [...files].sort((a, b) => mtime(b.file) - mtime(a.file) || a.file.localeCompare(b.file));
+  }
+  return [...files];
+}
+
+function formatGrepContent(
+  files: GrepOutputFile[],
+  options: GrepOptions,
+  extraNotices: string[] = [],
+): { body: string; notices: string[] } {
+  const sorted = sortGrepFiles(files, options.sort);
+  const withContext = (options.beforeContext > 0 || options.afterContext > 0) && !options.onlyMatching;
+  const out: string[] = [];
+  for (const file of sorted) {
+    let previousLine = 0;
+    if (withContext && out.length > 0) out.push("--");
+    for (const line of file.lines) {
+      if (withContext && previousLine > 0 && line.line > previousLine + 1) out.push("--");
+      const separator = line.kind === "match" ? ":" : "-";
+      const prefix = options.showLineNumbers
+        ? `${file.file}${separator}${line.line}${separator}`
+        : `${file.file}${separator}`;
+      out.push(prefix + truncateLine(line.text.replace(/\r$/, ""), SEARCH_LINE_MAX_CHARS));
+      previousLine = line.line;
+    }
+    if ((file.hidden ?? 0) > 0) {
+      out.push(`${file.file}: —(${file.hidden} more matches in this file; raise limit_per_file to see them)`);
+    }
+  }
+
+  const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
+  const truncated = out.length > cap;
+  if (truncated) out.length = cap;
+  const notices = [...extraNotices];
+  if (truncated) {
+    notices.push(`Reached results cap (${cap}). Narrow the pattern, restrict path/glob, or raise head_limit.`);
+  }
+  return { body: out.join("\n") || "No matches found.", notices };
+}
+
+function formatGrepSummaries(
+  files: GrepFileSummary[],
+  options: GrepOptions,
+  extraNotices: string[] = [],
+): { body: string; notices: string[] } {
+  const sorted = sortGrepFiles(files, options.sort);
+  const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
+  const truncated = sorted.length > cap;
+  const shown = truncated ? sorted.slice(0, cap) : sorted;
+  const notices = [...extraNotices];
+  if (truncated) {
+    notices.push(`Reached results cap (${cap}). Narrow the pattern, restrict path/glob, or raise head_limit.`);
+  }
+  return {
+    body: shown
+      .map((item) => options.outputMode === "count" ? `${item.file}:${item.count}` : item.file)
+      .join("\n") || "No matches found.",
+    notices,
+  };
+}
+
+/**
+ * 最终字符预算。
+ * 第 8 点暂不统一策略：JS 保留头尾中段截断，native 保留头部截断。
+ */
+function finalizeGrepOutput(result: { body: string; notices: string[] }, headOnly: boolean): string {
+  let body = result.body;
+  const notices = [...result.notices];
+  if (body.length > SEARCH_OUTPUT_CHAR_CAP) {
+    if (headOnly) {
+      body = body.slice(0, SEARCH_OUTPUT_CHAR_CAP);
+      notices.push(`Output truncated at ${SEARCH_OUTPUT_CHAR_CAP} characters.`);
+    } else {
+      body = truncateMiddle(body, SEARCH_OUTPUT_CHAR_CAP);
+      notices.push(`Output exceeded ${SEARCH_OUTPUT_CHAR_CAP.toLocaleString()} chars; head+tail kept, middle dropped.`);
+    }
+  }
+  return notices.length > 0
+    ? `${body}\n\n[Search notices]\n${notices.map((notice) => `- ${notice}`).join("\n")}`
+    : body;
+}
+
+/** 把 rg --json 的 match/context 事件还原成统一格式。 */
+function parseNativeGrepJson(
+  content: string,
+  options: GrepOptions,
+): { files: GrepOutputFile[]; notices: string[] } {
+  const files = new Map<string, GrepOutputFile>();
+  const notices: string[] = [];
+  const perFileLimit = options.perFileLimit > 0 ? options.perFileLimit : Number.POSITIVE_INFINITY;
+  const sensitiveFiles = new Set<string>();
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    if (!rawLine.trim()) continue;
+    if (isNativeSearchNotice(rawLine)) {
+      notices.push(rawLine);
+      continue;
+    }
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(rawLine) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const type = event["type"];
+    if (type !== "begin" && type !== "match" && type !== "context") continue;
+    const data = (event["data"] ?? {}) as Record<string, unknown>;
+    const pathText = ((data["path"] ?? {}) as Record<string, unknown>)["text"];
+    if (typeof pathText !== "string") continue;
+    const file = path.normalize(pathText);
+    if (getSensitiveFileReadReason(file)) {
+      sensitiveFiles.add(file);
+      continue;
+    }
+    let entry = files.get(file);
+    if (!entry) {
+      entry = { file, lines: [], matchLines: 0 };
+      files.set(file, entry);
+    }
+    if (type === "begin") continue;
+
+    const lineNumber = typeof data["line_number"] === "number" ? data["line_number"] : 1;
+    const rawText = typeof ((data["lines"] ?? {}) as Record<string, unknown>)["text"] === "string"
+      ? String(((data["lines"] as Record<string, unknown>)["text"]))
+      : "";
+    const segments = rawText.split("\n");
+    if (segments.length > 0 && segments[segments.length - 1] === "") segments.pop();
+
+    if (type === "match") {
+      if ((entry.hidden ?? 0) > 0) continue;
+      const submatches = Array.isArray(data["submatches"]) ? data["submatches"] as Array<Record<string, unknown>> : [];
+      if (options.onlyMatching && submatches.length > 0) {
+        for (const submatch of submatches) {
+          const match = (submatch["match"] ?? {}) as Record<string, unknown>;
+          const matchText = typeof match["text"] === "string" ? match["text"] : "";
+          const parts = matchText.split("\n");
+          for (let index = 0; index < parts.length; index += 1) {
+            if (entry.matchLines >= perFileLimit) {
+              entry.hidden = (entry.hidden ?? 0) + 1;
+              continue;
+            }
+            entry.lines.push({ line: lineNumber + index, text: parts[index]!, kind: "match" });
+            entry.matchLines += 1;
+          }
+        }
+      } else {
+        for (let index = 0; index < segments.length; index += 1) {
+          if (entry.matchLines >= perFileLimit) {
+            entry.hidden = (entry.hidden ?? 0) + 1;
+            continue;
+          }
+          entry.lines.push({ line: lineNumber + index, text: segments[index]!, kind: "match" });
+          entry.matchLines += 1;
+        }
+      }
+    } else {
+      // only-matching 不输出上下文；跳过 context 事件，避免产生无主的 `-` 行。
+      if (options.onlyMatching) continue;
+      // 已超上限时，额外匹配周围的 context 一并丢弃，避免出现无主的上下文行。
+      if ((entry.hidden ?? 0) > 0) continue;
+      for (let index = 0; index < segments.length; index += 1) {
+        entry.lines.push({ line: lineNumber + index, text: segments[index]!, kind: "context" });
+      }
+    }
+  }
+
+  if (sensitiveFiles.size > 0) notices.push(`Skipped ${sensitiveFiles.size} sensitive file(s).`);
+  return { files: [...files.values()].filter((file) => file.lines.length > 0), notices };
+}
+
+/** files_with_matches / count 的 native 文本输出转成统一结构。 */
+function parseNativeGrepSummaries(
+  content: string,
+  options: GrepOptions,
+): { files: GrepFileSummary[]; notices: string[] } {
+  const files: GrepFileSummary[] = [];
+  const notices: string[] = [];
+  const sensitiveFiles = new Set<string>();
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (isNativeSearchNotice(line)) {
+      notices.push(line);
+      continue;
+    }
+    if (line.startsWith("ERROR:") || line === "No matches found.") continue;
+    if (options.outputMode === "count") {
+      const match = /^(.*):(\d+)$/.exec(line);
+      if (!match) continue;
+      const file = path.normalize(match[1]!);
+      if (getSensitiveFileReadReason(file)) {
+        sensitiveFiles.add(file);
+        continue;
+      }
+      files.push({ file, count: Number(match[2]) });
+    } else {
+      const file = path.normalize(line);
+      if (getSensitiveFileReadReason(file)) {
+        sensitiveFiles.add(file);
+        continue;
+      }
+      files.push({ file, count: 0 });
+    }
+  }
+  if (sensitiveFiles.size > 0) notices.push(`Skipped ${sensitiveFiles.size} sensitive file(s).`);
+  return { files, notices };
+}
+
+/** 把 JS 回退的命中记录展开成与 native 相同的行结构。 */
+async function buildJsGrepOutputFiles(
+  fileMatches: GrepFileMatches[],
+  options: GrepOptions,
+): Promise<GrepOutputFile[]> {
+  const result: GrepOutputFile[] = [];
+  const withContext = (options.beforeContext > 0 || options.afterContext > 0) && !options.onlyMatching;
+
+  for (const matches of fileMatches) {
+    const lines: GrepOutputLine[] = [];
+    if (withContext) {
+      let fileLines: string[];
+      try {
+        fileLines = (await fs.readFile(matches.file, "utf-8")).split(/\r?\n/);
+        // 末尾换行产生的空元素不是真实上下文行；native rg 不会输出它。
+        if (fileLines.length > 0 && fileLines[fileLines.length - 1] === "") fileLines.pop();
+      } catch {
+        continue;
+      }
+      const ranges = matches.matches.map((match) => ({
+        start: match.line,
+        end: match.line + match.lineCount - 1,
+      }));
+      const selected = new Map<number, GrepOutputLine>();
+      for (const match of matches.matches) {
+        const start = Math.max(1, match.line - options.beforeContext);
+        const end = Math.min(fileLines.length, match.line + match.lineCount - 1 + options.afterContext);
+        for (let lineNumber = start; lineNumber <= end; lineNumber += 1) {
+          const kind: GrepOutputLine["kind"] = ranges.some(
+            (range) => lineNumber >= range.start && lineNumber <= range.end,
+          ) ? "match" : "context";
+          const existing = selected.get(lineNumber);
+          if (!existing || kind === "match") {
+            selected.set(lineNumber, { line: lineNumber, text: fileLines[lineNumber - 1] ?? "", kind });
+          }
+        }
+      }
+      for (const line of [...selected.values()].sort((a, b) => a.line - b.line)) lines.push(line);
+    } else {
+      for (const match of matches.matches) {
+        const parts = match.matchTexts ?? [match.text];
+        for (const part of parts) {
+          const segments = part.split("\n");
+          for (let index = 0; index < segments.length; index += 1) {
+            lines.push({ line: match.line + index, text: segments[index]!, kind: "match" });
+          }
+        }
+      }
+    }
+
+    const matchLines = lines.filter((line) => line.kind === "match").length;
+    result.push({
+      file: matches.file,
+      lines,
+      matchLines,
+      hidden: matches.truncatedAt !== undefined ? Math.max(1, matches.count - matchLines) : undefined,
+    });
+  }
+  return result;
+}
+
+export async function toolGrep(
   patterns: string[],
   searchPath: string,
   options: GrepOptions,
@@ -3191,14 +3617,31 @@ async function toolGrep(
     }
   }
 
-  const native = options.native ? await runBundledRg({
+  // 显式路径优先于 rg 的 glob 规则：这里必须在 native/JS 分支之前拦截，
+  // 否则直接 grep 一个敏感文件会绕过目录遍历时的过滤。
+  const searchStat = statSync(searchPath);
+  if (searchStat.isFile()) {
+    const sensitiveReason = getSensitiveFileReadReason(searchPath);
+    if (sensitiveReason) {
+      return `ERROR: Access to sensitive file is blocked by default: ${searchPath} (${sensitiveReason}).`;
+    }
+  }
+
+  const native = options.useNative !== false ? await runBundledRg({
     patterns,
     root: searchPath,
     args: bundledRgArgs(options),
     signal: options.signal,
+    outputCap: options.outputMode === "content" ? SEARCH_NATIVE_JSON_RAW_CAP : undefined,
   }) : { available: false, content: "" };
   if (native.available) {
-    return trimNativeGrepOutput(native.content, options);
+    if (native.content.startsWith("ERROR:")) return native.content;
+    if (options.outputMode === "content") {
+      const { files, notices } = parseNativeGrepJson(native.content, options);
+      return finalizeGrepOutput(formatGrepContent(files, options, notices), true);
+    }
+    const { files, notices } = parseNativeGrepSummaries(native.content, options);
+    return finalizeGrepOutput(formatGrepSummaries(files, options, notices), true);
   }
 
   // Smart case (ripgrep-style): no ASCII uppercase in any pattern 鈬?-i.
@@ -3229,10 +3672,12 @@ async function toolGrep(
   let regex: RegExp;
   try {
     const flags = effectiveCaseInsensitive ? "i" : "";
+    // 对齐 rg --multiline：`.` 不跨行；显式 \n 仍可跨行。
+    // 不使用 s 标志，否则 `foo.*bar` 会在 JS 与二进制之间产生不同结果。
     if (patterns.length === 1) {
-      regex = new RegExp(patternRegexes[0]!, flags + (options.multiline ? "s" : ""));
+      regex = new RegExp(patternRegexes[0]!, flags);
     } else {
-      regex = new RegExp(patternRegexes.map((p) => `(?:${p})`).join("|"), flags + (options.multiline ? "s" : ""));
+      regex = new RegExp(patternRegexes.map((p) => `(?:${p})`).join("|"), flags);
     }
   } catch (e) {
     return `ERROR: Invalid regex: ${e instanceof Error ? e.message : String(e)}`;
@@ -3251,13 +3696,15 @@ async function toolGrep(
   };
 
   // Results storage depends on output mode
-  const fileMatches: Array<{ file: string; matches: Array<{ line: number; text: string }>; count: number; truncatedAt?: number }> = [];
+  const fileMatches: GrepFileMatches[] = [];
   let totalEntries = 0;
 
   function shouldStop(): boolean {
-    if (options.headLimit > 0 && totalEntries >= options.headLimit) return true;
+    // 多读取一个条目，才能让 formatter 判断“确实还有更多”并给出 cap 提示；
+    // 恰好等于上限时停止会丢失 native/JS 都必须出现的 truncation notice。
+    if (options.headLimit > 0 && totalEntries > options.headLimit) return true;
     if (stats.maxFilesHit || stats.maxBytesHit || stats.timeoutHit) return true;
-    if (Date.now() - startedAt > SEARCH_MAX_DURATION_MS) {
+    if (Date.now() - startedAt > SEARCH_BUDGET_MS) {
       stats.timeoutHit = true;
       return true;
     }
@@ -3282,35 +3729,83 @@ async function toolGrep(
     if (!options.text && header.includes(0)) return;
 
     const text = raw.toString("utf-8");
-    const lines = options.multiline ? [text] : text.split("\n");
-    const matchingLines: Array<{ line: number; text: string }> = [];
-    const perFileCap = Math.max(1, Math.min(options.perFileLimit, options.maxCount > 0 ? options.maxCount : options.perFileLimit));
+    const matchingLines: GrepMatchLine[] = [];    // content：limit_per_file 决定展示行数，max_count 也按文件截断。
+    // count：只受 max_count 约束；files：命中一次即可。
+    const perFileStoreCap = options.outputMode === "content"
+      ? Math.max(1, Math.min(
+        options.perFileLimit > 0 ? options.perFileLimit : Number.POSITIVE_INFINITY,
+        options.maxCount > 0 ? options.maxCount : Number.POSITIVE_INFINITY,
+      ))
+      : 1;
+    const scanCap = options.outputMode === "count"
+      ? (options.maxCount > 0 ? options.maxCount : Number.POSITIVE_INFINITY)
+      : options.outputMode === "files_with_matches"
+        ? 1
+        : Math.min(
+          options.perFileLimit > 0 ? options.perFileLimit + 1 : Number.POSITIVE_INFINITY,
+          options.maxCount > 0 ? options.maxCount : Number.POSITIVE_INFINITY,
+        );
     let totalMatchesInFile = 0;
     let totalIndividualMatches = 0;
     let truncatedAt: number | undefined;
 
-    for (let i = 0; i < lines.length; i++) {
-      if (regex.global || regex.sticky) regex.lastIndex = 0;
-      const lineText = lines[i]!;
-      const matched = regex.test(lineText);
-      if (options.invertMatch ? !matched : matched) {
-        totalMatchesInFile += 1;
-        if (options.countMatches && !options.invertMatch) {
-          const countRegex = new RegExp(regex.source, regex.flags.replace("g", "") + "g");
-          totalIndividualMatches += [...lineText.matchAll(countRegex)].length;
+    const pushMatch = (line: number, matchedText: string, lineCount: number, matchTexts?: string[]): void => {
+      // files/count 只需要知道文件命中；不保存匹配内容，避免无上限内存。
+      if (options.outputMode !== "content") {
+        if (matchingLines.length === 0) {
+          matchingLines.push({ line, text: matchedText.trimEnd(), lineCount, matchTexts });
         }
-        if (matchingLines.length < perFileCap) {
-          const displayText = options.onlyMatching && !options.invertMatch
-            ? [...lineText.matchAll(new RegExp(regex.source, regex.flags.replace("g", "") + "g"))]
-              .map((match) => match[0])
-              .join("\n")
-            : lineText;
-          matchingLines.push({
-            line: i + 1,
-            text: truncateLine(displayText.trimEnd(), SEARCH_LINE_MAX_CHARS),
-          });
-        } else if (truncatedAt === undefined) {
-          truncatedAt = totalMatchesInFile;
+        return;
+      }
+      if (totalMatchesInFile <= perFileStoreCap) {
+        matchingLines.push({ line, text: matchedText.trimEnd(), lineCount, matchTexts });
+      } else if (truncatedAt === undefined) {
+        truncatedAt = totalMatchesInFile;
+      }
+    };
+
+    if (options.multiline) {
+      const globalRegex = new RegExp(regex.source, regex.flags.includes("g") ? regex.flags : `${regex.flags}g`);
+      if (options.invertMatch) {
+        // 反选 + multiline 不是常用组合：按整文件是否匹配处理。
+        if (!regex.test(text)) {
+          const lineCount = text.split("\n").length;
+          totalMatchesInFile = lineCount;
+          pushMatch(1, text, lineCount);
+        }
+      } else {
+        for (const match of text.matchAll(globalRegex)) {
+          const matchedText = match[0] ?? "";
+          if (!matchedText) continue;
+          const startLine = text.slice(0, match.index ?? 0).split("\n").length;
+          const lineCount = matchedText.split("\n").length;
+          totalMatchesInFile += lineCount;
+          if (options.countMatches) totalIndividualMatches += 1;
+          if (totalMatchesInFile > scanCap) {
+            if (options.outputMode === "content" && truncatedAt === undefined) truncatedAt = totalMatchesInFile;
+            break;
+          }
+          pushMatch(startLine, matchedText, lineCount, options.onlyMatching ? [matchedText] : undefined);
+        }
+      }
+    } else {
+      const lines = text.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (regex.global || regex.sticky) regex.lastIndex = 0;
+        const lineText = lines[i]!;
+        const match = regex.exec(lineText);
+        const isMatch = match !== null;
+        if (options.invertMatch ? !isMatch : isMatch) {
+          totalMatchesInFile += 1;
+          if (options.countMatches && !options.invertMatch) {
+            const countRegex = new RegExp(regex.source, regex.flags.replace("g", "") + "g");
+            totalIndividualMatches += [...lineText.matchAll(countRegex)].length;
+          }
+          const matchTexts = options.onlyMatching && !options.invertMatch && match
+            ? [...lineText.matchAll(new RegExp(regex.source, regex.flags.replace("g", "") + "g"))].map((item) => item[0])
+            : undefined;
+          pushMatch(i + 1, lineText, 1, matchTexts);
+          if (totalMatchesInFile >= scanCap) break;
         }
       }
     }
@@ -3322,13 +3817,27 @@ async function toolGrep(
         count: options.countMatches ? totalIndividualMatches : totalMatchesInFile,
         truncatedAt,
       });
-      // headLimit counts entries (lines for content, files otherwise).
-      totalEntries +=
-        options.outputMode === "content" ? matchingLines.length : 1;
+      // headLimit 按最终输出行数计（content），其他模式按文件数计。
+      totalEntries += options.outputMode === "content"
+        ? matchingLines.reduce((sum, match) => sum + match.lineCount, 0)
+        : 1;
     }
   }
 
+  // JS 回退与二进制一致地尊重 .gitignore（含嵌套）；no_ignore 时禁用。
+  const ignores = new GitIgnoreStack(!options.noIgnore);
+  ignores.seedAncestors(options.ignoreRoot, searchPath);
+
   async function walkForGrep(dir: string, depth: number): Promise<void> {
+    ignores.push(dir);
+    try {
+      await walkGrepDirectory(dir, depth);
+    } finally {
+      ignores.pop(dir);
+    }
+  }
+
+  async function walkGrepDirectory(dir: string, depth: number): Promise<void> {
     if (shouldStop()) return;
     if (depth > Math.min(options.maxDepth, SEARCH_MAX_DEPTH)) {
       stats.depthLimitHits += 1;
@@ -3359,8 +3868,10 @@ async function toolGrep(
 
       if (stat.isDirectory()) {
         if (!options.noIgnore && isExcludedDirName(name)) continue;
+        if (ignores.ignores(full, true)) continue;
         await walkForGrep(full, depth + 1);
       } else if (stat.isFile()) {
+        if (ignores.ignores(full, false)) continue;
         const relativePath = path.relative(searchPath, full).replace(/\\/g, "/");
         if (!shouldIncludeFile(name, relativePath)) continue;
         if (getSensitiveFileReadReason(full)) {
@@ -3389,7 +3900,7 @@ async function toolGrep(
   }
 
   // Handle single file path
-  const pathStat = statSync(searchPath);
+  const pathStat = searchStat;
   if (pathStat.isFile()) {
     if (shouldIncludeFile(path.basename(searchPath), path.basename(searchPath))) {
       await processFile(searchPath);
@@ -3401,114 +3912,7 @@ async function toolGrep(
     await walkForGrep(searchPath, 0);
   }
 
-  if (options.sort === "modified") {
-    fileMatches.sort((a, b) => {
-      try {
-        return statSync(b.file).mtimeMs - statSync(a.file).mtimeMs;
-      } catch {
-        return 0;
-      }
-    });
-  }
-
-  // Format output based on mode
-  let output = "";
-  let resultsTruncated = false;
-  const { outputMode } = options;
-
-  if (fileMatches.length === 0) {
-    output = "No matches found.";
-  } else if (outputMode === "files_with_matches") {
-    const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
-    if (fileMatches.length > cap) {
-      resultsTruncated = true;
-      output = fileMatches.slice(0, cap).map((f) => f.file).join("\n");
-    } else {
-      output = fileMatches.map((f) => f.file).join("\n");
-    }
-  } else if (outputMode === "count") {
-    const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
-    if (fileMatches.length > cap) {
-      resultsTruncated = true;
-      output = fileMatches.slice(0, cap).map((f) => `${f.file}:${f.count}`).join("\n");
-    } else {
-      output = fileMatches.map((f) => `${f.file}:${f.count}`).join("\n");
-    }
-  } else {
-    // content mode —show matching lines with optional context
-    const parts: string[] = [];
-    const beforeCtx = options.beforeContext;
-    const afterCtx = options.afterContext;
-    const showNumbers = options.showLineNumbers;
-    const headCap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
-
-    function pushLine(line: string): boolean {
-      if (parts.length >= headCap) {
-        resultsTruncated = true;
-        return false;
-      }
-      parts.push(line);
-      return true;
-    }
-
-    outer:
-    for (const fm of fileMatches) {
-      if (beforeCtx > 0 || afterCtx > 0) {
-        // Need to re-read file for context lines
-        let fileLines: string[];
-        try {
-          fileLines = (await fs.readFile(fm.file, "utf-8")).split("\n");
-        } catch {
-          continue;
-        }
-
-        for (const m of fm.matches) {
-          const startL = Math.max(0, m.line - 1 - beforeCtx);
-          const endL = Math.min(fileLines.length, m.line + afterCtx);
-
-          for (let li = startL; li < endL; li++) {
-            const isMatch = li === m.line - 1;
-            const prefix = isMatch ? ">" : " ";
-            const lineText = truncateLine(fileLines[li].trimEnd(), SEARCH_LINE_MAX_CHARS);
-            const formatted = showNumbers
-              ? `${fm.file}:${li + 1}:${prefix} ${lineText}`
-              : `${fm.file}:${prefix} ${lineText}`;
-            if (!pushLine(formatted)) break outer;
-          }
-          if (!pushLine("--")) break outer;
-        }
-      } else {
-        // No context —just matching lines
-        for (const m of fm.matches) {
-          const formatted = showNumbers
-            ? `${fm.file}:${m.line}: ${m.text}`
-            : `${fm.file}: ${m.text}`;
-          if (!pushLine(formatted)) break outer;
-        }
-      }
-      if (fm.truncatedAt !== undefined) {
-        if (!pushLine(`${fm.file}: —(${fm.count - fm.matches.length} more matches in this file; raise limit_per_file to see them)`)) break;
-      }
-    }
-    output = parts.join("\n");
-  }
-
-  // Apply overall character cap (head+tail middle-cut) before notices.
-  let outputCharsTruncated = false;
-  if (output.length > SEARCH_OUTPUT_CHAR_CAP) {
-    output = truncateMiddle(output, SEARCH_OUTPUT_CHAR_CAP);
-    outputCharsTruncated = true;
-  }
-
-  // Append notices
   const notices: string[] = [];
-  if (resultsTruncated) {
-    const cap = options.headLimit > 0 ? options.headLimit : SEARCH_DEFAULT_HEAD_LIMIT;
-    notices.push(`Reached results cap (${cap}). Narrow the pattern, restrict path/glob, or raise head_limit.`);
-  }
-  if (outputCharsTruncated) {
-    notices.push(`Output exceeded ${SEARCH_OUTPUT_CHAR_CAP.toLocaleString()} chars; head+tail kept, middle dropped.`);
-  }
   if (stats.skippedLargeFiles > 0) {
     notices.push(`Skipped ${stats.skippedLargeFiles} large file(s) over ${Math.round(SEARCH_MAX_FILE_SIZE / 1024)} KB.`);
   }
@@ -3525,12 +3929,15 @@ async function toolGrep(
     notices.push(`Stopped after scanning ${Math.round(SEARCH_MAX_TOTAL_BYTES / 1024 / 1024)} MB.`);
   }
   if (stats.timeoutHit) {
-    notices.push(`Stopped after ${SEARCH_MAX_DURATION_MS}ms time limit.`);
+    notices.push(`Stopped after ${SEARCH_BUDGET_MS}ms time limit.`);
   }
-  if (notices.length > 0) {
-    output += "\n\n[Search notices]\n" + notices.map((n) => `- ${n}`).join("\n");
+
+  if (options.outputMode === "content") {
+    const files = await buildJsGrepOutputFiles(fileMatches, options);
+    return finalizeGrepOutput(formatGrepContent(files, options, notices), false);
   }
-  return output;
+  const summaries = fileMatches.map((match) => ({ file: match.file, count: match.count }));
+  return finalizeGrepOutput(formatGrepSummaries(summaries, options, notices), false);
 }
 
 function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> {
@@ -3544,6 +3951,7 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         const offset = optionalPositiveIntegerArg("read_file", a, "offset");
         const limit = optionalPositiveIntegerArg("read_file", a, "limit");
         const maxLineChars = optionalPositiveIntegerArg("read_file", a, "max_line_chars");
+        const tailLines = optionalPositiveIntegerArg("read_file", a, "tail_lines");
         // offset is an alias for start_line; limit converts to end_line.
         if (startLine == null && offset != null) startLine = offset;
         if (endLine == null && limit != null) {
@@ -3563,6 +3971,7 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
           ctx?.sessionArtifactsDir,
           ctx?.supportsMultimodal,
           maxLineChars,
+          tailLines,
         );
       } catch (e) {
         return formatToolError("read_file", e);
@@ -3705,6 +4114,7 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
           signal: rtCtx?.signal,
           spillDir: ctx?.sessionArtifactsDir,
           adoptShell: ctx?.adoptShell,
+          hasTools: ctx?.hasTools,
         });
 
         // Post-exec: only record mutations if command succeeded (exit code 0).
@@ -3770,11 +4180,6 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         const maxDepth = optionalIntegerArg("glob", a, "max_depth");
         const minDepth = optionalIntegerArg("glob", a, "min_depth");
         const exactDepth = optionalIntegerArg("glob", a, "exact_depth");
-        const native = [
-          "type", "extension", "and", "exclude", "regex", "fixed_strings", "case_insensitive",
-          "full_path", "absolute_path", "include_hidden", "no_ignore", "follow", "max_depth",
-          "min_depth", "exact_depth", "max_results",
-        ].some((key) => a[key] !== undefined);
         for (const [key, value] of [["max_depth", maxDepth], ["min_depth", minDepth], ["exact_depth", exactDepth]] as const) {
           if (value !== undefined && value < 0) {
             throw new ToolArgValidationError("glob", key, `'${key}' must be >= 0.`);
@@ -3791,7 +4196,8 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         );
         return await toolGlob(pattern, globPath, {
           limit,
-          native,
+          // 默认优先随包 fd；useNative:false 仅用于测试强制 JS 回退。
+          ignoreRoot: ctx?.projectRoot,
           andPatterns: andPatterns.length > 0 ? andPatterns : undefined,
           excludes: excludes.length > 0 ? excludes : undefined,
           type: type.length > 0 ? type : undefined,
@@ -3881,11 +4287,6 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         const maxDepth = maxDepthArg ?? SEARCH_MAX_DEPTH;
         const maxCount = optionalPositiveIntegerArg("grep", a, "max_count") ?? 0;
         const sort = optionalStringArg("grep", a, "sort", "none");
-        const native = [
-          "fixed_strings", "word_regexp", "line_regexp", "multiline", "hidden", "no_ignore", "follow",
-          "max_depth", "max_count", "invert_match", "only_matching", "count_matches", "include_zero",
-          "text", "sort", "glob", "type",
-        ].some((key) => a[key] !== undefined);
         if (sort !== "none" && sort !== "path" && sort !== "modified") {
           throw new ToolArgValidationError("grep", "sort", "'sort' must be none, path, or modified.");
         }
@@ -3893,7 +4294,8 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         return await toolGrep(patterns, searchPath, {
           glob: globFilter.length > 0 ? globFilter : undefined,
           fileType: fileType.length > 0 ? fileType : undefined,
-          native,
+          // 默认优先随包 rg；useNative:false 仅用于测试强制 JS 回退。
+          ignoreRoot: ctx?.projectRoot,
           outputMode,
           afterContext: contextCtx > 0 ? contextCtx : afterCtx,
           beforeContext: contextCtx > 0 ? contextCtx : beforeCtx,
@@ -3969,7 +4371,7 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         return formatToolError("find_symbol", e);
       }
     },
-    jq: async (args) => {
+    jq: async (args, rtCtx) => {
       try {
         const a = expectArgsObject("jq", args);
         const query = requiredStringArg("jq", a, "query", { nonEmpty: true, maxLen: 2_000 });
@@ -3978,7 +4380,10 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         if (contentRaw !== undefined && typeof contentRaw !== "string") {
           throw new ToolArgValidationError("jq", "content", "'content' must be a string.");
         }
-        if (!requestedPath && contentRaw === undefined) {
+        // 空字符串按「未提供」处理：模型常把 schema 里每个可选参数都填满，
+        // content 填 ""，若只看 !== undefined 会与 path 冲突，导致 jq 必然失败。
+        const content = typeof contentRaw === "string" && contentRaw.trim() !== "" ? contentRaw : undefined;
+        if (!requestedPath && content === undefined) {
           throw new ToolArgValidationError("jq", "path", "one of 'path' or 'content' is required.");
         }
         const filePath = requestedPath
@@ -3994,11 +4399,12 @@ function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExecutor> 
         return await toolJq({
           query,
           path: filePath,
-          content: contentRaw as string | undefined,
+          content,
           raw: a["raw"] === true,
           compact: a["compact"] === true,
           slurp: a["slurp"] === true,
           maxChars: Math.min(maxChars, 80_000),
+          signal: rtCtx?.signal,
         });
       } catch (e) {
         return formatToolError("jq", e);

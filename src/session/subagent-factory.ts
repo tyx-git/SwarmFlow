@@ -20,12 +20,12 @@ import type { PersistedRoleModelSelection, ResolvedRoleModel } from "./role-mode
  *
  * 注意：本名单只是策略声明，不构成强制。子 Session 的构造函数会用
  * CHILD_SESSION_CAPABILITIES 调 ensureCommTools() 重新追加 comm 工具，
- * 因此名单里的工具要被真正剥离，对应的 capability 必须为 false
- * （await_event 曾经就是 capability=true 导致名单失效）。
+ * 因此名单必须与 capability 一致：await_event / kill_shell 已从名单移除，
+ * 由 capability 显式授予；bash_background 仍然剥离。
  */
 const COMM_TOOL_NAMES = new Set([
-  "spawn", "kill_agent", "check_status", "await_event", "ask", "skill",
-  "bash_background", "bash_output", "kill_shell", "send",
+  "spawn", "kill_agent", "check_status", "ask", "skill",
+  "bash_background", "send",
 ]);
 
 export interface SubAgentFactoryDeps {

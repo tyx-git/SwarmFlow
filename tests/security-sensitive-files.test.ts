@@ -35,14 +35,19 @@ describe("sensitive file read guards", () => {
       writeFileSync(join(root, "credentials.json"), "{\"password\":\"secret\"}\n", "utf-8");
       writeFileSync(join(root, "notes.txt"), "PASSWORD policy docs\n", "utf-8");
 
+      // 用小写 pattern：smart-case 下它会同时命中 credentials.json 的 "password"
+      // 与 notes.txt 的 "PASSWORD"，从而真正走到「敏感文件必须被拦下」的路径。
+      // 大写 PASSWORD 在 smart-case 下区分大小写，本就匹配不到 credentials.json，
+      // 测不出过滤是否生效。
       const result = await executeTool(
         "grep",
-        { pattern: "PASSWORD", path: "." },
+        { pattern: "password", path: "." },
         { projectRoot: root },
       );
 
       expect(result.content).toContain("notes.txt");
       expect(result.content).not.toContain("credentials.json");
+      expect(result.content).not.toContain("secret");
       expect(result.content).toContain("Skipped 1 sensitive file");
     } finally {
       rmSync(root, { recursive: true, force: true });

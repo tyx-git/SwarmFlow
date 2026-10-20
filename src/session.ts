@@ -462,6 +462,7 @@ export class Session {
   // Path resolution（仅供运行时使用，不进入 system prompt）
   private _projectRoot: string;
   private _sessionArtifactsOverride: string;
+  private _shellLogDirOverride: string;
 
   // Task list state ({SESSION_ARTIFACTS}/tasks.json 为权威；子会话纯内存)
   private _taskStoreScope: "session" | "memory" = "session";
@@ -794,6 +795,12 @@ export class Session {
     /** SwarmFlow 主目录（全局 MEMORY.md 所在目录）。默认 ~/.swarmflow。 */
     homeDir?: string;
     sessionArtifactsDir?: string;
+    /**
+     * 后台 shell 日志目录覆盖。子会话由父会话传入项目内路径：
+     * `.swarmflow/<root-session-id>/agents/<child-id>/shells`。
+     * 根会话省略时使用 `.swarmflow/<session-id>/shells`。
+     */
+    shellLogDir?: string;
     capabilities?: SessionCapabilities;
     /**
      * 任务清单作用域。`session`（默认）：落 `{SESSION_ARTIFACTS}/tasks.json`；
@@ -857,10 +864,14 @@ export class Session {
     // Resolve runtime paths（system prompt 不再渲染这些值）
     this._projectRoot = resolve(opts.projectRoot ?? process.cwd());
     this._sessionArtifactsOverride = opts.sessionArtifactsDir ?? "";
+    this._shellLogDirOverride = opts.shellLogDir ?? "";
     this._shellManager = new BackgroundShellManager({
       projectRoot: this._projectRoot,
       getSessionArtifactsDir: () => this._resolveSessionArtifacts(),
+      getShellLogDir: () => this._resolveShellLogDir(),
       deliverMessage: (msg) => this._deliverMessage(msg),
+      // shell 日志统一由 read_file 读取；提示只需知道 await/kill 是否存在。
+      hasTools: (name) => this._hasTool(name),
     });
     this._rewindEngine = new RewindEngine({
       getLog: () => this._log,
@@ -2479,7 +2490,6 @@ export class Session {
       supportsMultimodal: this.primaryAgent.modelConfig.supportsMultimodal,
       commExecutors: {
         bash_background: (args) => this._shellManager.execBashBackground(args),
-        bash_output: (args) => this._shellManager.execBashOutput(args),
         kill_shell: (args) => this._shellManager.execKillShell(args),
         spawn: (args) => this._execSpawn(args),
         kill_agent: (args) => this._execKillAgent(args),
@@ -2507,7 +2517,13 @@ export class Session {
         const entry = this._shellManager.adoptRunningProcess(req);
         return { id: entry.id, logPath: entry.logPath };
       },
+      hasTools: (name) => this._hasTool(name),
     });
+  }
+
+  /** 本会话是否拥有某个工具（提示文案按真实能力分支时使用）。 */
+  private _hasTool(name: string): boolean {
+    return this.primaryAgent.tools.some((tool) => tool.name === name);
   }
 
   private _ensureCommTools(): void {
@@ -6180,6 +6196,33 @@ export class Session {
   }
 
   /**
+   * 根会话 ID：优先使用会话存储目录名，存储尚未惰性创建时退回
+   * prompt cache key。两者都对同一会话稳定，保证日志路径不变。
+   */
+  private _resolveRootSessionId(): string {
+    const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
+    return sessionDir ? basename(sessionDir) : this._promptCacheKey;
+  }
+
+  /**
+   * 项目内 shell 日志目录。
+   *
+   * 根会话：`{project}/.swarmflow/<session-id>/shells`
+   * 子会话：由父会话显式传入 `.../agents/<child-id>/shells`，避免与根会话的
+   * `shell-1` 等自动 id 冲突。日志放在工作区而不是 ~/.swarmflow，便于用户
+   * 直接查看；`.swarmflow` 已被仓库的隐藏目录规则忽略。
+   */
+  private _resolveShellLogDir(): string {
+    if (this._shellLogDirOverride) return this._shellLogDirOverride;
+    return join(this._projectRoot, ".swarmflow", this._resolveRootSessionId(), "shells");
+  }
+
+  /** 子会话的 shell 日志目录（挂在该根会话的 agents/<child-id> 下）。 */
+  private _resolveChildShellLogDir(childId: string): string {
+    return join(this._projectRoot, ".swarmflow", this._resolveRootSessionId(), "agents", childId, "shells");
+  }
+
+  /**
    * Assemble the full system prompt using the layered assembler.
    * Called by _reloadPromptAndTools(), not per-call.
    */
@@ -6708,6 +6751,7 @@ export class Session {
       fireHook: (event, payload) => this.hookRuntime.fireAndForget(event, payload),
       resolveSessionArtifacts: () => this._resolveSessionArtifacts(),
       getArtifactsDir: () => this._getArtifactsDir(),
+      resolveChildShellLogDir: (childId) => this._resolveChildShellLogDir(childId),
       getPromptCacheKey: () => this._promptCacheKey,
       getPreferredThinkingLevel: () => this._preferredThinkingLevel,
       getPrimaryAgent: () => this.primaryAgent,
@@ -6727,6 +6771,7 @@ export class Session {
           projectRoot: this._projectRoot,
           homeDir: this._swarmflowHomeDir,
           sessionArtifactsDir: o.artifactsDir,
+          shellLogDir: o.shellLogDir,
           capabilities: CHILD_SESSION_CAPABILITIES,
           // 子代理不写持久化文件：清单只在内存里，随子会话消亡
           taskStoreScope: "memory",

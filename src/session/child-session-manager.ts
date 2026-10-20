@@ -121,6 +121,8 @@ export interface PreparedChildRestore {
 export interface ChildSessionSpawnOpts {
   primaryAgent: Agent;
   artifactsDir: string;
+  /** 项目内 shell 日志目录：`.swarmflow/<root-session-id>/agents/<child-id>/shells`。 */
+  shellLogDir: string;
   promptCacheKey: string;
   onTurnOutput: (text: string) => void;
   onSaveRequest: () => void;
@@ -165,6 +167,8 @@ export interface ChildSessionManagerDeps {
   fireHook(event: HookEvent, payload: HookPayload): void;
   resolveSessionArtifacts(): string;
   getArtifactsDir(): string;
+  /** 子会话的 shell 日志目录（项目内 .swarmflow/<root-id>/agents/<child-id>/shells）。 */
+  resolveChildShellLogDir(childId: string): string;
   /** 根会话的 prompt cache 亲和键；子会话 key = 根 key + child id。 */
   getPromptCacheKey(): string;
   getPreferredThinkingLevel(): string;
@@ -476,6 +480,7 @@ export class ChildSessionManager {
     const sessionDir = this.childSessionDir(taskId);
     const artifactsDir = join(sessionDir, "artifacts");
     mkdirSync(artifactsDir, { recursive: true });
+    const shellLogDir = this.deps.resolveChildShellLogDir(taskId);
 
     const fullSystemPrompt = this.deps.buildSubAgentSystemPrompt(
       agent.systemPrompt,
@@ -514,6 +519,7 @@ export class ChildSessionManager {
     const childSession = this.deps.createChildSession({
       primaryAgent: agent,
       artifactsDir,
+      shellLogDir,
       // 根会话 key + child id：同一子任务续跑保持 affinity，同时与
       // 其他根会话/子会话隔离。恢复时若子日志已有持久化 key，会覆盖此值。
       promptCacheKey: childPromptCacheKey(this.deps.getPromptCacheKey(), taskId),

@@ -6,7 +6,7 @@
  *    （Queen 维护根 DAG；子代理只记录自己的本地子步骤，结束时未完成项回传给 Queen）
  *  - `task_resume`：**仅主 agent**（重启后按 resumeHint 断点续跑某个子代理；子代理无法派生）
  *  - `task_execute`（未在本批次实现）：仅主 agent，落地时按同一约定加 `includeTaskExecute`
- *  - **不新增** `task_output` / `task_stop`：与既有 `bash_output` / `kill_shell` / `check_status` /
+ *  - **不新增** `task_output` / `task_stop`：与既有 `kill_shell` / `check_status` /
  *    `kill_agent` 语义重叠，保持「一个动作一个名字」；任务与执行体之间是只读关联。
  *
  * 命名去歧义：`spawn` 的必填参数 `task` 表示「交给子代理的一次性工作包」，

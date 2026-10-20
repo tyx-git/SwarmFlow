@@ -25,7 +25,6 @@ import { ToolResult } from "../providers/base.js";
 import { SafePathError, safePath } from "../security/path.js";
 import { shell } from "../platform/index.js";
 import {
-  argOptionalInteger,
   argOptionalString,
   argRequiredString,
   argRequiredStringArray,
@@ -45,7 +44,6 @@ export interface BackgroundShellEntry {
   status: "running" | "exited" | "failed" | "killed";
   exitCode: number | null;
   signal: NodeJS.Signals | null;
-  readOffset: number;
   recentOutput: string[];
   explicitKill: boolean;
 }
@@ -75,7 +73,17 @@ export interface BackgroundShellDetail extends BackgroundShellSnapshot {
 export interface BackgroundShellManagerDeps {
   projectRoot: string;
   getSessionArtifactsDir: () => string;
+  /**
+   * 后台 shell 日志目录。日志放在项目内的 `.swarmflow/<session_id>/shells`，
+   * 便于用户直接查看；同步输出的 spill 日志仍走 session artifacts。
+   */
+  getShellLogDir: () => string;
   deliverMessage: (msg: MessageEnvelope) => void;
+  /**
+   * 本会话是否拥有某个工具。读日志统一走 read_file；
+   * 该谓词只用于决定是否点名 await_event / kill_shell。
+   */
+  hasTools: (name: string) => boolean;
 }
 
 // 每个 id 保留归档 shell 日志。当模型杀死一个 shell 后用相同 id
@@ -100,12 +108,34 @@ export class BackgroundShellManager {
 
   private readonly _projectRoot: string;
   private readonly _getSessionArtifactsDir: () => string;
+  private readonly _getShellLogDir: () => string;
   private readonly _deliverMessage: (msg: MessageEnvelope) => void;
+  private readonly _hasTools: (name: string) => boolean;
 
   constructor(deps: BackgroundShellManagerDeps) {
     this._projectRoot = deps.projectRoot;
     this._getSessionArtifactsDir = deps.getSessionArtifactsDir;
+    this._getShellLogDir = deps.getShellLogDir;
     this._deliverMessage = deps.deliverMessage;
+    this._hasTools = deps.hasTools;
+  }
+
+  /**
+   * 读取某个 shell 日志的指引。读日志统一走 read_file；
+   * 只点名该会话真实拥有的 await_event / kill_shell。
+   */
+  private _logHint(shellId: string, logPath: string): string {
+    const canAwait = this._hasTools("await_event");
+    const canKill = this._hasTools("kill_shell");
+    const readHint =
+      `Read the log for shell '${shellId}' at ${logPath} with \`read_file\` ` +
+      `(\`tail_lines=200\` shows the latest output).`;
+    if (canAwait && canKill) {
+      return `${readHint} Wait with \`await_event\` or stop it with \`kill_shell\` when needed.`;
+    }
+    if (canAwait) return `${readHint} Wait with \`await_event\` when needed.`;
+    if (canKill) return `${readHint} Stop it with \`kill_shell\` when needed.`;
+    return readHint;
   }
 
   // ── 公共查询 ─────────────────────────────────────────────────
@@ -407,7 +437,6 @@ export class BackgroundShellManager {
       status: "running",
       exitCode: null,
       signal: null,
-      readOffset: 0,
       recentOutput: [],
       explicitKill: false,
     };
@@ -423,7 +452,7 @@ export class BackgroundShellManager {
         `Started background shell '${shellId}'.\n` +
         `cwd: ${cwd}\n` +
         `log: ${logPath}${archiveNote}\n` +
-        `Use \`bash_output(id="${shellId}")\` to inspect logs and \`await_event\` to await shell exit.`,
+        this._logHint(shellId, logPath),
     });
   }
 
@@ -447,7 +476,7 @@ export class BackgroundShellManager {
       entry.signal = null;
       this._deliverMessage({
         type: "system_notice", sender: "system", timestamp: Date.now(),
-        content: `Background shell '${shellId}' failed to start: ${error}. Use \`bash_output(id="${shellId}")\` to inspect ${logPath}.`,
+        content: `Background shell '${shellId}' failed to start: ${error}. ${this._logHint(shellId, logPath)}`,
         tuiVisible: true,
       });
     });
@@ -471,7 +500,7 @@ export class BackgroundShellManager {
         : `failed (exit ${code ?? 1})`;
       this._deliverMessage({
         type: "system_notice", sender: "system", timestamp: Date.now(),
-        content: `Background shell '${shellId}' ${statusText}. Use \`bash_output(id="${shellId}")\` to inspect logs at ${logPath}.`,
+        content: `Background shell '${shellId}' ${statusText}. ${this._logHint(shellId, logPath)}`,
         tuiVisible: true,
       });
     });
@@ -480,7 +509,7 @@ export class BackgroundShellManager {
   /**
    * 采用由超时结束的同步 bash 工具生成的活进程。进程作为跟踪的后台 shell 继续运行：
    * 到目前为止捕获的输出被植入一个新的日志文件，从此刻起
-   * shell 的行为与通过 bash_background 启动的完全一样（输出记录、退出通知、kill_shell、bash_output）。
+   * shell 的行为与通过 bash_background 启动的完全一样（输出记录、退出通知、kill_shell、read_file）。
    *
    * 调用方必须在移交前停止消费子进程的 stdio。
    */
@@ -506,7 +535,6 @@ export class BackgroundShellManager {
       status: "running",
       exitCode: null,
       signal: null,
-      readOffset: 0,
       recentOutput: [],
       explicitKill: false,
     };
@@ -526,65 +554,6 @@ export class BackgroundShellManager {
       entry.status = opts.child.exitCode === 0 ? "exited" : "failed";
     }
     return entry;
-  }
-
-  execBashOutput(args: Record<string, unknown>): ToolResult {
-    const idArg = argRequiredString("bash_output", args, "id", { nonEmpty: true });
-    if (idArg instanceof ToolResult) return idArg;
-    const tailLinesArg = argOptionalInteger("bash_output", args, "tail_lines");
-    if (tailLinesArg instanceof ToolResult) return tailLinesArg;
-    const maxCharsArg = argOptionalInteger("bash_output", args, "max_chars");
-    if (maxCharsArg instanceof ToolResult) return maxCharsArg;
-
-    const entry = this._activeShells.get(idArg);
-    if (!entry) {
-      return new ToolResult({ content: `Error: shell '${idArg}' not found.` });
-    }
-
-    const maxChars = Math.max(500, Math.min(80_000, maxCharsArg ?? 30_000));
-    const fullText = existsSync(entry.logPath) ? readFileSync(entry.logPath, "utf-8") : "";
-    let body = "";
-
-    if (tailLinesArg !== undefined) {
-      const lines = fullText.split("\n");
-      body = lines.slice(-Math.max(1, tailLinesArg)).join("\n").trimEnd();
-    } else {
-      const fullBuffer = Buffer.from(fullText, "utf-8");
-      const unread = fullBuffer.subarray(entry.readOffset).toString("utf-8");
-      entry.readOffset = fullBuffer.length;
-      if (!unread.trim()) {
-        body = "(No new output since the last read.)";
-      } else if (unread.length > maxChars) {
-        const visible = unread.slice(0, maxChars);
-        const omittedChars = unread.length - visible.length;
-        const omittedLines = unread.slice(visible.length).split("\n").filter(Boolean).length;
-        body =
-          `${visible.trimEnd()}\n\n` +
-          `[Truncated here because unread output exceeded ${maxChars} chars; skipped ${omittedChars.toLocaleString()} chars` +
-          (omittedLines > 0 ? ` / ${omittedLines.toLocaleString()} lines` : "") +
-          `. Full log: ${entry.logPath}]`;
-      } else {
-        body = unread.trimEnd();
-      }
-    }
-
-    // 标题只提示一次已死亡 shell 状态；`status:` 字段以机器可读形式重复。
-    // 我们有意不添加单独警告横幅 — 可操作指导（"启动新的 bash_background
-    // 以恢复"）位于 tools.md，避免死亡状态读取被一大段醒目文字挤到下面。
-    const header = entry.status === "running"
-      ? `# Shell Output`
-      : `# Shell Output — TERMINATED`;
-    const failureNotice = entry.status === "failed"
-      ? `ERROR: Background shell '${entry.id}' exited with code ${entry.exitCode ?? 1}.\n`
-      : "";
-    return new ToolResult({
-      content:
-        `${failureNotice}${header}\n` +
-        `id: ${entry.id}\n` +
-        `status: ${entry.status}\n` +
-        `log: ${entry.logPath}\n\n` +
-        `${body || "(No output yet.)"}`,
-    });
   }
 
   /**
@@ -668,7 +637,7 @@ export class BackgroundShellManager {
   // ── 私有辅助函数 ────────────────────────────────────────────────
 
   private _getShellsDir(): string {
-    const dir = join(this._getSessionArtifactsDir(), "shells");
+    const dir = this._getShellLogDir();
     mkdirSync(dir, { recursive: true });
     return dir;
   }

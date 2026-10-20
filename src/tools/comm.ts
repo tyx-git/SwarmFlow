@@ -135,7 +135,7 @@ export const AWAIT_EVENT_TOOL: ToolDef = {
     "Block until a runtime event arrives. Events: a child agent completing or failing, an incoming message, " +
     "or a tracked background shell exiting. Takes no arguments. " +
     "Returns immediately when no child agent or tracked shell is running and no message is pending. " +
-    "Prefer this over check_status when waiting for child agents or background work.",
+    "Prefer this over repeatedly polling status when waiting for child agents or background work.",
   parameters: {
     type: "object",
     properties: {},

@@ -1,8 +1,8 @@
 type: agent
 name: reviewer
-description: "Read-only reviewer that checks changes, scope, and validation evidence, then returns a structured verdict."
+description: "Independent reviewer that verifies changes against source and evidence, re-runs checks when needed, and returns a structured verdict."
 system_prompt_file: system_prompt.md
-tool_tier: read_only
+tools: [read, bash, util]
 tools_prompt_file: tools.md
 mcp_tools: none
 max_tool_rounds: 200

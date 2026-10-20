@@ -10,6 +10,11 @@ export interface SessionCapabilities {
   includeKillTool: boolean;
   includeCheckStatusTool: boolean;
   includeAwaitEventTool: boolean;
+  /**
+   * 终止后台 shell（kill_shell）。Worker 也可能通过同步 bash 超时获得后台
+   * shell，因此需要自己终止，避免留下无人管理的进程。
+   */
+  includeKillShellTool: boolean;
   includeAskTool: boolean;
   includeSkillTools: boolean;
   /** 任务清单工具（task_create / task_list / task_get / task_update）：主、子会话都可持有。 */
@@ -23,6 +28,7 @@ export const ROOT_SESSION_CAPABILITIES: SessionCapabilities = {
   includeKillTool: true,
   includeCheckStatusTool: true,
   includeAwaitEventTool: true,
+  includeKillShellTool: true,
   includeAskTool: true,
   includeSkillTools: true,
   includeTaskTools: true,
@@ -33,12 +39,13 @@ export const CHILD_SESSION_CAPABILITIES: SessionCapabilities = {
   includeSpawnTool: false,
   includeKillTool: false,
   includeCheckStatusTool: false,
-  // 子会话不能派生执行体、也不能跑后台 shell，因此 await_event 的等待条件
-  // （活跃子 agent / 运行中 shell）对它恒不成立——留着只会得到一个立即返回的
-  // 空等工具，还会诱发「父等子、子等父」的互等。必须保持 false：子 Session 的
-  // 构造函数会用本配置重新追加 comm 工具，一旦为 true，subagent-factory 的
-  // COMM_TOOL_NAMES 剥离就会被推翻（tool-runtime.ts 记载的既有陷阱）。
-  includeAwaitEventTool: false,
+  // Worker 的同步 bash 超时后会得到自己的后台 shell，await_event 用于等待
+  // 该 shell 退出；子会话不能 spawn，因此不会出现「父等子、子等父」的互等。
+  // 注意：COMM_TOOL_NAMES 也必须移除 await_event，否则剥离会先于能力追加发生。
+  includeAwaitEventTool: true,
+  // 与 await_event 配套：Worker 必须能终止自己 adopt 的 shell，否则命令卡死时
+  // 只能读日志，无法清理后台进程。
+  includeKillShellTool: true,
   includeAskTool: false,
   includeSkillTools: false,
   // 子代理自己也要拆分并记录任务（清单为纯内存，随子会话消亡）

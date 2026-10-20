@@ -156,7 +156,36 @@ describe("bundled native tools", () => {
       const moduleDir = join(root, "dist", "src", "tools");
       const jq = join(moduleDir, "intools", "jq", "jq.exe");
       touch(jq);
-      expect(bundledJqPath(moduleDir)).toBe(jq);
+      expect(bundledJqPath(moduleDir, join(root, "node.exe"))).toBe(jq);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to the executable directory when the module layout is unavailable", () => {
+    // SEA 单文件：import.meta.url 指向 exe，模块目录推导落空，
+    // 必须能按 exe 同级找到 intools。构建脚本负责把 intools 放在那里。
+    const root = makeTempRoot("tools-jq-exe");
+    try {
+      const moduleDir = join(root, "nowhere", "dist", "src", "tools");
+      const exeDir = join(root, "release", "SwarmFlow-win32-x64");
+      const jq = join(exeDir, "intools", "jq", "jq.exe");
+      touch(jq);
+      expect(bundledJqPath(moduleDir, join(exeDir, "SwarmFlow.exe"))).toBe(jq);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers the module-local jq over the executable copy", () => {
+    const root = makeTempRoot("tools-jq-prefer");
+    try {
+      const moduleDir = join(root, "dist", "src", "tools");
+      const exeDir = join(root, "release", "SwarmFlow-win32-x64");
+      const moduleJq = join(moduleDir, "intools", "jq", "jq.exe");
+      touch(moduleJq);
+      touch(join(exeDir, "intools", "jq", "jq.exe"));
+      expect(bundledJqPath(moduleDir, join(exeDir, "SwarmFlow.exe"))).toBe(moduleJq);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -170,8 +199,26 @@ describe("bundled native tools", () => {
       const fd = join(moduleDir, "intools", "fd", "fd.exe");
       touch(rg);
       touch(fd);
-      expect(resolveBundledSearchExecutable("rg", moduleDir)).toBe(rg);
-      expect(resolveBundledSearchExecutable("fd", moduleDir)).toBe(fd);
+      expect(resolveBundledSearchExecutable("rg", moduleDir, join(root, "node.exe"))).toBe(rg);
+      expect(resolveBundledSearchExecutable("fd", moduleDir, join(root, "node.exe"))).toBe(fd);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform !== "win32")("falls back to the executable directory for ripgrep and fd", () => {
+    // 与 jq 同源的 SEA 缺陷：import.meta.url 指向 exe，模块目录推导落空。
+    const root = makeTempRoot("tools-search-exe");
+    try {
+      const moduleDir = join(root, "nowhere", "dist", "src", "tools");
+      const exeDir = join(root, "release", "SwarmFlow-win32-x64");
+      const rg = join(exeDir, "intools", "ripgrep", "rg.exe");
+      const fd = join(exeDir, "intools", "fd", "fd.exe");
+      touch(rg);
+      touch(fd);
+      const exe = join(exeDir, "SwarmFlow.exe");
+      expect(resolveBundledSearchExecutable("rg", moduleDir, exe)).toBe(rg);
+      expect(resolveBundledSearchExecutable("fd", moduleDir, exe)).toBe(fd);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -182,11 +229,11 @@ describe("bundled native tools", () => {
     try {
       const moduleDir = join(root, "dist", "src", "tools");
       mkdirSync(moduleDir, { recursive: true });
-      // 仓库的 src/tools/intools 里确实有 jq.exe；模拟的 dist 缺失时必须返回 null，
-      // 而不是悄悄执行 cwd 里的同名文件。
-      expect(bundledJqPath(moduleDir)).toBeNull();
+      // 仓库的 src/tools/intools 里确实有 jq.exe；模拟的 dist 缺失且 exe 目录也没有时
+      // 必须返回 null，而不是悄悄执行 cwd 里的同名文件。
+      expect(bundledJqPath(moduleDir, join(root, "node.exe"))).toBeNull();
       if (process.platform === "win32") {
-        expect(resolveBundledSearchExecutable("rg", moduleDir)).toBeNull();
+        expect(resolveBundledSearchExecutable("rg", moduleDir, join(root, "node.exe"))).toBeNull();
       }
     } finally {
       rmSync(root, { recursive: true, force: true });

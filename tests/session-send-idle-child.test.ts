@@ -35,6 +35,22 @@ function makeParentWithChild(): ChildSetup {
 }
 
 describe("send to child sessions", () => {
+  it("child sessions receive await_event and kill_shell, but not bash_output", () => {
+    // Worker 的 sync bash 超时会产生自己的后台 shell：必须能等待和终止，
+    // 读取日志则统一走 read_file（bash_output 已全局移除）。
+    // 这里验证真实子 Session 的最终工具集，而不只是 capability 常量。
+    const { h, handle } = makeParentWithChild();
+    try {
+      const names = (handle.session.primaryAgent.tools as Array<{ name: string }>).map((t) => t.name);
+      expect(names).toContain("await_event");
+      expect(names).toContain("kill_shell");
+      expect(names).not.toContain("bash_output");
+      expect(names).not.toContain("bash_background");
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("send to a running child queues via the standard delivery path (locked)", async () => {
     const { h, childProvider, handle } = makeParentWithChild();
     try {

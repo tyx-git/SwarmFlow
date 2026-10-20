@@ -100,10 +100,13 @@ describe("Phase 2 tool validation and grep limits", () => {
         { projectRoot: root },
       );
 
+      // 限制由行为验证：needle 只存在于「超出深度上限」和「超出 1 MB」的两个文件里，
+      // 因此无匹配即证明两条限制都生效。
+      // native 路径（rg --max-depth / --max-filesize）实施同样的限制，但不报告
+      // 跳过的文件数量，故不再断言 JS 实现特有的计数提示。
       expect(result.content).toContain("No matches found.");
-      expect(result.content).toContain("[Search notices]");
-      expect(result.content).toContain("Depth limit reached");
-      expect(result.content).toContain("Skipped 1 large file(s)");
+      expect(result.content).not.toContain("too-deep.txt");
+      expect(result.content).not.toContain("large.txt");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

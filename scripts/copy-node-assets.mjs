@@ -17,14 +17,19 @@ for (const directory of ["assets", "prompts", "skills"]) {
   }
 }
 
-// jq 是随 Windows 发布包提供的工具，不属于 Node 依赖。
-// 将它放在编译后的工具模块旁边，使普通 dist 和 SEA 运行时都能找到，
-// 同时保留 src/tools 下的其他内容。
+// 随包分发的原生工具。curl/upx 等未引用资产不进入产物，避免 release 白白变大。
+const NATIVE_TOOL_DIRS = ["jq", "fd", "ripgrep"];
 const intoolsSource = join(root, "src", "tools", "intools");
 const intoolsTarget = join(output, "src", "tools", "intools");
 rmSync(intoolsTarget, { recursive: true, force: true });
-if (existsSync(intoolsSource)) {
-  cpSync(intoolsSource, intoolsTarget, { recursive: true });
+mkdirSync(intoolsTarget, { recursive: true });
+for (const name of NATIVE_TOOL_DIRS) {
+  const source = join(intoolsSource, name);
+  if (!existsSync(source)) {
+    console.warn(`Native tool '${name}' not found at ${source}.`);
+    continue;
+  }
+  cpSync(source, join(intoolsTarget, name), { recursive: true });
 }
 
 copyFileSync(join(root, "package.json"), join(output, "package.json"));

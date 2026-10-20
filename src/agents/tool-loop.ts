@@ -155,8 +155,6 @@ export function generateToolCallDisplay(
     case "bash":
     case "bash_background":
       return command ? `${toolName} ${command}` : toolName;
-    case "bash_output":
-      return id ? `${toolName} ${id}` : toolName;
     case "kill_shell":
       return ids ? `${toolName} ${ids}` : toolName;
     case "web_fetch":

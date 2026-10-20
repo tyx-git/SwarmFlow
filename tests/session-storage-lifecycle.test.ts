@@ -1004,7 +1004,6 @@ describe("session storage lifecycle", () => {
         status: "running",
         exitCode: null,
         signal: null,
-        readOffset: 0,
         recentOutput: [],
         explicitKill: false,
       });

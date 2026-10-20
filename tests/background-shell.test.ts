@@ -1,17 +1,23 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { BackgroundShellManager } from "../src/lib/background-shell-manager.js";
+import { BackgroundShellManager } from "../src/lib/background-shell-manager.js";
 import { SessionStore } from "../src/config/persistence.js";
 import { shell } from "../src/platform/index.js";
 import { Session } from "../src/session.js";
+import { executeTool } from "../src/tools/basic.js";
 import { ToolResult } from "../src/providers/base.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
+}
+
+/** Windows 在进程刚退出时可能短暂占用目录句柄，删除需要重试。 */
+function removeTempDir(dir: string): void {
+  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
 
 const isPowerShell = shell.kind === "pwsh" || shell.kind === "powershell";
@@ -30,12 +36,6 @@ function sleepCommand(seconds: number): string {
 
 function successfulCommand(): string {
   return isPowerShell ? "exit 0" : "true";
-}
-
-function burstCommand(): string {
-  return isPowerShell
-    ? "1..120 | ForEach-Object { 'line-' + $_.ToString('000') }"
-    : "i=1; while [ $i -le 120 ]; do printf 'line-%03d\\n' \"$i\"; i=$((i+1)); done";
 }
 
 function childProcessCommand(): string {
@@ -65,6 +65,35 @@ async function waitForShellExit(
   throw new Error(`shell '${id}' did not exit within ${maxMs}ms`);
 }
 
+/**
+ * 终止 shell 并等待子进程真正关闭。
+ *
+ * Windows 上删除临时项目目录时，只要 shell 的 cwd 还指向该目录，
+ * rmSync 就会报 EPERM。killShell 只负责发信号并更新状态，不等待
+ * process 的 close 事件，因此清理路径需要再等一步。
+ */
+async function killShellAndWait(
+  sm: BackgroundShellManager,
+  ids: string[],
+  maxMs = 5_000,
+): Promise<void> {
+  const closers = ids.map((id) => {
+    const entry = sm.getShellEntry(id);
+    if (!entry || entry.status !== "running" || typeof entry.process?.once !== "function") {
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, maxMs);
+      entry.process.once("close", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  });
+  await sm.killShell(ids);
+  await Promise.all(closers);
+}
+
 function makeSession(projectRoot: string): Session {
   const primaryAgent = {
     name: "Primary",
@@ -88,11 +117,84 @@ function makeSession(projectRoot: string): Session {
     primaryAgent,
     config,
     store,
+    projectRoot,
   });
 }
 
 describe("background shell tools", () => {
-  it("tracks shell lifecycle and exposes output via bash_output", async () => {
+  it("writes shell logs under the project's .swarmflow session directory", async () => {
+    const root = makeTempDir("swarmflow-shell-project-log-");
+    const session = makeSession(root);
+    try {
+      const sm = (session as any)._shellManager as BackgroundShellManager;
+      sm.execBashBackground({ id: "layout", command: successfulCommand() });
+      await waitForShellExit(sm, "layout");
+
+      const entry = sm.getShellEntry("layout");
+      expect(entry).toBeTruthy();
+      const sessionId = basename((session as any)._store.sessionDir as string);
+      expect(entry!.logPath).toBe(
+        join(root, ".swarmflow", sessionId, "shells", "layout.log"),
+      );
+      expect(existsSync(entry!.logPath)).toBe(true);
+    } finally {
+      await session.close();
+      removeTempDir(root);
+    }
+  });
+
+  it("keeps child-agent shell logs under the root session's agents directory", async () => {
+    const root = makeTempDir("swarmflow-shell-child-log-");
+    const session = makeSession(root);
+    try {
+      const sessionId = basename((session as any)._store.sessionDir as string);
+      expect((session as any)._resolveShellLogDir()).toBe(
+        join(root, ".swarmflow", sessionId, "shells"),
+      );
+      expect((session as any)._resolveChildShellLogDir("worker-1")).toBe(
+        join(root, ".swarmflow", sessionId, "agents", "worker-1", "shells"),
+      );
+    } finally {
+      await session.close();
+      removeTempDir(root);
+    }
+  });
+
+  it("wires a child session's shell manager to its project-local log directory", async () => {
+    const root = makeTempDir("swarmflow-shell-child-wire-");
+    const session = makeSession(root);
+    try {
+      const childAgent = {
+        name: "w1",
+        systemPrompt: "Test child agent.",
+        tools: [],
+        maxToolRounds: 8,
+        modelConfig: { model: "test-model", contextLength: 8192, supportsMultimodal: false },
+      } as any;
+      const handle = (session as any)._instantiateChildSession(
+        "w1",
+        "worker",
+        "oneshot",
+        childAgent,
+      );
+      const childSm = (handle.session as any)._shellManager as BackgroundShellManager;
+      childSm.execBashBackground({ id: "child-shell", command: successfulCommand() });
+      await waitForShellExit(childSm, "child-shell");
+
+      const entry = childSm.getShellEntry("child-shell");
+      expect(entry).toBeTruthy();
+      const sessionId = basename((session as any)._store.sessionDir as string);
+      expect(entry!.logPath).toBe(
+        join(root, ".swarmflow", sessionId, "agents", "w1", "shells", "child-shell.log"),
+      );
+      expect(existsSync(entry!.logPath)).toBe(true);
+    } finally {
+      await session.close();
+      removeTempDir(root);
+    }
+  });
+
+  it("tracks shell lifecycle and exposes a readable log", async () => {
     const root = makeTempDir("swarmflow-shell-root-");
     const session = makeSession(root);
     try {
@@ -101,6 +203,8 @@ describe("background shell tools", () => {
         command: `${printCommand("hello")}; ${sleepCommand(0.2)}; ${printCommand("done")}`,
       }) as ToolResult;
       expect(started.content).toContain("Started background shell 'demo'");
+      expect(started.content).toContain("read_file");
+      expect(started.content).toContain("tail_lines=200");
 
       const waited = await (session as any)._execAwaitEvent() as ToolResult;
       // await_event wakes on system_notice (shell exit) and/or shell-state racers; shell lines use
@@ -109,13 +213,14 @@ describe("background shell tools", () => {
       expect(waited.content).toContain("[demo]");
       expect(waited.content).toContain("exited");
 
-      const output = (session as any)._shellManager.execBashOutput({ id: "demo" }) as ToolResult;
-      expect(output.content).toContain("hello");
-      expect(output.content).toContain("done");
-      expect(output.content).toContain("status:");
+      const entry = (session as any)._shellManager.getShellEntry("demo") as { logPath: string } | null;
+      expect(entry).toBeTruthy();
+      const output = readFileSync(entry!.logPath, "utf8");
+      expect(output).toContain("hello");
+      expect(output).toContain("done");
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
@@ -152,7 +257,7 @@ describe("background shell tools", () => {
       await killPromise;
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -182,7 +287,7 @@ describe("background shell tools", () => {
       expect(report).not.toMatch(/\[treekill\] running/);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -203,17 +308,16 @@ describe("background shell tools", () => {
       expect(restarted.content).toContain("previous log (id was reused):");
 
       // Verify an archived file actually exists on disk.
-      const shellsDir = join(
-        (session as any)._shellManager["_getSessionArtifactsDir"](),
-        "shells",
-      );
+      const entry = sm.getShellEntry("dev-server");
+      expect(entry).toBeTruthy();
+      const shellsDir = dirname(entry!.logPath);
       const files = readdirSync(shellsDir);
       const archived = files.find((f) => /^dev-server\..+\.log$/.test(f));
       expect(archived).toBeTruthy();
       expect(existsSync(join(shellsDir, "dev-server.log"))).toBe(true);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
@@ -230,8 +334,9 @@ describe("background shell tools", () => {
       expect(conflict.content).toContain("already tracked and running");
       expect(conflict.content).toContain("kill_shell");
     } finally {
+      await killShellAndWait((session as any)._shellManager, ["long"]);
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -266,10 +371,7 @@ describe("background shell tools", () => {
         await waitForShellExit(sm, "tab.1");
       }
 
-      const shellsDir = join(
-        (session as any)._shellManager["_getSessionArtifactsDir"](),
-        "shells",
-      );
+      const shellsDir = dirname(sm.getShellEntry("tab.1")!.logPath);
       const files = readdirSync(shellsDir);
       const tabX1Archive = files.find((f) => /^tabX1\..+\.log$/.test(f));
       const tab1Archives = files.filter((f) => /^tab\.1\..+\.log$/.test(f));
@@ -281,7 +383,7 @@ describe("background shell tools", () => {
       expect(tab1Archives.length).toBeLessThanOrEqual(8);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
@@ -298,21 +400,18 @@ describe("background shell tools", () => {
         await waitForShellExit(sm, "dev-server");
       }
 
-      const shellsDir = join(
-        (session as any)._shellManager["_getSessionArtifactsDir"](),
-        "shells",
-      );
+      const shellsDir = dirname(sm.getShellEntry("dev-server")!.logPath);
       const files = readdirSync(shellsDir);
       const archives = files.filter((f) => /^dev-server\..+\.log$/.test(f));
       expect(archives.length).toBeLessThanOrEqual(8);
       expect(files).toContain("dev-server.log");
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
-  it("bash_output uses a TERMINATED header for dead shells", async () => {
+  it("reports a dead shell status and keeps its log readable", async () => {
     const root = makeTempDir("swarmflow-shell-banner-");
     const session = makeSession(root);
     try {
@@ -320,50 +419,72 @@ describe("background shell tools", () => {
       sm.execBashBackground({ id: "short", command: printCommand("done") });
       await waitForShellExit(sm, "short");
 
-      const out = sm.execBashOutput({ id: "short" }) as ToolResult;
-      // Header + status field both signal dead state — no separate banner.
-      expect(out.content).toContain("# Shell Output — TERMINATED");
-      expect(out.content).toMatch(/status: (exited|killed|failed)/);
-      expect(out.content).toContain("done");
+      const entry = sm.getShellEntry("short") as { status: string; logPath: string } | null;
+      expect(entry?.status).toBe("exited");
+      expect(readFileSync(entry!.logPath, "utf8")).toContain("done");
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
-  it("marks failed background shell output as an error", async () => {
+  it("reports a failed shell with its exit code", async () => {
     const root = makeTempDir("swarmflow-shell-failed-output-");
     const session = makeSession(root);
     try {
       const sm = (session as any)._shellManager;
-      sm.execBashBackground({ id: "failed", command: isPowerShell ? "exit 7" : "exit 7" });
+      sm.execBashBackground({ id: "failed", command: "exit 7" });
       await waitForShellExit(sm, "failed");
-      const out = sm.execBashOutput({ id: "failed" }) as ToolResult;
-      expect(out.content).toContain("ERROR: Background shell 'failed' exited with code");
-      expect(out.content).toContain("status: failed");
+
+      const entry = sm.getShellEntry("failed") as { status: string; exitCode: number | null } | null;
+      expect(entry?.status).toBe("failed");
+      expect(entry?.exitCode).toBe(7);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
-  it("truncates unread shell output and advances the unread cursor", async () => {
-    const root = makeTempDir("swarmflow-shell-trunc-root-");
+  it("lets read_file page a large shell log", async () => {
+    const root = makeTempDir("swarmflow-shell-readfile-root-");
     const session = makeSession(root);
     try {
-      const command = burstCommand();
-      (session as any)._shellManager.execBashBackground({ id: "burst", command });
-      await (session as any)._execAwaitEvent();
+      const sm = (session as any)._shellManager as BackgroundShellManager;
+      sm.execBashBackground({ id: "big", command: sleepCommand(30) });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const entry = sm.getShellEntry("big");
+      expect(entry).toBeTruthy();
+      const lines = Array.from({ length: 1500 }, (_, index) => `big-${String(index + 1).padStart(4, "0")}`);
+      appendFileSync(entry!.logPath, `${lines.join("\n")}\n`, "utf8");
 
-      const first = (session as any)._shellManager.execBashOutput({ id: "burst", max_chars: 120 }) as ToolResult;
-      expect(first.content).toContain("line-001");
-      expect(first.content).toContain("[Truncated here because unread output exceeded");
+      const artifacts = (session as any)._resolveSessionArtifacts() as string;
+      const tail = await executeTool(
+        "read_file",
+        { path: entry!.logPath, tail_lines: 200 },
+        { projectRoot: root, sessionArtifactsDir: artifacts },
+      ) as ToolResult;
+      const tailLines = tail.content.split("\n");
+      expect(tailLines[0]).toMatch(/^\[Lines 1301-1500 of 1500 \| mtime_ms=\d+ \| size_bytes=\d+\]$/);
+      expect(tailLines.slice(1)).toEqual(
+        Array.from({ length: 200 }, (_, index) => `big-${String(1301 + index).padStart(4, "0")}`),
+      );
 
-      const second = (session as any)._shellManager.execBashOutput({ id: "burst", max_chars: 120 }) as ToolResult;
-      expect(second.content).toContain("(No new output since the last read.)");
+      const head = await executeTool(
+        "read_file",
+        { path: entry!.logPath },
+        { projectRoot: root, sessionArtifactsDir: artifacts },
+      ) as ToolResult;
+      const headLines = head.content.split("\n");
+      expect(headLines[0]).toMatch(/^\[Lines 1-1000 of 1500 \| mtime_ms=\d+ \| size_bytes=\d+\]$/);
+      expect(headLines.slice(1)).toEqual([
+        ...Array.from({ length: 1000 }, (_, index) => `big-${String(index + 1).padStart(4, "0")}`),
+        "",
+        "<--- This file has more than 1000 lines. Continue with `start_line=1001` if you need the following lines. --->",
+      ]);
     } finally {
+      await killShellAndWait((session as any)._shellManager, ["big"]);
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -386,7 +507,7 @@ describe("background shell tools", () => {
       expect(session.getBackgroundShellDetail("missing")).toBeNull();
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -410,7 +531,7 @@ describe("background shell tools", () => {
       expect(killed.message).toContain("killed");
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -439,7 +560,7 @@ describe("background shell tools", () => {
       expect(inbox.length).toBe(before);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -481,7 +602,7 @@ describe("background shell tools", () => {
       expect(detail?.logTail).toContain("late");
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   });
 
@@ -525,9 +646,39 @@ describe("background shell tools", () => {
       // Death by SIGKILL proves the escalation fired — SIGTERM was trapped.
       expect(child.signalCode).toBe("SIGKILL");
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, 12_000);
+});
+
+describe("shell log hints", () => {
+  const makeManager = (tools: readonly string[]): BackgroundShellManager =>
+    new BackgroundShellManager({
+      projectRoot: process.cwd(),
+      getSessionArtifactsDir: () => process.cwd(),
+      getShellLogDir: () => join(process.cwd(), ".swarmflow", "test-session", "shells"),
+      deliverMessage: () => {},
+      hasTools: (name) => tools.includes(name),
+    });
+
+  it("always points at read_file and names available shell controls", () => {
+    const hint = (makeManager(["await_event", "kill_shell"]) as any)
+      ._logHint("shell-1", "C:/logs/shell-1.log") as string;
+    expect(hint).toBe(
+      "Read the log for shell 'shell-1' at C:/logs/shell-1.log with `read_file` " +
+      "(`tail_lines=200` shows the latest output). " +
+      "Wait with `await_event` or stop it with `kill_shell` when needed.",
+    );
+  });
+
+  it("omits shell controls the session does not have", () => {
+    const hint = (makeManager([]) as any)
+      ._logHint("shell-1", "C:/logs/shell-1.log") as string;
+    expect(hint).toBe(
+      "Read the log for shell 'shell-1' at C:/logs/shell-1.log with `read_file` " +
+      "(`tail_lines=200` shows the latest output).",
+    );
+  });
 });
 
 describe("await_event blocking semantics", () => {
@@ -544,7 +695,7 @@ describe("await_event blocking semantics", () => {
       expect(elapsedMs).toBeLessThan(1000);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
@@ -566,7 +717,7 @@ describe("await_event blocking semantics", () => {
       expect(result.content).toMatch(/Waited for \d+s —new message arrived\./);
     } finally {
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
@@ -585,9 +736,9 @@ describe("await_event blocking semantics", () => {
       const result = await pending;
       expect(result.content).toMatch(/new message arrived/);
     } finally {
-      (session as any)._shellManager.killShell(["holder"]);
+      await killShellAndWait((session as any)._shellManager, ["holder"]);
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 
@@ -609,9 +760,9 @@ describe("await_event blocking semantics", () => {
       expect(result.content).toMatch(/ceiling reached/);
       expect(result.content).toContain("still no events");
     } finally {
-      (session as any)._shellManager.killShell(["stuck"]);
+      await killShellAndWait((session as any)._shellManager, ["stuck"]);
       await session.close();
-      rmSync(root, { recursive: true, force: true });
+      removeTempDir(root);
     }
   }, backgroundTestTimeout);
 });

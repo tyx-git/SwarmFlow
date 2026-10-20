@@ -375,7 +375,8 @@ describe("EXCLUDE_DIRS regression: regular files should not be hidden", () => {
         { pattern: "*" },
         { projectRoot: root },
       );
-      expect(r.content).toContain(join(root, "build"));
+      // glob 统一使用二进制路径格式（Windows 下也是正斜杠）。
+      expect(r.content).toContain(join(root, "build").replace(/\\/g, "/"));
       expect(r.content).toContain("main.ts");
       expect(r.content).not.toContain("should-not-appear.ts");
     } finally {

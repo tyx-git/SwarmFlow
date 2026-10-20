@@ -74,10 +74,15 @@ describe("template type validation", () => {
     expect(names("worker")).toContain("write_file");
     expect(names("worker")).toContain("edit_file");
     expect(names("worker")).toContain("bash");
-    for (const role of ["scout", "reviewer", "guard", "merger"]) {
+    for (const role of ["scout", "merger"]) {
       expect(names(role)).not.toContain("write_file");
       expect(names(role)).not.toContain("edit_file");
       expect(names(role)).not.toContain("bash");
+    }
+    for (const role of ["reviewer", "guard"]) {
+      expect(names(role)).toContain("bash");
+      expect(names(role)).not.toContain("write_file");
+      expect(names(role)).not.toContain("edit_file");
     }
   });
 

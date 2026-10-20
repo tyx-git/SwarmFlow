@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BASIC_TOOLS } from "../src/tools/basic.js";
+import { BASIC_TOOLS, KILL_SHELL_TOOL } from "../src/tools/basic.js";
 import {
   ASK_TOOL,
   AWAIT_EVENT_TOOL,
@@ -130,16 +130,20 @@ describe("comm tool capabilities", () => {
     expect(names).toContain(CHECK_STATUS_TOOL.name);
   });
 
-  it("keeps await_event out of child sessions", () => {
-    // 回归锁。历史故障：CHILD_SESSION_CAPABILITIES.includeAwaitEventTool 曾为
-    // true，于是子 Session 构造函数的 ensureCommTools() 把 await_event 重新追加
-    // 回去，subagent-factory 的 COMM_TOOL_NAMES 剥离被静默推翻（tool-runtime.ts
-    // 记载的「await_event 既有陷阱」）。这里断言的是机制——ensureCommTools 不得
-    // 为子会话追加 await_event——而不是单纯钉住常量值。
-    expect(CHILD_SESSION_CAPABILITIES.includeAwaitEventTool).toBe(false);
+  it("gives child sessions await_event and kill_shell", () => {
+    // Worker 的同步 bash 超时后会得到自己的后台 shell：await_event 等待它退出，
+    // kill_shell 负责清理。bash_output 已移除，所有会话读取日志都走 read_file。
+    // 该断言锁的是 ensureCommTools 的装配机制，避免 capability 与
+    // COMM_TOOL_NAMES 再次脱节。
+    expect(CHILD_SESSION_CAPABILITIES.includeAwaitEventTool).toBe(true);
+    expect(CHILD_SESSION_CAPABILITIES.includeKillShellTool).toBe(true);
     const tools: ToolDef[] = [];
     ensureCommTools(tools, CHILD_SESSION_CAPABILITIES);
-    expect(tools.some((t) => t.name === AWAIT_EVENT_TOOL.name)).toBe(false);
+    const names = tools.map((t) => t.name);
+    expect(names).toContain(AWAIT_EVENT_TOOL.name);
+    expect(names).toContain(KILL_SHELL_TOOL.name);
+    expect(names).not.toContain("bash_output");
+    expect(names).not.toContain("bash_background");
   });
 });
 

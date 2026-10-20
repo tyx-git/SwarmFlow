@@ -60,9 +60,6 @@ docs-site/dist/
 swarmflow-registry-key*.pem
 test/
 external/*
-.history/
-.codegraph/
-**.md
 docs/*
 **.png**
 !external/opentui/
