@@ -258,35 +258,6 @@ export interface ExecutionResult {
 }
 
 // ------------------------------------------------------------------
-// 交接 context
-// ------------------------------------------------------------------
-
-/** 交接期间从一个 agent 传递给另一个 agent 的上下文。 */
-export interface HandoffContext {
-  /** 源 agent ID。 */
-  fromAgent: string;
-  /** 目标 agent ID。 */
-  toAgent: string;
-  /** 到目前为止完成的任务。 */
-  completedTasks: TaskResult[];
-  /** 共享上下文：决策、发现、问题。 */
-  sharedContext: {
-    filesRead: string[];
-    decisions: Array<{ subject: string; decision: string }>;
-    keyFindings: string[];
-    remainingIssues: string[];
-  };
-  /** 待处理的任务项。 */
-  pendingTodos: Array<{ id: string; description: string }>;
-  /** 工作区状态。 */
-  workspaceSnapshot: {
-    modifiedFiles: string[];
-    createdFiles: string[];
-    deletedFiles: string[];
-  };
-}
-
-// ------------------------------------------------------------------
 // Swarm 快照（用于监控）
 // ------------------------------------------------------------------
 

@@ -36,6 +36,8 @@ export interface ScriptedRound {
   toolCalls?: ScriptedToolCall[];
   /** Terminal reason reported by the provider; null (default) means "not exposed". */
   stopReason?: StopReason | null;
+  /** Token usage reported for this provider call; defaults to Usage(50, 5). */
+  usage?: Usage;
   /** Runs when the provider receives this round's request, before emitting events. */
   onCall?: (messages: Array<Record<string, unknown>>) => void;
 }
@@ -65,7 +67,7 @@ export class ScriptedProvider extends BaseProvider {
     }
     return new ProviderResponse({
       text: round.text ?? "",
-      usage: new Usage(50, 5),
+      usage: round.usage ?? new Usage(50, 5),
       stopReason: round.stopReason ?? null,
     });
   }

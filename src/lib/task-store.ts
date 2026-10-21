@@ -677,6 +677,14 @@ export function formatTaskSnapshot(tasks: readonly Task[]): string {
     let line = `- #${task.id} [${task.status}] ${task.subject}`;
     const agentId = typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined;
     if (agentId) line += ` (owner: ${agentId})`;
+    const edges: string[] = [];
+    if (task.blockedBy.length > 0) {
+      edges.push(`blocked by: ${task.blockedBy.map((id) => `#${id}`).join(", ")}`);
+    }
+    if (task.blocks.length > 0) {
+      edges.push(`blocks: ${task.blocks.map((id) => `#${id}`).join(", ")}`);
+    }
+    if (edges.length > 0) line += ` (${edges.join("; ")})`;
     const hint = readResumeHint(task);
     if (hint && task.status !== "completed") {
       line += hint.resumable ? " (interrupted — resumable via task_resume)" : " (interrupted — needs re-dispatch)";

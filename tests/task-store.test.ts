@@ -348,6 +348,18 @@ describe("formatTaskSnapshot", () => {
     expect(snapshot).toContain(`done-${TASK_SNAPSHOT_MAX_COMPLETED + 2}`);
   });
 
+  it("renders dependency edges for open tasks", () => {
+    const store = TaskStore.memory();
+    const parent = store.create("Parent", "d").task;
+    const child = store.create("Child", "d").task;
+    store.update(parent.id, { addBlocks: [child.id] });
+    store.update(child.id, { addBlockedBy: [parent.id] });
+
+    const snapshot = formatTaskSnapshot(store.list());
+    expect(snapshot).toContain(`- #${parent.id} [pending] Parent (blocks: #${child.id})`);
+    expect(snapshot).toContain(`- #${child.id} [pending] Child (blocked by: #${parent.id})`);
+  });
+
   it("marks non-resumable interruptions as needing re-dispatch", () => {
     const store = TaskStore.memory();
     const task = store.create("Stuck", "d").task;

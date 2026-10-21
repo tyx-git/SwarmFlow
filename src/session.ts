@@ -64,7 +64,8 @@ import {
   COMPACT_PROMPT_OUTPUT,
   COMPACT_PROMPT_TOOLCALL,
   appendManualInstruction,
-} from "./session/compact-prompts.js";
+  buildContinuationPrompt,
+} from "./session/session-prompts.js";
 import { resolveSkillContent, loadSkillsMulti, type SkillMeta } from "./skills/loader.js";
 import { toolBuiltinWebSearchPassthrough } from "./tools/web-search.js";
 import {
@@ -3490,7 +3491,7 @@ export class Session {
     const note = this._argOptionalString("task_resume", args, "note");
     if (note instanceof ToolResult) return note;
 
-    const prompt = this._buildContinuationPrompt(begun.task, hint, note);
+    const prompt = buildContinuationPrompt(begun.task, hint, note);
     const resumed = this._resumeChildSession(hint.childId, prompt);
     if (!resumed.ok) {
       // 回滚状态；尝试次数保留（防止调用方反复重试同一个不可用子代理）。
@@ -3524,30 +3525,6 @@ export class Session {
       default:
         return describeResumeReason(reason as ResumeReason);
     }
-  }
-
-  /** 续跑提示：必须让子代理先复核"可能只生效一半"的那一步。 */
-  private _buildContinuationPrompt(task: Task, hint: TaskResumeHint, note?: string): string {
-    const parts: string[] = [
-      `You are resuming task #${task.id}: "${task.subject}"`,
-      `Your previous run on this task was interrupted by a session restart ` +
-        `(recorded progress: ${hint.toolCalls} tool call(s), about ${hint.tokensIn} input tokens).`,
-      "If the last tool call in your history has no result, its real-world effect may be partial or unknown: " +
-        "re-verify that step before continuing.",
-      "Continue from the first incomplete step. Do not redo work that is already finished.",
-    ];
-    if (task.description.trim().length > 0) parts.push(`Original task description:\n${task.description}`);
-    const lastResult = task.metadata["lastResult"];
-    if (typeof lastResult === "string" && lastResult.trim().length > 0) {
-      const clipped = lastResult.length > 4000 ? `${lastResult.slice(0, 4000)}\n\n[... truncated]` : lastResult;
-      parts.push(`What you had reported so far:\n${clipped}`);
-    }
-    if (note && note.trim().length > 0) parts.push(note);
-    parts.push(
-      "Complete this task fully. You may track your own substeps with task_create/task_update; " +
-        "do not modify the parent session's task list.",
-    );
-    return parts.join("\n\n");
   }
 
   private _resumeChildSession(childId: string, prompt: string): { ok: boolean; reason?: string } {

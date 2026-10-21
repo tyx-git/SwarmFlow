@@ -29,7 +29,6 @@ export type {
   TaskResult,
   TaskHandoff,
   ExecutionResult,
-  HandoffContext,
   SwarmSnapshot,
   SwarmMetrics,
   RecoveryConfig,
@@ -83,14 +82,6 @@ export type { SchedulerConfig, Schedule, TaskEstimate } from "./scheduler.js";
 // -- 消息总线 ---------------------------------------------------------
 export { MessageBus } from "./message-bus.js";
 export type { MessageHandler, Subscription, MessageBusConfig } from "./message-bus.js";
-
-// -- 交接 -------------------------------------------------------------
-export {
-  createHandoffContext,
-  formatHandoffPrompt,
-  mergeHandoffContexts,
-} from "./handoff.js";
-export type { HandoffOptions } from "./handoff.js";
 
 // -- 合并器 --------------------------------------------------------------
 export { mergeResults, formatExecutionResult } from "./merger.js";
