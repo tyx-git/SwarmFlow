@@ -477,8 +477,10 @@ describe("session storage lifecycle", () => {
     try {
       const store = new SessionStore({ baseDir, projectPath: projectRoot });
       const session = makeSession(projectRoot, store);
-      session.lastInputTokens = 7171;
-      session.lastTotalTokens = 7510;
+      // 保持低于 before-turn 阈值：本用例只验证“无 usage 的 activation 不清空计数”，
+      // 不能顺带触发压缩（压缩成功后按新约定会主动清零 per-response 快照）。
+      session.lastInputTokens = 1000;
+      session.lastTotalTokens = 1100;
 
       (session as any)._runActivation = async () => ({
         text: "ok",
@@ -496,8 +498,8 @@ describe("session storage lifecycle", () => {
 
       await session.turn("hello");
 
-      expect(session.lastInputTokens).toBe(7171);
-      expect(session.lastTotalTokens).toBe(7510);
+      expect(session.lastInputTokens).toBe(1000);
+      expect(session.lastTotalTokens).toBe(1100);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });

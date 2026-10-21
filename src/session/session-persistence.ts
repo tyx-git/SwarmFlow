@@ -587,12 +587,16 @@ export function parseRestoredState(
     if (e.type === "work_start" && !e.discarded) workCount += 1;
   }
 
-  // 从日志恢复最后 token 计数。若 token_update 无有效 usage，继续找上一个。
+  // 从日志恢复最后 token 计数。只认最近一次压缩点之后的测量：
+  // 压缩阶段的 token_update 记录的是压缩前的输入大小，跨过 marker 回读
+  // 会让重启后的会话按旧上下文大小再次触发压缩。若 token_update 无有效
+  // usage，继续找上一个（仍在同一压缩段内）。
   let lastInputTokens = 0;
   let lastTotalTokens = 0;
   let lastCacheReadTokens = 0;
   let cacheSupported = false;
   for (let i = entries.length - 1; i >= 0; i--) {
+    if (entries[i].type === "compact_marker" && !entries[i].discarded) break;
     if (entries[i].type === "token_update") {
       const inputTokens = (entries[i].meta as Record<string, unknown>)["inputTokens"] as number;
       if (!Number.isFinite(inputTokens) || inputTokens <= 0) continue;

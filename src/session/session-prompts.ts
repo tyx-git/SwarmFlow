@@ -20,6 +20,8 @@ import type { Task, TaskResumeHint } from "../lib/task-store.js";
  */
 export const COMPACT_PROMPT_OUTPUT = `Condense this conversation into a continuation prompt — imagine you're writing a briefing for a fresh instance of yourself who must seamlessly pick up where we left off, with zero access to the original conversation.
 
+Do not call tools during this phase; respond with the continuation prompt only.
+
 **What the new instance will already have:** your system prompt and persistent memory (global MEMORY.md and project AGENTS.md) are automatically re-injected after compact. The session task list — ids, statuses, owners, dependency edges, and interruption hints — is re-injected as well. Do not duplicate any of their contents in the continuation prompt: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
 
 Preserve the current assignment verbatim: allowed paths, acceptance checks, stop conditions, and the required handoff format.
@@ -45,7 +47,7 @@ Write in natural prose. Use structure where it aids clarity, not for its own sak
  */
 export const COMPACT_PROMPT_TOOLCALL = `[SYSTEM: COMPACT REQUIRED] The conversation has exceeded the context limit. Do NOT continue the task. Instead, produce a **continuation prompt** — a briefing that will allow a fresh instance of you (with no access to this conversation) to seamlessly resume the work.
 
-You just made a tool call and received its result above. That result is real and should be reflected in your summary, but do not act on it — your only job right now is to write the continuation prompt.
+You just made a tool call and received its result above. That result is real and should be reflected in your summary, but do not act on it — your only job right now is to write the continuation prompt. Do not call tools during this phase; respond with the continuation prompt only.
 
 **What the new instance will already have:** your system prompt and persistent memory (global MEMORY.md and project AGENTS.md) are automatically re-injected after compact. The session task list — ids, statuses, owners, dependency edges, and interruption hints — is re-injected as well. Do not duplicate any of their contents in the continuation prompt: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
 
@@ -75,6 +77,7 @@ End the summary with a clear, imperative statement of what the next instance sho
  */
 export function buildContinuationPrompt(task: Task, hint: TaskResumeHint, note?: string): string {
   const parts: string[] = [
+    "This is not a follow-up message. Your previous run was interrupted; you are continuing the same task.",
     `You are resuming task #${task.id}: "${task.subject}"`,
     `Your previous run on this task was interrupted before this turn completed ` +
       `(recorded progress: ${hint.toolCalls} tool call(s), about ${hint.tokensIn} input tokens).`,

@@ -37,6 +37,10 @@ import {
   type RetryKind,
 } from "../lib/network-retry.js";
 import type { LogEntry } from "../context/log-entry.js";
+
+/** 压缩阶段（suppressAsks）把审批/挂起类工具调用就地降级为该 ERROR 结果。 */
+const COMPACT_ASK_DENY_MESSAGE =
+  "ERROR: Tool approvals are unavailable during compaction; respond with the continuation prompt only.";
 import {
   createReasoning,
   createAssistantText,
@@ -711,6 +715,8 @@ export interface ToolLoopResult {
   reasoningHandledInLog?: boolean;
   /** 模型本轮返回无 tool call 时为 true。 */
   endedWithoutToolCalls?: boolean;
+  /** 达到工具调用轮数上限而提前结束；text 是固定哨兵文案。 */
+  reachedMaxToolRounds?: boolean;
   /** 模型调用了 ask 工具、需要用户输入才能继续时设置。 */
   suspendedAsk?: {
     ask: AskRequest;
@@ -853,6 +859,12 @@ export interface ToolLoopOptions {
   onSaveCheckpoint?: () => void;
   /** 工具执行前的预检门禁（可询问/暂停/拒绝）。 */
   beforeToolExecute?: BeforeToolExecuteCallback;
+  /**
+   * 压缩阶段置 true：任何需要审批/挂起的工具调用都被就地降级为
+   * ERROR tool_result，而不是挂起等待用户。压缩是纯总结操作，
+   * 挂起会把压缩变成投影校验错误并静默吞掉审批。
+   */
+  suppressAsks?: boolean;
   /** 返回要追加到 tool_result 内容的通知字符串，无则返回 null。 */
   getNotification?: () => string | null;
   /** 一轮所有 tool_result 写完后、下一轮模型调用前调用。
@@ -929,6 +941,7 @@ export async function asyncRunToolLoop(
     promptCacheKey,
     onSaveCheckpoint,
     beforeToolExecute,
+    suppressAsks,
     getNotification,
     onToolRoundComplete,
     streamCallbacksOwnEntries = false,
@@ -1356,7 +1369,7 @@ export async function asyncRunToolLoop(
             });
           }
 
-          if (preflight && preflight.kind === "ask") {
+          if (preflight && preflight.kind === "ask" && !suppressAsks) {
             const ask = preflight.ask;
             ask.payload.toolCallId = callId;
             ask.roundIndex = roundIndex;
@@ -1367,7 +1380,9 @@ export async function asyncRunToolLoop(
           pending.streamPhase = "closed";
           syncToolCallEntry(callId);
 
-          if (fatalParseError) {
+          if (preflight && preflight.kind === "ask" && suppressAsks) {
+            toolOutput = new ToolResultClass({ content: COMPACT_ASK_DENY_MESSAGE });
+          } else if (fatalParseError) {
             toolOutput = new ToolResultClass({
               content: `ERROR: ${fatalParseError}`,
             });
@@ -1386,13 +1401,17 @@ export async function asyncRunToolLoop(
           }
         } catch (e) {
           if ((e as any)?.name === "AskPendingError") {
-            const ask = (e as { ask?: AskRequest }).ask;
-            if (ask) {
-              ask.payload.toolCallId = callId;
-              ask.roundIndex = roundIndex;
-              return { suspendedAsk: { ask, toolCallId: callId, roundIndex } };
+            if (suppressAsks) {
+              toolOutput = new ToolResultClass({ content: COMPACT_ASK_DENY_MESSAGE });
+            } else {
+              const ask = (e as { ask?: AskRequest }).ask;
+              if (ask) {
+                ask.payload.toolCallId = callId;
+                ask.roundIndex = roundIndex;
+                return { suspendedAsk: { ask, toolCallId: callId, roundIndex } };
+              }
+              throw e;
             }
-            throw e;
           }
           if (signal?.aborted) {
             throw e;
@@ -1794,5 +1813,6 @@ export async function asyncRunToolLoop(
     lastTotalTokens: totalInput + totalOutput,
     textHandledInLog: false,
     reasoningHandledInLog: false,
+    reachedMaxToolRounds: true,
   };
 }

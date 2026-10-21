@@ -4017,10 +4017,10 @@ export class Session {
           this.appendCommandEcho(options.completionDisplay, "switch", "worked");
         }
       } catch (err) {
+        // 压缩尝试期间写入的全部条目都不可信（meta 可能被 updateEntry 整体
+        // 替换），统一按索引区间丢弃；abort 与非 abort 同规则。
+        this._discardCompactAttemptEntries(logLenBeforeCompact);
         if (turnSignalState.signal.aborted || this._isCompactAbortError(err)) {
-          for (let ci = logLenBeforeCompact; ci < this._log.length; ci++) {
-            this._log[ci].discarded = true;
-          }
           this._appendInterruptionSystemMessage([], true);
           this._recordSessionEvent("interrupted by user");
           this._finishCurrentWork("interrupted");
@@ -4746,10 +4746,8 @@ export class Session {
           try {
             await this._doAutoCompact(result.compactScenario!, activeSignal);
           } catch (compactErr) {
+            this._discardCompactAttemptEntries(logLenBefore);
             if (activeSignal.aborted || this._isCompactAbortError(compactErr)) {
-              for (let ci = logLenBefore; ci < this._log.length; ci++) {
-                this._log[ci].discarded = true;
-              }
               this._appendInterruptionSystemMessage([], true);
               this._recordSessionEvent("interrupted by user");
               this.onSaveRequest?.();
@@ -5052,18 +5050,14 @@ export class Session {
           try {
             await this._doAutoCompact("before_turn", signal);
           } catch (compactErr) {
+            this._discardCompactAttemptEntries(logLenBefore);
             if (signal?.aborted || this._isCompactAbortError(compactErr)) {
-              for (let ci = logLenBefore; ci < this._log.length; ci++) {
-                this._log[ci].discarded = true;
-              }
               this._beginWorkIfNeeded();
               this._appendInterruptionSystemMessage([], true);
               this._recordSessionEvent("interrupted by user");
               this._finishCurrentWork("interrupted");
-              throw compactErr;
-            } else {
-              throw compactErr;
             }
+            throw compactErr;
           }
           // Messages held back during compact (Q6) land after the marker.
           if (this._hasInboxMessages()) {
@@ -5728,6 +5722,7 @@ export class Session {
       promptCacheKey: this._promptCacheKey,
       onSaveCheckpoint: this._compactInProgress ? undefined : (() => this.onSaveRequest?.()),
       beforeToolExecute: this._beforeToolExecute,
+      suppressAsks: this._compactInProgress,
       getNotification: () => null,
       // Round-boundary inbox drain. Suppressed during compact: anything
       // drained mid-compact would land before the upcoming compact_marker
@@ -6313,6 +6308,18 @@ export class Session {
         if (signal?.aborted) {
           throw new DOMException("Compact phase aborted.", "AbortError");
         }
+        if (result.reachedMaxToolRounds) {
+          // 工具轮数上限返回的是固定哨兵文案，不是 continuation prompt；
+          // 接受它会用哨兵替换整段历史，必须按压缩失败处理。
+          throw new Error(
+            "Compact phase hit the tool-round limit without producing a continuation prompt.",
+          );
+        }
+        if (result.suspendedAsk) {
+          // 压缩阶段不允许挂起等待审批（suppressAsks 已在工具循环内降级，
+          // 这里是绕过降级路径的最后防线）。
+          throw new Error("Compact phase cannot suspend for tool approvals.");
+        }
 
         if (result.text) {
           const compactRound = this._computeNextRoundIndex(compactTurnIndex);
@@ -6430,9 +6437,31 @@ export class Session {
       }
     }
 
+    // 压缩后旧上下文已被替换：per-response 快照必须清零，否则下一回合的
+    // before-turn 判断仍按压缩前的输入大小触发，导致连续压缩。累计用量
+    // 仍由日志中的 token_update 求和，不受此重置影响。
+    this._lastInputTokens = 0;
+    this._lastTotalTokens = 0;
+    this._lastCacheReadTokens = 0;
+    this._cacheSupported = false;
+
     // Emit compact_end event
     if (this._progress) {
       this._progress.onCompactEnd(this.primaryAgent.name, scenario, originalTokens);
+    }
+  }
+
+  /**
+   * 压缩失败清理：丢弃本次压缩尝试写入的全部条目（索引区间即事实来源）。
+   * 不能只看 meta.compactPhase：tool-loop 同步工具状态时会用 updateEntry
+   * 整体替换 meta，标记会丢失，留下的半截 tool_call 会破坏 API 投影。
+   * 调用方必须在追加失败/中断记录之前调用。
+   */
+  private _discardCompactAttemptEntries(fromIndex: number): void {
+    for (let i = fromIndex; i < this._log.length; i++) {
+      const entry = this._log[i];
+      if (!entry || entry.discarded) continue;
+      entry.discarded = true;
     }
   }
 
