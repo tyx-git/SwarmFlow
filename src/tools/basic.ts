@@ -2972,7 +2972,12 @@ function normalizeNativeFdOutput(
   options: GlobOptions,
 ): string {
   if (!content || content.startsWith("ERROR:")) return content;
-  const rawLines = content.split(/\r?\n/).filter(Boolean);
+  // fd 在 Windows 输出反斜杠路径；契约要求 glob 输出统一正斜杠，
+  // 与 JS 回退（absolute 分支的 full.replace）保持输出等价。
+  const rawLines = content
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => line.replace(/\\/g, "/"));
   // runSearch 的超时/截断/取消提示不是文件路径；单独保留，避免被当成匹配项。
   const notices = rawLines.filter((line) => /^\[(?:Output truncated|Search stopped|Search cancelled)/.test(line));
   const lines = rawLines.filter((line) => !notices.includes(line));
