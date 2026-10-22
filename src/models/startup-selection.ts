@@ -12,8 +12,8 @@
  * state/model-selection.json，也不使用供应商内部的推导默认值。
  */
 
-import type { Config } from "../config/config.js";
-import type { SwarmflowSettings } from "../config/persistence.js";
+import type { Config } from "../config/loader.js";
+import type { SwarmflowSettings } from "../config/settings/types.js";
 
 export interface StartupModelSelection {
   modelConfigName?: string;

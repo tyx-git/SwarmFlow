@@ -5,8 +5,8 @@
  * 原生 web_search 工具格式。
  */
 
-import type { ModelConfig } from "../config/config.js";
-import type { ToolDef } from "./base.js";
+import type { ModelConfig } from "../config/types.js";
+import type { SendMessageOptions, ToolDef } from "./types.js";
 import { OpenAIChatProvider } from "./openai-chat.js";
 
 export class GLMProvider extends OpenAIChatProvider {
@@ -22,7 +22,7 @@ export class GLMProvider extends OpenAIChatProvider {
 
   protected override _applyThinkingParams(
     kwargs: Record<string, unknown>,
-    options?: import("./base.js").SendMessageOptions,
+    options?: SendMessageOptions,
   ): void {
     const level = options?.thinkingLevel;
     if (level === "off" || level === "none") {

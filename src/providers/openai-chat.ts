@@ -6,20 +6,19 @@
  */
 
 import OpenAI from "openai";
-import { forceRefreshToken } from "../auth/openai-oauth.js";
-import type { ModelConfig } from "../config/config.js";
+import { forceRefreshToken } from "../auth/openai/refresh.js";
+import type { ModelConfig } from "../config/types.js";
+import { BaseProvider } from "./base.js";
 import {
-  BaseProvider,
   Citation,
-  finalizeToolCall,
-  normalizeStopReason,
-  ProviderResponse,
   ToolCall,
-  Usage,
   type Message,
   type SendMessageOptions,
   type ToolDef,
-} from "./base.js";
+} from "./types.js";
+import { finalizeToolCall } from "./tool-call.js";
+import { normalizeStopReason } from "./stop-reason.js";
+import { ProviderResponse, Usage } from "./response.js";
 import {
   createThinkingArtifact,
   effectiveSealedSchema,
@@ -27,7 +26,7 @@ import {
   resolveMessageThinkingArtifact,
   selectThinkingTransmission,
   type ThinkingArtifact,
-} from "../lib/thinking-artifact.js";
+} from "../thinking/artifact.js";
 
 type ToolArgsMode = "legacy" | "auto";
 

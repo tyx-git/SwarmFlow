@@ -1,5 +1,5 @@
 import type { InputAreaPickerConfig } from "./picker.js";
-import type { CommandOption } from "../commands/commands.js";
+import type { CommandOption } from "../commands/types.js";
 
 export type { CommandPickerPresentation, InputAreaPickerConfig } from "./picker.js";
 

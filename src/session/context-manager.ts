@@ -10,11 +10,11 @@
  *   - 90%：回合中 compact
  */
 
-import type { ModelConfig } from "../config/config.js";
+import type { ModelConfig } from "../config/types.js";
 import {
   type ContextThresholds,
   DEFAULT_THRESHOLDS,
-} from "../config/settings.js";
+} from "../config/compact-thresholds.js";
 
 export interface ContextManagerDeps {
   getModelConfig(): ModelConfig;

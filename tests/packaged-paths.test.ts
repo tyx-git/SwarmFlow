@@ -17,9 +17,10 @@ import { dirname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { buildDefaultRegistry } from "../src/commands/commands.js";
-import { getBundledAssetsDir, resolveAssetPaths } from "../src/config/config.js";
-import { projectSlug, SessionStore } from "../src/config/persistence.js";
+import { buildDefaultRegistry } from "../src/commands/registration.js";
+import { getBundledAssetsDir, resolveAssetPaths } from "../src/config/asset-paths.js";
+import { projectSlug } from "../src/config/storage-layout.js";
+import { SessionStore } from "../src/config/session-store.js";
 import { resolveOpenTuiEntry } from "../src/cli.js";
 import { bundledJqPath } from "../src/tools/json-query.js";
 import { resolveBundledSearchExecutable } from "../src/tools/native-search.js";
@@ -266,7 +267,7 @@ describe("dist assembly", () => {
   });
 
   it("keeps JSON imports from compiled src modules reachable", () => {
-    // dist/src/lib/ui-text.js imports ../../assets/ui-texts/language.json
+    // dist/src/ui/text.js imports ../../assets/ui-texts/language.json
     const assetsRoot = getBundledAssetsDir(pathToFileURL(join(output, "src", "lib", "ui-text.js")).href);
     expect(assetsRoot).toBe(output);
     expect(existsSync(join(assetsRoot, "assets", "ui-texts", "language.json"))).toBe(true);

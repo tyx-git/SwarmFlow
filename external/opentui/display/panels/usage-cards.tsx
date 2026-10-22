@@ -6,10 +6,8 @@ import { createTextAttributes } from "@opentui/core";
 import { formatResetRemaining, type UsageSnapshot } from "../../../../src/providers/usage.js";
 
 const ATTRS_BOLD = createTextAttributes({ bold: true });
-import {
-  readOAuthAccessToken,
-  getTokenExpiry,
-} from "../../../../src/auth/openai-oauth.js";
+import { readOAuthAccessToken } from "../../../../src/auth/openai/token-store.js";
+import { getTokenExpiry } from "../../../../src/auth/openai/jwt.js";
 import type { DisplayTheme } from "../theme/index.js";
 import {
   formatCompactTokens,

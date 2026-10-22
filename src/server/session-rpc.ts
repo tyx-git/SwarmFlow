@@ -12,12 +12,31 @@ import { basename, dirname, join } from "node:path";
 
 import type { RpcServer } from "./rpc-transport.js";
 import type { Session } from "../session.js";
-import type { LogEntry } from "../context/log-entry.js";
+import type { LogEntry } from "../context/entry/types.js";
 import type { PermissionMode } from "../permissions/index.js";
-import { projectToTuiEntries } from "../context/log-projection.js";
-import { randomSessionId, saveGlobalSettingsPatch, saveLog, SessionStore } from "../config/persistence.js";
-import { applySessionRestore } from "../session-resume.js";
-import { getSubAgentThinkingLevels } from "../config/config.js";
+import { projectToTuiEntries } from "../context/projection/tui.js";
+import { randomSessionId } from "../config/storage-layout.js";
+import { saveGlobalSettingsPatch } from "../config/settings/io.js";
+import { saveLog } from "../config/log-serialization.js";
+import { SessionStore } from "../config/session-store.js";
+import { applySessionRestore } from "../session/resume.js";
+import { getSubAgentThinkingLevels } from "../config/model-capabilities.js";
+import { PROTOCOL_CAPABILITIES, PROTOCOL_VERSION } from "./protocol.js";
+import {
+  buildAgentRuntimeSettings,
+  buildHooksStatus,
+  buildMcpStatus,
+  buildMeta,
+  buildStatus,
+} from "./session-status-payloads.js";
+import { forkSessionDirectory } from "./session-fork.js";
+import {
+  expectObject,
+  expectPermissionMode,
+  expectString,
+  optNumber,
+  optString,
+} from "./rpc-arg-guards.js";
 
 export interface SessionRpcOptions {
   readonly session: Session;
@@ -31,352 +50,11 @@ export interface SessionRpcOptions {
 /** 适合 JSON 序列化的日志条目快照。 */
 type SerializedLogEntry = LogEntry;
 
-/**
- * 线路协议版本，在 `ready` 元数据中公布。当事件负载或方法契约发生不兼容变化时递增。
- * 能力字符串让客户端无需版本计算即可检测新增能力。
- */
-export const PROTOCOL_VERSION = 1;
-export const PROTOCOL_CAPABILITIES = [
-  /** session.getProjectedLog / session.getProjectedChildLog */
-  "projectedLog",
-  /** ask.pending / ask.resolved 由真实运行时订阅驱动（包括子 ask） */
-  "askEvents",
-  /** turn.started / turn.ended 由运行时为所有回合发出（包括自动恢复） */
-  "turnLifecycle",
-  /** turn.ended 可能携带 status "waiting"（回合停驻在待处理 ask 上） */
-  "waitingStatus",
-  /** server.crashed 在致命进程错误时发出 */
-  "crashEvent",
-] as const;
-
-interface MetaPayload {
-  readonly sessionId: string;
-  readonly title: string | undefined;
-  readonly displayName: string;
-  readonly sessionDir: string | null;
-  readonly workDir: string;
-  readonly modelConfigName: string;
-  readonly modelProvider: string;
-  readonly thinkingLevel: string;
-  readonly accentColor: string | undefined;
-  readonly turnCount: number;
-  readonly protocolVersion: number;
-  readonly capabilities: readonly string[];
-}
-
-interface StatusPayload {
-  readonly currentTurnRunning: boolean;
-  readonly sessionPhase: string;
-  readonly lastTurnEndStatus: string | null;
-  readonly pendingInboxCount: number;
-  readonly lifetimeToolCallCount: number;
-  readonly lastToolCallSummary: string;
-  readonly lastInputTokens: number;
-  readonly lastTotalTokens: number;
-  readonly lastCacheReadTokens: number;
-  readonly contextBudget: number;
-  readonly activeLogEntryId: string | null;
-  readonly hasPendingTurn: boolean;
-  readonly permissionMode: PermissionMode;
-}
 
 interface SessionStoreAccess {
   _store?: {
     sessionDir?: string;
   };
-}
-
-interface McpStatusPayload {
-  readonly configured: boolean;
-  readonly error: string | null;
-  readonly toolCount: number;
-  readonly servers: readonly {
-    readonly name: string;
-    readonly state: string | null;
-    readonly error: string | null;
-    readonly tools: readonly string[];
-  }[];
-}
-
-interface HooksStatusPayload {
-  readonly available: boolean;
-  readonly hooks: readonly {
-    readonly name: string;
-    readonly scope: string;
-    readonly event: string;
-    readonly matcher: string | null;
-    readonly command: string;
-    readonly failClosed: boolean;
-  }[];
-}
-
-interface ForkSessionPayload {
-  readonly sessionId: string;
-  readonly sessionDir: string;
-  readonly title: string;
-  readonly sourceSessionId: string;
-}
-
-const PERMISSION_MODES = new Set<PermissionMode>(["read_only", "reversible", "yolo"]);
-interface AgentRuntimeSettingsPayload {
-  readonly subAgentInheritMcp: boolean;
-  readonly subAgentInheritHooks: boolean;
-}
-
-export function buildMeta(s: Session, workDir: string, sessionDir: string | null): MetaPayload {
-  return {
-    sessionId: sessionDir ? basename(sessionDir) : s.createdAt,
-    title: s.getTitle(),
-    displayName: s.getDisplayName(),
-    sessionDir,
-    workDir,
-    modelConfigName: s.currentModelConfigName ?? "",
-    modelProvider: s.primaryAgent?.modelConfig?.provider ?? "",
-    thinkingLevel: s.thinkingLevel ?? "none",
-    accentColor: s.accentColor,
-    turnCount: s.turnCount,
-    protocolVersion: PROTOCOL_VERSION,
-    capabilities: PROTOCOL_CAPABILITIES,
-  };
-}
-
-function buildStatus(s: Session): StatusPayload {
-  return {
-    currentTurnRunning: s.currentTurnRunning,
-    sessionPhase: s.sessionPhase,
-    lastTurnEndStatus: s.lastTurnEndStatus,
-    pendingInboxCount: s.pendingInboxCount,
-    lifetimeToolCallCount: s.lifetimeToolCallCount,
-    lastToolCallSummary: s.lastToolCallSummary,
-    lastInputTokens: s.lastInputTokens,
-    lastTotalTokens: s.lastTotalTokens,
-    lastCacheReadTokens: s.lastCacheReadTokens,
-    contextBudget: s.contextBudget,
-    activeLogEntryId: s.activeLogEntryId,
-    hasPendingTurn: s.hasPendingTurnToResume(),
-    permissionMode: s.permissionMode,
-  };
-}
-
-async function buildMcpStatus(s: Session): Promise<McpStatusPayload> {
-  const manager = s.mcpManager;
-  if (!manager) {
-    return { configured: false, error: null, toolCount: 0, servers: [] };
-  }
-
-  try {
-    if (typeof s.ensureMcpReady === "function") {
-      await s.ensureMcpReady();
-    } else if (typeof manager.connectAll === "function") {
-      await manager.connectAll();
-    }
-  } catch (err) {
-    return {
-      configured: true,
-      error: err instanceof Error ? err.message : String(err),
-      toolCount: 0,
-      servers: [],
-    };
-  }
-
-  const tools = typeof manager.getAllTools === "function" ? manager.getAllTools() : [];
-  const statuses = typeof manager.getServerStatuses === "function"
-    ? manager.getServerStatuses()
-    : [];
-  const byServer = new Map<string, string[]>();
-
-  for (const tool of tools) {
-    const name = typeof tool.name === "string" ? tool.name : "";
-    const parts = name.split("__");
-    const server = parts.length >= 3 ? parts[1]! : "unknown";
-    const originalName = parts.length >= 3 ? parts.slice(2).join("__") : name;
-    const list = byServer.get(server) ?? [];
-    if (originalName) list.push(originalName);
-    byServer.set(server, list);
-  }
-
-  for (const status of statuses) {
-    if (!byServer.has(status.name)) byServer.set(status.name, []);
-  }
-
-  return {
-    configured: true,
-    error: null,
-    toolCount: tools.length,
-    servers: [...byServer.entries()].map(([name, serverTools]) => {
-      const status = statuses.find((item) => item.name === name);
-      return {
-        name,
-        state: typeof status?.state === "string" ? status.state : null,
-        error: typeof status?.error === "string" ? status.error : null,
-        tools: [...serverTools].sort(),
-      };
-    }),
-  };
-}
-
-function buildHooksStatus(s: Session): HooksStatusPayload {
-  const runtime = s.hookRuntime;
-  if (!runtime) return { available: false, hooks: [] };
-  const hooks = Array.isArray(runtime.hooks) ? runtime.hooks : [];
-  return {
-    available: true,
-    hooks: hooks.map((hook) => {
-      const matcher = hook.matcher
-        ? [
-            ...(hook.matcher.toolNames ?? []),
-            ...(hook.matcher.agentIds ?? []),
-          ].join(", ")
-        : "";
-      return {
-        name: hook.name,
-        scope: hook._scope ?? "unknown",
-        event: hook.event,
-        matcher: matcher.length > 0 ? matcher : null,
-        command: `${hook.command}${hook.args?.length ? ` ${hook.args.join(" ")}` : ""}`,
-        failClosed: hook.failClosed ?? false,
-      };
-    }),
-  };
-}
-
-
-function buildAgentRuntimeSettings(s: Session): AgentRuntimeSettingsPayload {
-  return {
-    subAgentInheritMcp: s.config?.subAgentInheritMcp ?? true,
-    subAgentInheritHooks: s.config?.subAgentInheritHooks ?? true,
-  };
-}
-
-export function forkSessionDirectory(
-  sourceDir: string,
-  opts?: { inheritPromptCacheKey?: boolean },
-): ForkSessionPayload {
-  if (!existsSync(join(sourceDir, "log.json"))) {
-    throw new Error("session.fork: cannot fork an empty session");
-  }
-
-  const projectDir = dirname(sourceDir);
-  const sourceSessionId = basename(sourceDir);
-  let newSessionId = randomSessionId();
-  let newDir = join(projectDir, newSessionId);
-  for (let attempt = 0; existsSync(newDir) && attempt < 8; attempt += 1) {
-    newSessionId = randomSessionId();
-    newDir = join(projectDir, newSessionId);
-  }
-  if (existsSync(newDir)) {
-    throw new Error("session.fork: failed to allocate a unique session directory");
-  }
-
-  try {
-    cpSync(sourceDir, newDir, { recursive: true, errorOnExist: true });
-  } catch (err) {
-    try { rmSync(newDir, { recursive: true, force: true }); } catch { /* best effort */ }
-    throw new Error(`session.fork: copy failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-
-  try {
-    const nowIso = new Date().toISOString();
-    const metaPath = join(newDir, "meta.json");
-    const logPath = join(newDir, "log.json");
-    const meta = readJsonRecord(metaPath);
-    const logData = readJsonRecord(logPath);
-    const sourceTitle = firstString(meta.title, logData.title, meta.summary, logData.summary);
-    const sourceCacheKey = firstString(
-      logData.prompt_cache_affinity_key,
-      meta.prompt_cache_affinity_key,
-    );
-    /**
-     * fork 的 prompt cache key 策略：
-     * - 默认路由隔离（新随机 key）：适合长期并行开发。两个分支各自
-     *   演进时不应互相挤占 provider 的缓存分区。
-     * - inheritPromptCacheKey：适合轻量级探索/短期实验。分支直接复用
-     *   父会话的前缀缓存，降低首轮重放成本。
-     */
-    const forkedCacheKey = opts?.inheritPromptCacheKey && sourceCacheKey
-      ? sourceCacheKey
-      : randomSessionId();
-    const branchTitle = sourceTitle.startsWith("(branch) ")
-      ? sourceTitle
-      : `(branch) ${sourceTitle || sourceSessionId}`.trim();
-
-    meta.session_id = newSessionId;
-    meta.created_at = nowIso;
-    meta.last_active_at = nowIso;
-    meta.title = branchTitle;
-    meta.forked_from_session_id = sourceSessionId;
-    meta.prompt_cache_affinity_key = forkedCacheKey;
-    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
-
-    logData.session_id = newSessionId;
-    logData.created_at = nowIso;
-    logData.updated_at = nowIso;
-    logData.title = branchTitle;
-    logData.forked_from_session_id = sourceSessionId;
-    logData.prompt_cache_affinity_key = forkedCacheKey;
-    writeFileSync(logPath, `${JSON.stringify(logData, null, 2)}\n`);
-
-    return {
-      sessionId: newSessionId,
-      sessionDir: newDir,
-      title: branchTitle,
-      sourceSessionId,
-    };
-  } catch (err) {
-    try { rmSync(newDir, { recursive: true, force: true }); } catch { /* best effort */ }
-    throw new Error(`session.fork: metadata patch failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-function readJsonRecord(filePath: string): Record<string, unknown> {
-  const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`${basename(filePath)} is not a JSON object`);
-  }
-  return parsed as Record<string, unknown>;
-}
-
-function firstString(...values: unknown[]): string {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return "";
-}
-
-function expectObject(params: unknown, method: string): Record<string, unknown> {
-  if (params == null) return {};
-  if (typeof params !== "object" || Array.isArray(params)) {
-    throw new Error(`${method}: params must be an object`);
-  }
-  return params as Record<string, unknown>;
-}
-
-function expectString(params: Record<string, unknown>, key: string, method: string): string {
-  const v = params[key];
-  if (typeof v !== "string") throw new Error(`${method}: '${key}' must be a string`);
-  return v;
-}
-
-function optString(params: Record<string, unknown>, key: string): string | undefined {
-  const v = params[key];
-  return typeof v === "string" ? v : undefined;
-}
-
-function optNumber(params: Record<string, unknown>, key: string): number | undefined {
-  const v = params[key];
-  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
-}
-
-function expectPermissionMode(
-  params: Record<string, unknown>,
-  key: string,
-  method: string,
-): PermissionMode {
-  const v = expectString(params, key, method);
-  if (!PERMISSION_MODES.has(v as PermissionMode)) {
-    throw new Error(`${method}: '${key}' must be one of read_only, reversible, yolo`);
-  }
-  return v as PermissionMode;
 }
 
 /**

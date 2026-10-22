@@ -11,19 +11,16 @@
  * Agent 不是单例 — clone() 创建独立实例和独立 provider，支持并发多 Agent 会话而不产生状态渗透。
  */
 
-import type { Config, ModelConfig } from "../config/config.js";
+import type { Config } from "../config/loader.js";
+import type { ModelConfig } from "../config/types.js";
 import type { MessageBlock } from "../primitives/context.js";
-import type { BaseProvider, ToolDef } from "../providers/base.js";
+import type { BaseProvider } from "../providers/base.js";
+import type { ToolDef } from "../providers/types.js";
 import { createProvider } from "../providers/registry.js";
-import { executeTool } from "../tools/basic.js";
+import { executeTool } from "../tools/dispatch.js";
 import { createEphemeralLogState } from "../context/ephemeral-log.js";
-import {
-  asyncRunToolLoop,
-  type OnToolCallCallback,
-  type ToolExecutor,
-  type ToolLoopOptions,
-  type ToolLoopResult,
-} from "./tool-loop.js";
+import { asyncRunToolLoop } from "./tool-loop/run.js";
+import type { OnToolCallCallback, ToolExecutor, ToolLoopOptions, ToolLoopResult } from "./tool-loop/types.js";
 
 // ------------------------------------------------------------------
 // 输出前缀检测

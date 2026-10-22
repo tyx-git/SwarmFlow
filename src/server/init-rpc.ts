@@ -10,7 +10,8 @@
  */
 
 import type { RpcServer } from "./rpc-transport.js";
-import { InitService, type ModelSelection } from "../lifecycle/init-service.js";
+import { InitService } from "../lifecycle/init-service.js";
+import type { ModelSelection } from "../lifecycle/types.js";
 
 export interface InitRpcOptions {
   readonly server: RpcServer;
@@ -135,7 +136,8 @@ export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {
     const providerId = expectString(p, "providerId", "init.startOAuthFlow");
 
     if (providerId === "openai-codex") {
-      const { deviceCodeLogin, saveOAuthTokens, hasOAuthTokens } = await import("../auth/openai-oauth.js");
+      const { deviceCodeLogin } = await import("../auth/openai/device-code-flow.js");
+const { saveOAuthTokens, hasOAuthTokens } = await import("../auth/openai/token-store.js");
       if (hasOAuthTokens()) {
         return { status: "already_authenticated", providerId };
       }

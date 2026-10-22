@@ -9,10 +9,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { Agent } from "../agents/agent.js";
-import type { Config } from "../config/config.js";
-import type { MCPClientManager } from "../clients/mcp-client.js";
+import type { Config } from "../config/loader.js";
+import type { MCPClientManager } from "../clients/mcp/manager.js";
 import { SafePathError, safePath } from "../security/path.js";
-import { loadTemplate, validateTemplate } from "../templates/loader.js";
+import { loadTemplate, validateTemplate } from "../prompts/templates.js";
 import type { PersistedRoleModelSelection, ResolvedRoleModel } from "./role-model-resolver.js";
 
 /**

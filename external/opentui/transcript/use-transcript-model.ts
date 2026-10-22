@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { projectToTuiEntries } from "../../../src/context/log-projection.js";
-import type { LogEntry } from "../../../src/context/log-entry.js";
-import type { ChildSessionSnapshot } from "../../../src/session-tree-types.js";
+import { projectToTuiEntries } from "../../../src/context/projection/tui.js";
+import type { LogEntry } from "../../../src/context/entry/types.js";
+import type { ChildSessionSnapshot } from "../../../src/session/tree-types.js";
 import type { Session as TuiSession } from "../../../src/ui/contracts.js";
 
 import { reconcileEntries } from "./reconcile.js";

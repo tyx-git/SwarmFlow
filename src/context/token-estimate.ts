@@ -1,7 +1,7 @@
 /** Token estimation helpers used by usage accounting. */
 
 import { encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
-import type { LogEntry } from "./log-entry.js";
+import type { LogEntry } from "./entry/types.js";
 
 /** Estimate the token count of one persisted log entry. */
 export function estimateEntryTokens(entry: LogEntry): number {

@@ -107,7 +107,7 @@ DeepSeek 的 Anthropic 兼容端点会自动启用 prefix cache，无需手动�
 /mcp       MCP 工具            /ask        旁路提问
 ```
 
-命令全集见 `src/commands/commands.ts`。
+命令全集见 `src/commands/`（按职责分域：`registration.ts` 装配内置命令，`session/`、`model/`、`provider/`、`workflow/`、`ecosystem/`、`ui/` 各放对应命令）。
 
 ## 模型配置
 

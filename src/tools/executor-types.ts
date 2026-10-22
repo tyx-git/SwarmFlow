@@ -5,7 +5,7 @@
  * 和 `src/agents/tool-loop.ts` 之间的循环依赖。
  */
 
-import type { ToolResult } from "../providers/base.js";
+import type { ToolResult } from "../providers/response.js";
 
 /**
  * 传递给工具执行器的按调用运行时上下文。

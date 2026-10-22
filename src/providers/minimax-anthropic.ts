@@ -17,9 +17,9 @@
  */
 
 import { BaseAnthropicProvider } from "./anthropic-base.js";
-import type { ModelConfig } from "../config/config.js";
+import type { ModelConfig } from "../config/types.js";
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";
-import type { SendMessageOptions } from "./base.js";
+import type { SendMessageOptions } from "./types.js";
 
 export class MiniMaxAnthropicProvider extends BaseAnthropicProvider {
   constructor(config: ModelConfig) {

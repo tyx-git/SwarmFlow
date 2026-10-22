@@ -9,76 +9,35 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import {
   PROVIDER_PRESETS,
   type ProviderPreset,
 } from "../providers/presets.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
-import {
-  type SwarmflowSettings,
-  type ProviderEntry,
-  saveSettings,
-  globalSettingsPath,
-  loadGlobalSettings,
-} from "../config/persistence.js";
+import type { SwarmflowSettings, ProviderEntry } from "../config/settings/types.js";
+import { saveSettings, globalSettingsPath, loadGlobalSettings } from "../config/settings/io.js";
 import {
   hasAnyManagedCredential,
   hasManagedCredential,
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
-import { Config, getThinkingLevels, getSubAgentThinkingLevels, runtimeTransportProtocol } from "../config/config.js";
-import {
-  buildModelPickerTree,
-  labelModelPickerNode,
-  type ModelPickerTreeNode,
-} from "../models/picker-tree.js";
+import { Config } from "../config/loader.js";
+import { getThinkingLevels, getSubAgentThinkingLevels, runtimeTransportProtocol } from "../config/model-capabilities.js";
+import { buildModelPickerTree } from "../models/picker/model-tree.js";
+import { labelModelPickerNode } from "../models/picker/labels.js";
+import type { ModelPickerTreeNode } from "../models/picker/types.js";
 import { parseProviderModelTarget } from "../models/selection.js";
 import { describeModel } from "../models/presentation.js";
 
-// ------------------------------------------------------------------
-// Public types
-// ------------------------------------------------------------------
-
-export interface ProviderPresetInfo {
-  id: string;
-  name: string;
-  envVar: string;
-  configured: boolean;
-  isOAuth: boolean;
-  isLocal: boolean;
-  isManaged: boolean;
-  models: Array<{ key: string; id: string; label: string }>;
-}
-
-export interface ModelPickerNode {
-  id: string;
-  label: string;
-  value?: string;
-  children?: ModelPickerNode[];
-}
-
-export interface ModelSelection {
-  configName: string;
-  providerId: string;
-  selectionKey: string;
-  modelId: string;
-}
-
-export interface ConfigStatus {
-  configured: boolean;
-  hasProviders: boolean;
-  providers: ProviderPresetInfo[];
-}
-
-export interface SearchApiOption {
-  env: string;
-  name: string;
-  url: string;
-  free: string;
-  configured: boolean;
-}
+import type {
+  ConfigStatus,
+  ModelPickerNode,
+  ModelSelection,
+  ProviderPresetInfo,
+  SearchApiOption,
+} from "./types.js";
 
 export const SEARCH_API_OPTIONS: readonly SearchApiOption[] = [
   { env: "SERPER_API_KEY", name: "Serper", url: "https://serper.dev", free: "2,500 queries/month", configured: false },

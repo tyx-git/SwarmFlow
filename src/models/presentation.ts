@@ -1,12 +1,12 @@
 ﻿import {
   findProviderPreset,
 } from "../providers/presets.js";
-import { OPENROUTER_VENDOR_BRAND } from "../models/registry.js";
+import { OPENROUTER_VENDOR_BRAND } from "../providers/provider-specs.js";
 import {
   EFFECTIVE_PROVIDER_SPECS,
 } from "../providers/registry-effective.js";
-import { loadGlobalSettings } from "../config/persistence.js";
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { loadGlobalSettings } from "../config/settings/io.js";
+import { getSwarmflowHomeDir } from "../config/home-dir.js";
 
 function normalizeModelId(model: string): string {
   const idx = model.lastIndexOf("/");

@@ -5,7 +5,7 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SEARCH_BUDGET_MS } from "./shared.js";
+import { SEARCH_BUDGET_MS } from "./limits.js";
 
 const SEARCH_OUTPUT_CAP = 60_000;
 

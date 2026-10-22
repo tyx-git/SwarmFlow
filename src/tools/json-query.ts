@@ -16,8 +16,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { ToolDef } from "../providers/base.js";
-import { truncateMiddle } from "./shared.js";
+import type { ToolDef } from "../providers/types.js";
+import { truncateMiddle } from "./output-truncation.js";
 
 const MAX_JSON_INPUT_BYTES = 50 * 1024 * 1024;
 const MAX_JSON_OUTPUT_CHARS = 80_000;

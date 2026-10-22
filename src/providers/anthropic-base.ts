@@ -18,19 +18,18 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import type { ModelConfig } from "../config/config.js";
+import type { ModelConfig } from "../config/types.js";
+import { BaseProvider } from "./base.js";
 import {
-  BaseProvider,
   Citation,
-  finalizeToolCall,
-  normalizeStopReason,
-  ProviderResponse,
   ToolCall,
-  Usage,
   type Message,
   type SendMessageOptions,
   type ToolDef,
-} from "./base.js";
+} from "./types.js";
+import { finalizeToolCall } from "./tool-call.js";
+import { normalizeStopReason } from "./stop-reason.js";
+import { ProviderResponse, Usage } from "./response.js";
 import {
   buildAnthropicPlainThinkingPayload,
   createThinkingArtifact,
@@ -41,7 +40,7 @@ import {
   selectThinkingTransmission,
   SEALED_SCHEMA_ANTHROPIC_MESSAGES,
   type ThinkingArtifact,
-} from "../lib/thinking-artifact.js";
+} from "../thinking/artifact.js";
 
 export abstract class BaseAnthropicProvider extends BaseProvider {
   override readonly requiresAlternatingRoles = true;

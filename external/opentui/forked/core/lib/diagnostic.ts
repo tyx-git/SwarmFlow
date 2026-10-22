@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { rotateLogFile } from "../../../../../src/lib/log-rotation.js"
+import { rotateLogFile } from "../../../../../src/logging/rotation.js"
 import { env, registerEnvVar } from "./env.js"
 
 registerEnvVar({

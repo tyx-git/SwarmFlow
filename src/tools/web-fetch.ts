@@ -7,8 +7,8 @@
  */
 
 import { isIP } from "node:net";
-import type { ToolDef } from "../providers/base.js";
-import { truncateMiddle } from "./shared.js";
+import type { ToolDef } from "../providers/types.js";
+import { truncateMiddle } from "./output-truncation.js";
 
 // ------------------------------------------------------------------
 // 常量

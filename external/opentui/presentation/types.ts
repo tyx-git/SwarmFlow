@@ -1,4 +1,4 @@
-import type { FileModifyDisplayData } from "../../../src/lib/diff-hunk.js";
+import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
 
 export type PresentationKind =
   | "user"

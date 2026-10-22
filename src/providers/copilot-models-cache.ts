@@ -20,7 +20,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import { copilotTokenManager } from "../auth/github-copilot-token-manager.js";
 import { buildCopilotRequestHeaders } from "./copilot-headers.js";
 

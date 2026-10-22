@@ -16,7 +16,7 @@
 
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";
 import { BaseAnthropicProvider } from "./anthropic-base.js";
-import type { SendMessageOptions } from "./base.js";
+import type { SendMessageOptions } from "./types.js";
 
 export class DeepSeekAnthropicProvider extends BaseAnthropicProvider {
   protected override _defaultBaseUrl(): string {

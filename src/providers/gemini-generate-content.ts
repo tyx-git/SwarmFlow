@@ -1,5 +1,9 @@
-import type { ModelConfig } from "../config/config.js";
-import { BaseProvider, normalizeStopReason, type Message, ProviderResponse, type SendMessageOptions, type ToolDef, Usage, finalizeToolCall } from "./base.js";
+import type { ModelConfig } from "../config/types.js";
+import { BaseProvider } from "./base.js";
+import { normalizeStopReason } from "./stop-reason.js";
+import type { Message, SendMessageOptions, ToolDef } from "./types.js";
+import { ProviderResponse, Usage } from "./response.js";
+import { finalizeToolCall } from "./tool-call.js";
 
 function roleOf(message: Message): "user" | "model" {
   return message.role === "assistant" ? "model" : "user";

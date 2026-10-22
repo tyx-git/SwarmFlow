@@ -8,7 +8,7 @@
  */
 
 import { COPILOT_EDITOR_HEADERS } from "../auth/github-copilot-oauth.js";
-import type { Message } from "./base.js";
+import type { Message } from "./types.js";
 
 export interface CopilotHeaderOptions {
   /** 如果为 true，添加 `copilot-vision-request: true` — 发送图像内容时必需。 */

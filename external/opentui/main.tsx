@@ -9,7 +9,7 @@ import {
   writeOpenTuiDiag,
 } from "./forked/core/lib/diagnostic.js";
 import type { OpenTuiRuntime } from "./bootstrap.js";
-import { rotateLogFile } from "../../src/lib/log-rotation.js";
+import { rotateLogFile } from "../../src/logging/rotation.js";
 import { getUiCommonColors } from "../../src/config/ui-colors.js";
 
 const TRANSPARENT = getUiCommonColors().transparent;
@@ -73,7 +73,8 @@ export async function launchTui(): Promise<void> {
   const { createRoot } = await import("@opentui/react");
   const { bootstrapOpenTuiRuntime } = await import("./bootstrap.js");
   const { OpenTuiApp } = await import("./app.js");
-  const { parseSettingsOverrides, saveLog } = await import("../../src/config/persistence.js");
+  const { parseSettingsOverrides } = await import("../../src/config/settings/io.js");
+  const { saveLog } = await import("../../src/config/log-serialization.js");
 
   process.env.OPENTUI_FORCE_EXPLICIT_WIDTH = "false";
   const args = parseArgs(process.argv.slice(2));
@@ -115,7 +116,7 @@ export async function launchTui(): Promise<void> {
   // 恢复会话日志
   if (resumeDir) {
     delete process.env["SWARMFLOW_RESUME_SESSION_DIR"];
-    const { applySessionRestore } = await import("../../src/session-resume.js");
+    const { applySessionRestore } = await import("../../src/session/resume.js");
     const result = applySessionRestore(runtime.session, runtime.store, resumeDir);
 
     // 恢复完成，停止动画并清屏
@@ -131,7 +132,7 @@ export async function launchTui(): Promise<void> {
   // Redirect stderr to a log file before the TUI takes over the terminal.
   // Without this, console.warn/error from libraries (e.g. markitdown-ts) and
   // MCP server child process stderr corrupt the TUI display.
-  const { getSwarmflowHomeDir } = await import("../../src/lib/home-path.js");
+  const { getSwarmflowHomeDir } = await import("../../src/config/home-dir.js");
   const stderrLogDir = getSwarmflowHomeDir();
   if (!existsSync(stderrLogDir)) mkdirSync(stderrLogDir, { recursive: true });
   const stderrLogPath = join(stderrLogDir, "stderr.log");

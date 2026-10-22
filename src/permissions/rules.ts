@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import { toPosixPath } from "../security/path.js";
 import { osCapabilities } from "../platform/index.js";
 import type { PermissionRule, PermissionRuleFile, InvocationAssessment, ExternalPathRule } from "./types.js";

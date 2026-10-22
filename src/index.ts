@@ -9,18 +9,11 @@
  */
 
 // -- Config ---------------------------------------------------------------
-export {
-  Config,
-  type ModelConfig,
-  type MCPServerConfig,
-  type ResolvedPaths,
-  getContextLength,
-  getMultimodalSupport,
-  getWebSearchSupport,
-  resolveAssetPaths,
-  getBundledAssetsDir,
-  SWARMFLOW_HOME_DIR,
-} from "./config/config.js";
+export { Config } from "./config/loader.js";
+export type { ModelConfig, MCPServerConfig } from "./config/types.js";
+export { type ResolvedPaths, resolveAssetPaths, getBundledAssetsDir } from "./config/asset-paths.js";
+export { getContextLength, getMultimodalSupport, getWebSearchSupport } from "./config/model-capabilities.js";
+export { SWARMFLOW_HOME_DIR } from "./config/home-dir.js";
 
 // -- Dotenv ---------------------------------------------------------------
 /** 加载 ~/.swarmflow/.env 到 process.env。 */
@@ -28,7 +21,7 @@ export { loadDotenv, setDotenvKey } from "./lifecycle/dotenv.js";
 
 // -- MCP 配置 -----------------------------------------------------------
 /** 从配置加载 MCP 服务器列表。 */
-export { loadMcpServers } from "./clients/mcp-config.js";
+export { loadMcpServers } from "./clients/mcp/config.js";
 
 // -- 模型发现 ------------------------------------------------------
 /** 从远程服务器发现可用模型。 */
@@ -49,14 +42,9 @@ export { Session } from "./session.js";
  * 上下文压缩相关标记和工具函数。
  * compact_marker 标签用于标识已被压缩的上下文区域。
  */
-export {
-  COMPACT_MARKER_ROLE,
-  CONTEXT_ID_KEY,
-  isCompactMarker,
-  injectContextIdTag,
-  mergeConsecutiveSameRole,
-  type CompactMarker,
-} from "./context/context-rendering.js";
+export { COMPACT_MARKER_ROLE, isCompactMarker, type CompactMarker } from "./context/compact-marker.js";
+export { CONTEXT_ID_KEY, injectContextIdTag } from "./context/context-tags.js";
+export { mergeConsecutiveSameRole } from "./context/message-merging.js";
 
 // -- Agent ---------------------------------------------------------------
 /**
@@ -70,19 +58,9 @@ export { Agent, type AgentResult, isNoReply, NO_REPLY_MARKER } from "./agents/ag
  * 所有 Provider 的共同接口和类型。
  * BaseProvider 是每个具体 Provider（Anthropic/OpenAI/DeepSeek 等）的基类。
  */
-export {
-  type ImageBlock,
-  type ToolDef,
-  type ToolCall,
-  type Citation,
-  ToolResult,
-  Usage,
-  ProviderResponse,
-  BaseProvider,
-  type Message,
-  type MessageRole,
-  type SendMessageOptions,
-} from "./providers/base.js";
+export type { ImageBlock, ToolDef, ToolCall, Citation, Message, MessageRole, SendMessageOptions } from "./providers/types.js";
+export { ToolResult, Usage, ProviderResponse } from "./providers/response.js";
+export { BaseProvider } from "./providers/base.js";
 
 // -- 原语 -----------------------------------------------------------
 /** 消息块原语——prompt、context、combine 用于组装系统提示。 */
@@ -99,7 +77,7 @@ export {
   computeRetryDelay,
   retrySleep,
   MAX_NETWORK_RETRIES,
-} from "./lib/network-retry.js";
+} from "./network/retry.js";
 
 // -- 进度报告 ---------------------------------------------------------
 /**
@@ -113,13 +91,13 @@ export {
   type ProgressCallback,
   ProgressReporter,
   ConsoleProgress,
-} from "./lib/progress.js";
+} from "./logging/progress.js";
 
 // -- 持久化 ----------------------------------------------------------
 /** SessionStore：会话列表、恢复、持久化。 */
 export {
   SessionStore,
-} from "./config/persistence.js";
+} from "./config/session-store.js";
 
 // -- 命令 -------------------------------------------------------------
 /**
@@ -127,14 +105,10 @@ export {
  * buildDefaultRegistry 构建默认命令集；
  * registerSkillCommands 将技能加载为命令。
  */
-export {
-  CommandRegistry,
-  type SlashCommand,
-  type CommandContext,
-  type ShowMessageFn,
-  buildDefaultRegistry,
-  registerSkillCommands,
-} from "./commands/commands.js";
+export { CommandRegistry } from "./commands/registry.js";
+export type { SlashCommand, CommandContext, ShowMessageFn } from "./commands/types.js";
+export { buildDefaultRegistry } from "./commands/registration.js";
+export { registerSkillCommands } from "./commands/ecosystem/skills.js";
 
 // -- 技能 -----------------------------------------------------------
 /**
@@ -157,7 +131,7 @@ export {
   loadTemplates,
   assembleSystemPrompt,
   type PromptRecipe,
-} from "./templates/loader.js";
+} from "./prompts/templates.js";
 
 // -- 工具 ----------------------------------------------------------------
 /**
@@ -165,7 +139,8 @@ export {
  * BASIC_TOOLS_MAP 是工具名到 ToolDef 的映射；
  * executeTool 是工具的默认执行器。
  */
-export { BASIC_TOOLS, BASIC_TOOLS_MAP, executeTool } from "./tools/basic.js";
+export { BASIC_TOOLS, BASIC_TOOLS_MAP } from "./tools/definitions.js";
+export { executeTool } from "./tools/dispatch.js";
 export { FIND_SYMBOL, toolFindSymbol } from "./tools/symbol-search.js";
 export { JQ, toolJq } from "./tools/json-query.js";
 
@@ -198,12 +173,9 @@ export {
  * 文件附件处理：processFileAttachments 解析用户附带的文件，
  * scanCandidates 扫描目录下可附加的候选文件。
  */
-export {
-  processFileAttachments,
-  scanCandidates,
-  type FileAttachResult,
-  type FileInfo,
-} from "./lib/file-attach.js";
+export { processFileAttachments } from "./attachments/pipeline.js";
+export { scanCandidates } from "./attachments/scanner.js";
+export type { FileAttachResult, FileInfo } from "./attachments/types.js";
 
 // -- TUI ------------------------------------------------------------------
 /**
@@ -247,7 +219,7 @@ export {
   serializeDAG,
   mergeResults,
   attemptRecovery,
-} from "./swarm/__init__.js";
+} from "./swarm/index.js";
 
 export type {
   SwarmAgentHandle,
@@ -259,7 +231,7 @@ export type {
   SwarmMessage,
   SwarmSnapshot,
   TaskNode,
-} from "./swarm/__init__.js";
+} from "./swarm/index.js";
 
 // -- 版本 --------------------------------------------------------------
 /** 当前 SwarmFlow 版本号。 */

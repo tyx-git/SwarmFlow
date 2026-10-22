@@ -6,8 +6,8 @@
  * kimi-ai 别名）在此保留显式类映射。
  */
 
-import type { ModelConfig } from "../config/config.js";
-import { type ProviderClassKind } from "../models/registry.js";
+import type { ModelConfig } from "../config/types.js";
+import { type ProviderClassKind } from "./provider-specs.js";
 import { EFFECTIVE_PROVIDER_SPECS } from "../providers/registry-effective.js";
 import type { BaseProvider } from "./base.js";
 import { AnthropicProvider } from "./anthropic.js";

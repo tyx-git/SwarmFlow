@@ -6,7 +6,7 @@
  * 工具执行器在运行时由 Session 创建。
  */
 
-import type { ToolDef } from "../providers/base.js";
+import type { ToolDef } from "../providers/types.js";
 
 export const SPAWN_TOOL: ToolDef = {
   name: "spawn",

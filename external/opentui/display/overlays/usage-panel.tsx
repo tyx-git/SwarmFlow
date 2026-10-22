@@ -2,7 +2,7 @@
 
 import React from "react";
 import type { DisplayTheme } from "../theme/index.js";
-import type { UiText } from "../../../../src/lib/ui-text.js";
+import type { UiText } from "../../../../src/ui/text.js";
 import {
   formatMetricNumber,
   formatSharePct,

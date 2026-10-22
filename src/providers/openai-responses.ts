@@ -7,21 +7,22 @@
 
 import { arch as osArch, platform as osPlatform, release as osRelease } from "node:os";
 import OpenAI from "openai";
-import { getCodexAccountId, forceRefreshToken } from "../auth/openai-oauth.js";
-import { getExtendedCacheSupport, type ModelConfig } from "../config/config.js";
+import { getCodexAccountId } from "../auth/openai/jwt.js";
+import { forceRefreshToken } from "../auth/openai/refresh.js";
+import { getExtendedCacheSupport } from "../config/model-capabilities.js";
+import type { ModelConfig } from "../config/types.js";
 import { VERSION } from "../version.js";
+import { BaseProvider } from "./base.js";
 import {
-  BaseProvider,
   Citation,
-  finalizeToolCall,
-  normalizeStopReason,
-  ProviderResponse,
   ToolCall,
-  Usage,
   type Message,
   type SendMessageOptions,
   type ToolDef,
-} from "./base.js";
+} from "./types.js";
+import { finalizeToolCall } from "./tool-call.js";
+import { normalizeStopReason } from "./stop-reason.js";
+import { ProviderResponse, Usage } from "./response.js";
 import {
   createThinkingArtifact,
   effectiveSealedSchema,
@@ -30,7 +31,7 @@ import {
   selectThinkingTransmission,
   SEALED_SCHEMA_OPENAI_RESPONSES,
   type ThinkingArtifact,
-} from "../lib/thinking-artifact.js";
+} from "../thinking/artifact.js";
 
 // 在 OpenAI Responses API 上不支持 `temperature` 的模型。
 const O_SERIES_RE = /^o\d/;

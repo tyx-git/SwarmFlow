@@ -38,7 +38,7 @@ export interface SwarmCoordinatorOptions {
   /** 可用 agent 模板（name → Agent）。*/
   templates: Record<string, Agent>;
   /** 创建新 agent 的默认模型配置。*/
-  defaultModelConfig?: { model: string; config: import("../config/config.js").Config };
+  defaultModelConfig?: { model: string; config: import("../config/loader.js").Config };
   /** 事件回调。*/
   events?: SwarmCoordinatorEvents;
 }

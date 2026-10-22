@@ -1,4 +1,4 @@
-import type { CommandRegistry } from "../commands/commands.js";
+import type { CommandRegistry } from "../commands/registry.js";
 
 /** 等待项保存原始命令，而不是作为模型可见的用户消息投递。 */
 export interface DeferredCommand {

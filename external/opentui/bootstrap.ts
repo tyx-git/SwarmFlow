@@ -1,28 +1,21 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { Config, resolveAssetPaths, getBundledAssetsDir } from "../../src/config/config.js";
+import { Config } from "../../src/config/loader.js";
+import { resolveAssetPaths, getBundledAssetsDir } from "../../src/config/asset-paths.js";
 import { Agent } from "../../src/agents/agent.js";
 import { Session } from "../../src/session.js";
-import { loadTemplates } from "../../src/templates/loader.js";
+import { loadTemplates } from "../../src/prompts/templates.js";
 import { ensureBuiltinSkills, loadSkillsMulti } from "../../src/skills/loader.js";
-import { ensureGlobalMemoryFile } from "../../src/lib/prompt-assembler.js";
-import {
-  SessionStore,
-  loadGlobalSettings,
-  loadLocalSettings,
-  mergeSettings,
-  parseSettingsOverrides,
-  settingsToConfigInputs,
-} from "../../src/config/persistence.js";
+import { ensureGlobalMemoryFile } from "../../src/prompts/assembler.js";
+import { SessionStore } from "../../src/config/session-store.js";
+import { loadGlobalSettings, loadLocalSettings, mergeSettings, parseSettingsOverrides, settingsToConfigInputs } from "../../src/config/settings/io.js";
 import { loadDotenv } from "../../src/lifecycle/dotenv.js";
 import type { ThemeModePref } from "../../src/config/theme.js";
-import { getSwarmflowHomeDir } from "../../src/lib/home-path.js";
-import {
-  buildDefaultRegistry,
-  registerSkillCommands,
-} from "../../src/commands/commands.js";
-import type { CommandRegistry } from "../../src/commands/commands.js";
+import { getSwarmflowHomeDir } from "../../src/config/home-dir.js";
+import { buildDefaultRegistry } from "../../src/commands/registration.js";
+import { registerSkillCommands } from "../../src/commands/ecosystem/skills.js";
+import type { CommandRegistry } from "../../src/commands/registry.js";
 import type { PersistedModelSelection } from "../../src/models/selection.js";
 import { applyPersistedModelSelectionToSession } from "../../src/models/restore.js";
 import {
@@ -79,7 +72,7 @@ async function refreshActiveOpenAICodexToken(session: Session): Promise<void> {
   if (session.primaryAgent?.modelConfig?.provider !== "openai-codex") return;
 
   try {
-    const { ensureFreshToken } = await import("../../src/auth/openai-oauth.js");
+    const { ensureFreshToken } = await import("../../src/auth/openai/refresh.js");
     await ensureFreshToken();
     session.reloadCurrentModelConfig();
   } catch (err) {
@@ -156,7 +149,7 @@ export async function bootstrapOpenTuiRuntime(opts?: {
   let mcpReadyPromise: Promise<void> | undefined;
   if (config.mcpServerConfigs.length > 0) {
     try {
-      const { MCPClientManager } = await import("../../src/clients/mcp-client.js");
+      const { MCPClientManager } = await import("../../src/clients/mcp/manager.js");
       mcpManager = new MCPClientManager(config.mcpServerConfigs);
       mcpReadyPromise = (mcpManager as any).connectAll().catch(() => {});
     } catch {

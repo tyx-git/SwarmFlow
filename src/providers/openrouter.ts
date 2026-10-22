@@ -9,13 +9,9 @@
  */
 
 import OpenAI from "openai";
-import type { ModelConfig } from "../config/config.js";
-import {
-  ProviderResponse,
-  type Message,
-  type SendMessageOptions,
-  type ToolDef,
-} from "./base.js";
+import type { ModelConfig } from "../config/types.js";
+import { ProviderResponse } from "./response.js";
+import type { Message, SendMessageOptions, ToolDef } from "./types.js";
 import { OpenAIChatProvider } from "./openai-chat.js";
 import {
   createThinkingArtifact,
@@ -24,7 +20,7 @@ import {
   resolveMessageThinkingArtifact,
   selectThinkingTransmission,
   SEALED_SCHEMA_OPENROUTER_CHAT,
-} from "../lib/thinking-artifact.js";
+} from "../thinking/artifact.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 

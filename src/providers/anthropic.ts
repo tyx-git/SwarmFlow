@@ -11,7 +11,7 @@
  */
 
 import { BaseAnthropicProvider } from "./anthropic-base.js";
-import type { SendMessageOptions } from "./base.js";
+import type { SendMessageOptions } from "./types.js";
 
 export class AnthropicProvider extends BaseAnthropicProvider {
   /**

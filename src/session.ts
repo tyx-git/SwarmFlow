@@ -6,111 +6,66 @@
  * 自动压缩和子代理生命周期。
  */
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
 import { randomUUID } from "node:crypto";
-import { basename, join, resolve, relative, isAbsolute } from "node:path";
-import { getLogger, initLogger } from "./lib/logger.js";
+import { basename, join, resolve } from "node:path";
+import { getLogger, initLogger } from "./logging/logger.js";
 
-import { assembleSystemPrompt, getPromptLayers } from "./templates/loader.js";
+import { assembleSystemPrompt } from "./prompts/templates.js";
 
-import { Agent, isNoReply, NO_REPLY_MARKER } from "./agents/agent.js";
-import type {
-  ToolLoopResult,
-  ToolExecutor,
-  ToolPreflightContext,
-  ToolPreflightDecision,
-  ResolveToolCallVisibilityCallback,
-} from "./agents/tool-loop.js";
-import { allocateContextId, stripContextTags, ContextTagStripBuffer } from "./context/context-rendering.js";
-import { estimateEntryTokens } from "./context/token-estimate.js";
-import { type Config, type ModelConfig } from "./config/config.js";
-import type { MCPClientManager } from "./clients/mcp-client.js";
-import { type ProgressLevel, type ProgressReporter } from "./lib/progress.js";
-import { ToolResult } from "./providers/base.js";
-import type { FileMutation } from "./tools/basic.js";
+import { Agent } from "./agents/agent.js";
+import type { ToolLoopResult, ToolExecutor, ToolPreflightContext, ToolPreflightDecision, ResolveToolCallVisibilityCallback } from "./agents/tool-loop/types.js";
+import { allocateContextId, stripContextTags } from "./context/context-tags.js";
+
+import type { Config } from "./config/loader.js";
+import type { ModelConfig } from "./config/types.js";
+import type { MCPClientManager } from "./clients/mcp/manager.js";
+import { type ProgressReporter } from "./logging/progress.js";
+import { ToolResult } from "./providers/response.js";
+import type { FileMutation } from "./tools/mutations.js";
 import type { RewindPlan, RewindApplyResult } from "./ui/contracts.js";
-import { RewindEngine } from "./session/rewind-engine.js";
+import { RewindEngine } from "./session/rewind/engine.js";
+import { ChildSessionManager } from "./session/children/manager.js";
+import type { ChildSessionHandle, PreparedChildRestore } from "./session/children/types.js";
 import {
-  ChildSessionManager,
-  type ChildSessionHandle,
-  type PreparedChildRestore,
-} from "./session/child-session-manager.js";
-import {
-  beginWorkIfNeededIn,
   completeMissingToolResultsInLog,
-  discardInterruptedRoundReasoningInLog,
-  finishWorkInLog,
   normalizeInterruptedTurnInLog,
-  parseRestoredState,
   type LogSurgery,
   type RestoredSessionState,
-} from "./session/session-persistence.js";
-import { SessionLog, type TurnListing } from "./session/session-log.js";
+} from "./session/log-surgery.js";
+import { SessionLog, type TurnListing } from "./session/log.js";
 import { ContextManager } from "./session/context-manager.js";
 import { SubAgentFactory } from "./session/subagent-factory.js";
 import {
-  loadSubagentSettings,
-  saveSubagentSettings,
-  subagentSettingsPath,
   type SubagentSettings,
 } from "./session/subagent-settings.js";
 import { resolveRoleModel as resolveRoleModelConfig, type PersistedRoleModelSelection } from "./session/role-model-resolver.js";
+
+import { type SkillMeta } from "./skills/loader.js";
+import { toolBuiltinWebSearchPassthrough } from "./tools/web-search/tool.js";
+
+import { TaskStore } from "./tasks/store.js";
+
+import type { Task } from "./tasks/types.js";
 import {
-  COMPACT_PROMPT_OUTPUT,
-  COMPACT_PROMPT_TOOLCALL,
-  appendManualInstruction,
-  buildContinuationPrompt,
-} from "./session/session-prompts.js";
-import { resolveSkillContent, loadSkillsMulti, type SkillMeta } from "./skills/loader.js";
-import { toolBuiltinWebSearchPassthrough } from "./tools/web-search.js";
-import {
-  processFileAttachments,
-  hasFiles as fileAttachHasFiles,
-  hasImages as fileAttachHasImages,
-  parseReferences,
-} from "./lib/file-attach.js";
-import { SafePathError, safePath } from "./security/path.js";
-import {
-  TaskStore,
-  formatTaskSnapshot,
-  readResumeHint,
-  taskStorePath,
-  type Task,
-  type TaskResumeHint,
-  type TaskUpdateFields,
-} from "./lib/task-store.js";
-import {
-  decideChildResume,
-  describeResumeReason,
   type ChildOutcome,
-  type ResumeReason,
   type TerminationCause,
-} from "./lib/task-reconcile.js";
+} from "./tasks/reconcile.js";
 import {
   buildToolExecutors,
   ensureCommTools,
-  ensureTaskTools,
-  ensureSkillTool,
-  registerMcpTools,
   ToolGate,
-} from "./lib/tool-runtime.js";
-import { BackgroundShellManager, type BackgroundShellSnapshot, type BackgroundShellDetail } from "./lib/background-shell-manager.js";
-import { PermissionAdvisor, PermissionRuleStore, initBashParser, type PermissionMode, type PermissionRule, type ApprovalOffer } from "./permissions/index.js";
-import { HookRuntime, type HookPayload } from "./hooks/index.js";
+} from "./tools/runtime.js";
+import { BackgroundShellManager } from "./session/background-shell/manager.js";
+import type { BackgroundShellDetail, BackgroundShellSnapshot } from "./session/background-shell/types.js";
+import { PermissionAdvisor, PermissionRuleStore, initBashParser, type PermissionMode } from "./permissions/index.js";
+import { HookRuntime } from "./hooks/index.js";
 import type { HookManifest } from "./hooks/types.js";
 import {
   assembleFullSystemPrompt,
-  formatSkillsListing,
-  readMemoryFiles,
-} from "./lib/prompt-assembler.js";
-import { getSwarmflowHomeDir } from "./lib/home-path.js";
+} from "./prompts/assembler.js";
+import { getSwarmflowHomeDir } from "./config/home-dir.js";
 import { shell } from "./platform/index.js";
-import { isAgentRoleId } from "./swarm/types.js";
+
 import { buildShellNotes } from "./tools/shell-notes.js";
 import {
   argOptionalString,
@@ -119,81 +74,207 @@ import {
   argRequiredStringArray,
 } from "./tools/arg-helpers.js";
 import {
-  AskPendingError,
-  ASK_CUSTOM_OPTION_LABEL,
   ASK_DISCUSS_FURTHER_GUIDANCE,
-  ASK_DISCUSS_OPTION_LABEL,
   isAskPendingError,
-  toPendingAskUi,
-  type AgentQuestion,
   type AgentQuestionItem,
   type AgentQuestionDecision,
-  type ApprovalRequest,
   type AskAuditRecord,
   type AskRequest,
   type PendingAskUi,
   type PendingTurnState,
 } from "./ask.js";
-import {
-  LogIdAllocator,
-  type LogEntry,
-  createSystemPrompt,
-  createInputReceived,
-  createUserMessage as createUserMessageEntry,
-  createAssistantText,
-  createReasoning,
-  createToolResult as createToolResultEntry,
-  createCompactMarker,
-  createCompactContext,
-  createStatus,
-  createCommandEcho,
-  createError as createErrorEntry,
-  createTokenUpdate,
-  createAskRequest,
-  createAskResolution,
-} from "./context/log-entry.js";
-import { projectToApiMessages } from "./context/log-projection.js";
-import {
-  archiveWindow,
-  createGlobalTuiPreferences,
-  createLogSessionMeta,
-  loadArchiveFile,
-  restoreArchiveToEntries,
-  saveLog,
-  loadGlobalSettings,
-  loadLocalSettings,
-  mergeSettings,
-  settingsToConfigInputs,
-  type GlobalTuiPreferences,
-  type LogSessionMeta,
-  type SwarmflowSettings,
-} from "./config/persistence.js";
+import { LogIdAllocator } from "./context/entry/id-allocator.js";
+import type { LogEntry } from "./context/entry/types.js";
+import { createSystemPrompt, createStatus, createCommandEcho, createError as createErrorEntry } from "./context/entry/factories.js";
+
+import { loadArchiveFile, restoreArchiveToEntries } from "./config/archive.js";
+import { type GlobalTuiPreferences } from "./config/settings/legacy-preferences.js";
+import { type LogSessionMeta } from "./config/session-meta.js";
+import { saveLog } from "./config/log-serialization.js";
+
+import type { SwarmflowSettings } from "./config/settings/types.js";
 import {
   CHILD_SESSION_CAPABILITIES,
   ROOT_SESSION_CAPABILITIES,
   type SessionCapabilities,
-} from "./session-capabilities.js";
+} from "./session/capabilities.js";
 import {
-  migrateMessageEnvelope,
   type ArchivedChildRecord,
-  type ChildSessionLifecycle,
-  type ChildSessionMetaRecord,
   type ChildSessionMode,
   type ChildSessionPhase,
   type ChildSessionSnapshot,
   type ChildTaskHandoff,
   type DeliverMessageResult,
   type MessageEnvelope,
-} from "./session-tree-types.js";
+} from "./session/tree-types.js";
 import {
-  resolvePersistedModelSelection,
   type PersistedModelSelection,
 } from "./models/selection.js";
 import { describeModel } from "./models/presentation.js";
 import {
   type ContextThresholds,
-} from "./config/settings.js";
+} from "./config/compact-thresholds.js";
 import { encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
+import {
+  type DrainPendingToolCallsResult,
+  type InlineImageInput,
+  type TurnLifecycleEvent,
+  type TurnLifecycleStatus,
+} from "./session/turn-types.js";
+
+import {
+  aggregateTokenUsage,
+  estimatePromptSections,
+  scalePromptBreakdown,
+  type ContextBreakdown,
+  type PromptSectionEstimates,
+  type UsageStats,
+} from "./session/usage-accounting.js";
+import {
+  ensureSkillToolForSession,
+  execSkill,
+  getAllSkillNames,
+  getDisabledSkills,
+  getSkills,
+  refreshSkills,
+  reloadSkills,
+  setSkillEnabled,
+  skillsDirty,
+} from "./session/skills.js";
+import {
+  ensureMcp,
+  ensureMcpReady,
+  ensureMcpReadyFromCommand,
+  getMcpManager,
+  queueToolAvailabilityNotice,
+  reconnectMcpServer,
+  reconnectMcpServerFromCommand,
+  reloadMcp,
+  reloadMcpFromCommand,
+  snapshotMcpAvailability,
+} from "./session/mcp.js";
+import type { McpAvailabilitySnapshot, ToolAvailabilityNotice } from "./session/mcp.js";
+import {
+  applyGlobalPreferences,
+  applySettings,
+  getGlobalPreferences,
+  getSubagentSettings,
+  reloadCurrentModelConfig,
+  setSubagentSettings,
+  switchModel,
+} from "./session/model-settings.js";
+import {
+  commitPreparedRestore,
+  getLogForPersistence,
+  prepareRestoreFromLog,
+  restoreFromLog,
+  type PreparedSessionRestore,
+} from "./session/restore.js";
+import {
+  autoResumeFromIdle,
+  beginActiveInput,
+  clearCompletedTasksBeforeUserInput,
+  deliverInboxMessage,
+  deliverMessage,
+  drainInboxAsEntries,
+  getQueuedUserInputs,
+  hasInboxMessages,
+  hasUnprocessedUserMessage,
+  hasWakingInboxMessages,
+  maxLiveInputIndex,
+  restoreQueuedUserInput,
+  scheduleAutoResume,
+} from "./session/inbox.js";
+import {
+  activeWindowStartIdx,
+  appendDeliveredUserMessage,
+  appendInterruptionSystemMessage,
+  beginWorkIfNeeded,
+  computeNextRoundIndex,
+  findRoundContextId,
+  findToolCallEntry,
+  findToolCallContextId,
+  finishCurrentWork,
+  maybeRunIdleGc,
+  recordInputReceived,
+  resolveOutputRoundContextId,
+  retagRoundEntries,
+  toolCallAnchor,
+} from "./session/round-tracking.js";
+import {
+  denyAndInterruptPendingAsk,
+  denyPendingAsk,
+  emitAskRequestedProgress,
+  emitAskResolvedProgress,
+  execAsk,
+  findChildWithPendingAsk,
+  getPendingAsk,
+  hasPendingTurnToResume,
+  notifyAskChanged,
+  resolveAgentQuestionAsk,
+  resolveApprovalAsk,
+  resolveOwnAgentQuestionAsk,
+  resolveOwnApprovalAsk,
+  resumeChildPendingTurn,
+  subscribeAsk,
+  withAskRouting,
+} from "./session/ask-flow.js";
+import {
+  buildCompactCheck,
+  discardCompactAttemptEntries,
+  doAutoCompact,
+  getManualCompactBlocker,
+  runCompactPhase,
+  runManualCompact,
+  runManualCompactBody,
+} from "./session/compact-flow.js";
+import {
+  beforeToolExecute,
+  drainPendingToolCalls,
+  finalizeDrainInterruptedWork,
+  findEarliestPendingToolCallLogIndex,
+  findNextPendingToolCall,
+  isInsideArtifactsDir,
+  updateToolCallExecState,
+} from "./session/tool-drain.js";
+import { runActivation, runTurnActivationLoop } from "./session/activation.js";
+import {
+  closeSession,
+  collectInterruptHints,
+  handleInterruption,
+  isTurnAbortError,
+  recordTurnErrorEntry,
+  recordTurnFailure,
+  requestTurnInterrupt,
+  waitForTurnComplete,
+  withTurnLock,
+} from "./session/turn-control.js";
+import {
+  argTaskMetadata,
+  ensureTaskStore,
+  execTaskCreate,
+  execTaskGet,
+  execTaskList,
+  execTaskResume,
+  execTaskUpdate,
+  ensureTaskToolsForSession,
+  getTaskPersistence,
+  getTaskState,
+  indexChildOutcomesFromLog,
+  notifyTaskListeners,
+  onChildSettled,
+  reconcileTaskListAfterRestore,
+  resumeChildSession,
+  resumeRefusalText,
+  subscribeTaskState,
+} from "./session/task-list.js";
+import {
+  extractAndSaveImages,
+  processAttachments,
+  resolveImageRef,
+} from "./session/attachments.js";
+
+export type { InlineImageInput, TurnLifecycleEvent, TurnLifecycleStatus } from "./session/turn-types.js";
 // ------------------------------------------------------------------
 // Constants
 // ------------------------------------------------------------------
@@ -211,37 +292,6 @@ const SYSTEM_PREFIXES = [
   "[SKILL:",
 ];
 
-type DrainPendingToolCallsResult =
-  | { kind: "drained" }
-  | { kind: "suspended"; ask: AskRequest; toolCallId: string }
-  | { kind: "interrupted" };
-
-// ------------------------------------------------------------------
-// InlineImageInput —clipboard / drag-drop image passed to turn()
-// ------------------------------------------------------------------
-
-export interface InlineImageInput {
-  id: string;
-  base64: string;
-  mediaType: string;
-}
-
-// ------------------------------------------------------------------
-// TurnLifecycleEvent —runtime-emitted turn start/end notifications
-// ------------------------------------------------------------------
-
-/** Terminal status of a turn. `waiting` = parked on a pending ask (not done). */
-export type TurnLifecycleStatus = "completed" | "interrupted" | "error" | "waiting";
-
-/**
- * Emitted by the Session around every activation-loop run —including
- * auto-resume and post-approval resume turns that have no external caller.
- * Subscribed by the RPC layer (forwarded as `turn.started` / `turn.ended`
- * wire events) and available to in-process UIs.
- */
-export type TurnLifecycleEvent =
-  | { phase: "started"; turnIndex: number }
-  | { phase: "ended"; turnIndex: number; status: TurnLifecycleStatus; error?: string };
 
 // ------------------------------------------------------------------
 // MessageEnvelope —typed message envelope (see session-tree-types.ts)
@@ -251,119 +301,12 @@ export type TurnLifecycleEvent =
 // ChildSessionHandle / PreparedChildRestore —moved to ./session/child-session-manager.ts
 // BackgroundShellEntry —moved to ./background-shell-manager.ts
 
-interface PreparedSessionRestore {
-  rootState: RestoredSessionState;
-  children: PreparedChildRestore[];
-  archivedRecords?: ArchivedChildRecord[];
-  rootInbox?: MessageEnvelope[];
-  warnings: string[];
-}
 
-// ------------------------------------------------------------------
-// NoReplyStreamBuffer
-// ------------------------------------------------------------------
-
-class NoReplyStreamBuffer {
-  private static readonly MARKER = "<NO_REPLY>";
-  private static readonly MARKER_LEN = 10;
-
-  private _downstream: (chunk: string) => void;
-  private _buffer = "";
-  private _phase: "detect" | "forwarding" | "suppressed" = "detect";
-  detectedNoReply = false;
-
-  constructor(downstream: (chunk: string) => void) {
-    this._downstream = downstream;
-  }
-
-  feed(chunk: string): void {
-    if (this._phase === "forwarding") {
-      this._downstream(chunk);
-      return;
-    }
-    if (this._phase === "suppressed") {
-      return;
-    }
-
-    this._buffer += chunk;
-    const stripped = this._buffer.trimStart();
-
-    if (stripped && !stripped.startsWith("<")) {
-      this._flushAndForward();
-      return;
-    }
-
-    if (stripped.length < NoReplyStreamBuffer.MARKER_LEN) {
-      if (stripped && !NoReplyStreamBuffer.MARKER.startsWith(stripped)) {
-        this._flushAndForward();
-      }
-      return;
-    }
-
-    if (stripped.startsWith(NoReplyStreamBuffer.MARKER)) {
-      this.detectedNoReply = true;
-      this._buffer = "";
-      this._phase = "suppressed";
-    } else {
-      this._flushAndForward();
-    }
-  }
-
-  private _flushAndForward(): void {
-    this._phase = "forwarding";
-    if (this._buffer) {
-      this._downstream(this._buffer);
-      this._buffer = "";
-    }
-  }
-}
 
 // ------------------------------------------------------------------
 // Session
 // ------------------------------------------------------------------
 
-/** Cumulative usage figures derived from the log's token_update entries. */
-interface UsageStats {
-  /** 危 inputTokens across every provider call (billed input, re-sent each call). */
-  cumulativeInput: number;
-  /** 危 output tokens (totalTokens 鈭?inputTokens) across every provider call. */
-  cumulativeOutput: number;
-  /** 危 cacheReadTokens (the cached slice of cumulativeInput). */
-  cumulativeCacheRead: number;
-  /** 危 (inputTokens 鈭?cacheReadTokens) (the uncached slice of cumulativeInput). */
-  cumulativeUncached: number;
-  /** Estimated fixed prompt: first call's input minus the first user message. */
-  systemPromptTotal: number;
-  /** Per-section breakdown of systemPromptTotal (ratio-scaled estimates). */
-  systemPromptBreakdown: ContextBreakdown;
-}
-
-/** Per-section token estimates for the context breakdown. */
-interface ContextBreakdown {
-  systemPrompt: number;
-  tools: number;
-  agentsMd: number;
-  skills: number;
-  messages: number;
-}
-
-interface McpAvailabilitySnapshot {
-  servers: string[];
-  tools: string[];
-}
-
-interface ToolAvailabilityNotice {
-  reason: string;
-  skillsEnabled?: string[];
-  skillsDisabled?: string[];
-  skillsAdded?: string[];
-  skillsRemoved?: string[];
-  mcpServersConnected?: string[];
-  mcpServersDisconnected?: string[];
-  mcpServersChanged?: string[];
-  mcpToolsAdded?: string[];
-  mcpToolsRemoved?: string[];
-}
 
 export class Session {
   primaryAgent: Agent;
@@ -371,33 +314,33 @@ export class Session {
   agentTemplates: Record<string, Agent>;
   private _promptsDirs?: string[];
 
-  private _progress?: ProgressReporter;
-  private _mcpManager?: MCPClientManager;
-  private _mcpConnected = false;
-  private _mcpReadyPromise?: Promise<void>;
+  _progress?: ProgressReporter;
+  _mcpManager?: MCPClientManager;
+  _mcpConnected = false;
+  _mcpReadyPromise?: Promise<void>;
 
   /** Tool permission gate —add advisors to control tool execution. */
   readonly toolGate = new ToolGate();
 
   /** Permission advisor —classifies tools and enforces permission mode. */
-  private _permissionAdvisor!: PermissionAdvisor;
+  _permissionAdvisor!: PermissionAdvisor;
   private _permissionRuleStore!: PermissionRuleStore;
 
   /** Hook runtime —fires events and evaluates hook commands. */
   readonly hookRuntime = new HookRuntime();
 
-  private _createdAt: string;
+  _createdAt: string;
   /** Model identity snapshot taken at session creation. Stable across resumes and /model switches. */
-  private _initialModel: string;
-  private _title: string | undefined;
+  _initialModel: string;
+  _title: string | undefined;
   private _cachedSummary: string | undefined;
 
   // Structured log —entries, revision, listeners, and id allocation live in
   // SessionLog (src/session/session-log.ts); these accessors keep the many
   // Session-internal `_log` / `_idAllocator` call sites unchanged.
-  private _logStore = new SessionLog();
+  _logStore = new SessionLog();
 
-  private get _log(): LogEntry[] {
+  get _log(): LogEntry[] {
     return this._logStore.entries;
   }
 
@@ -414,10 +357,10 @@ export class Session {
   }
 
   // Token tracking (per-response snapshot)
-  private _lastInputTokens = 0;
-  private _lastTotalTokens = 0;
-  private _lastCacheReadTokens = 0;
-  private _cacheSupported = false;
+  _lastInputTokens = 0;
+  _lastTotalTokens = 0;
+  _lastCacheReadTokens = 0;
+  _cacheSupported = false;
 
   // Cumulative usage (Total Input/Output/Cached/Uncached + system prompt) is
   // DERIVED from the log's token_update entries, not kept as live counters:
@@ -432,24 +375,24 @@ export class Session {
   private _promptSectionEstimates: { systemPrompt: number; tools: number; agentsMd: number; skills: number } | null = null;
 
   // Compact phase
-  private _compactInProgress = false;
+  _compactInProgress = false;
 
   // Context-pressure state (thresholds and budget percent) lives in ContextManager.
-  private _contextManager!: ContextManager;
+  _contextManager!: ContextManager;
 
   private get _thresholds(): ContextThresholds {
     return this._contextManager.thresholds;
   }
 
   // Skills
-  private _skills = new Map<string, SkillMeta>();
-  private _skillRoots: string[] = [];
-  private _disabledSkills = new Set<string>();
+  _skills = new Map<string, SkillMeta>();
+  _skillRoots: string[] = [];
+  _disabledSkills = new Set<string>();
   /**
    * skill 变更只标记脏位，不立即重建工具/system。
    * 只有显式 /reload（或进程重启）才允许改变缓存前缀。
    */
-  private _skillsDirty = false;
+  _skillsDirty = false;
 
   /** 全局记忆 ~/.swarmflow/MEMORY.md 所在目录。 */
   private readonly _swarmflowHomeDir: string;
@@ -458,19 +401,19 @@ export class Session {
   private _cachedSystemPrompt: string | null = null;
 
   // Artifacts / persistence
-  private _store: any;
+  _store: any;
 
   // Path resolution（仅供运行时使用，不进入 system prompt）
-  private _projectRoot: string;
-  private _sessionArtifactsOverride: string;
+  _projectRoot: string;
+  _sessionArtifactsOverride: string;
   private _shellLogDirOverride: string;
 
   // Task list state ({SESSION_ARTIFACTS}/tasks.json 为权威；子会话纯内存)
-  private _taskStoreScope: "session" | "memory" = "session";
-  private _taskStoreRef: TaskStore | undefined;
+  _taskStoreScope: "session" | "memory" = "session";
+  _taskStoreRef: TaskStore | undefined;
   /** 已绑定的 tasks.json 路径：变化时重建 store（/new、会话恢复、/fork 会切换目录）。 */
-  private _taskStoreKey: string | undefined;
-  private _taskListeners: (() => void)[] = [];
+  _taskStoreKey: string | undefined;
+  _taskListeners: (() => void)[] = [];
 
   // File/bash rewind planning + application (owns the crash journal).
   private _rewindEngine!: RewindEngine;
@@ -483,21 +426,21 @@ export class Session {
   // Session tree / child sessions —state lives in ChildSessionManager.
   // Same-name private accessors below keep internal call sites and tests stable.
   private _childSessionManager?: ChildSessionManager;
-  private _shellManager!: BackgroundShellManager;
+  _shellManager!: BackgroundShellManager;
 
   // Session capabilities / routing
-  private _capabilities: SessionCapabilities = ROOT_SESSION_CAPABILITIES;
+  _capabilities: SessionCapabilities = ROOT_SESSION_CAPABILITIES;
   private _turnOutputTarget?: (text: string) => void;
   private _selfPhase: ChildSessionPhase = "idle";
-  private _lifetimeToolCallCount = 0;
-  private _lastToolCallSummary = "";
+  _lifetimeToolCallCount = 0;
+  _lastToolCallSummary = "";
   private _recentSessionEvents: string[] = [];
 
   // Active entry tracker —tracks which log entry is currently "live"
-  private _activeLogEntryId: string | null = null;
+  _activeLogEntryId: string | null = null;
 
   /** Update the active entry tracker; implicitly marks previous reasoning as complete. */
-  private _setActiveLogEntry(entryId: string | null): void {
+  _setActiveLogEntry(entryId: string | null): void {
     if (this._activeLogEntryId === entryId) return;
     // If the previous active entry was a reasoning entry, mark it complete
     if (this._activeLogEntryId) {
@@ -509,36 +452,36 @@ export class Session {
     this._activeLogEntryId = entryId;
     this._touchLog();
   }
-  private _lastTurnEndStatus: "completed" | "interrupted" | "error" | null = null;
+  _lastTurnEndStatus: "completed" | "interrupted" | "error" | null = null;
 
   // Thinking level + accent
-  private _persistedModelSelection: PersistedModelSelection = {};
-  private _preferredThinkingLevel = "";
-  private _preferredAccentColor?: string;
-  private _thinkingLevel = "none";
+  _persistedModelSelection: PersistedModelSelection = {};
+  _preferredThinkingLevel = "";
+  _preferredAccentColor?: string;
+  _thinkingLevel = "none";
 
   /** Stable key for OpenAI prompt cache routing affinity. */
-  private _promptCacheKey: string;
+  _promptCacheKey: string;
 
   /** fork 默认路由策略；可被 session.fork 的显式参数覆盖。 */
   readonly forkInheritPromptCacheKey: boolean;
 
   // Agent runtime state (for message delivery mode selection)
-  private _agentState: "working" | "idle" | "waiting" = "idle";
+  _agentState: "working" | "idle" | "waiting" = "idle";
 
   // Inbox: holds messages for push delivery into tool results.
   // Typed message inbox —all messages flow through _deliverMessage.
-  private _inbox: MessageEnvelope[] = [];
+  _inbox: MessageEnvelope[] = [];
   // True once a real user message has driven an activation (or was loaded from
   // a restored log). Gates tool-availability notices: skill/MCP changes made
   // before the first user message never queue a ride-along notice. Flipped in
   // _beginActiveInput; seeded on restore in _applyRestoredState.
-  private _conversationStarted = false;
-  private _currentTurnSignal: AbortSignal | null = null;
-  private _currentTurnAbortController: AbortController | null = null;
+  _conversationStarted = false;
+  _currentTurnSignal: AbortSignal | null = null;
+  _currentTurnAbortController: AbortController | null = null;
 
   // Turn serialization —prevents concurrent turn() calls from corrupting state
-  private _turnInFlight: Promise<string | void> | null = null;
+  _turnInFlight: Promise<string | void> | null = null;
 
   /**
    * SessionStart hooks 延迟到首个 turn 前执行一次。
@@ -554,33 +497,33 @@ export class Session {
   onMcpStatus?: (statuses: Array<{ name: string; state: string; toolCount: number; error?: string }>) => void;
 
   // Counters
-  private _turnCount = 0;
+  _turnCount = 0;
   private _workCount = 0;
   private _currentWorkId: string | null = null;
   private _currentWorkStartedAt = 0;
-  private _compactCount = 0;
+  _compactCount = 0;
   private _usedContextIds = new Set<string>();
 
   // Last time we ran a sync GC at idle (ms epoch). Used to throttle the
   // optional exposed GC call so back-to-back work boundaries don't burn
   // CPU on repeated full-heap collections.
-  private _lastIdleGcAt = 0;
+  _lastIdleGcAt = 0;
 
   // Tool executors
-  private _toolExecutors: Record<string, ToolExecutor>;
+  _toolExecutors: Record<string, ToolExecutor>;
   private _toolExecutorOverrides: Record<string, ToolExecutor> = {};
 
   // Ask state. All reads/writes go through the `_activeAsk` accessor pair so
   // every transition (suspend/resolve/restore/reset) notifies ask subscribers —  // including sites added in the future.
-  private _activeAskValue: AskRequest | null = null;
-  private _askHistory: AskAuditRecord[] = [];
-  private _pendingTurnState: PendingTurnState | null = null;
+  _activeAskValue: AskRequest | null = null;
+  _askHistory: AskAuditRecord[] = [];
+  _pendingTurnState: PendingTurnState | null = null;
 
-  private get _activeAsk(): AskRequest | null {
+  get _activeAsk(): AskRequest | null {
     return this._activeAskValue;
   }
 
-  private set _activeAsk(value: AskRequest | null) {
+  set _activeAsk(value: AskRequest | null) {
     if (this._activeAskValue === value) return;
     this._activeAskValue = value;
     this._notifyAskChanged();
@@ -590,18 +533,19 @@ export class Session {
   // cannot observe child-session asks (they live in the child's log), so ask
   // state gets its own channel; child asks bubble to the root via the
   // createChildSession wiring.
-  private _askListeners = new Set<() => void>();
+  _askListeners = new Set<() => void>();
   private _turnLifecycleListeners = new Set<(event: TurnLifecycleEvent) => void>();
 
   /**
    * Subscribe to pending-ask changes (own asks and child-session asks).
    * Listeners receive no payload; call `getPendingAsk()` for current state.
    */
+  /**
+   * Subscribe to pending-ask changes (own asks and child-session asks).
+   * Listeners receive no payload; call `getPendingAsk()` for current state.
+   */
   subscribeAsk(listener: () => void): () => void {
-    this._askListeners.add(listener);
-    return () => {
-      this._askListeners.delete(listener);
-    };
+    return subscribeAsk(this, listener);
   }
 
   /**
@@ -617,20 +561,11 @@ export class Session {
     };
   }
 
-  private _notifyAskChanged(): void {
-    // Prototype-based test doubles (Object.create(Session.prototype)) have no
-    // field initializers; tolerate a missing listener set.
-    if (!this._askListeners) return;
-    for (const listener of this._askListeners) {
-      try {
-        listener();
-      } catch {
-        // Subscriber errors must never break the turn loop.
-      }
-    }
+  _notifyAskChanged(): void {
+    notifyAskChanged(this);
   }
 
-  private _emitTurnLifecycle(event: TurnLifecycleEvent): void {
+  _emitTurnLifecycle(event: TurnLifecycleEvent): void {
     if (!this._turnLifecycleListeners) return;
     for (const listener of this._turnLifecycleListeners) {
       try {
@@ -642,15 +577,15 @@ export class Session {
   }
 
   /** Allocate a unique random hex context ID. */
-  private _allocateContextId(): string {
+  _allocateContextId(): string {
     return allocateContextId(this._usedContextIds);
   }
 
-  private _setSelfPhase(phase: ChildSessionPhase): void {
+  _setSelfPhase(phase: ChildSessionPhase): void {
     this._selfPhase = phase;
   }
 
-  private _recordSessionEvent(summary: string): void {
+  _recordSessionEvent(summary: string): void {
     const text = summary.trim();
     if (!text) return;
     this._recentSessionEvents.push(text);
@@ -747,23 +682,23 @@ export class Session {
 
   /** Child-session tree state + lifecycle (lazy: prototype-based test doubles
    * get a manager wired to their own stubbed fields on first use). */
-  private get _childSessionManagerInstance(): ChildSessionManager {
+  get _childSessionManagerInstance(): ChildSessionManager {
     return this._childSessionManager ??= this._buildChildSessionManager();
   }
 
-  private get _childSessions(): Map<string, ChildSessionHandle> {
+  get _childSessions(): Map<string, ChildSessionHandle> {
     return this._childSessionManagerInstance.handles;
   }
 
-  private get _archivedChildren(): Map<string, ArchivedChildRecord> {
+  get _archivedChildren(): Map<string, ArchivedChildRecord> {
     return this._childSessionManagerInstance.archived;
   }
 
-  private get _subAgentCounter(): number {
+  get _subAgentCounter(): number {
     return this._childSessionManagerInstance.counter;
   }
 
-  private set _subAgentCounter(value: number) {
+  set _subAgentCounter(value: number) {
     this._childSessionManagerInstance.counter = value;
   }
 
@@ -912,7 +847,7 @@ export class Session {
     initBashParser();
   }
 
-  private _buildPersistedModelSelection(
+  _buildPersistedModelSelection(
     overrides?: Partial<PersistedModelSelection>,
   ): PersistedModelSelection {
     return {
@@ -974,30 +909,30 @@ export class Session {
    * Append a LogEntry to the structured log.
    * Auto-triggers save request and notifies log listeners.
    */
-  private _appendEntry(entry: LogEntry, save = true): void {
+  _appendEntry(entry: LogEntry, save = true): void {
     this._logStore.append(entry);
     if (save) this.onSaveRequest?.();
   }
 
-  private _touchLog(): void {
+  _touchLog(): void {
     this._logStore.touch();
   }
 
-  private _bumpLogRevision(): void {
+  _bumpLogRevision(): void {
     this._logStore.bumpRevision();
   }
 
-  private _notifyLogListeners(): void {
+  _notifyLogListeners(): void {
     this._logStore.notifyListeners();
   }
 
   /** Allocate the next log entry ID for a given type. */
-  private _nextLogId(type: LogEntry["type"]): string {
+  _nextLogId(type: LogEntry["type"]): string {
     return this._logStore.nextId(type);
   }
 
   /** Live-session view for the shared log-surgery functions (session-persistence.ts). */
-  private _logSurgeryView(): LogSurgery {
+  _logSurgeryView(): LogSurgery {
     const session = this;
     return {
       get entries() { return session._log; },
@@ -1020,17 +955,15 @@ export class Session {
     };
   }
 
-  private _beginWorkIfNeeded(): string {
-    return beginWorkIfNeededIn(this._logSurgeryView());
+  _beginWorkIfNeeded(): string {
+    return beginWorkIfNeeded(this);
   }
 
-  private _finishCurrentWork(
+  _finishCurrentWork(
     status: "completed" | "interrupted" | "error",
     interruptHints?: string[],
   ): void {
-    finishWorkInLog(this._logSurgeryView(), status, interruptHints);
-    this.onSaveRequest?.();
-    this._maybeRunIdleGc();
+    finishCurrentWork(this, status, interruptHints);
   }
 
   /**
@@ -1040,44 +973,22 @@ export class Session {
    * "completed" status —interrupted/error paths may be followed by an
    * immediate restart where pausing is more visible to the user.
    */
-  private _maybeRunIdleGc(): void {
-    if (this._lastTurnEndStatus !== "completed") return;
-    const gc = (globalThis as { gc?: () => void }).gc;
-    if (typeof gc !== "function") return;
-    const now = Date.now();
-    if (now - this._lastIdleGcAt < 10_000) return;
-    this._lastIdleGcAt = now;
-    try {
-      gc();
-      getLogger("session").debug("idleGc:ran");
-    } catch (err) {
-      getLogger("session").warn("idleGc:failed", { err: err instanceof Error ? err.message : String(err) });
-    }
+  /**
+   * Run an optional synchronous GC at work boundaries to keep saw-tooth heap
+   * growth in check during long sessions. Throttled to once per 10s so
+   * rapid interrupt/restart cycles don't pile up GC pauses, and only on
+   * "completed" status —interrupted/error paths may be followed by an
+   * immediate restart where pausing is more visible to the user.
+   */
+  _maybeRunIdleGc(): void {
+    maybeRunIdleGc(this);
   }
 
-  private _appendInterruptionSystemMessage(
+  _appendInterruptionSystemMessage(
     partialToolNames: readonly string[] = [],
     compactWasInterrupted = false,
   ): void {
-    const msgParts: string[] = ["Last turn was interrupted by the user."];
-    for (const name of partialToolNames) {
-      msgParts.push(`You tried to use tool \`${name}\` but the call was interrupted before completion. The tool call is not visible in your context because it was not fully transmitted.`);
-    }
-    if (compactWasInterrupted) {
-      msgParts.push("Context compaction was in progress and has been canceled due to this interruption.");
-    }
-    const interruptionContent = `<system-message>\n${msgParts.join("\n")}\n</system-message>`;
-    const interruptionCtxId = this._allocateContextId();
-    const interruptionEntry = createUserMessageEntry(
-      this._nextLogId("user_message"),
-      this._turnCount,
-      "",
-      interruptionContent,
-      interruptionCtxId,
-    );
-    interruptionEntry.tuiVisible = false;
-    interruptionEntry.displayKind = null;
-    this._appendEntry(interruptionEntry, false);
+    appendInterruptionSystemMessage(this, partialToolNames, compactWasInterrupted);
   }
 
   /**
@@ -1089,45 +1000,25 @@ export class Session {
    * `_turnCount` stays put —round entries from the in-flight activation must
    * keep using the current input's index until drain delivers the new one.
    */
-  private _recordInputReceived(
+  /**
+   * Record an input_received entry.
+   *
+   * `_turnCount` (the "current input index" used by subsequent provider rounds)
+   * advances to this new input ONLY when the agent is idle. While the agent
+   * is working/waiting, the new input gets its own higher inputIndex but
+   * `_turnCount` stays put —round entries from the in-flight activation must
+   * keep using the current input's index until drain delivers the new one.
+   */
+  _recordInputReceived(
     inputKind: "user" | "compact",
     display: string,
     content: unknown,
     contextId?: string,
   ): { inputIndex: number; inputId: string; contextId: string } {
-    let maxInputIndex = this._turnCount;
-    for (const entry of this._log) {
-      if (entry.discarded) continue;
-      if (entry.type === "input_received" && entry.turnIndex > maxInputIndex) {
-        maxInputIndex = entry.turnIndex;
-      }
-    }
-    const inputIndex = maxInputIndex + 1;
-    const inputId = this._nextLogId("input_received");
-    const inputContextId = contextId ?? this._allocateContextId();
-    // Advance the current input index only when nothing is in flight or
-    // suspended: a pending ask / pending resume still owns the current turn,
-    // and its bookkeeping (tool_calls awaiting results) must keep pairing up.
-    if (this._agentState === "idle" && !this._activeAsk && !this._pendingTurnState) {
-      this._turnCount = inputIndex;
-    }
-    this._appendEntry(
-      createInputReceived(
-        inputId,
-        inputIndex,
-        inputId,
-        inputKind,
-        display,
-        content,
-        inputContextId,
-        { tuiVisible: true, sender: "user" },
-      ),
-      false,
-    );
-    return { inputIndex, inputId, contextId: inputContextId };
+    return recordInputReceived(this, inputKind, display, content, contextId);
   }
 
-  private _appendDeliveredUserMessage(
+  _appendDeliveredUserMessage(
     inputIndex: number,
     inputId: string,
     inputKind: "user" | "compact",
@@ -1136,84 +1027,33 @@ export class Session {
     contextId: string,
     tuiVisible = true,
   ): void {
-    // The canonical point a real user message enters the model log —every
-    // active-input and drain path funnels here. Mark the conversation started so
-    // tool-availability notices are suppressed only before the first user
-    // message, regardless of which path delivered it.
-    if (inputKind === "user") this._conversationStarted = true;
-    this._appendEntry(
-      createUserMessageEntry(
-        this._nextLogId("user_message"),
-        inputIndex,
-        display,
-        content,
-        contextId,
-        { tuiVisible, inputId, inputKind },
-      ),
-      false,
-    );
+    appendDeliveredUserMessage(this, inputIndex, inputId, inputKind, display, content, contextId, tuiVisible);
   }
 
   /** Compute the next roundIndex for the given turn based on existing entries. */
-  private _computeNextRoundIndex(turnIndex: number = this._turnCount): number {
-    let maxRound = -1;
-    for (let i = this._log.length - 1; i >= 0; i--) {
-      const e = this._log[i];
-      if (e.turnIndex !== turnIndex) break;
-      if (e.roundIndex !== undefined && e.roundIndex > maxRound) {
-        maxRound = e.roundIndex;
-      }
-    }
-    return maxRound + 1;
+  /** Compute the next roundIndex for the given turn based on existing entries. */
+  _computeNextRoundIndex(turnIndex: number = this._turnCount): number {
+    return computeNextRoundIndex(this, turnIndex);
   }
 
-  private _findRoundContextId(turnIndex: number, roundIndex: number): string | undefined {
-    for (let i = this._log.length - 1; i >= 0; i--) {
-      const entry = this._log[i];
-      if (entry.turnIndex < turnIndex) break;
-      if (entry.discarded) continue;
-      if (entry.turnIndex !== turnIndex) continue;
-      if (entry.roundIndex !== roundIndex) continue;
-      const contextId = (entry.meta as Record<string, unknown>)["contextId"];
-      if (typeof contextId === "string" && contextId.trim()) {
-        return contextId;
-      }
-    }
-    return undefined;
+  _findRoundContextId(turnIndex: number, roundIndex: number): string | undefined {
+    return findRoundContextId(this, turnIndex, roundIndex);
   }
 
 
 
-  private _resolveOutputRoundContextId(turnIndex: number, roundIndex: number): string {
-    const roundContextId = this._findRoundContextId(turnIndex, roundIndex);
-    return roundContextId ?? this._allocateContextId();
+  _resolveOutputRoundContextId(turnIndex: number, roundIndex: number): string {
+    return resolveOutputRoundContextId(this, turnIndex, roundIndex);
   }
 
-  private _retagRoundEntries(turnIndex: number, roundIndex: number, contextId: string): void {
-    let changed = false;
-    for (let i = this._log.length - 1; i >= 0; i--) {
-      const entry = this._log[i];
-      if (entry.turnIndex < turnIndex) break;
-      if (entry.discarded) continue;
-      if (entry.turnIndex !== turnIndex) continue;
-      if (entry.roundIndex !== roundIndex) continue;
-      if (
-        entry.type !== "assistant_text" &&
-        entry.type !== "reasoning" &&
-        entry.type !== "no_reply"
-      ) {
-        continue;
-      }
-      if ((entry.meta as Record<string, unknown>)["contextId"] === contextId) continue;
-      (entry.meta as Record<string, unknown>)["contextId"] = contextId;
-      changed = true;
-    }
-    if (changed) this._touchLog();
+  _retagRoundEntries(turnIndex: number, roundIndex: number, contextId: string): void {
+    retagRoundEntries(this, turnIndex, roundIndex, contextId);
   }
 
   /** Index of the first entry after the last live compact_marker (active window start). */
-  private _activeWindowStartIdx(): number {
-    return this._logStore.activeWindowStartIdx();
+  /** Index of the first entry after the last live compact_marker (active window start). */
+  _activeWindowStartIdx(): number {
+    return activeWindowStartIdx(this);
   }
 
   /**
@@ -1221,37 +1061,23 @@ export class Session {
    * Not scoped to the current turn: ask bookkeeping must keep pairing with
    * its tool_call even when the turn counter has moved on.
    */
-  private _findToolCallEntry(toolCallId: string): LogEntry | undefined {
-    if (!toolCallId) return undefined;
-    const windowStart = this._activeWindowStartIdx();
-    for (let i = this._log.length - 1; i >= windowStart; i--) {
-      const entry = this._log[i];
-      if (entry.discarded) continue;
-      if (entry.type !== "tool_call") continue;
-      if (String((entry.meta as Record<string, unknown>)["toolCallId"] ?? "") !== toolCallId) continue;
-      return entry;
-    }
-    return undefined;
+  /**
+   * Find a tool_call entry by id within the active window (newest first).
+   * Not scoped to the current turn: ask bookkeeping must keep pairing with
+   * its tool_call even when the turn counter has moved on.
+   */
+  _findToolCallEntry(toolCallId: string): LogEntry | undefined {
+    return findToolCallEntry(this, toolCallId);
   }
 
   /** Turn/round anchor for ask bookkeeping, derived from the gated tool_call. */
-  private _toolCallAnchor(toolCallId: string, ask?: AskRequest | null): { turnIndex: number; roundIndex: number } {
-    const entry = this._findToolCallEntry(toolCallId);
-    const turnIndex = ask?.turnIndex ?? entry?.turnIndex ?? this._turnCount;
-    const roundIndex = ask?.roundIndex ?? entry?.roundIndex ?? this._computeNextRoundIndex(turnIndex);
-    return { turnIndex, roundIndex };
+  /** Turn/round anchor for ask bookkeeping, derived from the gated tool_call. */
+  _toolCallAnchor(toolCallId: string, ask?: AskRequest | null): { turnIndex: number; roundIndex: number } {
+    return toolCallAnchor(this, toolCallId, ask);
   }
 
-  private _findToolCallContextId(toolCallId: string, roundIndex?: number): string | undefined {
-    const entry = this._findToolCallEntry(toolCallId);
-    const contextId = entry ? (entry.meta as Record<string, unknown>)["contextId"] : undefined;
-    if (typeof contextId === "string" && contextId.trim()) {
-      return contextId;
-    }
-    if (typeof roundIndex === "number") {
-      return this._findRoundContextId(entry?.turnIndex ?? this._turnCount, roundIndex);
-    }
-    return undefined;
+  _findToolCallContextId(toolCallId: string, roundIndex?: number): string | undefined {
+    return findToolCallContextId(this, toolCallId, roundIndex);
   }
 
   // ------------------------------------------------------------------
@@ -1263,116 +1089,45 @@ export class Session {
    * All states push to inbox. Idle state also schedules auto-resume.
    * Working/waiting: the activation boundary or await_event poll drains.
    */
-  private _deliverMessage(msg: MessageEnvelope): DeliverMessageResult {
-    // Compacting rewrites the conversation; user input arriving mid-compact
-    // would be folded behind the marker and effectively vanish. Reject it
-    // (Q6) —automatic messages still queue and are delivered after compact.
-    if (msg.type === "user_input" && this._compactInProgress) {
-      return { accepted: false, reason: "compact_in_progress" };
-    }
-    if (msg.type === "user_input" && msg.sender === "user") {
-      const queued = this._getQueuedUserInputs();
-      if (queued.length > 0) {
-        return { accepted: false, reason: "queued_user_input_pending" };
-      }
-    }
-    if (msg.type === "user_input" && msg.inputIndex === undefined) {
-      const received = this._recordInputReceived("user", msg.content, msg.content);
-      msg = {
-        ...msg,
-        inputId: received.inputId,
-        inputIndex: received.inputIndex,
-        contextId: received.contextId,
-        tuiVisible: true,
-      };
-      this.onSaveRequest?.();
-    }
-    this._inbox.push(msg);
-    // Ride-along messages (wake === false) never start a turn from idle;
-    // they wait in the inbox and are drained when something else wakes the
-    // agent (user input or a waking message).
-    if (this._agentState === "idle" && msg.wake !== false) {
-      this._scheduleAutoResume();
-    }
-    return { accepted: true };
+  /**
+   * Unified message delivery entry point.
+   * All states push to inbox. Idle state also schedules auto-resume.
+   * Working/waiting: the activation boundary or await_event poll drains.
+   */
+  _deliverMessage(msg: MessageEnvelope): DeliverMessageResult {
+    return deliverInboxMessage(this, msg);
   }
 
   /**
    * Public wrapper for TUI / GUI to deliver messages.
    * Preserves the original (source, content) signature for external callers.
    */
+  /**
+   * Public wrapper for TUI / GUI to deliver messages.
+   * Preserves the original (source, content) signature for external callers.
+   */
   deliverMessage(source: "user" | "system", content: string): DeliverMessageResult {
-    return this._deliverMessage({
-      type: source === "user" ? "user_input" : "system_notice",
-      sender: source,
-      content,
-      timestamp: Date.now(),
-    });
+    return deliverMessage(this, source, content);
   }
 
-  private _getQueuedUserInputs(): Array<{
+  _getQueuedUserInputs(): Array<{
     inputId: string;
     inboxIndex: number;
     message: MessageEnvelope;
     inputEntry: LogEntry;
   }> {
-    const deliveredInputIds = new Set<string>();
-    for (const entry of this._log) {
-      if (entry.discarded || entry.type !== "user_message") continue;
-      const inputId = entry.meta["inputId"];
-      if (typeof inputId === "string" && inputId.trim()) {
-        deliveredInputIds.add(inputId);
-      }
-    }
-
-    const queued: Array<{
-      inputId: string;
-      inboxIndex: number;
-      message: MessageEnvelope;
-      inputEntry: LogEntry;
-    }> = [];
-    for (let inboxIndex = 0; inboxIndex < this._inbox.length; inboxIndex++) {
-      const message = this._inbox[inboxIndex];
-      if (message.type !== "user_input" || message.sender !== "user") continue;
-      if (!message.inputId || deliveredInputIds.has(message.inputId)) continue;
-      const inputEntry = this._log.find((entry) => {
-        if (entry.discarded || entry.type !== "input_received") return false;
-        if (entry.meta["inputKind"] !== "user") return false;
-        return entry.meta["inputId"] === message.inputId;
-      });
-      if (!inputEntry) continue;
-      queued.push({ inputId: message.inputId, inboxIndex, message, inputEntry });
-    }
-    return queued;
+    return getQueuedUserInputs(this);
   }
 
-  private _maxLiveInputIndex(): number {
-    let max = 0;
-    for (const entry of this._log) {
-      if (entry.discarded) continue;
-      if (entry.type !== "input_received" && entry.type !== "turn_start") continue;
-      max = Math.max(max, entry.turnIndex);
-    }
-    return max;
+  _maxLiveInputIndex(): number {
+    return maxLiveInputIndex(this);
   }
 
   restoreQueuedUserInput(): string | null {
-    const queued = this._getQueuedUserInputs();
-    if (queued.length !== 1) return null;
-
-    const item = queued[0];
-    if (!item) return null;
-    this._inbox.splice(item.inboxIndex, 1);
-    item.inputEntry.discarded = true;
-    if (this._turnCount === item.inputEntry.turnIndex) {
-      this._turnCount = this._maxLiveInputIndex();
-    }
-    this._touchLog();
-    this.onSaveRequest?.();
-    return item.message.content;
+    return restoreQueuedUserInput(this);
   }
 
-  private _autoResumeScheduled = false;
+  _autoResumeScheduled = false;
 
   /**
    * Schedule an auto-resume turn for the idle state. Used when messages arrive
@@ -1380,41 +1135,26 @@ export class Session {
    * active turn. Without this, the queued messages would sit in the log
    * unprocessed until the user manually starts a new turn.
    */
-  private _scheduleAutoResume(): void {
-    if (this._autoResumeScheduled) return;
-    if (this._activeAsk) return;
-    if (this._pendingTurnState) return;
-    this._autoResumeScheduled = true;
-    queueMicrotask(() => {
-      this._autoResumeScheduled = false;
-      // The rejection itself is intentionally dropped (no caller awaits), but
-      // the failure is NOT silent: _turnInner's catch already wrote the error
-      // log entry and the turn-lifecycle "ended" event carried the error.
-      void this._autoResumeFromIdle().catch(() => { /* rejection consumed; error already surfaced via log + lifecycle */ });
-    });
+  /**
+   * Schedule an auto-resume turn for the idle state. Used when messages arrive
+   * (sub-agent completion, shell exit, etc.) while the parent agent has no
+   * active turn. Without this, the queued messages would sit in the log
+   * unprocessed until the user manually starts a new turn.
+   */
+  _scheduleAutoResume(): void {
+    scheduleAutoResume(this);
   }
 
   /**
    * Run a turn that drains queued messages without taking new user input.
    * Acquires the turn lock to serialize with normal turn() calls.
    */
-  private async _autoResumeFromIdle(): Promise<void> {
-    await this._withTurnLock(async () => {
-      if (this._agentState !== "idle") return;
-      if (this._activeAsk) return;
-      if (this._pendingTurnState) return;
-      // Skip if there's nothing to process: no inbox messages AND no recent
-      // user_message entry awaiting a response.
-      if (this._inbox.length === 0 && !this._hasUnprocessedUserMessage()) return;
-      try {
-        await this._turnInner("", { skipUserInput: true });
-      } catch (err) {
-        // Same catch-all as turn(): without it, pre-loop failures in an
-        // auto-resume turn would be fully invisible (no caller awaits this).
-        this._recordTurnFailure(err);
-        throw err;
-      }
-    });
+  /**
+   * Run a turn that drains queued messages without taking new user input.
+   * Acquires the turn lock to serialize with normal turn() calls.
+   */
+  async _autoResumeFromIdle(): Promise<void> {
+    return autoResumeFromIdle(this);
   }
 
   /**
@@ -1424,36 +1164,25 @@ export class Session {
    * turn after a finally-block drain wrote messages without the model seeing
    * them.
    */
-  private _hasUnprocessedUserMessage(): boolean {
-    const delivered = new Set<string>();
-    for (const entry of this._log) {
-      if (entry.discarded) continue;
-      if (entry.type !== "user_message") continue;
-      const inputId = entry.meta["inputId"];
-      if (typeof inputId === "string") delivered.add(inputId);
-    }
-    for (let i = this._log.length - 1; i >= 0; i--) {
-      const entry = this._log[i];
-      if (entry.discarded) continue;
-      if (entry.type !== "input_received") continue;
-      const inputKind = entry.meta["inputKind"];
-      // "compact" inputs are consumed by the compact phase itself and never
-      // await a model reply —counting them here would schedule ghost
-      // auto-resume turns after every /compact.
-      // Keep the old "summarize" input kind readable so interrupted legacy
-      // sessions can still resume an undelivered turn.
-      if (inputKind !== "user" && inputKind !== "summarize") continue;
-      const inputId = entry.meta["inputId"];
-      return typeof inputId === "string" && !delivered.has(inputId);
-    }
-    return false;
+  /**
+   * Scan the log backward to find whether the most recent turn-relevant entry
+   * is a user_message that hasn't been responded to (no assistant_text/tool_call/
+   * reasoning after it). Used by auto-resume to decide whether to fire a new
+   * turn after a finally-block drain wrote messages without the model seeing
+   * them.
+   */
+  _hasUnprocessedUserMessage(): boolean {
+    return hasUnprocessedUserMessage(this);
   }
 
   /**
    * Check whether the inbox has pending messages.
    */
-  private _hasInboxMessages(): boolean {
-    return this._inbox.length > 0;
+  /**
+   * Check whether the inbox has pending messages.
+   */
+  _hasInboxMessages(): boolean {
+    return hasInboxMessages(this);
   }
 
   /**
@@ -1461,21 +1190,19 @@ export class Session {
    * (wake === false) don't block manual context commands —they are passive
    * records (e.g. user-initiated kill notices) that wait for the next turn.
    */
-  private _hasWakingInboxMessages(): boolean {
-    return this._inbox.some((msg) => msg.wake !== false);
+  /**
+   * Check whether the inbox has pending WAKING messages. Ride-along messages
+   * (wake === false) don't block manual context commands —they are passive
+   * records (e.g. user-initiated kill notices) that wait for the next turn.
+   */
+  _hasWakingInboxMessages(): boolean {
+    return hasWakingInboxMessages(this);
   }
 
   /** Remove the previous completed task list when a real user input is delivered. */
-  private _clearCompletedTasksBeforeUserInput(): void {
-    const taskStore = this._ensureTaskStore();
-    const tasks = taskStore.list();
-    if (tasks.length > 0 && tasks.every((task) => task.status === "completed")) {
-      const { cleared, saveError } = taskStore.clearAll();
-      if (cleared > 0) {
-        if (saveError) console.warn(saveError);
-        this._notifyTaskListeners();
-      }
-    }
+  /** Remove the previous completed task list when a real user input is delivered. */
+  _clearCompletedTasksBeforeUserInput(): void {
+    clearCompletedTasksBeforeUserInput(this);
   }
 
   /**
@@ -1493,23 +1220,34 @@ export class Session {
    * "conversation started" flag is flipped at that delivery point
    * (_appendDeliveredUserMessage), so every user-message path sets it.
    */
-  private _beginActiveInput(
+  /**
+   * Pre-activation prelude shared by every entry that records a NEW active
+   * input (user message or /compact). The single choke point that
+   * enforces wake:false ordering and the "conversation has started" boundary:
+   *
+   *   1. Earlier-arrived ride-along (wake:false) inbox messages land in the log
+   *      first, in arrival order. `wake:false` means "do not start a turn by
+   *      itself", not "jump behind the next active input".
+   *   2. The new active input is recorded.
+   *
+   * Delivery to the model-facing log (user_message vs status entry) stays with
+   * the caller —it legitimately differs per activation kind. The
+   * "conversation started" flag is flipped at that delivery point
+   * (_appendDeliveredUserMessage), so every user-message path sets it.
+   */
+  _beginActiveInput(
     inputKind: "user" | "compact",
     display: string,
     content: unknown,
   ): { inputIndex: number; inputId: string; contextId: string } {
-    if (inputKind === "user") {
-      this._clearCompletedTasksBeforeUserInput();
-    }
-    this._drainInboxAsEntries();
-    return this._recordInputReceived(inputKind, display, content);
+    return beginActiveInput(this, inputKind, display, content);
   }
 
-  private _hasRunningShells(): boolean {
+  _hasRunningShells(): boolean {
     return this._shellManager.hasRunningShells();
   }
 
-  private _buildShellReport(): string {
+  _buildShellReport(): string {
     return this._shellManager.buildShellReport();
   }
 
@@ -1562,73 +1300,19 @@ export class Session {
    * user A →assistant A →user B, even when user B was typed while assistant A
    * was still streaming.
    */
-  private _drainInboxAsEntries(): number {
-    if (this._inbox.length === 0) return 0;
-    const messages = [...this._inbox];
-    this._inbox = [];
-
-    for (const msg of messages) {
-      switch (msg.type) {
-        case "user_input": {
-          // Invariant: _deliverMessage populates these fields synchronously
-          // when user_input arrives. Drain should never see an unprepared one.
-          if (msg.inputIndex === undefined || !msg.inputId || !msg.contextId) {
-            throw new Error(
-              "user_input must have inputId/inputIndex/contextId by drain time " +
-              "(set in _deliverMessage). Got: " + JSON.stringify({
-                inputId: msg.inputId,
-                inputIndex: msg.inputIndex,
-                contextId: msg.contextId,
-              }),
-            );
-          }
-          this._clearCompletedTasksBeforeUserInput();
-          this._turnCount = Math.max(this._turnCount, msg.inputIndex);
-          this._appendDeliveredUserMessage(
-            msg.inputIndex,
-            msg.inputId,
-            "user",
-            msg.content,
-            msg.content,
-            msg.contextId,
-          );
-          break;
-        }
-        case "peer_message": {
-          const ctxId = this._allocateContextId();
-          const entry = createUserMessageEntry(
-            this._nextLogId("user_message"),
-            this._turnCount,
-            `[Agent ${msg.sender}]`,
-            `<system-message>\n${msg.content}\n</system-message>`,
-            ctxId,
-            { tuiVisible: false, inputKind: "peer" },
-          );
-          entry.tuiVisible = false;
-          this._appendEntry(entry, false);
-          break;
-        }
-        case "system_notice": {
-          const ctxId = this._allocateContextId();
-          const display = msg.tuiVisible ? msg.content : "[System]";
-          const entry = createUserMessageEntry(
-            this._nextLogId("user_message"),
-            this._turnCount,
-            display,
-            `<system-message>\n${msg.content}\n</system-message>`,
-            ctxId,
-            { tuiVisible: Boolean(msg.tuiVisible), inputKind: "system" },
-          );
-          if (!msg.tuiVisible) entry.tuiVisible = false;
-          this._appendEntry(entry, false);
-          break;
-        }
-      }
-    }
-    return messages.length;
+  /**
+   * Deliver queued messages to the model-facing log.
+   *
+   * User messages are displayed when received, then delivered here only after
+   * the current provider round has finished. This preserves the API ordering:
+   * user A →assistant A →user B, even when user B was typed while assistant A
+   * was still streaming.
+   */
+  _drainInboxAsEntries(): number {
+    return drainInboxAsEntries(this);
   }
 
-  private _installCurrentTurnSignal(signal?: AbortSignal): {
+  _installCurrentTurnSignal(signal?: AbortSignal): {
     prevSignal: AbortSignal | null;
     prevController: AbortController | null;
     cleanup: () => void;
@@ -1665,7 +1349,7 @@ export class Session {
     };
   }
 
-  private _restoreCurrentTurnSignal(state: {
+  _restoreCurrentTurnSignal(state: {
     prevSignal: AbortSignal | null;
     prevController: AbortController | null;
     cleanup: () => void;
@@ -1684,10 +1368,13 @@ export class Session {
    * Used by resetForNewSession, close, and callers that need to ensure
    * the previous turn has fully unwound before proceeding.
    */
+  /**
+   * Wait for any in-flight turn to finish. Safe to call at any time.
+   * Used by resetForNewSession, close, and callers that need to ensure
+   * the previous turn has fully unwound before proceeding.
+   */
   async waitForTurnComplete(): Promise<void> {
-    while (this._turnInFlight) {
-      try { await this._turnInFlight; } catch { /* ignore errors from aborted turns */ }
-    }
+    return waitForTurnComplete(this);
   }
 
   /**
@@ -1695,36 +1382,13 @@ export class Session {
    * at a time. Callers are serialized: if a turn is in flight, the next
    * caller waits for it to finish (which happens quickly after abort).
    */
-  private async _withTurnLock<T>(fn: () => Promise<T>): Promise<T> {
-    // Claim the lock SYNCHRONOUSLY (before any await): the old
-    // check-then-claim around an await let two same-tick callers both see a
-    // free lock and run concurrently —e.g. two fire-and-forget submitTurn
-    // frames arriving in one stdin chunk. Everything layered on this lock
-    // (turn serialization, the error-entry once-flag, lifecycle pairing)
-    // assumes real mutual exclusion.
-    const prev = this._turnInFlight;
-    let release!: () => void;
-    const myGate = new Promise<void>((resolve) => { release = resolve; });
-    // _turnInFlight resolves when the LAST queued claimant releases. Gate
-    // promises only ever resolve (fn errors propagate to the caller, not the
-    // gate), so the .then chain needs no rejection arm.
-    const tail = prev ? prev.then(() => myGate) : myGate;
-    this._turnInFlight = tail;
-    if (prev) {
-      await prev;
-    }
-    this._turnErrorEntryWritten = false;
-    this._lifecycleEndedEmitted = false;
-    try {
-      return await fn();
-    } finally {
-      // Only the last claimant clears the field; intermediate finishes leave
-      // it pointing at the still-pending tail so waitForTurnComplete works.
-      if (this._turnInFlight === tail) {
-        this._turnInFlight = null;
-      }
-      release();
-    }
+  /**
+   * Promise-based turn lock. Ensures at most one turn entry point executes
+   * at a time. Callers are serialized: if a turn is in flight, the next
+   * caller waits for it to finish (which happens quickly after abort).
+   */
+  async _withTurnLock<T>(fn: () => Promise<T>): Promise<T> {
+    return withTurnLock(this, fn);
   }
 
   /**
@@ -1733,57 +1397,18 @@ export class Session {
    * This captures a non-destructive delivery snapshot first, then kills active
    * workers and drops unconsumed runtime state.
    */
+  /**
+   * Prepare and execute interruption cleanup for the current turn.
+   *
+   * This captures a non-destructive delivery snapshot first, then kills active
+   * workers and drops unconsumed runtime state.
+   */
   requestTurnInterrupt(): { accepted: true } {
-    // Abort main turn ONLY. Sub-agents and background shells are independent
-    // background work —they continue running. They can be stopped through
-    // their dedicated management APIs.
-    //
-    // A pending ask means there is no live turn to abort —the turn already
-    // returned when it suspended. Every stop entry point resolves the ask as
-    // deny-and-stop (Q9) so the log gets a definite outcome instead of an
-    // orphan ask_request + unresolved tool_call.
-    if (this._activeAsk) {
-      const decision = this.denyAndInterruptPendingAsk();
-      if (decision.accepted) return { accepted: true };
-    }
-    this._currentTurnAbortController?.abort();
-    if (this._pendingTurnState) {
-      // Suspended-but-resolved work (approval granted, resume not started):
-      // finalize it so no approved-but-unexecuted tool_call survives as an
-      // orphan that would poison every later API projection.
-      const startIdx = this._findEarliestPendingToolCallLogIndex();
-      this._pendingTurnState = null;
-      this._finalizeDrainInterruptedWork(startIdx);
-    }
-    return { accepted: true };
+    return requestTurnInterrupt(this);
   }
 
   denyAndInterruptPendingAsk(): { accepted: boolean; reason?: string; turnFinished?: boolean } {
-    const ask = this._activeAsk;
-    if (!ask) {
-      const pendingAsk = this.getPendingAsk();
-      if (!pendingAsk) return { accepted: false, reason: "no_pending_ask" };
-      const child = this._findChildWithPendingAsk(pendingAsk.id);
-      if (!child?.session) return { accepted: false, reason: "ask_owner_not_found" };
-
-      const decision = child.session.denyAndInterruptPendingAsk();
-      if (!decision.accepted) return decision;
-
-      child.terminationCause = "user_targeted_kill";
-      this._finishChildTurn(child);
-      this._notifyLogListeners();
-      this.onSaveRequest?.();
-      // Root turn is still running (child was killed, root continues with its result).
-      return { accepted: true, turnFinished: false };
-    }
-
-    const interruptionStartIdx = this._findEarliestPendingToolCallLogIndex();
-    if (!this.denyPendingAsk()) {
-      return { accepted: false, reason: "deny_failed" };
-    }
-    this._currentTurnAbortController?.abort();
-    this._finalizeDrainInterruptedWork(interruptionStartIdx);
-    return { accepted: true, turnFinished: true };
+    return denyAndInterruptPendingAsk(this);
   }
 
   /** Stop all running child sessions for RPC and lifecycle callers. */
@@ -1811,70 +1436,13 @@ export class Session {
    * Deny/Decline resolution + denial tool_result. Returns true if anything
    * was denied. Called by TUI on ESC/Ctrl+C while a prompt is showing.
    */
+  /**
+   * If a permission approval or agent_question ask is pending, synthesize
+   * Deny/Decline resolution + denial tool_result. Returns true if anything
+   * was denied. Called by TUI on ESC/Ctrl+C while a prompt is showing.
+   */
   denyPendingAsk(): boolean {
-    const ask = this._activeAsk;
-    if (!ask) {
-      // Find the child that owns the visible ask and deny via routing
-      const pendingAsk = this.getPendingAsk();
-      if (!pendingAsk) return false;
-      const child = this._findChildWithPendingAsk(pendingAsk.id);
-      if (!child?.session) return false;
-      child.session.denyPendingAsk();
-      this._resumeChildPendingTurn(child);
-      this._notifyLogListeners();
-      this.onSaveRequest?.();
-      return true;
-    }
-
-    if (ask.kind === "approval") {
-      const denyIndex = ask.options.length - 1;
-      this._resolveOwnApprovalAsk(ask.id, denyIndex);
-      return true;
-    }
-
-    // agent_question: synthesize decline resolution + error tool_result.
-    const toolCallId = (ask.payload as Record<string, unknown>)["toolCallId"] as string ?? "ask";
-    const anchor = this._toolCallAnchor(toolCallId, ask);
-    this._appendEntry(createAskResolution(
-      this._nextLogId("ask_resolution"),
-      anchor.turnIndex,
-      { declined: true },
-      ask.id,
-      "agent_question",
-    ), false);
-
-    const contextId = this._findToolCallContextId(toolCallId, ask.roundIndex)
-      ?? this._allocateContextId();
-    this._appendEntry(createToolResultEntry(
-      this._nextLogId("tool_result"),
-      anchor.turnIndex,
-      anchor.roundIndex,
-      {
-        toolCallId,
-        toolName: "ask",
-        content: "ERROR: User declined to answer the question.",
-        toolSummary: "ask declined",
-      },
-      { isError: true, contextId },
-    ), false);
-
-    this._askHistory.push({
-      askId: ask.id,
-      kind: ask.kind,
-      summary: ask.summary,
-      decidedAt: new Date().toISOString(),
-      decision: "declined",
-      source: ask.source,
-    });
-    if (this._askHistory.length > 100) {
-      this._askHistory = this._askHistory.slice(-100);
-    }
-
-    this._activeAsk = null;
-    this._emitAskResolvedProgress(ask.id, "declined", "agent_question");
-    this._pendingTurnState = { stage: "activation" };
-    this.onSaveRequest?.();
-    return true;
+    return denyPendingAsk(this);
   }
 
   /**
@@ -1917,7 +1485,7 @@ export class Session {
    * 新会话/恢复边界：丢弃全部 hook 上下文，并允许 SessionStart 重新执行一次。
    * 与 /clear 区分：/clear 只清理回合级临时上下文。
    */
-  private _resetHookContextForNewSession(): void {
+  _resetHookContextForNewSession(): void {
     this.hookRuntime.clearAllContext();
     this._sessionStartHooksPromise = null;
   }
@@ -2235,77 +1803,19 @@ export class Session {
   /**
    * Restore session from a loaded log.
    */
+  /**
+   * Restore session from a loaded log.
+   */
   prepareRestoreFromLog(
     meta: LogSessionMeta,
     entries: LogEntry[],
     _idAllocator: LogIdAllocator,
   ): PreparedSessionRestore {
-    if ((meta.childSessions?.length ?? 0) > 0 && !this._sessionArtifactsOverride && !this._getArtifactsDirIfAvailable()) {
-      throw new Error(
-        "Cannot restore child sessions before the session store is bound to the target session directory.",
-      );
-    }
-
-    // Parse on cloned data —everything that can fail (model resolution, log
-    // surgery) happens here, so a failed restore never pollutes the live
-    // session (see session-persistence.ts).
-    const clonedEntries = structuredClone(entries) as LogEntry[];
-    const clonedAllocator = new LogIdAllocator();
-    clonedAllocator.restoreFrom(clonedEntries);
-    const rootState = parseRestoredState(
-      {
-        resolveModelSelection: (m) => resolvePersistedModelSelection(this, {
-          modelConfigName: m.modelConfigName || undefined,
-          modelProvider: m.modelProvider,
-          modelSelectionKey: m.modelSelectionKey,
-          modelId: m.modelId,
-        }),
-        getModelConfig: (configName) => this.config.getModel(configName),
-        describeInitialModelFallback: () => this._describeInitialModel(),
-        fallbackCreatedAt: this._createdAt,
-        agentName: this.primaryAgent.name,
-      },
-      meta,
-      clonedEntries,
-      clonedAllocator,
-    );
-
-    const warnings: string[] = [];
-    const allChildMeta = meta.childSessions ?? [];
-    // Restore ALL children as full Session instances (including archived) so
-    // TUI can display them and read their logs. _archivedChildren is only
-    // populated on close/reset, not on restore.
-    const children = this._childSessionManagerInstance.prepareChildRestores(allChildMeta, warnings);
-
-    // Root inbox from meta
-    const rootInbox = (meta.inbox ?? []).map((raw) => migrateMessageEnvelope(raw as unknown as Record<string, unknown>));
-
-    return { rootState, children, rootInbox, warnings };
+    return prepareRestoreFromLog(this, meta, entries, _idAllocator);
   }
 
   commitPreparedRestore(prepared: PreparedSessionRestore): string[] {
-    const warnings = [...prepared.warnings];
-
-    this._resetTransientState();
-    this._resetHookContextForNewSession();
-    this._mcpConnected = false;
-    this._currentTurnSignal = null;
-    this._currentTurnAbortController = null;
-    this._turnInFlight = null;
-    this._applyRestoredState(prepared.rootState);
-
-    this._childSessionManagerInstance.clearTables();
-    this._subAgentCounter = 0;
-    warnings.push(...this._childSessionManagerInstance.commitPreparedChildren(prepared.children));
-
-    // Restore root inbox from meta
-    if (prepared.rootInbox && prepared.rootInbox.length > 0) {
-      this._inbox = [...prepared.rootInbox];
-    }
-
-    this._bumpLogRevision();
-    this._notifyLogListeners();
-    return warnings;
+    return commitPreparedRestore(this, prepared);
   }
 
   restoreFromLog(
@@ -2313,12 +1823,11 @@ export class Session {
     entries: LogEntry[],
     idAllocator: LogIdAllocator,
   ): void {
-    const prepared = this.prepareRestoreFromLog(meta, entries, idAllocator);
-    this.commitPreparedRestore(prepared);
+    restoreFromLog(this, meta, entries, idAllocator);
   }
 
   /** Single assignment pass for a parsed restore (no failure paths in here). */
-  private _applyRestoredState(state: RestoredSessionState): void {
+  _applyRestoredState(state: RestoredSessionState): void {
     this.primaryAgent.replaceModelConfig({ ...state.modelConfig });
     this._persistedModelSelection = { ...state.persistedModelSelection };
 
@@ -2375,58 +1884,12 @@ export class Session {
    * Get log data for persistence (v2).
    * Returns meta + entries suitable for saveLog().
    */
+  /**
+   * Get log data for persistence (v2).
+   * Returns meta + entries suitable for saveLog().
+   */
   getLogForPersistence(): { meta: LogSessionMeta; entries: readonly LogEntry[] } {
-    // Include both active and archived children in persistence meta
-    const childSessionsMeta: ChildSessionMetaRecord[] = [
-      ...[...this._childSessions.values()].map((handle) => ({
-        id: handle.id,
-        numericId: handle.numericId,
-        template: handle.template,
-        mode: handle.mode,
-        lifecycle: handle.lifecycle,
-        status: handle.status,
-        outcome: handle.lastOutcome,
-        terminationCause: handle.terminationCause,
-        order: handle.order,
-        // Released one-shots have no Session (and by definition no live
-        // inbox) —this read must tolerate null or every root save after
-        // the first settled one-shot would throw.
-        inbox: handle.session && handle.session._inbox.length > 0
-          ? [...handle.session._inbox]
-          : undefined,
-      })),
-      ...[...this._archivedChildren.values()].map((record) => ({
-        id: record.id,
-        numericId: record.numericId,
-        template: record.template,
-        mode: record.mode,
-        lifecycle: "archived" as ChildSessionLifecycle,
-        status: record.status,
-        outcome: record.outcome,
-        terminationCause: record.terminationCause,
-        order: record.order,
-      })),
-    ];
-    return {
-      meta: createLogSessionMeta({
-        createdAt: this._createdAt,
-        initialModel: this._initialModel,
-        projectPath: this._projectRoot,
-        modelConfigName: this._persistedModelSelection.modelConfigName ?? "",
-        modelProvider: this._persistedModelSelection.modelProvider,
-        modelSelectionKey: this._persistedModelSelection.modelSelectionKey,
-        modelId: this._persistedModelSelection.modelId,
-        promptCacheAffinityKey: this._promptCacheKey,
-        turnCount: this._turnCount,
-        compactCount: this._compactCount,
-        thinkingLevel: this._thinkingLevel,
-        title: this._title,
-        summary: this._generateSummary(),
-        childSessions: childSessionsMeta,
-        inbox: this._inbox.length > 0 ? [...this._inbox] : undefined,
-      }),
-      entries: this._log,
-    };
+    return getLogForPersistence(this);
   }
 
   setStore(store: any): void {
@@ -2536,8 +1999,9 @@ export class Session {
   // ==================================================================
 
   /** Read-only access to loaded skills (for command registration). */
+  /** Read-only access to loaded skills (for command registration). */
   get skills(): ReadonlyMap<string, SkillMeta> {
-    return this._skills;
+    return getSkills(this);
   }
 
   // ==================================================================
@@ -2570,43 +2034,39 @@ export class Session {
   }
 
   get mcpManager(): MCPClientManager | undefined {
-    return this._mcpManager;
+    return getMcpManager(this);
   }
 
   async ensureMcpReady(): Promise<void> {
-    await this._ensureMcp();
+    return ensureMcpReady(this);
   }
 
   /** Read-only access to disabled skill names. */
+  /** Read-only access to disabled skill names. */
   get disabledSkills(): ReadonlySet<string> {
-    return this._disabledSkills;
+    return getDisabledSkills(this);
   }
 
   /**
    * Return all skills from disk (both enabled and disabled) for UI display.
    */
+  /**
+   * Return all skills from disk (both enabled and disabled) for UI display.
+   */
   getAllSkillNames(): { name: string; description: string; enabled: boolean }[] {
-    const allOnDisk = loadSkillsMulti(this._skillRoots);
-    return [...allOnDisk.values()].map((s) => ({
-      name: s.name,
-      description: s.description,
-      enabled: !this._disabledSkills.has(s.name),
-    }));
+    return getAllSkillNames(this);
   }
 
   /** 是否存在尚未通过 /reload 应用的 skill 变更。 */
+  /** 是否存在尚未通过 /reload 应用的 skill 变更。 */
   get skillsDirty(): boolean {
-    return this._skillsDirty;
+    return skillsDirty(this);
   }
 
   /** Enable or disable a skill by name. The change applies on the next /reload. */
+  /** Enable or disable a skill by name. The change applies on the next /reload. */
   setSkillEnabled(name: string, enabled: boolean): void {
-    if (enabled) {
-      this._disabledSkills.delete(name);
-    } else {
-      this._disabledSkills.add(name);
-    }
-    this._skillsDirty = true;
+    setSkillEnabled(this, name, enabled);
   }
 
   /**
@@ -2614,15 +2074,13 @@ export class Session {
    * the skill tool definition. Explicit /reload only.
    * Returns change report for callers that need it (e.g. /skills command).
    */
+  /**
+   * Rescan skill directories, apply disabled filter, and rebuild
+   * the skill tool definition. Explicit /reload only.
+   * Returns change report for callers that need it (e.g. /skills command).
+   */
   reloadSkills(): { added: string[]; removed: string[]; total: number } {
-    const oldNames = new Set(this._skills.keys());
-    this._refreshSkills();
-    const newNames = new Set(this._skills.keys());
-
-    const added = [...newNames].filter((n) => !oldNames.has(n));
-    const removed = [...oldNames].filter((n) => !newNames.has(n));
-
-    return { added, removed, total: this._skills.size };
+    return reloadSkills(this);
   }
 
   /**
@@ -2631,73 +2089,41 @@ export class Session {
    * skills 列表位于 system prompt；工具的 description 不随 skills 集合变化，
    * 从而保持 tools 段字节稳定。
    */
+  /**
+   * Build the fixed `skill` tool definition.
+   *
+   * skills 列表位于 system prompt；工具的 description 不随 skills 集合变化，
+   * 从而保持 tools 段字节稳定。
+   */
   private _ensureSkillTool(): void {
-    this.primaryAgent.tools = ensureSkillTool(
-      this.primaryAgent.tools,
-      this._capabilities,
-    );
+    ensureSkillToolForSession(this);
   }
 
   /**
    * Refresh skills from disk. Called during prompt/tool reload so installed,
    * removed, or modified skills update the dynamic skill tool definition.
    */
+  /**
+   * Refresh skills from disk. Called during prompt/tool reload so installed,
+   * removed, or modified skills update the dynamic skill tool definition.
+   */
   private _refreshSkills(): void {
-    if (this._skillRoots.length === 0) {
-      this._skillsDirty = false;
-      return;
-    }
-    const freshAll = loadSkillsMulti(this._skillRoots);
-    const filtered = new Map<string, SkillMeta>();
-    for (const [name, skill] of freshAll) {
-      if (!this._disabledSkills.has(name)) {
-        filtered.set(name, skill);
-      }
-    }
-    this._skills = filtered;
-    this._skillsDirty = false;
-    this._ensureSkillTool();
+    refreshSkills(this);
   }
 
+  /** Execute the `skill` tool —load and return skill instructions. */
   /** Execute the `skill` tool —load and return skill instructions. */
   private _execSkill(
     args: Record<string, unknown>,
   ): ToolResult {
-    const name = ((args["name"] as string) ?? "").trim();
-    if (!name) {
-      return new ToolResult({ content: "Error: 'name' parameter is required." });
-    }
-
-    const skill = this._skills.get(name);
-    if (!skill) {
-      const available = [...this._skills.keys()].join(", ");
-      return new ToolResult({
-        content: `Error: Unknown skill "${name}". Available: ${available || "(none)"}`,
-      });
-    }
-
-    if (skill.disableModelInvocation) {
-      return new ToolResult({
-        content: `Error: Skill "${name}" can only be invoked by the user via /${name}.`,
-      });
-    }
-
-    const skillArgs = ((args["arguments"] as string) ?? "").trim();
-    const content = resolveSkillContent(skill, skillArgs);
-
-    return new ToolResult({
-      content:
-        `[SKILL: ${skill.name}]\n` +
-        `Skill directory: ${skill.dir}\n\n` +
-        content,
-    });
+    return execSkill(this, args);
   }
 
   // ==================================================================
   // 配置重载（/reload 用户命令；模型侧无对应工具）
   // ==================================================================
 
-  private _sortedUnique(values: Iterable<string | undefined | null>): string[] {
+  _sortedUnique(values: Iterable<string | undefined | null>): string[] {
     return [...new Set([...values].filter((v): v is string => typeof v === "string" && v.length > 0))]
       .sort((a, b) => a.localeCompare(b));
   }
@@ -2705,7 +2131,7 @@ export class Session {
   /** Scan-once helper: do the given entries contain a delivered real user
    * message? Used only to seed _conversationStarted on restore —the live guard
    * reads the cached flag, not this. */
-  private _entriesHaveRealUserMessage(entries: Iterable<LogEntry>): boolean {
+  _entriesHaveRealUserMessage(entries: Iterable<LogEntry>): boolean {
     for (const entry of entries) {
       if (entry.discarded || entry.type !== "user_message") continue;
       if ((entry.meta as Record<string, unknown>)["inputKind"] === "user") {
@@ -2715,7 +2141,7 @@ export class Session {
     return false;
   }
 
-  private _diffNames(before: Iterable<string>, after: Iterable<string>): { added: string[]; removed: string[] } {
+  _diffNames(before: Iterable<string>, after: Iterable<string>): { added: string[]; removed: string[] } {
     const beforeSet = new Set(before);
     const afterSet = new Set(after);
     return {
@@ -2724,76 +2150,12 @@ export class Session {
     };
   }
 
-  private _snapshotMcpAvailability(): McpAvailabilitySnapshot {
-    const manager = this._mcpManager;
-    if (!manager) return { servers: [], tools: [] };
-
-    const toolNames: string[] = [];
-    const serverNames: string[] = [];
-
-    try {
-      if (typeof manager.getAllTools === "function") {
-        for (const tool of manager.getAllTools()) {
-          if (typeof tool.name !== "string") continue;
-          toolNames.push(tool.name);
-          const parts = tool.name.split("__");
-          if (parts.length >= 3 && parts[0] === "mcp") {
-            const serverName = parts[1];
-            if (serverName) serverNames.push(serverName);
-          }
-        }
-      }
-    } catch { /* best effort */ }
-
-    try {
-      if (typeof manager.getServerStatuses === "function") {
-        for (const status of manager.getServerStatuses()) {
-          if (status.state === "connected") serverNames.push(status.name);
-        }
-      }
-    } catch { /* best effort */ }
-
-    return {
-      servers: this._sortedUnique(serverNames),
-      tools: this._sortedUnique(toolNames),
-    };
+  _snapshotMcpAvailability(): McpAvailabilitySnapshot {
+    return snapshotMcpAvailability(this);
   }
 
-  private _queueToolAvailabilityNotice(notice: ToolAvailabilityNotice): void {
-    if (!this._conversationStarted) return;
-
-    const sections: string[] = [
-      `Tool availability changed because ${notice.reason}.`,
-      "This is normal runtime behavior; do not infer from this change alone that your earlier answer or reasoning was wrong. Use the skills and MCP tools currently available in this turn.",
-    ];
-
-    const addList = (label: string, items: string[] | undefined): void => {
-      const values = this._sortedUnique(items ?? []);
-      if (values.length === 0) return;
-      sections.push("", `${label}:`);
-      for (const value of values) sections.push(`- ${value}`);
-    };
-
-    addList("Skills enabled", notice.skillsEnabled);
-    addList("Skills disabled", notice.skillsDisabled);
-    addList("Skills now available after reload", notice.skillsAdded);
-    addList("Skills no longer available after reload", notice.skillsRemoved);
-    addList("MCP servers connected", notice.mcpServersConnected);
-    addList("MCP servers disconnected", notice.mcpServersDisconnected);
-    addList("MCP servers reconnected or changed", notice.mcpServersChanged);
-    addList("MCP tools now available", notice.mcpToolsAdded);
-    addList("MCP tools no longer available", notice.mcpToolsRemoved);
-
-    if (sections.length <= 2) return;
-
-    this._deliverMessage({
-      type: "system_notice",
-      sender: "system",
-      timestamp: Date.now(),
-      content: sections.join("\n"),
-      wake: false,
-      tuiVisible: false,
-    });
+  _queueToolAvailabilityNotice(notice: ToolAvailabilityNotice): void {
+    queueToolAvailabilityNotice(this, notice);
   }
 
   /**
@@ -2801,99 +2163,17 @@ export class Session {
    * reconfigures the MCPClientManager, and notifies the TUI.
    * Returns a human-readable summary of what changed.
    */
+  /**
+   * Reload MCP servers from settings. Reads global + local settings,
+   * reconfigures the MCPClientManager, and notifies the TUI.
+   * Returns a human-readable summary of what changed.
+   */
   async reloadMcp(options?: { notice?: boolean; reason?: string }): Promise<string> {
-    const before = this._snapshotMcpAvailability();
-    const globalSettings = loadGlobalSettings();
-    const localSettings = loadLocalSettings(this._projectRoot);
-    const effective = Object.keys(localSettings).length > 0
-      ? mergeSettings(globalSettings, localSettings)
-      : globalSettings;
-    const { mcpServers } = settingsToConfigInputs(effective);
-
-    if (this._mcpManager) {
-      const mcpResult = await this._mcpManager.reconfigure(mcpServers);
-
-      this._mcpConnected = false;
-      await this._ensureMcp();
-
-      const changes: string[] = [];
-      if (mcpResult.added.length) changes.push(`+${mcpResult.added.join(", ")}`);
-      if (mcpResult.removed.length) changes.push(`-${mcpResult.removed.join(", ")}`);
-      if (mcpResult.changed.length) changes.push(`~${mcpResult.changed.join(", ")}`);
-
-      const allTools = this._mcpManager.getAllTools();
-      const after = this._snapshotMcpAvailability();
-      const serverDiff = this._diffNames(before.servers, after.servers);
-      const toolDiff = this._diffNames(before.tools, after.tools);
-      if (options?.notice !== false) {
-        this._queueToolAvailabilityNotice({
-          reason: options?.reason ?? "MCP configuration was reloaded",
-          mcpServersConnected: serverDiff.added,
-          mcpServersDisconnected: serverDiff.removed,
-          mcpServersChanged: mcpResult.changed,
-          mcpToolsAdded: toolDiff.added,
-          mcpToolsRemoved: toolDiff.removed,
-        });
-      }
-
-      if (this.onMcpStatus && typeof this._mcpManager.getServerStatuses === "function") {
-        this.onMcpStatus(this._mcpManager.getServerStatuses());
-      }
-
-      return `MCP: ${allTools.length} tool(s)` +
-        (changes.length ? ` (${changes.join("; ")})` : " (no changes)");
-    }
-
-    if (mcpServers.length > 0) {
-      const { MCPClientManager } = await import("./clients/mcp-client.js");
-      this._mcpManager = new MCPClientManager(mcpServers) as unknown as MCPClientManager;
-      this._mcpConnected = false;
-      await this._ensureMcp();
-      const allTools = this._mcpManager!.getAllTools();
-      const after = this._snapshotMcpAvailability();
-      const serverDiff = this._diffNames(before.servers, after.servers);
-      const toolDiff = this._diffNames(before.tools, after.tools);
-      if (options?.notice !== false) {
-        this._queueToolAvailabilityNotice({
-          reason: options?.reason ?? "MCP configuration was reloaded",
-          mcpServersConnected: serverDiff.added,
-          mcpServersDisconnected: serverDiff.removed,
-          mcpToolsAdded: toolDiff.added,
-          mcpToolsRemoved: toolDiff.removed,
-        });
-      }
-
-      if (this.onMcpStatus && typeof this._mcpManager!.getServerStatuses === "function") {
-        this.onMcpStatus(this._mcpManager!.getServerStatuses());
-      }
-
-      return `MCP: initialized ${mcpServers.length} server(s), ${allTools.length} tool(s)`;
-    }
-
-    return "MCP: no servers configured";
+    return reloadMcp(this, options);
   }
 
   async reconnectMcpServer(serverName: string): Promise<boolean> {
-    if (!this._mcpManager || typeof this._mcpManager.reconnectServer !== "function") return false;
-    const before = this._snapshotMcpAvailability();
-    const ok = await this._mcpManager.reconnectServer(serverName);
-    this._mcpConnected = false;
-    await this._ensureMcp();
-    const after = this._snapshotMcpAvailability();
-    const serverDiff = this._diffNames(before.servers, after.servers);
-    const toolDiff = this._diffNames(before.tools, after.tools);
-    this._queueToolAvailabilityNotice({
-      reason: `the user reconnected MCP server '${serverName}'`,
-      mcpServersConnected: serverDiff.added,
-      mcpServersDisconnected: serverDiff.removed,
-      mcpServersChanged: [serverName],
-      mcpToolsAdded: toolDiff.added,
-      mcpToolsRemoved: toolDiff.removed,
-    });
-    if (this.onMcpStatus && typeof this._mcpManager.getServerStatuses === "function") {
-      this.onMcpStatus(this._mcpManager.getServerStatuses());
-    }
-    return ok;
+    return reconnectMcpServer(this, serverName);
   }
 
   // Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
@@ -2902,20 +2182,30 @@ export class Session {
   // path that needs them runs either inside a turn's tool execution or wrapped by
   // a command-side _withTurnLock, and _withTurnLock is not reentrant, so
   // re-locking there would deadlock.
+  // Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
+  // (and the ride-along notice it queues) cannot overlap a turn's tool snapshot.
+  // The bare reloadMcp/reconnectMcpServer stay lock-free on purpose —the reload
+  // path that needs them runs either inside a turn's tool execution or wrapped by
+  // a command-side _withTurnLock, and _withTurnLock is not reentrant, so
+  // re-locking there would deadlock.
   async reloadMcpFromCommand(reason: string): Promise<string> {
-    return this._withTurnLock(() => this.reloadMcp({ reason }));
+    return reloadMcpFromCommand(this, reason);
   }
 
   async reconnectMcpServerFromCommand(serverName: string): Promise<boolean> {
-    return this._withTurnLock(() => this.reconnectMcpServer(serverName));
+    return reconnectMcpServerFromCommand(this, serverName);
   }
 
   // The /mcp command warms up MCP status before showing the picker. That ensure
   // can connect servers (mutating agent.tools), so it must serialize against
   // turns just like the reload/reconnect variants —no MCP connection work on
   // the command side may run concurrently with a turn's tool snapshot.
+  // The /mcp command warms up MCP status before showing the picker. That ensure
+  // can connect servers (mutating agent.tools), so it must serialize against
+  // turns just like the reload/reconnect variants —no MCP connection work on
+  // the command side may run concurrently with a turn's tool snapshot.
   async ensureMcpReadyFromCommand(): Promise<void> {
-    return this._withTurnLock(() => this.ensureMcpReady());
+    return ensureMcpReadyFromCommand(this);
   }
 
   /**
@@ -2996,78 +2286,32 @@ export class Session {
   }
 
   // ==================================================================
-  // Task list —— tasks.json 为权威，子会话纯内存
+  // Task list —— 存储生命周期见 ./session/task-list.ts
   // ==================================================================
 
   /** 当前会话的任务清单（按 id 升序）。 */
   getTaskState(): readonly Task[] {
-    return this._ensureTaskStore().list();
+    return getTaskState(this);
   }
 
   subscribeTaskState(listener: () => void): () => void {
-    this._taskListeners.push(listener);
-    return () => {
-      const idx = this._taskListeners.indexOf(listener);
-      if (idx !== -1) this._taskListeners.splice(idx, 1);
-    };
+    return subscribeTaskState(this, listener);
   }
 
-  private _notifyTaskListeners(): void {
-    for (const listener of this._taskListeners) listener();
+  _notifyTaskListeners(): void {
+    notifyTaskListeners(this);
   }
 
-  /**
-   * 任务清单存储，惰性创建。
-   *
-   * - 主会话：`{SESSION_ARTIFACTS}/tasks.json`（每会话一份，与 childSessionDir 的
-   *   所有权模型一致）
-   * - 子会话：纯内存（子代理不写持久化文件，清单随子会话对象消亡）
-   * - 工件目录在会话存储绑定后才可用，且 `/new`、会话恢复、`/fork` 会切换目录，
-   *   因此按路径 key 重定位；key 变化时才重建（重建即从磁盘载入）。
-   */
-  private _ensureTaskStore(): TaskStore {
-    if (this._taskStoreScope === "memory") {
-      if (!this._taskStoreRef) this._taskStoreRef = TaskStore.memory();
-      return this._taskStoreRef;
-    }
-    const dir = this._sessionArtifactsOverride || this._getArtifactsDirIfAvailable();
-    if (!dir) {
-      // 会话存储尚未绑定：先退回内存态；绑定后按 key 重定位到文件。
-      if (!this._taskStoreRef) this._taskStoreRef = TaskStore.memory();
-      return this._taskStoreRef;
-    }
-    const path = taskStorePath(dir);
-    if (!this._taskStoreRef || this._taskStoreKey !== path) {
-      const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
-      this._taskStoreRef = new TaskStore({
-        filePath: path,
-        sessionId: sessionDir ? basename(sessionDir) : "session",
-      });
-      this._taskStoreKey = path;
-    }
-    return this._taskStoreRef;
+  _ensureTaskStore(): TaskStore {
+    return ensureTaskStore(this);
   }
 
   private _ensureTaskTools(): void {
-    ensureTaskTools(this.primaryAgent.tools, this._capabilities);
+    ensureTaskToolsForSession(this);
   }
 
-  /**
-   * 任务清单的持久化状态 —— 供 UI 决定是否标注"不持久化"。
-   *
-   * - `"file"`：任务落 `{SESSION_ARTIFACTS}/tasks.json`（正常会话）
-   * - `"pending"`：会话目录尚未惰性创建 —— **正常会话的过渡态**，UI 不应提示任何东西
-   * - `"memory"`：本次会话没有任务持久化（子会话，或根本没有会话存储）
-   *
-   * 注意边界：只有 `"memory"` 才代表"确实不落盘"，`"pending"` 会在首个回合前
-   * 由 `_ensureSessionStorageReady()` 创建目录后自然变成 `"file"`。
-   */
   getTaskPersistence(): "file" | "pending" | "memory" {
-    if (this._taskStoreScope === "memory") return "memory";
-    if (this._sessionArtifactsOverride) return "file";
-    if (!this._store) return "memory";
-    if (!this._store.sessionDir) return "pending";
-    return "file";
+    return getTaskPersistence(this);
   }
 
   /**
@@ -3084,24 +2328,7 @@ export class Session {
     taskSummary?: { total: number; open: number; done: number };
     openTasks: ChildTaskHandoff[];
   }): void {
-    const store = this._ensureTaskStore();
-    const task = store.list().find((candidate) => candidate.metadata["agentId"] === info.childId);
-    if (!task) return;
-
-    const metadata: Record<string, unknown> = {
-      lastOutcome: info.outcome,
-      lastSettledAt: Date.now(),
-    };
-    if (info.taskSummary) metadata["taskSummary"] = info.taskSummary;
-    metadata["childOpenTasks"] = info.openTasks.length > 0 ? info.openTasks : null;
-    if (info.outcome === "completed") {
-      // 已完成：清掉续跑建议，避免下次重启又提示续跑一个已经跑完的任务。
-      metadata["resumeHint"] = null;
-    }
-
-    const result = store.update(task.id, { metadata });
-    if (result.saveError) console.warn(result.saveError);
-    this._notifyTaskListeners();
+    onChildSettled(this, info);
   }
 
   // -- 启动对账 ------------------------------------------------------
@@ -3115,114 +2342,7 @@ export class Session {
    * 天然幂等：对账后不再有 `in_progress` 任务，重复调用是空操作。
    */
   reconcileTaskListAfterRestore(opts: { fork?: boolean } = {}): { warnings: string[]; notice?: string } {
-    const warnings: string[] = [];
-    const store = this._ensureTaskStore();
-    const manager = this._childSessionManagerInstance;
-
-    // 分叉里从来没有活着的执行体：消毒任务清单（清 agentId/result/续跑痕迹，in_progress → pending），
-    // 并把所有恢复出的子会话落成不可续（否则它们会带着持久化的 running/blocked/idle 变成幻影）。
-    if (opts.fork) {
-      const sanitized = store.sanitizeForFork();
-      if (sanitized.saveError) warnings.push(sanitized.saveError);
-      if (sanitized.changed.length > 0) {
-        this._notifyTaskListeners();
-        warnings.push(
-          `分叉对账：${sanitized.changed.length} 个继承任务已解除执行体关联并回到 pending（分叉中没有活着的执行体）`,
-        );
-      }
-      for (const signal of manager.getResumeSignals()) {
-        manager.finalizeRestoredChild(signal.childId, false);
-      }
-      const forkNotice =
-        sanitized.changed.length > 0
-          ? [
-              "<task-reconciliation>",
-              "This session was forked. The inherited task list was sanitized: executors, recorded results and resume hints from the parent run were removed, and in-progress tasks were returned to `pending`.",
-              "Nothing can be resumed in a fork — re-dispatch any work you still need with `spawn` using a new agent id. Do not mention this message to the user unless they ask.",
-              "</task-reconciliation>",
-            ].join("\n")
-          : undefined;
-      return { warnings, notice: forkNotice };
-    }
-
-    const signals = new Map(manager.getResumeSignals().map((signal) => [signal.childId, signal] as const));
-    const finalized = new Set<string>();
-    const tasks = store.list();
-    const failures = manager.getRestoreFailures();
-    const loggedOutcomes = this._indexChildOutcomesFromLog();
-
-    const hints: Record<string, TaskResumeHint> = {};
-    const lines: string[] = [];
-
-    for (const task of tasks) {
-      if (task.status !== "in_progress") continue;
-      const agentId = typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined;
-      if (!agentId) continue;
-
-      const signal = signals.get(agentId);
-      const failure = failures.get(agentId);
-      const fromLog = loggedOutcomes.get(agentId);
-      const decision = failure === "model_unavailable"
-        ? { resumable: false, reason: "model_unavailable" as const }
-        : opts.fork
-        ? // 分叉：执行体一律作废，不提供续跑
-          { resumable: false, reason: "superseded" as const }
-        : decideChildResume({
-          childId: agentId,
-          // 恢复失败的子根本不在 signals 里：日志/模板不可用 → 只能重派
-          logAvailable: signal !== undefined,
-          templateAvailable: signal !== undefined || failure !== "template_missing",
-          sessionAvailable: signal?.sessionAvailable ?? false,
-          outcome: fromLog?.outcome ?? signal?.outcome ?? "none",
-          cause: fromLog?.cause ?? signal?.cause,
-          taskAgentId: agentId,
-          mode: signal?.mode,
-          toolCalls: signal?.toolCalls ?? 0,
-          tokensIn: signal?.tokensIn ?? 0,
-        });
-
-      hints[agentId] = {
-        childId: agentId,
-        toolCalls: signal?.toolCalls ?? 0,
-        tokensIn: signal?.tokensIn ?? 0,
-        resumable: decision.resumable,
-        reason: decision.reason,
-      };
-      if (signal) {
-        manager.finalizeRestoredChild(agentId, decision.resumable);
-        finalized.add(agentId);
-      }
-
-      lines.push(
-        `#${task.id} ${task.subject} — ${
-          decision.resumable ? "resumable: call task_resume to continue this run" : describeResumeReason(decision.reason)
-        }`,
-      );
-    }
-
-    // 未被任何任务引用的子也必须归一：重启后没有任何执行体是活的，
-    // 否则它们会带着持久化的 running/blocked/idle 留在面板上（幻影状态）。
-    for (const childId of signals.keys()) {
-      if (!finalized.has(childId)) manager.finalizeRestoredChild(childId, false);
-    }
-
-    const { changed, saveError } = store.markInterrupted(hints);
-    if (saveError) warnings.push(saveError);
-    if (changed.length === 0) return { warnings };
-    this._notifyTaskListeners();
-
-    warnings.push(`重启对账：${changed.length} 个进行中的任务已降级为 pending（子代理已全部终止）`);
-    for (const line of lines) warnings.push(`  ${line}`);
-
-    const notice = [
-      "<task-reconciliation>",
-      "This session was restarted, so every sub-agent from the previous run is terminated. The tasks below were in progress and have been returned to `pending`:",
-      ...lines.map((line) => `- ${line}`),
-      "For each task, either call `task_resume` to continue the interrupted run from its own context, or re-dispatch it with `spawn` using a NEW agent id (re-dispatching clears the stale resume hint). Do not mention this message to the user unless they ask about the restart.",
-      "</task-reconciliation>",
-    ].join("\n");
-
-    return { warnings, notice };
+    return reconcileTaskListAfterRestore(this, opts);
   }
 
   /**
@@ -3244,23 +2364,7 @@ export class Session {
 
   /** 从父日志的 agent_result 条目索引每个子代理的最终结局与终止原因。 */
   private _indexChildOutcomesFromLog(): Map<string, { outcome: ChildOutcome; cause?: TerminationCause }> {
-    const indexed = new Map<string, { outcome: ChildOutcome; cause?: TerminationCause }>();
-    for (const entry of this._log) {
-      if (entry.type !== "agent_result" || entry.discarded) continue;
-      const meta = entry.meta as Record<string, unknown>;
-      const agentId = typeof meta["agentId"] === "string" ? meta["agentId"] : undefined;
-      if (!agentId) continue;
-      const rawOutcome = meta["outcome"];
-      const outcome: ChildOutcome =
-        rawOutcome === "completed" ? "completed" : rawOutcome === "failed" ? "error" : rawOutcome === "interrupted" ? "interrupted" : "none";
-      const rawCause = meta["cause"];
-      const cause: TerminationCause | undefined =
-        rawCause === "natural" || rawCause === "parent_kill" || rawCause === "user_targeted_kill" || rawCause === "user_mass_interrupt"
-          ? rawCause
-          : undefined;
-      indexed.set(agentId, { outcome, cause });
-    }
-    return indexed;
+    return indexChildOutcomesFromLog(this);
   }
 
   // -- 任务工具执行器 ------------------------------------------------
@@ -3268,194 +2372,19 @@ export class Session {
   // -- 任务工具执行器 ------------------------------------------------
 
   private _execTaskCreate(args: Record<string, unknown>): ToolResult {
-    const subject = this._argRequiredString("task_create", args, "subject", { nonEmpty: true });
-    if (subject instanceof ToolResult) return subject;
-    const description = this._argRequiredString("task_create", args, "description", { nonEmpty: true });
-    if (description instanceof ToolResult) return description;
-    const activeForm = this._argOptionalString("task_create", args, "active_form");
-    if (activeForm instanceof ToolResult) return activeForm;
-    const role = this._argOptionalString("task_create", args, "role");
-    if (role instanceof ToolResult) return role;
-    if (role && !isAgentRoleId(role.trim())) {
-      return new ToolResult({ content: "Error: 'role' must be queen, scout, worker, reviewer, guard, or merger." });
-    }
-    const metadata = this._argTaskMetadata(args["metadata"]);
-    if (metadata instanceof ToolResult) return metadata;
-
-    const { task, saveError } = this._ensureTaskStore().create(
-      subject.trim(),
-      description.trim(),
-      activeForm,
-      metadata,
-      role?.trim(),
-    );
-    this._notifyTaskListeners();
-    return new ToolResult({
-      content: `Task #${task.id} created: ${task.subject}${saveError ? `\nwarning: ${saveError}` : ""}`,
-    });
+    return execTaskCreate(this, args);
   }
 
   private _execTaskList(): ToolResult {
-    const store = this._ensureTaskStore();
-    const tasks = store.list();
-    if (tasks.length === 0) {
-      return new ToolResult({ content: store.lastSaveError ? `No tasks loaded. ${store.lastSaveError}` : "No tasks found" });
-    }
-
-    // 面向模型的可读顺序：未完成在前，同状态按 id。
-    const statusOrder: Record<string, number> = { pending: 0, in_progress: 1, completed: 2 };
-    const sorted = [...tasks].sort(
-      (a, b) => (statusOrder[a.status] ?? 0) - (statusOrder[b.status] ?? 0) || Number(a.id) - Number(b.id),
-    );
-
-    const lines = sorted.map((task) => {
-      let line = `#${task.id} [${task.status}] ${task.subject}`;
-      if (task.role) line += ` [${task.role}]`;
-      const owner = task.owner ?? (typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined);
-      if (owner) line += ` (${owner})`;
-
-      if (task.status !== "completed") {
-        const openBlockers = task.blockedBy.filter((id) => {
-          const blocker = store.get(id);
-          return blocker !== undefined && blocker.status !== "completed";
-        });
-        if (openBlockers.length > 0) {
-          line += ` [blocked by ${openBlockers.map((id) => `#${id}`).join(", ")}]`;
-        }
-      }
-
-      if (task.status === "pending") {
-        const hint = readResumeHint(task);
-        if (hint) {
-          line += hint.resumable
-            ? ` [interrupted — resumable via task_resume (${hint.toolCalls} tool calls, ${hint.tokensIn} input tokens)]`
-            : ` [interrupted — re-dispatch with a new agent id: ${describeResumeReason(hint.reason as ResumeReason)}]`;
-        }
-      }
-      const childOpenTasks = task.metadata["childOpenTasks"];
-      if (Array.isArray(childOpenTasks) && childOpenTasks.length > 0) {
-        line += ` [${childOpenTasks.length} unfinished child-local tasks returned; inspect task_get; Queen decides re-dispatch]`;
-      }
-      return line;
-    });
-
-    if (store.lastSaveError) lines.push(`warning: ${store.lastSaveError}`);
-    return new ToolResult({ content: lines.join("\n") });
+    return execTaskList(this);
   }
 
   private _execTaskGet(args: Record<string, unknown>): ToolResult {
-    const taskId = this._argRequiredString("task_get", args, "task_id", { nonEmpty: true });
-    if (taskId instanceof ToolResult) return taskId;
-
-    const store = this._ensureTaskStore();
-    const task = store.get(taskId.trim());
-    if (!task) return new ToolResult({ content: `Task #${taskId} not found` });
-
-    const lines: string[] = [`Task #${task.id}: ${task.subject}`, `Status: ${task.status}`];
-    if (task.role) lines.push(`Role: ${task.role}`);
-    const owner = task.owner ?? (typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined);
-    if (owner) lines.push(`Owner: ${owner}`);
-    if (task.activeForm) lines.push(`Active form: ${task.activeForm}`);
-    lines.push(`Description: ${task.description.replace(/\\n/g, "\n")}`);
-
-    const openBlockers = task.blockedBy.filter((id) => {
-      const blocker = store.get(id);
-      return blocker !== undefined && blocker.status !== "completed";
-    });
-    if (openBlockers.length > 0) lines.push(`Blocked by: ${openBlockers.map((id) => `#${id}`).join(", ")}`);
-    if (task.blocks.length > 0) lines.push(`Blocks: ${task.blocks.map((id) => `#${id}`).join(", ")}`);
-
-    const hint = readResumeHint(task);
-    if (hint) {
-      lines.push(
-        `Interrupted run: child ${hint.childId}, ${hint.toolCalls} tool calls, ${hint.tokensIn} input tokens — ` +
-          (hint.resumable ? "resumable via task_resume" : `do not resume (${describeResumeReason(hint.reason as ResumeReason)})`),
-      );
-    }
-
-    const childOpenTasks = task.metadata["childOpenTasks"];
-    if (Array.isArray(childOpenTasks) && childOpenTasks.length > 0) {
-      lines.push(`Unfinished child-local tasks returned (${childOpenTasks.length}); Queen must decide whether to re-dispatch:`);
-      for (const value of childOpenTasks) {
-        if (!value || typeof value !== "object") continue;
-        const item = value as Record<string, unknown>;
-        const localId = typeof item["id"] === "string" ? item["id"] : "?";
-        const subject = typeof item["subject"] === "string" ? item["subject"] : "(no subject)";
-        const status = typeof item["status"] === "string" ? item["status"] : "unknown";
-        const description = typeof item["description"] === "string" ? item["description"] : "";
-        lines.push(`- [${status}] child-local #${localId}: ${subject}${description ? ` — ${description}` : ""}`);
-      }
-    }
-
-    const displayMetadata = { ...task.metadata };
-    delete displayMetadata["childOpenTasks"];
-    const metaKeys = Object.keys(displayMetadata);
-    if (metaKeys.length > 0) lines.push(`Metadata: ${JSON.stringify(displayMetadata)}`);
-    if (store.lastSaveError) lines.push(`warning: ${store.lastSaveError}`);
-    return new ToolResult({ content: lines.join("\n") });
+    return execTaskGet(this, args);
   }
 
   private _execTaskUpdate(args: Record<string, unknown>): ToolResult {
-    const taskId = this._argRequiredString("task_update", args, "task_id", { nonEmpty: true });
-    if (taskId instanceof ToolResult) return taskId;
-    const id = taskId.trim();
-
-    const fields: TaskUpdateFields = {};
-
-    const status = args["status"];
-    if (status !== undefined) {
-      if (status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "deleted") {
-        return new ToolResult({
-          content: "Error: 'status' must be one of pending, in_progress, completed, deleted.",
-        });
-      }
-      fields.status = status;
-    }
-
-    const textFields: Array<[string, "subject" | "description" | "activeForm" | "owner" | "role"]> = [
-      ["subject", "subject"],
-      ["description", "description"],
-      ["active_form", "activeForm"],
-      ["owner", "owner"],
-      ["role", "role"],
-    ];
-    for (const [key, field] of textFields) {
-      const value = this._argOptionalString("task_update", args, key);
-      if (value instanceof ToolResult) return value;
-      if (value !== undefined) fields[field] = value;
-    }
-    if (fields.role && !isAgentRoleId(fields.role.trim())) {
-      return new ToolResult({ content: "Error: 'role' must be queen, scout, worker, reviewer, guard, or merger." });
-    }
-    if (fields.role) fields.role = fields.role.trim();
-
-    const metadata = this._argTaskMetadata(args["metadata"]);
-    if (metadata instanceof ToolResult) return metadata;
-    if (metadata) fields.metadata = metadata;
-
-    const edges: Array<[string, "addBlocks" | "addBlockedBy"]> = [
-      ["add_blocks", "addBlocks"],
-      ["add_blocked_by", "addBlockedBy"],
-    ];
-    for (const [key, field] of edges) {
-      const raw = args[key];
-      if (raw === undefined) continue;
-      if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string" || item.length === 0)) {
-        return new ToolResult({ content: `Error: '${key}' must be an array of task ids.` });
-      }
-      fields[field] = [...(raw as string[])];
-    }
-
-    const result = this._ensureTaskStore().update(id, fields);
-    if (!result.task && !result.changedFields.includes("deleted")) {
-      return new ToolResult({ content: `Task #${id} not found` });
-    }
-    this._notifyTaskListeners();
-
-    let message = `Updated task #${id} ${result.changedFields.join(", ")}`;
-    if (result.warnings.length > 0) message += ` (warning: ${result.warnings.join("; ")})`;
-    if (result.saveError) message += `\nwarning: ${result.saveError}`;
-    return new ToolResult({ content: message });
+    return execTaskUpdate(this, args);
   }
 
   /**
@@ -3466,78 +2395,20 @@ export class Session {
    * 任务状态（尝试次数保留，避免死循环）。
    */
   private _execTaskResume(args: Record<string, unknown>): ToolResult {
-    const taskId = this._argRequiredString("task_resume", args, "task_id", { nonEmpty: true });
-    if (taskId instanceof ToolResult) return taskId;
-    const id = taskId.trim();
-
-    const store = this._ensureTaskStore();
-    const task = store.get(id);
-    if (!task) return new ToolResult({ content: `Task #${id} not found` });
-
-    const hint = readResumeHint(task);
-    if (!hint) {
-      return new ToolResult({
-        content: `Task #${id} has no interrupted run to resume. Use task_update to change its status, or spawn a new agent for it.`,
-      });
-    }
-
-    const begun = store.beginResume(id);
-    if (!begun.ok || !begun.task) {
-      return new ToolResult({
-        content: `Cannot resume task #${id}: ${this._resumeRefusalText(begun.reason ?? "not_resumable")}`,
-      });
-    }
-
-    const note = this._argOptionalString("task_resume", args, "note");
-    if (note instanceof ToolResult) return note;
-
-    const prompt = buildContinuationPrompt(begun.task, hint, note);
-    const resumed = this._resumeChildSession(hint.childId, prompt);
-    if (!resumed.ok) {
-      // 回滚状态；尝试次数保留（防止调用方反复重试同一个不可用子代理）。
-      store.update(id, { status: "pending" });
-      this._notifyTaskListeners();
-      return new ToolResult({
-        content: `Failed to resume task #${id}: ${resumed.reason ?? "unknown"} (child ${hint.childId}). Re-dispatch it with spawn instead.`,
-      });
-    }
-
-    this._notifyTaskListeners();
-    return new ToolResult({
-      content:
-        `Task #${id} resumed on child ${hint.childId} (attempt ${Number(begun.task.metadata["resumeAttempts"] ?? 1)}). ` +
-        `It continues from its previous context; use check_status or await_event to follow up.`,
-    });
+    return execTaskResume(this, args);
   }
 
   private _resumeRefusalText(reason: string): string {
-    switch (reason) {
-      case "attempts_exhausted":
-        return "resume attempts exhausted — re-dispatch with spawn (new agent id) or ask the user";
-      case "superseded":
-        return "a newer run has taken over this task";
-      case "already_completed":
-        return "the task is already completed";
-      case "no_resume_hint":
-        return "no interrupted run recorded";
-      case "not_found":
-        return "task not found";
-      default:
-        return describeResumeReason(reason as ResumeReason);
-    }
+    return resumeRefusalText(reason);
   }
 
   private _resumeChildSession(childId: string, prompt: string): { ok: boolean; reason?: string } {
-    return this._childSessionManagerInstance.resumeChildTurn(childId, prompt);
+    return resumeChildSession(this, childId, prompt);
   }
 
   /** `metadata` 参数解析：必须是普通对象；`null` 值保留（语义为删除该键）。 */
   private _argTaskMetadata(raw: unknown): Record<string, unknown> | undefined | ToolResult {
-    if (raw === undefined || raw === null) return undefined;
-    if (typeof raw !== "object" || Array.isArray(raw)) {
-      return new ToolResult({ content: "Error: 'metadata' must be an object." });
-    }
-    return { ...(raw as Record<string, unknown>) };
+    return argTaskMetadata(raw);
   }
 
   // ==================================================================
@@ -3576,48 +2447,20 @@ export class Session {
    * Switch the primary agent to a different model config.
    * Only callable between turns (not while a turn is in progress).
    */
+  /**
+   * Switch the primary agent to a different model config.
+   * Only callable between turns (not while a turn is in progress).
+   */
   switchModel(modelConfigName: string): void {
-    const newModelConfig = this.config.getModel(modelConfigName);
-    this.primaryAgent.replaceModelConfig(newModelConfig);
-    this._persistedModelSelection = this._buildPersistedModelSelection({
-      modelConfigName,
-      modelProvider: newModelConfig.provider,
-      modelSelectionKey: newModelConfig.model,
-      modelId: newModelConfig.model,
-    });
-    this._thinkingLevel = this._preferredThinkingLevel || "off";
+    switchModel(this, modelConfigName);
   }
 
   reloadCurrentModelConfig(): void {
-    const modelConfigName = this.currentModelConfigName;
-    this.config.invalidateModel(modelConfigName);
-    const newModelConfig = this.config.getModel(modelConfigName);
-    this.primaryAgent.replaceModelConfig(newModelConfig);
-    this._persistedModelSelection = this._buildPersistedModelSelection({
-      modelConfigName,
-      modelProvider: newModelConfig.provider,
-      modelSelectionKey: newModelConfig.model,
-      modelId: newModelConfig.model,
-    });
-    this._thinkingLevel = this._preferredThinkingLevel || "off";
+    reloadCurrentModelConfig(this);
   }
 
   applyGlobalPreferences(preferences: GlobalTuiPreferences): void {
-    const prefs = createGlobalTuiPreferences(preferences);
-    this._preferredThinkingLevel = prefs.thinkingLevel;
-    this._preferredAccentColor = prefs.accentColor;
-    this._thinkingLevel = prefs.thinkingLevel || "off";
-
-    // Restore disabled skills
-    if (prefs.disabledSkills && prefs.disabledSkills.length > 0) {
-      this._disabledSkills = new Set(prefs.disabledSkills);
-      this.reloadSkills();
-    }
-
-    // Restore permission mode
-    if (prefs.permissionMode && ["read_only", "reversible", "yolo"].includes(prefs.permissionMode)) {
-      this._permissionAdvisor.sessionMode = prefs.permissionMode as PermissionMode;
-    }
+    applyGlobalPreferences(this, preferences);
   }
 
   /**
@@ -3626,59 +2469,30 @@ export class Session {
    * thinkingLevel 由启动解析器从 currentProvider.currentModel 取得；
    * 缺失时回退 settings.thinking_level，再回退 off。
    */
+  /**
+   * 应用 settings.json 中的启动设置。
+   *
+   * thinkingLevel 由启动解析器从 currentProvider.currentModel 取得；
+   * 缺失时回退 settings.thinking_level，再回退 off。
+   */
   applySettings(settings: SwarmflowSettings, opts?: { thinkingLevel?: string }): void {
-    const thinkingLevel = opts?.thinkingLevel || settings.thinking_level || "";
-    this._preferredThinkingLevel = thinkingLevel;
-    this._preferredAccentColor = settings.accent_color;
-    this._thinkingLevel = thinkingLevel || "off";
-    if (settings.context_budget_percent !== undefined) {
-      this._contextManager.setBudgetPercent(settings.context_budget_percent);
-    }
-
-    // Restore disabled skills
-    if (settings.disabled_skills && settings.disabled_skills.length > 0) {
-      this._disabledSkills = new Set(settings.disabled_skills);
-      this.reloadSkills();
-      // skills 列表属于 system 快照；启动时应用 disabled_skills 后必须同步重建，
-      // 否则首轮 system 仍会列出已禁用的 skill。
-      this._rebuildSystemPrompt();
-    }
-
-    // Restore permission mode
-    if (settings.permission_mode && ["read_only", "reversible", "yolo"].includes(settings.permission_mode)) {
-      this._permissionAdvisor.sessionMode = settings.permission_mode as PermissionMode;
-    }
+    applySettings(this, settings, opts);
   }
 
   getGlobalPreferences(): GlobalTuiPreferences {
-    return createGlobalTuiPreferences({
-      modelConfigName: this._persistedModelSelection.modelConfigName ?? undefined,
-      modelProvider: this._persistedModelSelection.modelProvider ?? undefined,
-      modelSelectionKey: this._persistedModelSelection.modelSelectionKey ?? undefined,
-      modelId: this._persistedModelSelection.modelId ?? undefined,
-      thinkingLevel: this._preferredThinkingLevel,
-      accentColor: this._preferredAccentColor,
-      disabledSkills: this._disabledSkills.size > 0
-        ? [...this._disabledSkills]
-        : undefined,
-      permissionMode: this._permissionAdvisor.sessionMode,
-    });
+    return getGlobalPreferences(this);
   }
 
   /** 当前会话按角色保存的子代理模型配置。 */
+  /** 当前会话按角色保存的子代理模型配置。 */
   getSubagentSettings(): SubagentSettings | undefined {
-    const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
-    if (!sessionDir) return undefined;
-    return loadSubagentSettings(subagentSettingsPath(this._projectRoot, sessionDir));
+    return getSubagentSettings(this);
   }
 
   /** 保存当前会话按角色保存的子代理模型配置。 */
+  /** 保存当前会话按角色保存的子代理模型配置。 */
   setSubagentSettings(settings: SubagentSettings): void {
-    this._ensureSessionStorageReady();
-    const sessionDir = typeof this._store?.sessionDir === "string" ? this._store.sessionDir : "";
-    if (!sessionDir) throw new Error("Session directory is unavailable.");
-    saveSubagentSettings(subagentSettingsPath(this._projectRoot, sessionDir), settings);
-    this.onSaveRequest?.();
+    setSubagentSettings(this, settings);
   }
 
   /** Input tokens from the most recent provider response. */
@@ -3722,43 +2536,16 @@ export class Session {
    * Estimate token counts for each section of the system prompt using
    * gpt-tokenizer. Cached until prompt/skills/tools reload.
    */
-  private _getPromptSectionEstimates(): { systemPrompt: number; tools: number; agentsMd: number; skills: number } {
+  private _getPromptSectionEstimates(): PromptSectionEstimates {
     if (this._promptSectionEstimates) return this._promptSectionEstimates;
-
-    const recipe = this.primaryAgent.promptRecipe;
-
-    // System Prompt (role body + knowledge —NOT tool docs)
-    let estSystemPrompt = 0;
-    let estToolDocs = 0;
-    if (recipe) {
-      const layers = getPromptLayers(recipe);
-      estSystemPrompt = gptEncode(layers.roleBody).length + gptEncode(layers.knowledge).length;
-      estToolDocs = gptEncode(layers.toolDocs).length;
-    } else {
-      estSystemPrompt = gptEncode(this.primaryAgent.systemPrompt).length;
-    }
-
-    // Tool schemas (ToolDef[] serialized as provider would)
-    let estToolSchemas = 0;
-    for (const tool of this.primaryAgent.tools) {
-      estToolSchemas += gptEncode(
-        JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }),
-      ).length;
-    }
-
-    // 记忆层（全局 MEMORY.md + 项目 AGENTS.md）
-    const memory = readMemoryFiles(this._projectRoot, this._swarmflowHomeDir);
-    const memoryText = [memory.globalContent, memory.projectContent].filter(Boolean).join("\n\n");
-    const estAgentsMd = memoryText ? gptEncode(memoryText).length : 0;
-
-    // skills 目录位于 system prompt，不再计入工具 schema
-    const skillsListing = formatSkillsListing([...this._skills.values()]);
-    const estSkills = skillsListing ? gptEncode(skillsListing).length : 0;
-
-    // Tools = tool docs (inline in prompt) + tool schemas (API tools[])
-    const tools = estToolDocs + estToolSchemas;
-
-    this._promptSectionEstimates = { systemPrompt: estSystemPrompt, tools, agentsMd: estAgentsMd, skills: estSkills };
+    this._promptSectionEstimates = estimatePromptSections({
+      recipe: this.primaryAgent.promptRecipe,
+      systemPrompt: this.primaryAgent.systemPrompt,
+      toolDefs: this.primaryAgent.tools,
+      projectRoot: this._projectRoot,
+      swarmflowHomeDir: this._swarmflowHomeDir,
+      skills: this._skills.values(),
+    });
     return this._promptSectionEstimates;
   }
 
@@ -3772,58 +2559,17 @@ export class Session {
     const cached = this._usageStatsCache;
     if (cached && cached.logLen === logLen) return cached.stats;
 
-    let cumulativeInput = 0;
-    let cumulativeOutput = 0;
-    let cumulativeCacheRead = 0;
-    let cumulativeUncached = 0;
-    let firstInput = 0;
-    let firstUserMessageTokens = 0;
-    let sawFirstUserMessage = false;
-
-    for (const entry of this._log) {
-      if (entry.type === "token_update") {
-        const meta = entry.meta as Record<string, unknown>;
-        const input = meta["inputTokens"] as number;
-        if (!Number.isFinite(input) || input <= 0) continue;
-        const total = (meta["totalTokens"] as number | undefined) ?? input;
-        const cacheRead = (meta["cacheReadTokens"] as number | undefined) ?? 0;
-        cumulativeInput += input;
-        cumulativeOutput += Math.max(0, total - input);
-        cumulativeCacheRead += cacheRead;
-        cumulativeUncached += Math.max(0, input - cacheRead);
-        if (firstInput === 0) firstInput = input;
-      } else if (
-        !sawFirstUserMessage &&
-        entry.type === "user_message" &&
-        (entry.meta as Record<string, unknown>)["inputKind"] === "user"
-      ) {
-        firstUserMessageTokens = estimateEntryTokens(entry);
-        sawFirstUserMessage = true;
-      }
-    }
-
-    const systemPromptTotal = Math.max(0, firstInput - firstUserMessageTokens);
-
-    // Scale gpt-tokenizer estimates by the ratio between the provider's actual
-    // system prompt size and our total estimate, so the per-section numbers add
-    // up to the provider-reported figure.
+    const agg = aggregateTokenUsage(this._log);
+    const systemPromptTotal = Math.max(0, agg.firstInput - agg.firstUserMessageTokens);
     const est = this._getPromptSectionEstimates();
-    const estTotal = est.systemPrompt + est.tools + est.agentsMd + est.skills;
-    const ratio = estTotal > 0 ? systemPromptTotal / estTotal : 0;
 
     const stats: UsageStats = {
-      cumulativeInput,
-      cumulativeOutput,
-      cumulativeCacheRead,
-      cumulativeUncached,
+      cumulativeInput: agg.cumulativeInput,
+      cumulativeOutput: agg.cumulativeOutput,
+      cumulativeCacheRead: agg.cumulativeCacheRead,
+      cumulativeUncached: agg.cumulativeUncached,
       systemPromptTotal,
-      systemPromptBreakdown: {
-        systemPrompt: Math.round(est.systemPrompt * ratio),
-        tools: Math.round(est.tools * ratio),
-        agentsMd: Math.round(est.agentsMd * ratio),
-        skills: Math.round(est.skills * ratio),
-        messages: 0, // filled by the panel from context - systemPromptTotal
-      },
+      systemPromptBreakdown: scalePromptBreakdown(est, systemPromptTotal),
     };
     this._usageStatsCache = { logLen, stats };
     return stats;
@@ -3836,8 +2582,8 @@ export class Session {
   get systemPromptTokens(): number { return this._computeUsageStats().systemPromptTotal; }
   get contextBreakdown(): ContextBreakdown { return this._computeUsageStats().systemPromptBreakdown; }
 
-  computeGlobalTokenStats(): import("./config/persistence.js").GlobalTokenStats {
-    return (this._store as import("./config/persistence.js").SessionStore)?.computeGlobalTokenStats?.()
+  computeGlobalTokenStats(): import("./config/session-store.js").GlobalTokenStats {
+    return (this._store as import("./config/session-store.js").SessionStore)?.computeGlobalTokenStats?.()
       ?? { cumulativeInput: 0, cumulativeOutput: 0, cumulativeCacheRead: 0, cumulativeUncached: 0, sessionCount: 0 };
   }
 
@@ -3880,33 +2626,8 @@ export class Session {
     );
   }
 
-  private _getManualCompactBlocker(): string | null {
-    if (this._compactInProgress) {
-      return "Cannot run /compact while compact is in progress.";
-    }
-    if (this._agentState !== "idle") {
-      return "Cannot run /compact while the current turn is still running.";
-    }
-    if (this._activeAsk) {
-      return "Cannot run /compact while an ask is pending.";
-    }
-    if (this._pendingTurnState) {
-      return "Cannot run /compact while a turn is waiting to resume.";
-    }
-    if (this._hasActiveAgents()) {
-      return "Cannot run /compact while sub-agents are still running.";
-    }
-    if (this._hasRunningShells()) {
-      return [
-        "Cannot run /compact while background shells are still running.",
-        this._buildShellReport(),
-        "Stop the shells you no longer need (open the process panel or run /ps), then retry.",
-      ].filter(Boolean).join("\n");
-    }
-    if (this._hasWakingInboxMessages()) {
-      return "Cannot run /compact while queued messages are waiting to be delivered.";
-    }
-    return null;
+  _getManualCompactBlocker(): string | null {
+    return getManualCompactBlocker(this);
   }
 
   private async _runInjectedTurn(
@@ -3967,78 +2688,16 @@ export class Session {
     instruction?: string,
     options?: { signal?: AbortSignal; completionDisplay?: string },
   ): Promise<void> {
-    return this._withTurnLock(async () => {
-      // In-lock catch —see runInjectedCommand for why it cannot sit outside.
-      try {
-        return await this._runManualCompactBody(instruction, options);
-      } catch (err) {
-        this._recordTurnFailure(err, options?.signal);
-        throw err;
-      }
-    });
+    return runManualCompact(this, instruction, options);
   }
 
   /** Body of runManualCompact. Caller holds the turn lock. */
-  private async _runManualCompactBody(
+  /** Body of runManualCompact. Caller holds the turn lock. */
+  async _runManualCompactBody(
     instruction?: string,
     options?: { signal?: AbortSignal; completionDisplay?: string },
   ): Promise<void> {
-    {
-      this._ensureSessionStorageReady();
-
-      const blocker = this._getManualCompactBlocker();
-      if (blocker) throw new Error(blocker);
-
-      this._lastTurnEndStatus = null;
-      const displayText = instruction?.trim() ? `/compact ${instruction.trim()}` : "/compact";
-      this._beginActiveInput("compact", displayText, displayText);
-      this.onSaveRequest?.();
-
-      const prompt = appendManualInstruction(
-        COMPACT_PROMPT_OUTPUT,
-        instruction,
-        "compact",
-      );
-      const prevAgentState = this._agentState;
-      const turnSignalState = this._installCurrentTurnSignal(options?.signal);
-      this._agentState = "working";
-      this._beginWorkIfNeeded();
-      const logLenBeforeCompact = this._log.length;
-      try {
-        await this._doAutoCompact(
-          "before_turn",
-          turnSignalState.signal,
-          prompt,
-          Boolean(options?.completionDisplay),
-        );
-        this.onSaveRequest?.();
-        this._finishCurrentWork("completed");
-        if (options?.completionDisplay) {
-          this.appendCommandEcho(options.completionDisplay, "switch", "worked");
-        }
-      } catch (err) {
-        // 压缩尝试期间写入的全部条目都不可信（meta 可能被 updateEntry 整体
-        // 替换），统一按索引区间丢弃；abort 与非 abort 同规则。
-        this._discardCompactAttemptEntries(logLenBeforeCompact);
-        if (turnSignalState.signal.aborted || this._isCompactAbortError(err)) {
-          this._appendInterruptionSystemMessage([], true);
-          this._recordSessionEvent("interrupted by user");
-          this._finishCurrentWork("interrupted");
-        } else {
-          this._recordTurnFailure(err, turnSignalState.signal);
-          this._finishCurrentWork("error");
-        }
-        throw err;
-      } finally {
-        this._restoreCurrentTurnSignal(turnSignalState);
-        this._agentState = prevAgentState;
-      }
-      // Waking messages held back during compact (Q6) get their delivery turn
-      // now that the session is idle again.
-      if (this._hasWakingInboxMessages()) {
-        this._scheduleAutoResume();
-      }
-    }
+    return runManualCompactBody(this, instruction, options);
   }
 
   // ==================================================================
@@ -4049,139 +2708,34 @@ export class Session {
    * Restore ask state from log entries.
    * Scans for unclosed ask_request (no matching ask_resolution).
    */
+  /**
+   * Restore ask state from log entries.
+   * Scans for unclosed ask_request (no matching ask_resolution).
+   */
   getPendingAsk(): PendingAskUi | null {
-    const ownAsk = toPendingAskUi(this._activeAsk);
-    if (ownAsk) return ownAsk;
-    for (const handle of this._childSessions.values()) {
-      const childAsk = handle.session?.getPendingAsk();
-      if (childAsk) return childAsk;
-    }
-    return null;
+    return getPendingAsk(this);
   }
 
   hasPendingTurnToResume(): boolean {
-    return this._pendingTurnState !== null;
+    return hasPendingTurnToResume(this);
   }
 
-  private _emitAskRequestedProgress(ask: AskRequest): void {
-    if (!this._progress) return;
-    this._progress.emit({
-      step: this._turnCount,
-      agent: ask.source.agentName || this.primaryAgent.name,
-      action: "ask_requested",
-      message: `  [ask] ${ask.summary}`,
-      level: "normal" as ProgressLevel,
-      timestamp: Date.now() / 1000,
-      usage: {},
-      extra: { ask: toPendingAskUi(ask) },
-    });
+  _emitAskRequestedProgress(ask: AskRequest): void {
+    emitAskRequestedProgress(this, ask);
   }
 
-  private _emitAskResolvedProgress(askId: string, decision: string, askKind?: string): void {
-    if (!this._progress) return;
-    this._progress.emit({
-      step: this._turnCount,
-      agent: this.primaryAgent.name,
-      action: "ask_resolved",
-      message: `  [ask] resolved: ${decision}`,
-      level: "normal" as ProgressLevel,
-      timestamp: Date.now() / 1000,
-      usage: {},
-      extra: { askId, decision, askKind },
-    });
+  _emitAskResolvedProgress(askId: string, decision: string, askKind?: string): void {
+    emitAskResolvedProgress(this, askId, decision, askKind);
   }
 
   /** Returns true if the path is strictly inside the session artifacts dir. */
-  private _isInsideArtifactsDir(rawPath: unknown): boolean {
-    if (typeof rawPath !== "string" || !rawPath) return false;
-    const artifactsDir = this._getArtifactsDirIfAvailable();
-    if (!artifactsDir) return false;
-    const absPath = isAbsolute(rawPath) ? rawPath : resolve(this._projectRoot, rawPath);
-    const rel = relative(artifactsDir, absPath);
-    if (!rel) return false; // exact match means writing the artifacts dir itself
-    if (rel.startsWith("..")) return false;
-    if (isAbsolute(rel)) return false;
-    return true;
+  /** Returns true if the path is strictly inside the session artifacts dir. */
+  _isInsideArtifactsDir(rawPath: unknown): boolean {
+    return isInsideArtifactsDir(this, rawPath);
   }
 
-  private _beforeToolExecute = async (
-    ctx: ToolPreflightContext,
-  ): Promise<ToolPreflightDecision | void> => {
-    // 0a. Artifacts-dir bypass: file tools (read/write/edit/list/glob/grep)
-    //    operating inside session artifacts/ don't need approval (agent-owned
-    //    scratch space). Bash is excluded —its cwd-tracking is a separate gate.
-    const ARTIFACTS_BYPASS_TOOLS = new Set([
-      "read_file", "write_file", "edit_file", "list_dir", "glob", "grep",
-    ]);
-    const skipPermissionGate =
-      ARTIFACTS_BYPASS_TOOLS.has(ctx.toolName) &&
-      this._isInsideArtifactsDir((ctx.toolArgs as Record<string, unknown>)["path"]);
-
-    // 1. Permission gate check (skip for artifacts-dir file ops)
-    if (!skipPermissionGate) {
-      const decision = await this.toolGate.evaluate(ctx);
-      switch (decision.kind) {
-        case "deny":
-          return { kind: "deny", message: decision.message };
-        case "ask": {
-          const options = decision.offers.map((o) => o.label);
-          options.push("Deny");
-
-          const BROAD_RULE_COMMANDS = new Set(["cp", "mv", "rm", "chmod", "chown"]);
-          const hasPersistent = decision.offers.some(o => o.type === "tool_pattern");
-          const pattern = decision.assessment.canonicalPattern ?? "";
-          const persistentWarning = hasPersistent && BROAD_RULE_COMMANDS.has(pattern)
-            ? `Persistent rules below will apply to ALL "${pattern}" commands, which may cause DANGER.`
-            : undefined;
-
-          const ask: ApprovalRequest = {
-            id: `approval-${randomUUID().slice(0, 8)}`,
-            kind: "approval",
-            createdAt: new Date().toISOString(),
-            source: { agentId: ctx.agentName },
-            summary: decision.question,
-            roundIndex: undefined,
-            payload: {
-              toolCallId: ctx.toolCallId,
-              toolName: ctx.toolName,
-              toolSummary: ctx.summary,
-              permissionClass: decision.assessment.permissionClass,
-              offers: decision.offers.map((o) => ({
-                type: o.type,
-                label: o.label,
-                scope: o.scope,
-                rule: o.rule as Record<string, unknown> | undefined,
-              })),
-              persistentWarning,
-            },
-            options,
-          };
-          return { kind: "ask", ask };
-        }
-      }
-    }
-
-    // 2. PreToolUse hooks (run after permission gate allows)
-    if (this.hookRuntime.hooks.length > 0) {
-      const hookPayload: HookPayload = {
-        event: "PreToolUse",
-        timestamp: Date.now(),
-        toolName: ctx.toolName,
-        toolArgs: ctx.toolArgs,
-        toolCallId: ctx.toolCallId,
-      };
-      const hookResult = await this.hookRuntime.evaluate("PreToolUse", hookPayload);
-      if (hookResult.decision === "deny") {
-        return { kind: "deny", message: hookResult.denyReason ?? "Denied by hook" };
-      }
-      // Apply updatedInput from hooks (merge into tool args)
-      if (hookResult.updatedInput) {
-        Object.assign(ctx.toolArgs, hookResult.updatedInput);
-      }
-    }
-
-    return undefined;
-  };
+  _beforeToolExecute = (ctx: ToolPreflightContext): Promise<ToolPreflightDecision | void> =>
+    beforeToolExecute(this, ctx);
 
 
   // ==================================================================
@@ -4213,7 +2767,7 @@ export class Session {
    * messages are always delivered, whichever entry point the UI used.
    * Caller must hold the turn lock and have cleared _pendingTurnState.
    */
-  private async _resumeActivationStage(options?: { signal?: AbortSignal }): Promise<string> {
+  async _resumeActivationStage(options?: { signal?: AbortSignal }): Promise<string> {
     // 恢复路径会绕过 _turnInner；同样保证 SessionStart 上下文只执行一次。
     await this._ensureSessionStartHooks();
     // The suspended turn never closed its work, so the previous turn's end
@@ -4233,7 +2787,7 @@ export class Session {
     }
   }
 
-  private async _resumeActivationStageInner(options?: { signal?: AbortSignal }): Promise<string> {
+  async _resumeActivationStageInner(options?: { signal?: AbortSignal }): Promise<string> {
     // Install the turn signal early so that _drainPendingToolCalls can
     // pass it to tool executors (e.g. client-side web_search).
     const turnSignalState = this._installCurrentTurnSignal(options?.signal);
@@ -4290,7 +2844,7 @@ export class Session {
    * scripts/bench-log-hotpaths.ts (Map insert/delete churn beats the
    * second pass's early exit).
    */
-  private _firstPendingToolCall(): { index: number; entry: LogEntry } | null {
+  _firstPendingToolCall(): { index: number; entry: LogEntry } | null {
     const windowStart = this._activeWindowStartIdx();
     const resultIds = new Set<string>();
     for (let index = windowStart; index < this._log.length; index += 1) {
@@ -4311,30 +2865,12 @@ export class Session {
     return null;
   }
 
-  private _findEarliestPendingToolCallLogIndex(): number {
-    return this._firstPendingToolCall()?.index ?? this._log.length;
+  _findEarliestPendingToolCallLogIndex(): number {
+    return findEarliestPendingToolCallLogIndex(this);
   }
 
-  private _finalizeDrainInterruptedWork(fromLogIndex: number): void {
-    this._handleInterruption(fromLogIndex, "", { activationCompleted: false });
-
-    for (let index = fromLogIndex; index < this._log.length; index += 1) {
-      const entry = this._log[index]!;
-      if (entry.type !== "tool_call") continue;
-      if (entry.turnIndex !== this._turnCount) continue;
-      const meta = entry.meta as Record<string, unknown>;
-      const execState = meta["toolExecState"];
-      if (execState === "running" || execState === "not_started") {
-        meta["toolExecState"] = "failed";
-      }
-    }
-
-    this._agentState = "idle";
-    this._activeLogEntryId = null;
-    this._setSelfPhase("idle");
-    if (!this._activeAsk && this._turnCount > 0) {
-      this._finishCurrentWork("interrupted", this._collectInterruptHints());
-    }
+  _finalizeDrainInterruptedWork(fromLogIndex: number): void {
+    finalizeDrainInterruptedWork(this, fromLogIndex);
   }
 
   /**
@@ -4347,183 +2883,18 @@ export class Session {
    * the streaming tool-loop —used after approval resume and to handle
    * orphan parallel tool_calls.
    */
-  private async _drainPendingToolCalls(signal?: AbortSignal): Promise<DrainPendingToolCallsResult> {
-    while (true) {
-      if (signal?.aborted) return { kind: "interrupted" };
-
-      const next = this._findNextPendingToolCall();
-      if (!next) return { kind: "drained" };
-
-      // Mark as running in tool_call meta so the display shows shimmer.
-      this._updateToolCallExecState(next.toolCallId, "running");
-
-      const ctx: ToolPreflightContext = {
-        agentName: next.agentName,
-        toolName: next.toolName,
-        toolArgs: next.toolArgs,
-        toolCallId: next.toolCallId,
-        summary: `${next.agentName} is calling ${next.toolName}`,
-      };
-
-      let denyMessage: string | undefined;
-      let allowOnce = false;
-      // Skip the permission gate if this tool_call was already approved
-      // (allow-once grant was set in resolveApprovalAsk before resume).
-      allowOnce = this._permissionAdvisor["_allowOnceGrants"].has(next.toolCallId);
-      if (!allowOnce) {
-        const decision = await this._beforeToolExecute(ctx);
-        if (signal?.aborted) {
-          this._updateToolCallExecState(next.toolCallId, "not_started");
-          return { kind: "interrupted" };
-        }
-        if (decision && decision.kind === "ask") {
-          const ask = decision.ask;
-          ask.turnIndex = next.turnIndex;
-          const askContextId = this._findToolCallContextId(next.toolCallId, next.roundIndex);
-          this._updateToolCallExecState(next.toolCallId, "not_started");
-          this._activeAsk = ask;
-          this._agentState = "waiting";
-          this._emitAskRequestedProgress(this._activeAsk);
-          this._appendEntry(createAskRequest(
-            this._nextLogId("ask_request"),
-            next.turnIndex,
-            this._activeAsk.payload,
-            this._activeAsk.id,
-            this._activeAsk.kind,
-            next.toolCallId,
-            next.roundIndex,
-            askContextId,
-          ), false);
-          this._pendingTurnState = { stage: "activation" };
-          this.onSaveRequest?.();
-          return { kind: "suspended", ask, toolCallId: next.toolCallId };
-        }
-        if (decision && decision.kind === "deny") {
-          denyMessage = decision.message;
-        }
-      } else {
-        // Gate already passed; still run hooks
-        if (this.hookRuntime.hooks.length > 0) {
-          const hookResult = await this.hookRuntime.evaluate("PreToolUse", {
-            event: "PreToolUse",
-            timestamp: Date.now(),
-            toolName: next.toolName,
-            toolArgs: next.toolArgs,
-            toolCallId: next.toolCallId,
-          });
-          if (signal?.aborted) {
-            this._updateToolCallExecState(next.toolCallId, "not_started");
-            return { kind: "interrupted" };
-          }
-          if (hookResult.decision === "deny") {
-            denyMessage = hookResult.denyReason ?? "Denied by hook";
-          } else if (hookResult.updatedInput) {
-            Object.assign(next.toolArgs, hookResult.updatedInput);
-          }
-        }
-      }
-
-      // Execute (or deny)
-      const contextId = this._findToolCallContextId(next.toolCallId, next.roundIndex)
-        ?? this._allocateContextId();
-      const execStartMs = Date.now();
-      let resultContent = "";
-      let isError = false;
-      let toolMetadata: Record<string, unknown> = {};
-
-      if (denyMessage) {
-        resultContent = `ERROR: ${denyMessage}`;
-        isError = true;
-      } else {
-        const executor = this._toolExecutors[next.toolName];
-        try {
-          if (signal?.aborted) {
-            this._updateToolCallExecState(next.toolCallId, "not_started");
-            return { kind: "interrupted" };
-          }
-          if (!executor) {
-            resultContent = `ERROR: No executor for tool '${next.toolName}'`;
-            isError = true;
-          } else {
-            const result = await executor(next.toolArgs, { signal });
-            // Keep toolExecState as "running" here —_completeMissingToolResultsFromLog
-            // uses it to distinguish "ran but interrupted" (partial effects) from "never ran".
-            if (signal?.aborted) return { kind: "interrupted" };
-            if (typeof result === "string") {
-              resultContent = result;
-            } else if (result instanceof ToolResult) {
-              resultContent = result.content;
-              toolMetadata = { ...result.metadata };
-              if (result.contentBlocks) {
-                toolMetadata._contentBlocks = result.contentBlocks;
-              }
-            } else {
-              resultContent = String(result);
-            }
-            isError = resultContent.startsWith("ERROR:");
-          }
-        } catch (e) {
-          if (signal?.aborted) {
-            return { kind: "interrupted" };
-          }
-          resultContent = `ERROR: ${e instanceof Error ? e.message : String(e)}`;
-          isError = true;
-        }
-      }
-
-      // Build preview (matches tool-loop's logic)
-      const previewSrc = toolMetadata["tui_preview"];
-      let previewText: string | undefined;
-      let previewDim: boolean | undefined;
-      if (previewSrc && typeof previewSrc === "object") {
-        const text = (previewSrc as Record<string, unknown>)["text"];
-        if (typeof text === "string" && text.trim()) {
-          previewText = text;
-          previewDim = (previewSrc as Record<string, unknown>)["dim"] === true ? true : undefined;
-        }
-      }
-      if (!previewText && !isError) {
-        const lines = resultContent.split("\n");
-        previewText = lines.length > 20
-          ? lines.slice(0, 20).join("\n") + `\n... (${lines.length - 20} more lines)`
-          : resultContent;
-        previewDim = true;
-      }
-
-      this._appendEntry(createToolResultEntry(
-        this._nextLogId("tool_result"),
-        next.turnIndex,
-        next.roundIndex,
-        {
-          toolCallId: next.toolCallId,
-          toolName: next.toolName,
-          content: resultContent,
-          toolSummary: `${next.toolName} ${isError ? "failed" : "completed"}`,
-        },
-        {
-          isError,
-          contextId,
-          toolMetadata: Object.keys(toolMetadata).length > 0 ? toolMetadata : undefined,
-          execStartMs,
-          previewText,
-          previewDim,
-        },
-      ));
-      this._updateToolCallExecState(next.toolCallId, isError ? "failed" : "completed");
-
-      if (this.hookRuntime.hooks.length > 0) {
-        const event = isError ? "PostToolUseFailure" : "PostToolUse";
-        this.hookRuntime.fireAndForget(event, {
-          event,
-          timestamp: Date.now(),
-          toolName: next.toolName,
-          toolCallId: next.toolCallId,
-          agentId: next.agentName,
-        });
-      }
-
-      this.onSaveRequest?.();
-    }
+  /**
+   * Drain pending tool_calls in the current turn (in emission order).
+   * For each: gate →execute →append tool_result, updating tool_call meta.
+   * Returns a structured result so approval suspension and interruption are
+   * not collapsed into the same empty-string resume path.
+   *
+   * This is the single canonical path for executing tool_calls outside of
+   * the streaming tool-loop —used after approval resume and to handle
+   * orphan parallel tool_calls.
+   */
+  async _drainPendingToolCalls(signal?: AbortSignal): Promise<DrainPendingToolCallsResult> {
+    return drainPendingToolCalls(this, signal);
   }
 
   /**
@@ -4532,7 +2903,13 @@ export class Session {
    * Window-wide rather than per-turn: an approved tool_call must execute on
    * resume even if the turn counter advanced while the ask was pending.
    */
-  private _findNextPendingToolCall(): {
+  /**
+   * Find the next pending tool_call in the active window (no matching result),
+   * in log/emission order. Returns null when all are resolved.
+   * Window-wide rather than per-turn: an approved tool_call must execute on
+   * resume even if the turn counter advanced while the ask was pending.
+   */
+  _findNextPendingToolCall(): {
     toolCallId: string;
     toolName: string;
     toolArgs: Record<string, unknown>;
@@ -4540,342 +2917,24 @@ export class Session {
     roundIndex: number;
     agentName: string;
   } | null {
-    const found = this._firstPendingToolCall();
-    if (!found) return null;
-    const entry = found.entry;
-    const meta = entry.meta as Record<string, unknown>;
-    const content = entry.content as { name?: string; arguments?: Record<string, unknown> };
-    return {
-      toolCallId: String(meta["toolCallId"] ?? ""),
-      toolName: String(content.name ?? meta["toolName"] ?? ""),
-      toolArgs: content.arguments ?? {},
-      turnIndex: entry.turnIndex,
-      roundIndex: entry.roundIndex ?? 0,
-      agentName: String(meta["agentName"] ?? this.primaryAgent.name),
-    };
+    return findNextPendingToolCall(this);
   }
 
   /** Update tool_call entry's toolExecState meta in-place. */
-  private _updateToolCallExecState(
+  /** Update tool_call entry's toolExecState meta in-place. */
+  _updateToolCallExecState(
     toolCallId: string,
     state: "not_started" | "running" | "completed" | "failed",
   ): void {
-    const entry = this._logStore.findToolCallByCallId(toolCallId);
-    if (!entry) return;
-    (entry.meta as Record<string, unknown>)["toolExecState"] = state;
-    this._touchLog();
+    updateToolCallExecState(this, toolCallId, state);
   }
 
-  private async _runTurnActivationLoop(
+  async _runTurnActivationLoop(
     signal: AbortSignal | undefined,
     textAccumulator: { text: string },
     reasoningAccumulator: { text: string },
   ): Promise<string> {
-    let finalText = "";
-    let turnEndStatus: "completed" | "interrupted" | "error" | null = null;
-    let loopError: string | null = null;
-    const turnSignalState = this._installCurrentTurnSignal(signal);
-    const activeSignal = turnSignalState.signal;
-    this._beginWorkIfNeeded();
-    this._emitTurnLifecycle({ phase: "started", turnIndex: this._turnCount });
-    try {
-      let reachedLimit = true;
-      for (let activationIdx = 0; activationIdx < MAX_ACTIVATIONS_PER_TURN; activationIdx++) {
-        if (activeSignal.aborted) break;
-
-        const t0 = performance.now();
-        const logLenBeforeActivation = this._log.length;
-        textAccumulator.text = "";
-        reasoningAccumulator.text = "";
-        this._agentState = "working";
-        this._setSelfPhase("thinking");
-
-        // Capture the turn index ONCE per activation. Every log entry produced
-        // by this activation (streamed/finalized reasoning + text, tool calls,
-        // ask, status) must share it. `this._turnCount` can advance mid-flight
-        // when a queued user message is drained into this same work lifecycle;
-        // reading it live would split a single provider round's reasoning from
-        // its tool_calls across two turn indices (see projectToApiMessages
-        // grouping), producing a degenerate assistant message.
-        const activationTurnIndex = this._turnCount;
-
-        if (this._progress) {
-          this._progress.onAgentStart(activationTurnIndex, this.primaryAgent.name);
-        }
-
-        let result: ToolLoopResult;
-        try {
-          result = await this._runActivation(activationTurnIndex, activeSignal, textAccumulator, reasoningAccumulator);
-        } catch (err: unknown) {
-          if (activeSignal.aborted) {
-            this._handleInterruption(logLenBeforeActivation, textAccumulator.text, {
-              activationCompleted: false,
-            });
-            this.onSaveRequest?.();
-            finalText = textAccumulator.text.trim() || "";
-            turnEndStatus = "interrupted";
-            reachedLimit = false;
-            break;
-          }
-
-          throw err;
-        }
-
-        // Check abort AFTER successful completion —handles providers that
-        // don't throw AbortError (stream finishes before abort takes effect).
-        if (activeSignal.aborted) {
-          this._handleInterruption(logLenBeforeActivation, textAccumulator.text, {
-            activationCompleted: true,
-          });
-          this.onSaveRequest?.();
-          finalText = textAccumulator.text.trim() || "";
-          turnEndStatus = "interrupted";
-          reachedLimit = false;
-          break;
-        }
-
-        if (Number.isFinite(result.lastInputTokens) && result.lastInputTokens > 0) {
-          this._lastInputTokens = result.lastInputTokens;
-          this._lastTotalTokens = result.lastTotalTokens ?? result.lastInputTokens;
-        }
-        if (result.suspendedAsk) {
-          result.suspendedAsk.ask.turnIndex = activationTurnIndex;
-          const askContextId =
-            this._findToolCallContextId(result.suspendedAsk.toolCallId, result.suspendedAsk.roundIndex);
-          this._activeAsk = result.suspendedAsk.ask;
-          this._emitAskRequestedProgress(this._activeAsk);
-          this._appendEntry(createAskRequest(
-            this._nextLogId("ask_request"),
-            activationTurnIndex,
-            this._activeAsk.payload,
-            this._activeAsk.id,
-            this._activeAsk.kind,
-            result.suspendedAsk.toolCallId,
-            result.suspendedAsk.roundIndex,
-            askContextId,
-          ), false);
-          this.onSaveRequest?.();
-          reachedLimit = false;
-          break;
-        }
-
-        const elapsed = (performance.now() - t0) / 1000;
-        let agentEndEmitted = false;
-
-        const emitAgentEndOnce = () => {
-          if (agentEndEmitted || !this._progress) return;
-          this._progress.onAgentEnd(
-            this._turnCount,
-            this.primaryAgent.name,
-            elapsed,
-            result.totalUsage as Record<string, number>,
-          );
-          agentEndEmitted = true;
-        };
-
-        const _trimmedText = result.text.trimEnd();
-        const _hasNoReply = isNoReply(result.text)
-          || _trimmedText.endsWith(NO_REPLY_MARKER)
-          || (!_trimmedText && result.toolHistory.length === 0);
-
-        if (_hasNoReply) {
-          // Strip the <NO_REPLY> marker (if present) —treat as empty response.
-          // Emit progress event so TUI can show a status message.
-          if (_trimmedText.endsWith(NO_REPLY_MARKER)) {
-            result.text = _trimmedText
-              .slice(0, _trimmedText.length - NO_REPLY_MARKER.length)
-              .trim();
-          }
-
-          if (this._progress) {
-            this._progress.onNoReplyClear(this.primaryAgent.name);
-          }
-          emitAgentEndOnce();
-          if (this._progress) {
-            this._progress.onAgentNoReply(this.primaryAgent.name);
-          }
-          // Fall through to normal response handling —turn ends naturally.
-        }
-
-        if (result.text) {
-          finalText = result.text;
-
-          // v2 log: create final assistant_text + optional reasoning entries
-          {
-            const finalRound = (result.textHandledInLog || result.reasoningHandledInLog)
-              ? Math.max(0, this._computeNextRoundIndex(activationTurnIndex) - 1)
-              : this._computeNextRoundIndex(activationTurnIndex);
-            const finalContextId = this._resolveOutputRoundContextId(activationTurnIndex, finalRound);
-            if (result.textHandledInLog || result.reasoningHandledInLog) {
-              this._retagRoundEntries(activationTurnIndex, finalRound, finalContextId);
-            }
-            if (result.reasoningContent && !result.reasoningHandledInLog) {
-              this._appendEntry(createReasoning(
-                this._nextLogId("reasoning"),
-                activationTurnIndex,
-                finalRound,
-                result.reasoningContent,
-                result.reasoningContent,
-                result.reasoningState,
-                finalContextId,
-                result.thinkingArtifact ?? null,
-              ), false);
-            }
-            if (!result.textHandledInLog) {
-              const displayText = stripContextTags(result.text);
-              this._appendEntry(createAssistantText(
-                this._nextLogId("assistant_text"),
-                activationTurnIndex,
-                finalRound,
-                displayText,
-                stripContextTags(result.text),
-                finalContextId,
-              ), false);
-            }
-          }
-        }
-
-        emitAgentEndOnce();
-        this.onSaveRequest?.();
-
-        if (result.compactNeeded && result.compactScenario) {
-          if (this._hasInboxMessages()) {
-            this._drainInboxAsEntries();
-          }
-          const logLenBefore = this._log.length;
-          try {
-            await this._doAutoCompact(result.compactScenario!, activeSignal);
-          } catch (compactErr) {
-            this._discardCompactAttemptEntries(logLenBefore);
-            if (activeSignal.aborted || this._isCompactAbortError(compactErr)) {
-              this._appendInterruptionSystemMessage([], true);
-              this._recordSessionEvent("interrupted by user");
-              this.onSaveRequest?.();
-              finalText = textAccumulator.text.trim() || "";
-              turnEndStatus = "interrupted";
-              reachedLimit = false;
-              break;
-            }
-            throw compactErr;
-          }
-          // Messages held back during compact (Q6) land after the marker.
-          if (this._hasInboxMessages()) {
-            this._drainInboxAsEntries();
-          }
-          this.onSaveRequest?.();
-          // Always continue after compact —fresh context, reset activation budget.
-          activationIdx = -1;
-          continue;
-        }
-
-        // Messages typed while the assistant was producing a final text reply
-        // become the next model input in the same work lifecycle.
-        if (this._hasInboxMessages()) {
-          this._drainInboxAsEntries();
-          continue;
-        }
-
-        // Final output (no tool calls in the last provider call) →turn ends.
-        // Sub-agent results are processed via auto-resume in a new turn.
-        // Model should use await_event explicitly to wait for sub-agents.
-        // Note: toolHistory.length is cumulative across all rounds in the tool
-        // loop, so it can be > 0 even when the last call had no tool_calls.
-        if (result.endedWithoutToolCalls) {
-          reachedLimit = false;
-          turnEndStatus = "completed";
-          break;
-        }
-        // No explicit boundary drain here —the earlier drain check (above)
-        // already handles inbox messages before this break decision.
-      }
-
-      if (reachedLimit && !activeSignal.aborted) {
-        console.warn(`Turn reached activation limit (${MAX_ACTIVATIONS_PER_TURN})`);
-        if (!finalText) {
-          finalText =
-            "[Turn terminated: reached maximum activation limit " +
-            "without producing output. This may indicate a stuck loop.]";
-        }
-        turnEndStatus = "error";
-      }
-    } catch (err) {
-      // Non-abort errors escaping the loop (provider failures, mid-turn
-      // compact, drain) end the turn as "error". The visible error log entry
-      // is written exactly once per escape path by the entry-point catches
-      // (_turnInner / _resumeActivationStage).
-      const aborted = activeSignal.aborted;
-      if (!aborted) {
-        loopError = err instanceof Error ? err.message : String(err);
-        turnEndStatus = "error";
-      }
-      throw err;
-    } finally {
-      this._restoreCurrentTurnSignal(turnSignalState);
-      if (turnEndStatus === "interrupted" && this._hasActiveAgents()) {
-        await this._waitForAllChildTurnsSettled();
-      }
-      // Never infer success from an incomplete state machine. A provider or
-      // executor may finish without throwing (for example, a stream can end
-      // unexpectedly), leaving no explicit terminal status. Treat that path
-      // as an error unless the signal was deliberately aborted.
-      if (!this._activeAsk && turnEndStatus === null) {
-        if (activeSignal.aborted) {
-          turnEndStatus = "interrupted";
-        } else {
-          turnEndStatus = "error";
-          loopError ??= "Turn ended without a terminal status.";
-          this._recordTurnErrorEntry(loopError);
-        }
-      }
-      // A suspended ask keeps the session in "waiting" (Q1): the turn has not
-      // ended, it is parked on the user's answer. Input arriving now must
-      // queue without advancing the turn counter.
-      this._agentState = this._activeAsk ? "waiting" : "idle";
-      // Finalize tool_call entries stuck in non-terminal state (e.g. abort during await_event).
-      // Scan backward: only the current round's tool_calls can be affected; stop at the first
-      // non-tool_call entry after seeing at least one tool_call (entries are interleaved with
-      // tool_result, token_update, etc. so we skip those).
-      {
-        let sawToolCall = false;
-        for (let i = this._log.length - 1; i >= 0; i--) {
-          const entry = this._log[i];
-          if (entry.type !== "tool_call") {
-            if (sawToolCall) break;
-            continue;
-          }
-          sawToolCall = true;
-          const execState = (entry.meta as Record<string, unknown>)["toolExecState"];
-          if (execState === "running" || execState === "not_started") {
-            (entry.meta as Record<string, unknown>)["toolExecState"] = "failed";
-          }
-        }
-      }
-      this._activeLogEntryId = null;
-      this._setSelfPhase("idle");
-      if (!this._activeAsk && this._turnCount > 0 && turnEndStatus) {
-        let interruptHints: string[] | undefined;
-        if (turnEndStatus === "interrupted") {
-          interruptHints = this._collectInterruptHints();
-        }
-        this._finishCurrentWork(turnEndStatus, interruptHints);
-      }
-      // If the finally drain wrote messages to the log without the model
-      // seeing them, schedule an auto-resume turn to process them.
-      if (!this._activeAsk && this._hasUnprocessedUserMessage()) {
-        this._scheduleAutoResume();
-      }
-      this._lifecycleEndedEmitted = true;
-      this._emitTurnLifecycle({
-        phase: "ended",
-        turnIndex: this._turnCount,
-        status: this._activeAsk
-          ? "waiting"
-          : turnEndStatus ?? "error",
-        ...(loopError !== null && !this._activeAsk ? { error: loopError } : {}),
-      });
-    }
-
-    return finalText;
+    return runTurnActivationLoop(this, signal, textAccumulator, reasoningAccumulator);
   }
 
   async turn(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
@@ -4903,7 +2962,7 @@ export class Session {
    * 返回的 additionalContext 会进入本轮 ephemeral 尾巴，而不是永久 system。
    * 每个 hook 仍受自身 timeoutMs 约束，因此不会无限阻塞首个 turn。
    */
-  private async _ensureSessionStartHooks(): Promise<void> {
+  async _ensureSessionStartHooks(): Promise<void> {
     this._sessionStartHooksPromise ??= (async () => {
       if (!this.hookRuntime.hooks.some((hook) => hook.event === "SessionStart")) return;
       await this.hookRuntime.evaluate("SessionStart", {
@@ -4915,7 +2974,7 @@ export class Session {
   }
 
   /** Inner turn logic, called from within the turn lock. */
-  private async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
+  async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
     // A pending ask owns the conversation: the turn cannot run until the user
     // answers. New input is queued (Q5) and delivered when work resumes —    // never dropped, never run into the suspended round's bookkeeping.
     if (this._activeAsk) {
@@ -5094,12 +3153,9 @@ export class Session {
   }
 
   /** True when the error is a user interrupt rather than a real failure. */
-  private _isTurnAbortError(err: unknown, signal?: AbortSignal): boolean {
-    // Error names are provider/library conventions and are not proof of a
-    // user interrupt. Only the session's active signal identifies an actual
-    // cancellation; a bare AbortError from a broken network stream is a turn
-    // failure and must be surfaced as error.
-    return signal?.aborted === true || this._isCompactAbortError(err);
+  /** True when the error is a user interrupt rather than a real failure. */
+  _isTurnAbortError(err: unknown, signal?: AbortSignal): boolean {
+    return isTurnAbortError(this, err, signal);
   }
 
   /**
@@ -5107,7 +3163,7 @@ export class Session {
    * provider may also throw an AbortError, but without this marker it is a
    * transport failure and must remain visible as an error.
    */
-  private _isCompactAbortError(err: unknown): boolean {
+  _isCompactAbortError(err: unknown): boolean {
     return (err as { name?: unknown })?.name === "AbortError"
       && (err as { message?: unknown })?.message === "Compact phase aborted.";
   }
@@ -5116,13 +3172,13 @@ export class Session {
   // log entry; reset on every lock acquisition. Multiple catch layers
   // (entry-point wrappers, resume stage, manual context commands) can then
   // call _recordTurnErrorEntry without double-writing.
-  private _turnErrorEntryWritten = false;
+  _turnErrorEntryWritten = false;
 
   // Whether the current turn-lock execution emitted a lifecycle "ended"
   // event (set by _runTurnActivationLoop's finally). Failure paths that die
   // before the activation loop use this to emit the missing ended(error)
   // exactly once. Reset on every lock acquisition.
-  private _lifecycleEndedEmitted = false;
+  _lifecycleEndedEmitted = false;
 
   /**
    * Write the user-visible error log entry for a failed turn —at most once
@@ -5131,12 +3187,15 @@ export class Session {
    * the TUI's catch wrote this entry, which left server-mode UIs blind to
    * turn errors.)
    */
-  private _recordTurnErrorEntry(err: unknown, signal?: AbortSignal): void {
-    if (this._turnErrorEntryWritten) return;
-    if (this._isTurnAbortError(err, signal)) return;
-    if (this._activeAsk) return;
-    this._turnErrorEntryWritten = true;
-    this.appendErrorMessage(err instanceof Error ? err.message : String(err), "turn");
+  /**
+   * Write the user-visible error log entry for a failed turn —at most once
+   * per turn-lock execution, and never for user interrupts. The runtime owns
+   * error visibility: all UIs see the entry via log projection. (Historically
+   * the TUI's catch wrote this entry, which left server-mode UIs blind to
+   * turn errors.)
+   */
+  _recordTurnErrorEntry(err: unknown, signal?: AbortSignal): void {
+    recordTurnErrorEntry(this, err, signal);
   }
 
   /**
@@ -5147,18 +3206,16 @@ export class Session {
    * validation). Both halves are idempotent per lock execution, so every
    * catch layer can call this unconditionally.
    */
-  private _recordTurnFailure(err: unknown, signal?: AbortSignal): void {
-    this._recordTurnErrorEntry(err, signal);
-    if (this._lifecycleEndedEmitted) return;
-    if (this._isTurnAbortError(err, signal)) return;
-    if (this._activeAsk) return;
-    this._lifecycleEndedEmitted = true;
-    this._emitTurnLifecycle({
-      phase: "ended",
-      turnIndex: this._turnCount,
-      status: "error",
-      error: err instanceof Error ? err.message : String(err),
-    });
+  /**
+   * Full failure surface for a turn that died anywhere inside (or just
+   * outside) the turn lock: error log entry + a lifecycle ended(error) event
+   * if the activation loop never got to emit one (pre-loop failures:
+   * storage, MCP, attachments, before-turn compact, manual-command
+   * validation). Both halves are idempotent per lock execution, so every
+   * catch layer can call this unconditionally.
+   */
+  _recordTurnFailure(err: unknown, signal?: AbortSignal): void {
+    recordTurnFailure(this, err, signal);
   }
 
   /**
@@ -5172,114 +3229,38 @@ export class Session {
    *   system-message explaining their absence from the API context
    * - Inject a single user-role system-message about the interruption
    */
-  private _handleInterruption(
+  /**
+   * Handle interruption using structured log (v2).
+   *
+   * Rules:
+   * - Keep completed reasoning, drop incomplete reasoning of the currently interrupted round
+   * - Materialize partial streamed text as assistant_text
+   * - For each complete tool_call lacking result, append contextual tool_result
+   * - For partial (unclosed) tool_calls visible only in TUI, append a user-role
+   *   system-message explaining their absence from the API context
+   * - Inject a single user-role system-message about the interruption
+   */
+  _handleInterruption(
     logLenBefore: number,
     accumulatedText: string,
     opts?: { activationCompleted?: boolean },
   ): void {
-    const activationCompleted = opts?.activationCompleted ?? false;
-
-    this._activeAsk = null;
-    this._pendingTurnState = null;
-    this._activeLogEntryId = null;
-    if (!activationCompleted) {
-      discardInterruptedRoundReasoningInLog(this._log, logLenBefore, this._turnCount);
-    }
-
-    // Materialize any unsaved partial text from mid-activation streaming.
-    let hasAssistantInActivation = false;
-    for (let i = logLenBefore; i < this._log.length; i++) {
-      if (this._log[i].type === "assistant_text" && !this._log[i].discarded) {
-        hasAssistantInActivation = true;
-      }
-    }
-    if (!activationCompleted && !hasAssistantInActivation) {
-      const partialText = stripContextTags(accumulatedText).trim();
-      if (partialText) {
-        const partialContextId = this._allocateContextId();
-        this._appendEntry(createAssistantText(
-          this._nextLogId("assistant_text"),
-          this._turnCount,
-          this._computeNextRoundIndex(),
-          partialText,
-          partialText,
-          partialContextId,
-        ), false);
-      }
-    }
-
-    // Generate contextual tool_results for closed tool_calls without results.
-    this._completeMissingToolResultsFromLog(logLenBefore);
-
-    // Collect names of partial (unclosed) tool_calls —visible in TUI but
-    // invisible in API context (apiRole=null). Agent needs to know about them.
-    const partialToolNames: string[] = [];
-    for (let i = logLenBefore; i < this._log.length; i++) {
-      const e = this._log[i];
-      if (e.type === "tool_call" && e.apiRole === null && !e.discarded) {
-        const name = (e.meta as Record<string, unknown>)["toolName"];
-        if (typeof name === "string") partialToolNames.push(name);
-      }
-    }
-
-    // Build the interruption system-message (user role).
-    this._recordSessionEvent("interrupted by user");
-    const compactWasInterrupted = this._compactInProgress;
-    this._appendInterruptionSystemMessage(partialToolNames, compactWasInterrupted);
+    handleInterruption(this, logLenBefore, accumulatedText, opts);
   }
 
   /**
    * Scan the current turn's log entries to collect human-readable interrupt hints.
    * Called after _handleInterruption, before writing turn_end.
    */
-  private _collectInterruptHints(): string[] {
-    const hints: string[] = [];
-    const turnIdx = this._turnCount;
-    let hasDiscardedReasoning = false;
-    let hasPartialEffects = false;
-    let hasIncompleteArgs = false;
-
-    for (const e of this._log) {
-      if (e.turnIndex !== turnIdx) continue;
-      if (e.type === "reasoning" && e.discarded) {
-        hasDiscardedReasoning = true;
-      }
-      if (e.type === "tool_call" && e.apiRole === null && !e.discarded) {
-        hasIncompleteArgs = true;
-      }
-      if (e.type === "tool_result") {
-        const interrupt = (e.meta as Record<string, unknown>)["interrupt"] as Record<string, unknown> | undefined;
-        if (interrupt?.["partialEffectsPossible"] === true) {
-          hasPartialEffects = true;
-        }
-        if (interrupt?.["incompleteArguments"] === true) {
-          hasIncompleteArgs = true;
-        }
-      }
-      // Legacy string matching for log entries created before structured interrupt metadata.
-      if (e.type === "tool_result" && typeof e.display === "string") {
-        if (e.display.includes("may have had partial effects")) {
-          hasPartialEffects = true;
-        }
-        if (e.display.includes("Incomplete arguments")) {
-          hasIncompleteArgs = true;
-        }
-      }
-    }
-
-    if (hasDiscardedReasoning) {
-      hints.push("Thinking was discarded and not transmitted to the model.");
-    }
-    if (hasPartialEffects) {
-      hints.push("Some tools may have had partial effects.");
-    }
-    if (hasIncompleteArgs) {
-      hints.push("Some tools had incomplete arguments and were not executed.");
-    }
-    return hints;
+  /**
+   * Scan the current turn's log entries to collect human-readable interrupt hints.
+   * Called after _handleInterruption, before writing turn_end.
+   */
+  _collectInterruptHints(): string[] {
+    return collectInterruptHints(this);
   }
 
-  private _completeMissingToolResultsFromLog(fromIdx: number): void {
+  _completeMissingToolResultsFromLog(fromIdx: number): void {
     completeMissingToolResultsInLog(this._logSurgeryView(), fromIdx);
   }
 
@@ -5287,458 +3268,14 @@ export class Session {
   // Activation
   // ==================================================================
 
-  private async _runActivation(
+  async _runActivation(
     activationTurnIndex: number,
     signal?: AbortSignal,
     textAccumulator?: { text: string },
     reasoningAccumulator?: { text: string },
     suppressStreaming?: boolean,
   ): Promise<ToolLoopResult> {
-    const baseRoundIndex = this._computeNextRoundIndex(activationTurnIndex);
-    const streamedAssistantEntries = new Map<number, LogEntry>();
-    const streamedReasoningEntries = new Map<number, LogEntry>();
-    const textBuffers = new Map<number, NoReplyStreamBuffer>();
-    const roundContextIds = new Map<number, string>();
-    const getRoundContextId = (roundIndex: number): string => {
-      let contextId = roundContextIds.get(roundIndex);
-      if (!contextId) {
-        contextId = this._allocateContextId();
-        roundContextIds.set(roundIndex, contextId);
-      }
-      return contextId;
-    };
-
-    let onTextChunk: ((roundIndex: number, chunk: string) => boolean | void) | undefined;
-    let onReasoningChunk: ((roundIndex: number, chunk: string) => boolean | void) | undefined;
-
-    if (suppressStreaming) {
-      // During compact phase: accumulate text but don't stream to TUI
-      if (textAccumulator) {
-        const stripBuf = new ContextTagStripBuffer((chunk: string) => {
-          textAccumulator.text += chunk;
-        });
-        const buf = new NoReplyStreamBuffer((chunk: string) => stripBuf.feed(chunk));
-        onTextChunk = (_roundIndex: number, chunk: string) => {
-          buf.feed(chunk);
-          return false;
-        };
-      }
-      if (reasoningAccumulator) {
-        onReasoningChunk = (_roundIndex: number, chunk: string) => {
-          reasoningAccumulator.text += chunk;
-          return false;
-        };
-      }
-    } else {
-      const agentName = this.primaryAgent.name;
-      const progress = this._progress;
-
-      // Track the last chunk kind per round so that when the provider
-      // interleaves reasoning and text items (e.g. Responses API),
-      // each contiguous segment gets its own LogEntry instead of being
-      // merged into a single sticky entry at the first-chunk position.
-      let lastStreamKind: "reasoning" | "text" | null = null;
-      let lastStreamRound = -1;
-
-      onTextChunk = (roundIndex: number, chunk: string) => {
-        // If switching from reasoning →text in same round, start fresh buffers + entry
-        if (lastStreamRound === roundIndex && lastStreamKind === "reasoning") {
-          streamedAssistantEntries.delete(roundIndex);
-          textBuffers.delete(roundIndex);
-        }
-        lastStreamKind = "text";
-        lastStreamRound = roundIndex;
-
-        let roundBuffer = textBuffers.get(roundIndex);
-        if (!roundBuffer) {
-          const stripBuf = new ContextTagStripBuffer((cleanChunk: string) => {
-            if (textAccumulator) textAccumulator.text += cleanChunk;
-            if (progress) progress.onTextChunk(agentName, cleanChunk);
-            this._setSelfPhase("generating");
-
-            const entry = streamedAssistantEntries.get(roundIndex);
-            if (!entry) {
-              const nextEntry = createAssistantText(
-                this._nextLogId("assistant_text"),
-                activationTurnIndex,
-                roundIndex,
-                cleanChunk,
-                cleanChunk,
-                getRoundContextId(roundIndex),
-              );
-              this._appendEntry(nextEntry, false);
-              streamedAssistantEntries.set(roundIndex, nextEntry);
-              this._setActiveLogEntry(nextEntry.id);
-            } else {
-              entry.display += cleanChunk;
-              entry.content = String(entry.content ?? "") + cleanChunk;
-              if (this._activeLogEntryId !== entry.id) {
-                this._setActiveLogEntry(entry.id);
-              } else {
-                this._touchLog();
-              }
-            }
-          });
-          roundBuffer = new NoReplyStreamBuffer((cleanChunk: string) => stripBuf.feed(cleanChunk));
-          textBuffers.set(roundIndex, roundBuffer);
-        }
-        roundBuffer.feed(chunk);
-        // Check if the streaming callback actually created/updated a log entry
-        return streamedAssistantEntries.has(roundIndex);
-      };
-
-      onReasoningChunk = (roundIndex: number, chunk: string) => {
-        if (reasoningAccumulator) reasoningAccumulator.text += chunk;
-        if (progress) progress.onReasoningChunk(agentName, chunk);
-        this._setSelfPhase("thinking");
-
-        // If switching from text →reasoning in same round, start a new reasoning entry
-        if (lastStreamRound === roundIndex && lastStreamKind === "text") {
-          streamedReasoningEntries.delete(roundIndex);
-        }
-        lastStreamKind = "reasoning";
-        lastStreamRound = roundIndex;
-
-        const entry = streamedReasoningEntries.get(roundIndex);
-        if (!entry) {
-          const nextEntry = createReasoning(
-            this._nextLogId("reasoning"),
-            activationTurnIndex,
-            roundIndex,
-            chunk,
-            chunk,
-            undefined,
-            getRoundContextId(roundIndex),
-          );
-          this._appendEntry(nextEntry, false);
-          streamedReasoningEntries.set(roundIndex, nextEntry);
-          this._setActiveLogEntry(nextEntry.id);
-        } else {
-          entry.display += chunk;
-          entry.content = String(entry.content ?? "") + chunk;
-          // Keep active tracker pointing to this reasoning entry
-          if (this._activeLogEntryId !== entry.id) {
-            this._setActiveLogEntry(entry.id);
-          } else {
-            this._touchLog();
-          }
-        }
-        return true;
-      };
-    }
-
-    // Mark reasoning entry as complete when the provider finishes streaming reasoning
-    const onReasoningDone = (
-      roundIndex: number,
-      thinkingArtifact?: import("./lib/thinking-artifact.js").ThinkingArtifact | null,
-      reasoningState?: unknown,
-    ) => {
-      const entry = streamedReasoningEntries.get(roundIndex);
-      if (entry) {
-        (entry.meta as Record<string, unknown>).reasoningComplete = true;
-        if (reasoningState !== undefined) {
-          (entry.meta as Record<string, unknown>).reasoningState = reasoningState;
-        }
-        if (thinkingArtifact) {
-          (entry.meta as Record<string, unknown>).thinkingArtifact = thinkingArtifact;
-        }
-        if (this._activeLogEntryId === entry.id) {
-          this._activeLogEntryId = null;
-        }
-        this._touchLog();
-      }
-    };
-
-    let onToolCall: ((name: string, tool: string, args: Record<string, unknown>, summary: string) => void) | undefined;
-    if (this._progress) {
-      const step = this._turnCount;
-      const progress = this._progress;
-
-      onToolCall = (name: string, tool: string, args: Record<string, unknown>, summary: string) => {
-        progress.onToolCall(step, name, tool, args, summary);
-      };
-    }
-    const origOnToolCall = onToolCall;
-    onToolCall = (name: string, tool: string, args: Record<string, unknown>, summary: string) => {
-      origOnToolCall?.(name, tool, args, summary);
-      this._setSelfPhase("tool_calling");
-      this._lifetimeToolCallCount += 1;
-      this._lastToolCallSummary = summary;
-      this._recordSessionEvent(summary);
-    };
-
-    const onToolResult = (name: string, tool: string, toolCallId: string, isError: boolean, summary: string) => {
-      if (this._progress) {
-        this._progress.onToolResult(this._turnCount, name, tool, toolCallId, isError, summary);
-      }
-      // Fire PostToolUse / PostToolUseFailure hooks
-      if (this.hookRuntime.hooks.length > 0) {
-        const event = isError ? "PostToolUseFailure" : "PostToolUse";
-        this.hookRuntime.fireAndForget(event, {
-          event,
-          timestamp: Date.now(),
-          toolName: tool,
-          toolCallId,
-          agentId: name,
-        });
-      }
-    };
-
-    // Streaming tool call callbacks —set active entry for early display
-    const onToolCallPartialCb = (_callId: string, _name: string, _rawArguments: string) => {
-      // Active entry tracking happens in tool-loop via appendEntry →_appendEntry;
-      // we find the just-appended pending tool_call entry and mark it active
-      const lastEntry = this._log[this._log.length - 1];
-      if (lastEntry && lastEntry.type === "tool_call") {
-        this._setActiveLogEntry(lastEntry.id);
-      }
-    };
-
-    // Token update callback: update _lastInputTokens after each provider call
-    // so the TUI can display real-time context usage.
-    const onTokenUpdate = (inputTokens: number, usage?: import("./providers/base.js").Usage) => {
-      if (!Number.isFinite(inputTokens) || inputTokens <= 0) return;
-      this._lastInputTokens = inputTokens;
-      this._lastTotalTokens = usage?.totalTokens ?? inputTokens;
-      this._lastCacheReadTokens = usage?.cacheReadTokens ?? 0;
-      this._cacheSupported = usage?.cacheSupported ?? false;
-      // Cumulative stats are derived from the token_update entry appended below
-      // (see _computeUsageStats), so there is nothing to accumulate here.
-      this._appendEntry(
-        createTokenUpdate(
-          this._nextLogId("token_update"),
-          activationTurnIndex,
-          inputTokens,
-          usage?.cacheReadTokens,
-          usage?.cacheCreationTokens,
-          usage?.totalTokens,
-          usage?.cacheSupported,
-        ),
-        false,
-      );
-      if (this._progress) {
-        const extra: Record<string, unknown> = { input_tokens: inputTokens };
-        if (usage) {
-          extra["total_tokens"] = usage.totalTokens;
-          if (usage.cacheReadTokens > 0) extra["cache_read_tokens"] = usage.cacheReadTokens;
-          if (usage.cacheCreationTokens > 0) extra["cache_creation_tokens"] = usage.cacheCreationTokens;
-        }
-        this._progress.emit({
-          step: this._turnCount,
-          agent: this.primaryAgent.name,
-          action: "token_update",
-          message: "",
-          level: "quiet" as ProgressLevel,
-          timestamp: Date.now() / 1000,
-          usage: { input_tokens: inputTokens },
-          extra,
-        });
-      }
-    };
-
-    const agentName = this.primaryAgent.name;
-    const emitRetryAttempt = (
-      attempt: number,
-      max: number,
-      delaySec: number,
-      errMsg: string,
-      kind: "network" | "incomplete" = "network",
-    ) => {
-      const label = kind === "incomplete" ? "Response retry" : "Network retry";
-      if (!this._compactInProgress) {
-        const entry = createStatus(
-          this._nextLogId("status"),
-          activationTurnIndex,
-          `[${label} ${attempt}/${max}] waiting ${delaySec}s: ${errMsg}`,
-          "retry_attempt",
-        );
-        // 未完成回合的重试是异常事件，应该出现在对话记录里；网络重试仍只占状态栏。
-        if (kind !== "incomplete") {
-          entry.tuiVisible = false;
-          entry.displayKind = null;
-        }
-        this._appendEntry(entry, false);
-      }
-      this._progress?.onRetryAttempt(agentName, attempt, max, delaySec, errMsg, kind);
-    };
-    const emitRetrySuccess = (attempt: number) => {
-      if (!this._compactInProgress) {
-        // 成功恢复后直接回到 Working，成功提示不占用对话记录。
-        const entry = createStatus(
-          this._nextLogId("status"),
-          activationTurnIndex,
-          "[Retry succeeded] attempt " + attempt,
-          "retry_success",
-        );
-        entry.tuiVisible = false;
-        entry.displayKind = null;
-        this._appendEntry(entry, false);
-      }
-      this._progress?.onRetrySuccess(agentName, attempt);
-    };
-    const emitRetryExhausted = (
-      max: number,
-      errMsg: string,
-      kind: "network" | "incomplete" = "network",
-    ) => {
-      const label = kind === "incomplete" ? "Response retry exhausted" : "Network retry exhausted";
-      if (!this._compactInProgress) {
-        this._appendEntry(
-          createErrorEntry(
-            this._nextLogId("error"),
-            activationTurnIndex,
-            `[${label} after ${max} attempts] ${errMsg}`,
-            "retry_exhausted",
-          ),
-          false,
-        );
-      }
-      this._progress?.onRetryExhausted(agentName, max, errMsg, kind);
-    };
-
-    // v2: callback-based message management
-    // getMessages projects from _log via projectToApiMessages.
-    const getMessages = (): Array<Record<string, unknown>> => {
-      return projectToApiMessages(this._log, {
-        systemPrompt: this._getSystemPrompt(),
-        ephemeralTail: this.hookRuntime.getAdditionalContext() ?? undefined,
-        resolveImageRef: (refPath) => this._resolveImageRef(refPath),
-        requiresAlternatingRoles: (this.primaryAgent as any)._provider?.requiresAlternatingRoles,
-        enforceToolCallProtocol: true,
-      });
-    };
-
-    const appendEntry = (entry: LogEntry): void => {
-      if (this._compactInProgress) {
-        entry.tuiVisible = false;
-        entry.displayKind = null;
-        (entry.meta as Record<string, unknown>)["compactPhase"] = true;
-      }
-      this._appendEntry(entry, false);
-      if (
-        entry.type === "tool_call"
-        && entry.tuiVisible
-        && !this._compactInProgress
-        && entry.meta["toolExecState"] !== "completed"
-        && entry.meta["toolExecState"] !== "failed"
-        && (entry.meta["toolExecState"] === "running"
-          || entry.meta["toolExecState"] === "not_started"
-          || entry.meta["toolStreamState"] === "partial"
-          || entry.meta["toolStreamState"] === "closed")
-      ) {
-        this._setActiveLogEntry(entry.id);
-      }
-    };
-
-    const allocId = (type: LogEntry["type"]): string => {
-      return this._nextLogId(type);
-    };
-
-    /** Update an existing log entry in-place (for finalizing pending tool call entries). */
-    const updateEntryFn = (entryId: string, patch: {
-      apiRole?: LogEntry["apiRole"];
-      content?: unknown;
-      display?: string;
-      tuiVisible?: boolean;
-      displayKind?: LogEntry["displayKind"];
-      meta?: Record<string, unknown>;
-    }): void => {
-      // Contract: the elapsed-pairing memo in log-projection folds each
-      // entry once —timestamp, meta.toolCallId and meta.execStartMs are
-      // fixed at append time and must not be patched here.
-      const entry = this._logStore.findEntryById(entryId);
-      if (!entry) return;
-      if (patch.apiRole !== undefined) entry.apiRole = patch.apiRole;
-      if (patch.content !== undefined) entry.content = patch.content;
-      if (patch.display !== undefined) entry.display = patch.display;
-      if (patch.tuiVisible !== undefined) entry.tuiVisible = patch.tuiVisible;
-      if (patch.displayKind !== undefined) entry.displayKind = patch.displayKind;
-      if (patch.meta !== undefined) entry.meta = patch.meta;
-      if (entry.type === "tool_call" && !entry.tuiVisible) {
-        if (this._activeLogEntryId === entry.id) {
-          this._setActiveLogEntry(null);
-        } else {
-          this._touchLog();
-        }
-        return;
-      }
-      if (entry.type === "tool_call" && patch.meta) {
-        const execState = patch.meta["toolExecState"];
-        const streamState = patch.meta["toolStreamState"];
-        // Check completion first —exec finished takes priority over stream state
-        if (execState === "completed" || execState === "failed") {
-          if (this._activeLogEntryId === entry.id) {
-            this._setActiveLogEntry(null);
-          } else {
-            this._touchLog();
-          }
-          return;
-        }
-        if (
-          execState === "running"
-          || execState === "not_started"
-          || streamState === "partial"
-          || streamState === "closed"
-        ) {
-          if (this._activeLogEntryId !== entry.id) {
-            this._setActiveLogEntry(entry.id);
-          } else {
-            this._touchLog();
-          }
-          return;
-        }
-      }
-      this._touchLog();
-    };
-
-    /** Mark a log entry as discarded (for cleanup on retry). */
-    const discardEntryFn = (entryId: string): void => {
-      const entry = this._logStore.findEntryById(entryId);
-      if (!entry) return;
-      entry.discarded = true;
-      entry.tuiVisible = false;
-      this._touchLog();
-    };
-
-    return this.primaryAgent.asyncRunWithMessages({
-      getMessages,
-      appendEntry,
-      allocId,
-      turnIndex: activationTurnIndex,
-      baseRoundIndex,
-      toolExecutors: this._toolExecutors,
-      onToolCall,
-      onToolResult,
-      onTextChunk,
-      onReasoningChunk,
-      onReasoningDone,
-      signal,
-      contextIdAllocator: (roundIndex) => getRoundContextId(roundIndex),
-      toolContextIdAllocator: () => this._allocateContextId(),
-      compactCheck: this._buildCompactCheck(),
-      onTokenUpdate,
-      onProviderResponse: () => this.hookRuntime.clearNextRoundContext(),
-      thinkingLevel: this._thinkingLevel,
-      promptCacheKey: this._promptCacheKey,
-      onSaveCheckpoint: this._compactInProgress ? undefined : (() => this.onSaveRequest?.()),
-      beforeToolExecute: this._beforeToolExecute,
-      suppressAsks: this._compactInProgress,
-      getNotification: () => null,
-      // Round-boundary inbox drain. Suppressed during compact: anything
-      // drained mid-compact would land before the upcoming compact_marker
-      // and be hidden from the model afterwards (Q6).
-      onToolRoundComplete: () => {
-        if (!this._compactInProgress) this._drainInboxAsEntries();
-      },
-      streamCallbacksOwnEntries: !suppressStreaming,
-      onRetryAttempt: emitRetryAttempt,
-      onRetrySuccess: emitRetrySuccess,
-      onRetryExhausted: emitRetryExhausted,
-      onToolCallPartial: onToolCallPartialCb,
-      resolveToolCallVisibility: this._resolveToolCallVisibility,
-      updateEntry: updateEntryFn,
-      discardEntry: discardEntryFn,
-    });
+    return runActivation(this, activationTurnIndex, signal, textAccumulator, reasoningAccumulator, suppressStreaming);
   }
 
   // ==================================================================
@@ -5760,76 +3297,11 @@ export class Session {
   // Ask tool
   // ==================================================================
 
-  private _execAsk(args: Record<string, unknown>): ToolResult {
-    // Validate args
-    const questions = args["questions"];
-    if (!Array.isArray(questions) || questions.length === 0 || questions.length > 4) {
-      return new ToolResult({
-        content: "Error: 'questions' must be an array of 1-4 items.",
-      });
-    }
-    const parsedQuestions: AgentQuestionItem[] = [];
-    for (let i = 0; i < questions.length; i++) {
-      const q = questions[i] as Record<string, unknown>;
-      if (!q || typeof q["question"] !== "string") {
-        return new ToolResult({
-          content: `Error: questions[${i}].question must be a string.`,
-        });
-      }
-      const opts = q["options"];
-      if (!Array.isArray(opts) || opts.length === 0 || opts.length > 4) {
-        return new ToolResult({
-          content: `Error: questions[${i}].options must be an array of 1-4 items.`,
-        });
-      }
-      const parsedOpts = [];
-      for (let j = 0; j < opts.length; j++) {
-        const o = opts[j] as Record<string, unknown>;
-        if (!o || typeof o["label"] !== "string") {
-          return new ToolResult({
-            content: `Error: questions[${i}].options[${j}].label must be a string.`,
-          });
-        }
-        parsedOpts.push({
-          label: o["label"] as string,
-          description: typeof o["description"] === "string" ? (o["description"] as string) : undefined,
-          kind: "normal" as const,
-        });
-      }
-      parsedOpts.push({
-        label: ASK_CUSTOM_OPTION_LABEL,
-        kind: "custom_input" as const,
-        systemAdded: true,
-      });
-      parsedOpts.push({
-        label: ASK_DISCUSS_OPTION_LABEL,
-        kind: "discuss_further" as const,
-        systemAdded: true,
-      });
-      parsedQuestions.push({
-        question: q["question"] as string,
-        options: parsedOpts,
-      });
-    }
-
-    const ask: AgentQuestion = {
-      id: randomUUID(),
-      kind: "agent_question",
-      createdAt: new Date().toISOString(),
-      source: {
-        agentId: this.primaryAgent.name,
-        agentName: this.primaryAgent.name,
-        toolName: "ask",
-      },
-      roundIndex: undefined,
-      summary: `Agent asking: ${parsedQuestions[0].question}${parsedQuestions.length > 1 ? ` (+${parsedQuestions.length - 1} more)` : ""}`,
-      payload: { questions: parsedQuestions, toolCallId: "" },
-      options: [], // per-question options are in payload
-    };
-    throw new AskPendingError(ask);
+  _execAsk(args: Record<string, unknown>): ToolResult {
+    return execAsk(this, args);
   }
 
-  private _buildAgentQuestionToolResult(
+  _buildAgentQuestionToolResult(
     questions: AgentQuestionItem[],
     decision: AgentQuestionDecision,
   ): ToolResult {
@@ -5859,7 +3331,7 @@ export class Session {
     return new ToolResult({ content: lines.join("\n").trim() });
   }
 
-  private _buildAgentQuestionPreview(
+  _buildAgentQuestionPreview(
     questions: AgentQuestionItem[],
     decision: AgentQuestionDecision,
   ): string {
@@ -5890,76 +3362,11 @@ export class Session {
     askId: string,
     decision: AgentQuestionDecision,
   ): void {
-    this._withAskRouting(
-      askId,
-      () => this._resolveOwnAgentQuestionAsk(askId, decision),
-      (child) => child.session?.resolveAgentQuestionAsk(askId, decision),
-    );
+    resolveAgentQuestionAsk(this, askId, decision);
   }
 
-  private _resolveOwnAgentQuestionAsk(askId: string, decision: AgentQuestionDecision): void {
-    const ask = this._activeAsk!;
-    if (ask.kind !== "agent_question") {
-      throw new Error(`Ask kind mismatch (active=${ask.kind}, expected=agent_question).`);
-    }
-
-    const toolCallId = ask.payload.toolCallId || "ask";
-    const anchor = this._toolCallAnchor(toolCallId, ask);
-
-    // Create ask_resolution entry in log
-    this._appendEntry(createAskResolution(
-      this._nextLogId("ask_resolution"),
-      anchor.turnIndex,
-      { answers: decision.answers },
-      askId,
-      "agent_question",
-    ), false);
-
-    const toolResult = this._buildAgentQuestionToolResult(
-      ask.payload.questions,
-      decision,
-    );
-    const previewText = this._buildAgentQuestionPreview(
-      ask.payload.questions,
-      decision,
-    );
-    const toolResultContextId =
-      this._findToolCallContextId(toolCallId, ask.roundIndex)
-        ?? this._allocateContextId();
-    this._appendEntry(createToolResultEntry(
-      this._nextLogId("tool_result"),
-      anchor.turnIndex,
-      anchor.roundIndex,
-      {
-        toolCallId,
-        toolName: "ask",
-        content: toolResult.content,
-        toolSummary: "ask resolved",
-      },
-      {
-        isError: false,
-        contextId: toolResultContextId,
-        previewText,
-      },
-    ), false);
-
-    this._askHistory.push({
-      askId: ask.id,
-      kind: ask.kind,
-      summary: ask.summary,
-      decidedAt: new Date().toISOString(),
-      decision: "answered",
-      source: ask.source,
-    });
-    if (this._askHistory.length > 100) {
-      this._askHistory = this._askHistory.slice(-100);
-    }
-
-    this._activeAsk = null;
-    this._emitAskResolvedProgress(askId, "answered", "agent_question");
-    this._pendingTurnState = { stage: "activation" };
-
-    this.onSaveRequest?.();
+  _resolveOwnAgentQuestionAsk(askId: string, decision: AgentQuestionDecision): void {
+    resolveOwnAgentQuestionAsk(this, askId, decision);
   }
 
   /**
@@ -5967,95 +3374,28 @@ export class Session {
    * @param askId  The ask ID to resolve.
    * @param choiceIndex  Index into the ask's options array. Last option is always "Deny".
    */
+  /**
+   * Resolve a permission approval ask.
+   * @param askId  The ask ID to resolve.
+   * @param choiceIndex  Index into the ask's options array. Last option is always "Deny".
+   */
   resolveApprovalAsk(askId: string, choiceIndex: number): void {
-    this._withAskRouting(
-      askId,
-      () => this._resolveOwnApprovalAsk(askId, choiceIndex),
-      (child) => child.session?.resolveApprovalAsk(askId, choiceIndex),
-    );
+    resolveApprovalAsk(this, askId, choiceIndex);
   }
 
-  private _resolveOwnApprovalAsk(askId: string, choiceIndex: number): void {
-    const ask = this._activeAsk!;
-    if (ask.kind !== "approval") throw new Error(`Ask kind mismatch (active=${ask.kind}, expected=approval).`);
-
-    const payload = ask.payload as ApprovalRequest["payload"];
-    const choiceLabel = ask.options[choiceIndex] ?? "Deny";
-    const isDeny = choiceLabel === "Deny";
-    const offer = !isDeny ? payload.offers[choiceIndex] : null;
-
-    const anchor = this._toolCallAnchor(payload.toolCallId, ask);
-
-    // Log the resolution
-    this._appendEntry(createAskResolution(
-      this._nextLogId("ask_resolution"),
-      anchor.turnIndex,
-      { choice: choiceLabel, toolName: payload.toolName },
-      askId,
-      "approval",
-    ), false);
-
-    if (isDeny) {
-      // Inject a deny tool_result so the model knows
-      const toolCallId = payload.toolCallId;
-      const contextId = this._findToolCallContextId(toolCallId, ask.roundIndex)
-        ?? this._allocateContextId();
-      this._appendEntry(createToolResultEntry(
-        this._nextLogId("tool_result"),
-        anchor.turnIndex,
-        anchor.roundIndex,
-        {
-          toolCallId,
-          toolName: payload.toolName,
-          content: `ERROR: Tool execution denied by user.`,
-          toolSummary: `${payload.toolName} denied`,
-        },
-        { isError: true, contextId },
-      ), false);
-    } else {
-      // Apply the offer. The approved tool_call's grant is consumed in
-      // _drainPendingToolCalls during resume.
-      if (offer?.type === "tool_once") {
-        this._permissionAdvisor.grantAllowOnce(payload.toolCallId);
-      } else if (offer?.type === "mode_upgrade") {
-        this.permissionMode = "reversible";
-        this._permissionAdvisor.grantAllowOnce(payload.toolCallId);
-      } else if ((offer?.type === "tool_pattern" || offer?.type === "external_path") && offer.rule) {
-        this._permissionAdvisor.acceptOffer({
-          type: offer.type as ApprovalOffer["type"],
-          label: offer.label,
-          scope: offer.scope as ApprovalOffer["scope"],
-          rule: offer.rule as unknown as PermissionRule,
-        });
-        this._permissionAdvisor.grantAllowOnce(payload.toolCallId);
-      }
-    }
-
-    this._askHistory.push({
-      askId: ask.id,
-      kind: "approval",
-      summary: ask.summary,
-      decidedAt: new Date().toISOString(),
-      decision: choiceLabel,
-      source: ask.source,
-    });
-
-    this._activeAsk = null;
-    this._emitAskResolvedProgress(askId, choiceLabel, "approval");
-    this._pendingTurnState = { stage: "activation" };
-
-    this.onSaveRequest?.();
+  _resolveOwnApprovalAsk(askId: string, choiceIndex: number): void {
+    resolveOwnApprovalAsk(this, askId, choiceIndex);
   }
 
-  private _findChildWithPendingAsk(askId: string): ChildSessionHandle | null {
-    return this._childSessionManagerInstance.findChildWithPendingAsk(askId);
+  _findChildWithPendingAsk(askId: string): ChildSessionHandle | null {
+    return findChildWithPendingAsk(this, askId);
   }
 
-  private _resumeChildPendingTurn(handle: ChildSessionHandle): void {
-    this._childSessionManagerInstance.resumeChildPendingTurn(handle);
+  _resumeChildPendingTurn(handle: ChildSessionHandle): void {
+    resumeChildPendingTurn(this, handle);
   }
 
-  private _finishChildTurn(handle: ChildSessionHandle, error?: unknown): void {
+  _finishChildTurn(handle: ChildSessionHandle, error?: unknown): void {
     this._childSessionManagerInstance.finishChildTurn(handle, error);
   }
 
@@ -6064,19 +3404,17 @@ export class Session {
    * If the ask belongs to this session, runs onSelf. If it belongs to a
    * child, runs onChild then resumes the child's pending turn.
    */
-  private _withAskRouting<T>(
+  /**
+   * Route an ask operation to the correct session (self or child).
+   * If the ask belongs to this session, runs onSelf. If it belongs to a
+   * child, runs onChild then resumes the child's pending turn.
+   */
+  _withAskRouting<T>(
     askId: string,
     onSelf: () => T,
     onChild: (child: ChildSessionHandle) => T,
   ): T {
-    if (this._activeAsk?.id === askId) return onSelf();
-    const child = this._findChildWithPendingAsk(askId);
-    if (!child) throw new Error("No active ask to resolve.");
-    const result = onChild(child);
-    this._resumeChildPendingTurn(child);
-    this._notifyLogListeners();
-    this.onSaveRequest?.();
-    return result;
+    return withAskRouting(this, askId, onSelf, onChild);
   }
 
   // ==================================================================
@@ -6088,12 +3426,12 @@ export class Session {
    * the call entirely —the runtime "hide" machinery is retained for future use,
    * but nothing uses it right now.
    */
-  private _resolveToolCallVisibility: ResolveToolCallVisibilityCallback = () => {
+  _resolveToolCallVisibility: ResolveToolCallVisibilityCallback = () => {
     return undefined;
   };
 
 
-  private _getArtifactsDirIfAvailable(): string | undefined {
+  _getArtifactsDirIfAvailable(): string | undefined {
     if (this._sessionArtifactsOverride) return this._sessionArtifactsOverride;
     if (!this._store) return undefined;
     const d = this._store.artifactsDir;
@@ -6122,7 +3460,7 @@ export class Session {
     }
   }
 
-  private _ensureSessionStorageReady(): void {
+  _ensureSessionStorageReady(): void {
     if (this._sessionArtifactsOverride) {
       return;
     }
@@ -6198,7 +3536,7 @@ export class Session {
    * Assemble the full system prompt using the layered assembler.
    * Called by _reloadPromptAndTools(), not per-call.
    */
-  private _describeInitialModel(): string {
+  _describeInitialModel(): string {
     const mc = this.primaryAgent.modelConfig;
     const d = describeModel({
       providerId: mc.provider,
@@ -6230,7 +3568,7 @@ export class Session {
    * 动态 hooks/提醒不再拼接到 system：它们由消息投影追加到 ephemeral 尾巴，
    * 否则每次请求都会改变 system 前缀，使整段历史失去缓存。
    */
-  private _getSystemPrompt(): string {
+  _getSystemPrompt(): string {
     if (!this._cachedSystemPrompt) {
       this._cachedSystemPrompt = this._assembleSystemPrompt();
     }
@@ -6248,7 +3586,7 @@ export class Session {
   }
 
   /** Rebuild the cached system snapshot after tools/skills/memory change. */
-  private _rebuildSystemPrompt(): void {
+  _rebuildSystemPrompt(): void {
     this._cachedSystemPrompt = this._assembleSystemPrompt();
     this._promptSectionEstimates = null;
   }
@@ -6257,198 +3595,43 @@ export class Session {
   // Auto-compact
   // ==================================================================
 
-  private _buildCompactCheck(): ((
+  _buildCompactCheck(): ((
     inputTokens: number, outputTokens: number, hasToolCalls: boolean,
   ) => { compactNeeded: boolean; scenario?: "mid_turn" } | null) | undefined {
-    return this._contextManager.buildCompactCheck();
+    return buildCompactCheck(this);
   }
 
   /**
    * Run the compact phase: inject compact prompt, let the Agent produce
    * a continuation prompt (possibly using tools), then return it.
    */
-  private async _runCompactPhase(
+  /**
+   * Run the compact phase: inject compact prompt, let the Agent produce
+   * a continuation prompt (possibly using tools), then return it.
+   */
+  async _runCompactPhase(
     scenario: "before_turn" | "mid_turn",
     promptOverride?: string,
     signal?: AbortSignal,
   ): Promise<string> {
-    this._compactInProgress = true;
-
-    // Emit compact_start event
-    if (this._progress) {
-      this._progress.onCompactStart(this.primaryAgent.name, scenario);
-    }
-
-    // Inject compact prompt as user_message entry (compactPhase, invisible in TUI)
-    const prompt = promptOverride ?? (scenario === "before_turn" ? COMPACT_PROMPT_OUTPUT : COMPACT_PROMPT_TOOLCALL);
-    const compactPromptEntry = createUserMessageEntry(
-      this._nextLogId("user_message"),
-      this._turnCount,
-      "",  // not visible in TUI
-      prompt,
-      this._allocateContextId(),
-    );
-    compactPromptEntry.tuiVisible = false;
-    (compactPromptEntry.meta as Record<string, unknown>)["compactPhase"] = true;
-    this._appendEntry(compactPromptEntry, false);
-
-    let continuationPrompt = "";
-    try {
-      for (let i = 0; i < MAX_COMPACT_PHASE_ROUNDS; i++) {
-        if (signal?.aborted) {
-          throw new DOMException("Compact phase aborted.", "AbortError");
-        }
-
-        // Same per-activation turn-index invariant as _runTurnActivationLoop:
-        // capture once so the tool-loop entries and the finalized reasoning/
-        // text below can't be split across turnIndices if a queued message
-        // drains mid-activation. See _runActivation / Docs/session.md.
-        const compactTurnIndex = this._turnCount;
-        const result = await this._runActivation(compactTurnIndex, signal, undefined, undefined, true);
-        if (signal?.aborted) {
-          throw new DOMException("Compact phase aborted.", "AbortError");
-        }
-        if (result.reachedMaxToolRounds) {
-          // 工具轮数上限返回的是固定哨兵文案，不是 continuation prompt；
-          // 接受它会用哨兵替换整段历史，必须按压缩失败处理。
-          throw new Error(
-            "Compact phase hit the tool-round limit without producing a continuation prompt.",
-          );
-        }
-        if (result.suspendedAsk) {
-          // 压缩阶段不允许挂起等待审批（suppressAsks 已在工具循环内降级，
-          // 这里是绕过降级路径的最后防线）。
-          throw new Error("Compact phase cannot suspend for tool approvals.");
-        }
-
-        if (result.text) {
-          const compactRound = this._computeNextRoundIndex(compactTurnIndex);
-          const compactContextId = this._allocateContextId();
-          if (result.reasoningContent) {
-            const compactReasoningEntry = createReasoning(
-              this._nextLogId("reasoning"),
-              compactTurnIndex,
-              compactRound,
-              "",
-              result.reasoningContent,
-              result.reasoningState,
-              compactContextId,
-              result.thinkingArtifact ?? null,
-            );
-            compactReasoningEntry.tuiVisible = false;
-            compactReasoningEntry.displayKind = null;
-            (compactReasoningEntry.meta as Record<string, unknown>)["compactPhase"] = true;
-            this._appendEntry(compactReasoningEntry, false);
-          }
-          const compactReplyEntry = createAssistantText(
-            this._nextLogId("assistant_text"),
-            compactTurnIndex,
-            compactRound,
-            "",
-            result.text,
-            compactContextId,
-          );
-          compactReplyEntry.tuiVisible = false;
-          (compactReplyEntry.meta as Record<string, unknown>)["compactPhase"] = true;
-          this._appendEntry(compactReplyEntry, false);
-          continuationPrompt = result.text;
-          break;
-        }
-      }
-      if (!continuationPrompt) {
-        continuationPrompt = "[Compact phase did not produce a continuation prompt.]";
-      }
-    } finally {
-      this._compactInProgress = false;
-    }
-
-    return continuationPrompt;
+    return runCompactPhase(this, scenario, promptOverride, signal);
   }
 
   /**
    * Execute auto-compact: run compact phase, then reconstruct conversation
    * with marker + system prompt + continuation prompt.
    */
-  private async _doAutoCompact(
+  /**
+   * Execute auto-compact: run compact phase, then reconstruct conversation
+   * with marker + system prompt + continuation prompt.
+   */
+  async _doAutoCompact(
     scenario: "before_turn" | "mid_turn",
     signal?: AbortSignal,
     promptOverride?: string,
     hideCompactMarker = false,
   ): Promise<void> {
-    const originalTokens = this._lastTotalTokens;
-
-    // Run compact phase
-    const continuationPrompt = await this._runCompactPhase(scenario, promptOverride, signal);
-
-    const contCtxId = this._allocateContextId();
-    this._compactCount += 1;
-
-    // v2 log: compact_marker + compact_context entries (source of truth)
-    const compactMarker = createCompactMarker(
-      this._nextLogId("compact_marker"),
-      this._turnCount,
-      this._compactCount - 1,
-      originalTokens,
-      0, // compactedTokens not yet known
-    );
-    if (hideCompactMarker) {
-      compactMarker.tuiVisible = false;
-      compactMarker.displayKind = null;
-    }
-    this._appendEntry(compactMarker, false);
-    const currentMarkerIdx = this._log.length - 1;
-    // 任务清单在磁盘上（tasks.json 为权威），压缩后必须重新注入一次，
-    // 否则新实例会看不到当前任务与依赖状态。
-    const taskSnapshot = formatTaskSnapshot(this.getTaskState());
-    const taskSuffix = taskSnapshot ? `\n\n${taskSnapshot}` : "";
-    const contContent = `${continuationPrompt}\n\n[Contexts before this point have been compacted.]${taskSuffix}`;
-    this._appendEntry(
-      createCompactContext(
-        this._nextLogId("compact_context"),
-        this._turnCount,
-        contContent,
-        contCtxId,
-        this._compactCount - 1,
-      ),
-      false,
-    );
-
-    const sessionDir = this._store?.sessionDir as string | undefined;
-    if (sessionDir) {
-      let previousMarkerIdx = -1;
-      for (let i = currentMarkerIdx - 1; i >= 0; i--) {
-        if (this._log[i].type === "compact_marker" && !this._log[i].discarded) {
-          previousMarkerIdx = i;
-          break;
-        }
-      }
-      const archiveStartIdx = previousMarkerIdx >= 0 ? previousMarkerIdx + 1 : 1;
-      const archiveEndIdx = currentMarkerIdx - 1;
-      if (archiveEndIdx >= archiveStartIdx) {
-        archiveWindow(
-          sessionDir,
-          this._compactCount - 1,
-          this._log,
-          archiveStartIdx,
-          archiveEndIdx,
-        );
-        // Stripping window content is TUI-projection-visible.
-        this._touchLog();
-      }
-    }
-
-    // 压缩后旧上下文已被替换：per-response 快照必须清零，否则下一回合的
-    // before-turn 判断仍按压缩前的输入大小触发，导致连续压缩。累计用量
-    // 仍由日志中的 token_update 求和，不受此重置影响。
-    this._lastInputTokens = 0;
-    this._lastTotalTokens = 0;
-    this._lastCacheReadTokens = 0;
-    this._cacheSupported = false;
-
-    // Emit compact_end event
-    if (this._progress) {
-      this._progress.onCompactEnd(this.primaryAgent.name, scenario, originalTokens);
-    }
+    return doAutoCompact(this, scenario, signal, promptOverride, hideCompactMarker);
   }
 
   /**
@@ -6457,12 +3640,14 @@ export class Session {
    * 整体替换 meta，标记会丢失，留下的半截 tool_call 会破坏 API 投影。
    * 调用方必须在追加失败/中断记录之前调用。
    */
-  private _discardCompactAttemptEntries(fromIndex: number): void {
-    for (let i = fromIndex; i < this._log.length; i++) {
-      const entry = this._log[i];
-      if (!entry || entry.discarded) continue;
-      entry.discarded = true;
-    }
+  /**
+   * 压缩失败清理：丢弃本次压缩尝试写入的全部条目（索引区间即事实来源）。
+   * 不能只看 meta.compactPhase：tool-loop 同步工具状态时会用 updateEntry
+   * 整体替换 meta，标记会丢失，留下的半截 tool_call 会破坏 API 投影。
+   * 调用方必须在追加失败/中断记录之前调用。
+   */
+  _discardCompactAttemptEntries(fromIndex: number): void {
+    discardCompactAttemptEntries(this, fromIndex);
   }
 
   // ==================================================================
@@ -6708,17 +3893,17 @@ export class Session {
       .join("\n");
   }
 
-  private _hasActiveAgents(): boolean {
+  _hasActiveAgents(): boolean {
     return this._childSessionManagerInstance.hasActiveAgents();
   }
 
-  private _cascadeKillRunningChildren(
+  _cascadeKillRunningChildren(
     cause: "user_mass_interrupt" | "parent_kill",
   ): number {
     return this._childSessionManagerInstance.cascadeKillRunning(cause);
   }
 
-  private _suspendAllChildSessions(): void {
+  _suspendAllChildSessions(): void {
     this._childSessionManagerInstance.suspendAll();
   }
 
@@ -6726,11 +3911,11 @@ export class Session {
     this._childSessionManagerInstance.archiveAll();
   }
 
-  private async _waitForAllChildTurnsSettled(): Promise<void> {
+  async _waitForAllChildTurnsSettled(): Promise<void> {
     await this._childSessionManagerInstance.waitForAllTurnsSettled();
   }
 
-  private _forceKillAllShells(): void {
+  _forceKillAllShells(): void {
     this._shellManager.forceKillAll();
   }
 
@@ -6853,187 +4038,43 @@ export class Session {
 
   private _imageCounter = 0;
 
-  /**
-   * If content is a multimodal array, save inline base64 images to disk
-   * and replace them with image_ref blocks for the log.
-   * Returns the original content if no images, or if session dir is unavailable.
-   */
+  // ==================================================================
+  // 附件处理（实现见 ./session/attachments.ts）
+  // ==================================================================
+
+
   private _extractAndSaveImages(
     content: string | Array<Record<string, unknown>>,
   ): string | Array<Record<string, unknown>> {
-    if (typeof content === "string") return content;
-    if (!Array.isArray(content)) return content;
-
-    let hasImage = false;
-    for (const block of content) {
-      if (block["type"] === "image" && block["data"]) {
-        hasImage = true;
-        break;
-      }
-    }
-    if (!hasImage) return content;
-
-    const sessionDir = this._store?.sessionDir;
-    if (!sessionDir) return content; // Can't save without session dir
-
-    const imagesDir = join(sessionDir, "images");
-    try {
-      mkdirSync(imagesDir, { recursive: true });
-    } catch {
-      return content; // Can't create images dir, keep inline
-    }
-
-    return content.map((block) => {
-      if (block["type"] !== "image" || !block["data"]) return block;
-
-      const mediaType = (block["media_type"] as string) || "image/png";
-      const ext = mediaType.split("/")[1]?.replace("jpeg", "jpg") || "png";
-      let filename = "";
-      let filePath = "";
-      do {
-        this._imageCounter += 1;
-        filename = `img-${String(this._imageCounter).padStart(3, "0")}.${ext}`;
-        filePath = join(imagesDir, filename);
-      } while (existsSync(filePath));
-
-      try {
-        writeFileSync(filePath, Buffer.from(block["data"] as string, "base64"));
-      } catch {
-        return block; // Write failed, keep inline
-      }
-
-      return {
-        type: "image_ref",
-        path: `images/${filename}`,
-        media_type: mediaType,
-      };
-    });
+    return extractAndSaveImages({
+      projectRoot: this._projectRoot,
+      sessionDir: () => this._store?.sessionDir,
+      artifactsDir: () => this._sessionArtifactsOverride ?? this._getArtifactsDirIfAvailable?.(),
+      supportsMultimodal: () => this.primaryAgent.modelConfig.supportsMultimodal,
+      nextImageNumber: () => ++this._imageCounter,
+    }, content);
   }
 
-  /**
-   * Resolve an image_ref path to base64 data for API consumption.
-   * Used by projectToApiMessages to restore image data from files.
-   */
-  private _resolveImageRef(refPath: string): { data: string; media_type: string } | null {
-    const sessionDir = this._store?.sessionDir;
-    if (!sessionDir) return null;
-    const fullPath = join(sessionDir, refPath);
-    try {
-      const data = readFileSync(fullPath);
-      const ext = refPath.split(".").pop() || "png";
-      const mediaTypeMap: Record<string, string> = {
-        png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
-        gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
-      };
-      return {
-        data: data.toString("base64"),
-        media_type: mediaTypeMap[ext] || "image/png",
-      };
-    } catch {
-      return null;
-    }
+  _resolveImageRef(refPath: string): { data: string; media_type: string } | null {
+    return resolveImageRef(this._store?.sessionDir, refPath);
   }
-
-  // ==================================================================
-  // @file attachment processing
-  // ==================================================================
 
   private async _processFileAttachments(userInput: string): Promise<string | Array<Record<string, unknown>>> {
-    const supportsMultimodal = this.primaryAgent.modelConfig.supportsMultimodal;
-    const [, refs] = parseReferences(userInput);
-    const explicitAttachmentRoots = new Set<string>();
-    for (const raw of refs) {
-      if (!raw || typeof raw !== "string") continue;
-      try {
-        safePath({
-          baseDir: this._projectRoot,
-          requestedPath: raw,
-          cwd: this._projectRoot,
-          accessKind: "attach",
-          allowCreate: true,
-        });
-      } catch (e) {
-        if (!(e instanceof SafePathError)) continue;
-        if (e.code !== "PATH_OUTSIDE_SCOPE" && e.code !== "PATH_SYMLINK_ESCAPES_SCOPE") continue;
-        const lexicalTarget = e.details.resolvedPath || resolve(this._projectRoot, raw);
-        explicitAttachmentRoots.add(resolve(lexicalTarget));
-      }
-    }
-    const externalRoots = [...explicitAttachmentRoots];
-    const attachmentArtifactsDir =
-      this._sessionArtifactsOverride ?? this._getArtifactsDirIfAvailable?.();
-    try {
-      const result = await processFileAttachments(
-        userInput,
-        undefined,
-        supportsMultimodal,
-        this._projectRoot,
-        externalRoots,
-        attachmentArtifactsDir,
-      );
-
-      if (!fileAttachHasFiles(result)) return userInput;
-
-      if (fileAttachHasImages(result) && supportsMultimodal) {
-        const contentParts: Array<Record<string, unknown>> = [];
-        const cleaned = result.cleanedText.trim();
-        if (cleaned) {
-          contentParts.push({ type: "text", text: cleaned });
-        }
-        for (const f of result.files) {
-          if (f.isImage && f.imageData) {
-            contentParts.push({
-              type: "image",
-              media_type: f.imageMediaType,
-              data: f.imageData,
-            });
-          }
-        }
-        if (result.contextStr) {
-          contentParts.push({ type: "text", text: result.contextStr });
-        }
-        return contentParts;
-      }
-
-      let userContent = result.cleanedText;
-      if (result.contextStr) {
-        userContent += "\n\n" + result.contextStr;
-      }
-      return userContent;
-    } catch (e) {
-      console.warn(
-        `File attachment processing failed; continuing without attachments: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      );
-      return userInput;
-    }
+    return processAttachments({
+      projectRoot: this._projectRoot,
+      sessionDir: () => this._store?.sessionDir,
+      artifactsDir: () => this._sessionArtifactsOverride ?? this._getArtifactsDirIfAvailable?.(),
+      supportsMultimodal: () => this.primaryAgent.modelConfig.supportsMultimodal,
+      nextImageNumber: () => ++this._imageCounter,
+    }, userInput);
   }
 
   // ==================================================================
   // MCP integration
   // ==================================================================
 
-  private async _ensureMcp(): Promise<void> {
-    if (!this._mcpManager) return;
-    if (this._mcpConnected) return;
-
-    // Await bootstrap's fire-and-forget connectAll if available.
-    if (this._mcpReadyPromise) {
-      await this._mcpReadyPromise;
-      this._mcpReadyPromise = undefined;
-    }
-
-    const agents = [this.primaryAgent, ...Object.values(this.agentTemplates)];
-    this._mcpConnected = await registerMcpTools(
-      this._mcpManager,
-      this._toolExecutors,
-      agents,
-    );
-
-    if (this.onMcpStatus && typeof this._mcpManager.getServerStatuses === "function") {
-      this.onMcpStatus(this._mcpManager.getServerStatuses());
-    }
+  async _ensureMcp(): Promise<void> {
+    return ensureMcp(this);
   }
 
   // ==================================================================
@@ -7043,7 +4084,7 @@ export class Session {
   // getStateForPersistence() and restoreFromPersistence() removed.
   // All persistence is now via getLogForPersistence() / restoreFromLog().
 
-  private _generateSummary(): string {
+  _generateSummary(): string {
     for (const entry of this._log) {
       if (entry.type !== "user_message") continue;
       // 切换类/注入类命令回显使用 user_message 作为日志载体，但
@@ -7067,39 +4108,6 @@ export class Session {
   // ==================================================================
 
   async close(): Promise<void> {
-    // 1. Freeze the root inbox before interrupt. Child inboxes need no
-    // freezing: _suspendAllChildSessions persists each child's live inbox.
-    const frozenRootInbox = [...this._inbox];
-
-    // 2-3. Interrupt root turn and wait for it to complete
-    this.requestTurnInterrupt();
-    await this.waitForTurnComplete();
-
-    // 4-5. Abort running child turns and wait for them to settle
-    this._cascadeKillRunningChildren("parent_kill");
-    await this._waitForAllChildTurnsSettled();
-
-    // 6. Suspend all child sessions (preserves lifecycle)
-    this._suspendAllChildSessions();
-
-    // 7. Persist root session (inbox is frozen)
-    // The frozen inbox will be included via getLogForPersistence if caller saves
-    this._inbox = frozenRootInbox;
-
-    // 8. Kill all shells
-    this._forceKillAllShells();
-
-    // 9. Fire Stop hooks (fire-and-forget)
-    this.hookRuntime.fireAndForget("Stop", { event: "Stop", timestamp: Date.now() });
-    this.hookRuntime.fireAndForget("SessionEnd", { event: "SessionEnd", timestamp: Date.now() });
-
-    // 10. Close MCP connections
-    if (this._mcpManager) {
-      try {
-        await this._mcpManager.closeAll();
-      } catch (e) {
-        console.warn("Error closing MCP connections:", e);
-      }
-    }
+    return closeSession(this);
   }
 }

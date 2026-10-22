@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { Session } from "../../../src/ui/contracts.js";
-import type { Task } from "../../../src/lib/task-store.js";
+import type { Task } from "../../../src/tasks/types.js";
 
 /**
  * 订阅当前会话的任务清单。

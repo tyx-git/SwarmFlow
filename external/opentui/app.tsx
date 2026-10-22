@@ -7,18 +7,19 @@ import type {
   CommandOption,
   Session as TuiSession,
 } from "../../src/ui/contracts.js";
-import type { SessionStore } from "../../src/config/persistence.js";
-import type { ChildSessionSnapshot } from "../../src/session-tree-types.js";
+import type { SessionStore } from "../../src/config/session-store.js";
+import type { ChildSessionSnapshot } from "../../src/session/tree-types.js";
 import { resolveInheritedThinkingLevel } from "../../src/session/role-model-resolver.js";
-import { saveLog, persistCurrentModelSelection } from "../../src/config/persistence.js";
-import { projectQueuedInputs } from "../../src/context/log-projection.js";
+import { saveLog } from "../../src/config/log-serialization.js";
+import { persistCurrentModelSelection } from "../../src/config/settings/io.js";
+import { projectQueuedInputs } from "../../src/context/projection/tui.js";
 import { enqueueDeferredCommand, takeReadyDeferredCommand, type DeferredCommand } from "../../src/ui/deferred-command.js";
-import { ProgressReporter, type ProgressEvent } from "../../src/lib/progress.js";
-import { getLocalizedCommandDescription } from "../../src/commands/commands.js";
-import { scanCandidates } from "../../src/lib/file-attach.js";
+import { ProgressReporter, type ProgressEvent } from "../../src/logging/progress.js";
+import { getLocalizedCommandDescription } from "../../src/commands/registry.js";
+import { scanCandidates } from "../../src/attachments/scanner.js";
 import { classifyPastedText, TurnPasteCounter } from "../../src/ui/input/paste.js";
-import { readClipboardImage } from "../../src/lib/clipboard-image.js";
-import { processImage, type ProcessedImage } from "../../src/lib/image-compress.js";
+import { readClipboardImage } from "../../src/attachments/clipboard-image.js";
+import { processImage, type ProcessedImage } from "../../src/attachments/image-compress.js";
 import type { InlineImageInput } from "../../src/ui/contracts.js";
 import type {
   PendingAskUi,
@@ -69,16 +70,11 @@ import {
   UsagePoller,
   type UsageSnapshot,
 } from "../../src/providers/usage.js";
-import {
-  readOAuthAccessToken,
-  hasOAuthTokens,
-  isTokenExpiring,
-  saveOAuthTokens,
-  browserLoginHeadless,
-  deviceCodeLoginHeadless,
-  type OAuthProgress,
-  type OAuthTokens,
-} from "../../src/auth/openai-oauth.js";
+import { readOAuthAccessToken, hasOAuthTokens, saveOAuthTokens, type OAuthTokens } from "../../src/auth/openai/token-store.js";
+import { isTokenExpiring } from "../../src/auth/openai/jwt.js";
+import { browserLoginHeadless } from "../../src/auth/openai/pkce-flow.js";
+import { deviceCodeLoginHeadless } from "../../src/auth/openai/device-code-flow.js";
+import type { OAuthProgress } from "../../src/auth/openai/types.js";
 import {
   deviceCodeLoginHeadless as copilotDeviceCodeLoginHeadless,
   saveGitHubTokens,
@@ -123,8 +119,8 @@ import {
 import { clamp, computePickerMaxVisible, MAX_COMMAND_LIST_VISIBLE } from "./display/layout/metrics.js";
 import { OpenTuiScreen } from "./display/layout/open-tui-screen.js";
 import { resolveModelNameColor } from "./display/utils/model.js";
-import { createUiText, getUiLanguage, normalizeUiLanguage, resolveCommandEchoDisplay, type UiLanguage, type UiText } from "../../src/lib/ui-text.js";
-import { getSwarmflowHomeDir } from "../../src/lib/home-path.js";
+import { createUiText, getUiLanguage, normalizeUiLanguage, resolveCommandEchoDisplay, type UiLanguage, type UiText } from "../../src/ui/text.js";
+import { getSwarmflowHomeDir } from "../../src/config/home-dir.js";
 import { getDeleteToVisualLineStartAction } from "./input/delete-to-visual-line-start.js";
 import { appendPromptHistory, getPromptHistoryNavigationDirection, navigatePromptHistory } from "./input/prompt-history.js";
 

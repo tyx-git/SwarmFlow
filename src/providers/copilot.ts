@@ -17,16 +17,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
-import type { ModelConfig } from "../config/config.js";
+import type { ModelConfig } from "../config/types.js";
 import { copilotTokenManager } from "../auth/github-copilot-token-manager.js";
-import { isUnauthorizedError } from "../lib/network-retry.js";
-import {
-  BaseProvider,
-  type Message,
-  type ProviderResponse,
-  type SendMessageOptions,
-  type ToolDef,
-} from "./base.js";
+import { isUnauthorizedError } from "../network/retry.js";
+import { BaseProvider } from "./base.js";
+import type { Message, SendMessageOptions, ToolDef } from "./types.js";
+import type { ProviderResponse } from "./response.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAIResponsesProvider } from "./openai-responses.js";
 import {

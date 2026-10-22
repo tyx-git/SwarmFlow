@@ -1,4 +1,4 @@
-﻿import type { LogEntry } from "../context/log-entry.js";
+﻿import type { LogEntry } from "../context/entry/types.js";
 
 /** 活动上下文分组——将具有相同 contextId 的条目聚合在一起 */
 export interface ActiveContextGroup {

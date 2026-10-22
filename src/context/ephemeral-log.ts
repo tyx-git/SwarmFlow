@@ -1,16 +1,8 @@
-﻿import type { LogEntry } from "../context/log-entry.js";
-import {
-  LogIdAllocator,
-  createAssistantText,
-  createNoReply,
-  createReasoning,
-  createSystemPrompt,
-  createToolCall,
-  createToolResult,
-  createUserMessage,
-} from "../context/log-entry.js";
-import { allocateContextId, stripContextTags } from "../context/context-rendering.js";
-import { projectToApiMessages, type InternalMessage } from "../context/log-projection.js";
+﻿import type { LogEntry } from "../context/entry/types.js";
+import { LogIdAllocator } from "../context/entry/id-allocator.js";
+import { createAssistantText, createNoReply, createReasoning, createSystemPrompt, createToolCall, createToolResult, createUserMessage } from "../context/entry/factories.js";
+import { allocateContextId, stripContextTags } from "../context/context-tags.js";
+import { projectToApiMessages, type InternalMessage } from "../context/projection/api.js";
 
 /** 临时日志状态——管理内存中的日志条目和消息投影 */
 export interface EphemeralLogState {

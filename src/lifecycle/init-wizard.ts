@@ -13,23 +13,18 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import * as readline from "node:readline";
 import { select, input } from "@inquirer/prompts";
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import {
   DEFAULT_UI_LANGUAGE,
   createUiText,
   type UiLanguage,
   type UiText,
-} from "../lib/ui-text.js";
-import {
-  type SwarmflowSettings,
-  type ProviderEntry,
-  saveSettings,
-  globalSettingsPath,
-  loadGlobalSettings,
-} from "../config/persistence.js";
+} from "../ui/text.js";
+import type { SwarmflowSettings, ProviderEntry } from "../config/settings/types.js";
+import { saveSettings, globalSettingsPath, loadGlobalSettings } from "../config/settings/io.js";
 import { customProviderEnvVar } from "../providers/credential-flow.js";
-import { normalizeEndpointUrl } from "../commands/commands.js";
+import { normalizeEndpointUrl } from "../commands/provider/endpoint.js";
 
 // ------------------------------------------------------------------
 // 向导结果

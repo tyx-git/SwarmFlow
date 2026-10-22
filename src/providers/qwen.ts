@@ -10,8 +10,8 @@
  * 但 Node 客户端不会正确序列化这种形状。
  */
 
-import type { ModelConfig } from "../config/config.js";
-import type { SendMessageOptions, ToolDef } from "./base.js";
+import type { ModelConfig } from "../config/types.js";
+import type { SendMessageOptions, ToolDef } from "./types.js";
 import { OpenAIChatProvider } from "./openai-chat.js";
 
 export class QwenProvider extends OpenAIChatProvider {

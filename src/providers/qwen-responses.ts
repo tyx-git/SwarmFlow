@@ -6,7 +6,7 @@
  * 仍作为顶层请求字段保留。
  */
 
-import type { SendMessageOptions } from "./base.js";
+import type { SendMessageOptions } from "./types.js";
 import { OpenAIResponsesProvider } from "./openai-responses.js";
 
 export class QwenResponsesProvider extends OpenAIResponsesProvider {

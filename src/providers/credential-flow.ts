@@ -7,9 +7,9 @@ import {
   providerCredentialKind,
 } from "../config/managed-provider-credentials.js";
 import { findProviderPreset } from "../providers/presets.js";
-import { loadGlobalSettings, saveGlobalSettingsPatch } from "../config/persistence.js";
+import { loadGlobalSettings, saveGlobalSettingsPatch } from "../config/settings/io.js";
 import type { InputAreaPickerConfig } from "../ui/picker.js";
-import { createUiText, getUiLanguage, type UiText } from "../lib/ui-text.js";
+import { createUiText, getUiLanguage, type UiText } from "../ui/text.js";
 
 export interface PromptChoice {
   label: string;

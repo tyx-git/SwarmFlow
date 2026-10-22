@@ -5,14 +5,14 @@
  * 以及思考级别的验证。
  */
 
-import { hasOAuthTokens } from "../auth/openai-oauth.js";
+import { hasOAuthTokens } from "../auth/openai/token-store.js";
 import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
 import {
   findProviderPreset,
 } from "../providers/presets.js";
 import { isManagedProvider } from "../config/managed-provider-credentials.js";
 import { describeModel } from "../models/presentation.js";
-import { runtimeTransportProtocol } from "../config/config.js";
+import { runtimeTransportProtocol } from "../config/model-capabilities.js";
 
 /** 模型条目接口 */
 export type ModelEntryLike = {

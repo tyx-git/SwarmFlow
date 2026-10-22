@@ -4,7 +4,7 @@ import type {
   PresentationState,
   InlineResultData,
 } from "./types.js";
-import type { FileModifyDisplayData } from "../../../src/lib/diff-hunk.js";
+import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
 import { getToolProfile, HIDDEN_TOOLS } from "./tool-profiles.js";
 import { formatDuration } from "../display/utils/format.js";
 

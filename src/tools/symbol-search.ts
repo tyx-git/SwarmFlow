@@ -11,9 +11,10 @@ import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import type { ToolDef } from "../providers/base.js";
+import type { ToolDef } from "../providers/types.js";
 import { getSensitiveFileReadReason } from "../security/sensitive-files.js";
-import { isExcludedDirName, isHiddenName, truncateLine } from "./shared.js";
+import { isExcludedDirName, isHiddenName } from "./scan-exclusions.js";
+import { truncateLine } from "./output-truncation.js";
 
 export const SYMBOL_SEARCH_MAX_RESULTS = 200;
 const SYMBOL_SEARCH_MAX_FILES = 5_000;

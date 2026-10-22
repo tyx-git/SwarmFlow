@@ -1,4 +1,4 @@
-﻿export { HookRuntime, type HookEvalResult } from "./hook-runtime.js";
+﻿export { HookRuntime, type HookEvalResult } from "./dispatcher.js";
 export { loadHooksFromDir, loadHooksMulti } from "./loader.js";
 export { runHookCommand, type HookRunResult } from "./runner.js";
 export type {

@@ -8,7 +8,7 @@ import type { AgentQuestionItem } from "../../../../src/ask.js";
 import type { CommandPickerState } from "../../../../src/ui/command-picker.js";
 import type { PresentationEntry } from "../../presentation/types.js";
 import type { ComposerTokenVisuals } from "../../composer-tokens.js";
-import type { UiText } from "../../../../src/lib/ui-text.js";
+import type { UiText } from "../../../../src/ui/text.js";
 import { createTextAttributes } from "@opentui/core";
 import { PresentationPanel } from "../../components/entry/presentation-panel.js";
 import { VERSION } from "../../../../src/version.js";

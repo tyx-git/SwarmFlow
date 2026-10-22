@@ -17,26 +17,22 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { getLogger, initLogger } from "../lib/logger.js";
+import { getLogger, initLogger } from "../logging/logger.js";
 import { createRpcServer } from "./rpc-transport.js";
-import { buildMeta, registerSessionRpc } from "./session-rpc.js";
+import { registerSessionRpc } from "./session-rpc.js";
+import { buildMeta } from "./session-status-payloads.js";
 import { registerInitRpc } from "./init-rpc.js";
-import { Config, resolveAssetPaths, getBundledAssetsDir } from "../config/config.js";
+import { Config } from "../config/loader.js";
+import { resolveAssetPaths, getBundledAssetsDir } from "../config/asset-paths.js";
 import { Agent } from "../agents/agent.js";
 import { Session } from "../session.js";
-import { loadTemplates } from "../templates/loader.js";
+import { loadTemplates } from "../prompts/templates.js";
 import { ensureBuiltinSkills, loadSkillsMulti } from "../skills/loader.js";
-import { ensureGlobalMemoryFile } from "../lib/prompt-assembler.js";
-import {
-  SessionStore,
-  loadGlobalSettings,
-  loadLocalSettings,
-  mergeSettings,
-  parseSettingsOverrides,
-  settingsToConfigInputs,
-} from "../config/persistence.js";
+import { ensureGlobalMemoryFile } from "../prompts/assembler.js";
+import { SessionStore } from "../config/session-store.js";
+import { loadGlobalSettings, loadLocalSettings, mergeSettings, parseSettingsOverrides, settingsToConfigInputs } from "../config/settings/io.js";
 import { loadDotenv } from "../lifecycle/dotenv.js";
-import { getSwarmflowHomeDir } from "../lib/home-path.js";
+import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import type { PersistedModelSelection } from "../models/selection.js";
 import { applyPersistedModelSelectionToSession } from "../models/restore.js";
 import {
@@ -173,7 +169,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   const oauthEntries = config.listModelEntries().filter((e) => e.apiKeyRaw === "oauth:openai-codex");
   if (oauthEntries.length > 0) {
     try {
-      const { ensureFreshToken } = await import("../auth/openai-oauth.js");
+      const { ensureFreshToken } = await import("../auth/openai/refresh.js");
       await ensureFreshToken();
     } catch (err) {
       process.stderr.write(`[server] OAuth refresh failed: ${err instanceof Error ? err.message : String(err)}\n`);
@@ -185,7 +181,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   let mcpReadyPromise: Promise<void> | undefined;
   if (config.mcpServerConfigs.length > 0) {
     try {
-      const { MCPClientManager } = await import("../clients/mcp-client.js");
+      const { MCPClientManager } = await import("../clients/mcp/manager.js");
       mcpManager = new MCPClientManager(config.mcpServerConfigs);
       mcpReadyPromise = (mcpManager as any).connectAll().catch(() => {});
     } catch {

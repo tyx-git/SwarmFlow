@@ -18,7 +18,7 @@ import {
   formatWorkedDuration,
   formatWorkedStartTime,
 } from "../presentation/use-turn-timer.js";
-import type { UiText } from "../../../src/lib/ui-text.js";
+import type { UiText } from "../../../src/ui/text.js";
 import {
   useSpinner,
   WORKING_SPINNER_FRAMES,

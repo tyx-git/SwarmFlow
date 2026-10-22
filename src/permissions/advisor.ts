@@ -12,8 +12,8 @@
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { toPosixPath } from "../security/path.js";
-import type { GateAdvisor, GateDecision } from "../lib/tool-runtime.js";
-import type { ToolPreflightContext } from "../agents/tool-loop.js";
+import type { GateAdvisor, GateDecision } from "../tools/runtime.js";
+import type { ToolPreflightContext } from "../agents/tool-loop/types.js";
 import { classifyToolAsync } from "./classify.js";
 import { PermissionRuleStore } from "./rules.js";
 import type { ShellKind } from "../platform/types.js";

@@ -12,7 +12,7 @@ import {
   isCommandPickerCustomInputOption,
 } from "../../../../src/ui/command-picker.js";
 import type { DisplayTheme } from "../theme/index.js";
-import { createUiText, type UiLanguage } from "../../../../src/lib/ui-text.js";
+import { createUiText, type UiLanguage } from "../../../../src/ui/text.js";
 import type {
   CommandOverlayState,
   OAuthOverlayState,

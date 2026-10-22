@@ -6,7 +6,7 @@
  * 而不依赖 Session 实例。
  */
 
-import { ToolResult } from "../providers/base.js";
+import { ToolResult } from "../providers/response.js";
 import { coerceStringArray, coercePathString } from "./arg-repair.js";
 
 export function toolArgError(toolName: string, message: string): ToolResult {

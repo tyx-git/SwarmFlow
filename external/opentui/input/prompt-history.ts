@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { getSwarmflowHomeDir } from "../../../src/lib/home-path.js";
+import { getSwarmflowHomeDir } from "../../../src/config/home-dir.js";
 
 const MAX_ENTRIES = 200;
 const STATE_SUBDIR = "state";

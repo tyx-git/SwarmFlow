@@ -13,7 +13,7 @@
  * 与本工具族的「任务清单条目」不是一回事 —— 两者在描述里互相点名。
  */
 
-import type { ToolDef } from "../providers/base.js";
+import type { ToolDef } from "../providers/types.js";
 
 // ------------------------------------------------------------------
 // task_create

@@ -5,21 +5,23 @@
  * 它们是有意与渲染器无关的。
  */
 
-import type { ProgressReporter } from "../lib/progress.js";
-import type { Task } from "../lib/task-store.js";
-import type { SessionStore, LogSessionMeta } from "../config/persistence.js";
+import type { ProgressReporter } from "../logging/progress.js";
+import type { Task } from "../tasks/types.js";
+import type { SessionStore } from "../config/session-store.js";
+import type { LogSessionMeta } from "../config/session-meta.js";
 import type {
   PendingAskUi,
   AgentQuestionDecision,
 } from "../ask.js";
-import type { LogEntry, LogIdAllocator } from "../context/log-entry.js";
-import type { ChildSessionSnapshot, DeliverMessageResult } from "../session-tree-types.js";
+import type { LogEntry } from "../context/entry/types.js";
+import type { LogIdAllocator } from "../context/entry/id-allocator.js";
+import type { ChildSessionSnapshot, DeliverMessageResult } from "../session/tree-types.js";
+import type { CommandRegistry as ActualCommandRegistry } from "../commands/registry.js";
 import type {
-  CommandRegistry as ActualCommandRegistry,
   CommandContext,
   SlashCommand as ActualSlashCommand,
   CommandOption as ActualCommandOption,
-} from "../commands/commands.js";
+} from "../commands/types.js";
 
 // ------------------------------------------------------------------
 // 回滚计划类型
@@ -62,7 +64,7 @@ export interface BashRewindEntry {
   conflictReason?: "dir_not_empty" | "dir_deleted" | "backup_missing" | "source_occupied" | "disk_modified" | "target_deleted" | "untracked";
   conflictDetails?: string[];
   /** 用于执行的原始 BashMutationEntry。 */
-  mutation: import("../tools/basic.js").BashMutationEntry;
+  mutation: import("../tools/mutations.js").BashMutationEntry;
 }
 
 export interface RewindPlan {

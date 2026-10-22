@@ -11,18 +11,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Agent } from "../../src/agents/agent.js";
-import type { ToolExecutor } from "../../src/agents/tool-loop.js";
+import type { ToolExecutor } from "../../src/agents/tool-loop/types.js";
 import type { ApprovalRequest } from "../../src/ask.js";
-import { SessionStore } from "../../src/config/persistence.js";
-import {
-  BaseProvider,
-  ProviderResponse,
-  Usage,
-  type Message,
-  type StopReason,
-  type ToolCall,
-  type ToolDef,
-} from "../../src/providers/base.js";
+import { SessionStore } from "../../src/config/session-store.js";
+import { BaseProvider } from "../../src/providers/base.js";
+import { ProviderResponse, Usage } from "../../src/providers/response.js";
+import type { Message, ToolCall, ToolDef } from "../../src/providers/types.js";
+import type { StopReason } from "../../src/providers/stop-reason.js";
 import { Session } from "../../src/session.js";
 
 export interface ScriptedToolCall {

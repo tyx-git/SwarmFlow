@@ -3,8 +3,8 @@
 import React from "react";
 import { StyledText, RGBA, createTextAttributes, type TextChunk } from "@opentui/core";
 
-import type { Task } from "../../../../src/lib/task-store.js";
-import type { ChildSessionSnapshot } from "../../../../src/session-tree-types.js";
+import type { Task } from "../../../../src/tasks/types.js";
+import type { ChildSessionSnapshot } from "../../../../src/session/tree-types.js";
 import type { ConversationPalette } from "../../components/conversation-types.js";
 import { getAgentRoleLabel } from "../../../../src/swarm/types.js";
 import { SelectableRow } from "../primitives/selectable-row.js";

@@ -3,7 +3,7 @@
 import {
   type ProviderSpec,
   credentialEnvVar,
-} from "../models/registry.js";
+} from "./provider-specs.js";
 import { EFFECTIVE_PROVIDER_SPECS } from "../providers/registry-effective.js";
 
 export interface ProviderPreset {

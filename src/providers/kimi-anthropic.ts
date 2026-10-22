@@ -12,11 +12,11 @@
  * 供应商特性：K2.5 thinking 要求 temperature=1。
  */
 
-import type { ModelConfig } from "../config/config.js";
+import type { ModelConfig } from "../config/types.js";
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";
 import { makeAnthropicSSERepairFetch } from "./anthropic-sse-repair.js";
 import { BaseAnthropicProvider } from "./anthropic-base.js";
-import type { SendMessageOptions } from "./base.js";
+import type { SendMessageOptions } from "./types.js";
 
 export class KimiAnthropicProvider extends BaseAnthropicProvider {
   constructor(config: ModelConfig) {

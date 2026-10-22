@@ -20,9 +20,8 @@
 import {
   loadAuthStore,
   saveAuthStore,
-  type OAuthProgress,
-  type HeadlessOAuthOptions,
-} from "./openai-oauth.js";
+} from "./openai/token-store.js";
+import type { OAuthProgress, HeadlessOAuthOptions } from "./openai/types.js";
 
 // =============================================================================
 // 常量
@@ -143,7 +142,7 @@ async function fetchJson(
  * 无头 GitHub 设备码登录。
  * 通过 onProgress 发送进度信号，支持 signal 取消，返回令牌。
  *
- * 注：复用 openai-oauth.ts 的 OAuthProgress 联合类型。
+ * 注：复用 openai/types.ts 的 OAuthProgress 联合类型。
  * 只发送 device_code、exchanging、done、error 阶段——不发送 polling
  *（见下方 "Waiting for sign-in..." 注释）和 browser_waiting
  *（设备流程无浏览器回调服务器）。

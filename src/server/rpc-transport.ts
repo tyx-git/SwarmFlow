@@ -10,7 +10,7 @@
  *（Electron 主进程）通信。
  */
 
-import { getLogger } from "../lib/logger.js";
+import { getLogger } from "../logging/logger.js";
 
 export interface RpcRequest {
   readonly id: number;
