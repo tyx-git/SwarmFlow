@@ -16,13 +16,13 @@ import { getPromptLayers, type PromptRecipe } from "../prompts/templates.js";
 
 /** Cumulative usage figures derived from the log's token_update entries. */
 export interface UsageStats {
-  /** 危 inputTokens across every provider call (billed input, re-sent each call). */
+  /** Total inputTokens across every provider call (billed input, re-sent each call). */
   cumulativeInput: number;
-  /** 危 output tokens (totalTokens 鈭?inputTokens) across every provider call. */
+  /** Total output tokens (totalTokens - inputTokens) across every provider call. */
   cumulativeOutput: number;
-  /** 危 cacheReadTokens (the cached slice of cumulativeInput). */
+  /** Total cacheReadTokens (the cached slice of cumulativeInput). */
   cumulativeCacheRead: number;
-  /** 危 (inputTokens 鈭?cacheReadTokens) (the uncached slice of cumulativeInput). */
+  /** Total uncached input (inputTokens - cacheReadTokens), the uncached slice of cumulativeInput. */
   cumulativeUncached: number;
   /** Estimated fixed prompt: first call's input minus the first user message. */
   systemPromptTotal: number;

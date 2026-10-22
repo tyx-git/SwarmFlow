@@ -1,10 +1,10 @@
 ﻿import {
   findProviderPreset,
 } from "../providers/presets.js";
-import { OPENROUTER_VENDOR_BRAND } from "../providers/provider-specs.js";
 import {
-  EFFECTIVE_PROVIDER_SPECS,
-} from "../providers/registry-effective.js";
+  FACTORY_PROVIDER_SPECS,
+  OPENROUTER_VENDOR_BRAND,
+} from "../providers/provider-specs.js";
 import { loadGlobalSettings } from "../config/settings/io.js";
 import { getSwarmflowHomeDir } from "../config/home-dir.js";
 
@@ -35,11 +35,11 @@ function humanizePresetSubLabel(label: string): string {
 
 // 品牌/提供者/厂商标签表，从提供者注册表派生。
 const BRAND_LABEL_OVERRIDES: Record<string, string> = Object.fromEntries(
-  EFFECTIVE_PROVIDER_SPECS.map((s) => [s.id, s.brand]),
+  FACTORY_PROVIDER_SPECS.map((s) => [s.id, s.brand]),
 );
 
 const PROVIDER_LABEL_OVERRIDES: Record<string, string> = Object.fromEntries(
-  EFFECTIVE_PROVIDER_SPECS
+  FACTORY_PROVIDER_SPECS
     .filter((s) => s.providerLabel !== undefined)
     .map((s) => [s.id, s.providerLabel as string]),
 );

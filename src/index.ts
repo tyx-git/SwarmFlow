@@ -180,8 +180,8 @@ export type { FileAttachResult, FileInfo } from "./attachments/types.js";
 // -- TUI ------------------------------------------------------------------
 /**
  * TUI 契约类型：ConversationEntry 是会话条目的类型化表示。
- * 注意：launchTui 已移至 external/opentui/main.ts，
- * 不再从此 barrel 导出，需要时直接从 external/opentui/main.js 导入。
+ * 注意：launchTui 已移至 external/opentui/main.tsx，
+ * 不再从此 barrel 导出，需要时直接从 external/opentui/main.js（构建产物）导入。
  */
 export type {
   ConversationEntry,

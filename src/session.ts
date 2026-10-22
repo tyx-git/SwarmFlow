@@ -13,7 +13,8 @@ import { getLogger, initLogger } from "./logging/logger.js";
 import { assembleSystemPrompt } from "./prompts/templates.js";
 
 import { Agent } from "./agents/agent.js";
-import type { ToolLoopResult, ToolExecutor, ToolPreflightContext, ToolPreflightDecision, ResolveToolCallVisibilityCallback } from "./agents/tool-loop/types.js";
+import type { ToolLoopResult, ToolPreflightContext, ToolPreflightDecision, ResolveToolCallVisibilityCallback } from "./agents/tool-loop/types.js";
+import type { ToolExecutor } from "./tools/executor-types.js";
 import { allocateContextId, stripContextTags } from "./context/context-tags.js";
 
 import type { Config } from "./config/loader.js";
@@ -72,7 +73,7 @@ import {
   argOptionalPath,
   argRequiredString,
   argRequiredStringArray,
-} from "./tools/arg-helpers.js";
+} from "./tools/arg-validation.js";
 import {
   ASK_DISCUSS_FURTHER_GUIDANCE,
   isAskPendingError,
@@ -294,12 +295,12 @@ const SYSTEM_PREFIXES = [
 
 
 // ------------------------------------------------------------------
-// MessageEnvelope —typed message envelope (see session-tree-types.ts)
+// MessageEnvelope —typed message envelope (see session/tree-types.ts)
 // ------------------------------------------------------------------
 
 
-// ChildSessionHandle / PreparedChildRestore —moved to ./session/child-session-manager.ts
-// BackgroundShellEntry —moved to ./background-shell-manager.ts
+// ChildSessionHandle / PreparedChildRestore —moved to ./session/children/types.ts
+// BackgroundShellEntry —moved to ./session/background-shell/types.ts
 
 
 
@@ -336,7 +337,7 @@ export class Session {
   private _cachedSummary: string | undefined;
 
   // Structured log —entries, revision, listeners, and id allocation live in
-  // SessionLog (src/session/session-log.ts); these accessors keep the many
+  // SessionLog (src/session/log.ts); these accessors keep the many
   // Session-internal `_log` / `_idAllocator` call sites unchanged.
   _logStore = new SessionLog();
 
@@ -931,7 +932,7 @@ export class Session {
     return this._logStore.nextId(type);
   }
 
-  /** Live-session view for the shared log-surgery functions (session-persistence.ts). */
+  /** Live-session view for the shared log-surgery functions (session/log-surgery.ts). */
   _logSurgeryView(): LogSurgery {
     const session = this;
     return {
@@ -2120,7 +2121,7 @@ export class Session {
   }
 
   // ==================================================================
-  // 配置重载（/reload 用户命令；模型侧无对应工具）
+  // Shared helpers
   // ==================================================================
 
   _sortedUnique(values: Iterable<string | undefined | null>): string[] {
@@ -3279,21 +3280,6 @@ export class Session {
   }
 
   // ==================================================================
-  // Tool argument helpers
-  // ==================================================================
-
-  // Arg-validation helpers —delegates to standalone functions in tools/arg-helpers.ts
-  private _argOptionalString(toolName: string, args: Record<string, unknown>, key: string): string | undefined | ToolResult {
-    return argOptionalString(toolName, args, key);
-  }
-  private _argRequiredString(toolName: string, args: Record<string, unknown>, key: string, opts?: { nonEmpty?: boolean }): string | ToolResult {
-    return argRequiredString(toolName, args, key, opts);
-  }
-  private _argRequiredStringArray(toolName: string, args: Record<string, unknown>, key: string): string[] | ToolResult {
-    return argRequiredStringArray(toolName, args, key);
-  }
-
-  // ==================================================================
   // Ask tool
   // ==================================================================
 
@@ -3418,7 +3404,7 @@ export class Session {
   }
 
   // ==================================================================
-  // AGENTS.md persistent memory
+  // Tool call visibility
   // ==================================================================
 
   /**
@@ -3686,13 +3672,13 @@ export class Session {
   }
 
   private async _execSpawn(args: Record<string, unknown>): Promise<ToolResult> {
-    const idArg = this._argRequiredString("spawn", args, "id", { nonEmpty: true });
+    const idArg = argRequiredString("spawn", args, "id", { nonEmpty: true });
     if (idArg instanceof ToolResult) return idArg;
-    const taskArg = this._argRequiredString("spawn", args, "task", { nonEmpty: true });
+    const taskArg = argRequiredString("spawn", args, "task", { nonEmpty: true });
     if (taskArg instanceof ToolResult) return taskArg;
-    const modeArg = this._argRequiredString("spawn", args, "mode", { nonEmpty: true });
+    const modeArg = argRequiredString("spawn", args, "mode", { nonEmpty: true });
     if (modeArg instanceof ToolResult) return modeArg;
-    const templateArg = this._argOptionalString("spawn", args, "template");
+    const templateArg = argOptionalString("spawn", args, "template");
     if (templateArg instanceof ToolResult) return templateArg;
     const templatePathArg = argOptionalPath("spawn", args, "template_path");
     if (templatePathArg instanceof ToolResult) return templatePathArg;
@@ -3720,7 +3706,7 @@ export class Session {
   }
 
   private _execKillAgent(args: Record<string, unknown>): ToolResult {
-    const idsArg = this._argRequiredStringArray("kill_agent", args, "ids");
+    const idsArg = argRequiredStringArray("kill_agent", args, "ids");
     if (idsArg instanceof ToolResult) return idsArg;
     const ids = idsArg;
 

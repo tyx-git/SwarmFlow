@@ -116,7 +116,7 @@ function runSearch(
 }
 
 /**
- * options.args 由 basic.ts 的 bundledFdArgs 生成，不是模型直传；
+ * options.args 由 glob.ts 的 bundledFdArgs 生成，不是模型直传；
  * 因此这里不再维护一套永远不会触发的选项白名单/黑名单。
  */
 export async function runBundledFd(options: {

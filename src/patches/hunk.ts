@@ -2,8 +2,9 @@
  * 文件修改工具（edit_file / write_file）共享的 diff hunk 模型。
  *
  * 用于：
- *  - tool-loop.ts  (流式上下文探测 → 尽力生成 hunk)
- *  - basic.ts      (工具执行 → 权威 hunk)
+ *  - agents/tool-loop/{run,streaming-arguments}.ts
+ *      (流式上下文探测 → 尽力生成 hunk)
+ *  - tools/{file-edit,file-write}.ts (工具执行 → 权威 hunk)
  *  - presentation  (渲染 → FileModifyBody)
  */
 

@@ -7,7 +7,7 @@ import {
   setArgRepairSink,
   type ArgRepairKind,
 } from "../../src/tools/arg-repair.js";
-import { argRequiredStringArray, argOptionalPath } from "../../src/tools/arg-helpers.js";
+import { argRequiredStringArray, argOptionalPath } from "../../src/tools/arg-validation.js";
 import { executeTool } from "../../src/tools/dispatch.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -1,21 +1,14 @@
 ﻿/**
- * 内置工具定义和执行器。
+ * 工具参数校验：单一实现，两种错误通道。
  *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
+ * 核心校验器抛 `ToolArgValidationError`（供 tools/dispatch.ts 统一格式化）；
+ * 底部的 `arg*` 适配器把同一核心的错误转成 `ToolResult`（供 Session 与
+ * 后台 shell 等直接返回工具结果的执行器使用）。两者共享同一份判定逻辑
+ * 与错误文案。
  */
 
-import fs from "node:fs/promises";
-
-import path from "node:path";
-
-import { coercePathString } from "./arg-repair.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
+import { ToolResult } from "../providers/response.js";
+import { coercePathString, coerceStringArray } from "./arg-repair.js";
 
 export class ToolArgValidationError extends Error {
   toolName: string;
@@ -37,6 +30,19 @@ export function expectArgsObject(
     throw new ToolArgValidationError(toolName, "(root)", "arguments must be an object.");
   }
   return args;
+}
+
+export function toolArgError(toolName: string, message: string): ToolResult {
+  return new ToolResult({ content: `Error: invalid arguments for ${toolName}: ${message}` });
+}
+
+function asToolResult<T>(toolName: string, run: () => T): T | ToolResult {
+  try {
+    return run();
+  } catch (error) {
+    if (error instanceof ToolArgValidationError) return toolArgError(toolName, error.message);
+    throw error;
+  }
 }
 
 export function requiredStringArg(
@@ -62,18 +68,26 @@ export function requiredStringArg(
   return v;
 }
 
+function optionalStringValue(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const v = args[key];
+  if (v == null) return undefined;
+  if (typeof v !== "string") {
+    throw new ToolArgValidationError(toolName, key, `'${key}' must be a string.`);
+  }
+  return v;
+}
+
 export function optionalStringArg(
   toolName: string,
   args: Record<string, unknown>,
   key: string,
   fallback: string,
 ): string {
-  const v = args[key];
-  if (v == null) return fallback;
-  if (typeof v !== "string") {
-    throw new ToolArgValidationError(toolName, key, `'${key}' must be a string.`);
-  }
-  return v;
+  return optionalStringValue(toolName, args, key) ?? fallback;
 }
 
 /**
@@ -166,4 +180,81 @@ export function requiredStringList(
     return value.filter((item): item is string => item.trim().length > 0);
   }
   throw new ToolArgValidationError(toolName, key, `'${key}' must be a string or an array of strings.`);
+}
+
+function requiredStringArrayArg(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): string[] {
+  const raw = args[key];
+  // 验证后修复：只有当原值未通过数组检查时才尝试强制转换。
+  // 覆盖 '["a","b"]' JSON 字符串、{} 占位符和裸字符串
+  // —— 这些是开放模型产生的可恢复形状。参见 arg-repair.ts。
+  let value: unknown[];
+  if (Array.isArray(raw)) {
+    value = raw;
+  } else {
+    const repaired = coerceStringArray(toolName, key, raw);
+    if (repaired === null) {
+      throw new ToolArgValidationError(toolName, key, `'${key}' must be an array of strings.`);
+    }
+    value = repaired;
+  }
+  for (let i = 0; i < value.length; i++) {
+    if (typeof value[i] !== "string") {
+      throw new ToolArgValidationError(toolName, key, `'${key}[${i}]' must be a string.`);
+    }
+  }
+  return value as string[];
+}
+
+export function argOptionalString(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): string | undefined | ToolResult {
+  return asToolResult(toolName, () => optionalStringValue(toolName, args, key));
+}
+
+export function argRequiredString(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+  opts?: { nonEmpty?: boolean },
+): string | ToolResult {
+  return asToolResult(toolName, () => requiredStringArg(toolName, args, key, opts));
+}
+
+export function argRequiredStringArray(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): string[] | ToolResult {
+  return asToolResult(toolName, () => requiredStringArrayArg(toolName, args, key));
+}
+
+/**
+ * 可选路径/文件参数：类似 `argOptionalString`，但会解包
+ * 某些模型发送到路径字段的退化 markdown 自动链接
+ *（`"[notes.md](http://notes.md)"` → `"notes.md"`）。仅用于路径参数
+ * — 永远不要用于自由文本字段，其中可能包含真正的 markdown 链接。
+ */
+export function argOptionalPath(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): string | undefined | ToolResult {
+  return asToolResult(toolName, () => {
+    const value = optionalStringValue(toolName, args, key);
+    return value === undefined ? undefined : coercePathString(toolName, key, value);
+  });
+}
+
+export function argOptionalInteger(
+  toolName: string,
+  args: Record<string, unknown>,
+  key: string,
+): number | undefined | ToolResult {
+  return asToolResult(toolName, () => optionalIntegerArg(toolName, args, key));
 }

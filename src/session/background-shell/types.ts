@@ -71,6 +71,6 @@ export interface BackgroundShellManagerDeps {
 // 避免长会话中的目录无限增长。
 //
 // 选择 8 的理由：典型开发服务器重启前会写入约 200 KB；
-// 8 × 200 KB ≈ 每个 id 最大 1.6 MB。这里镜像 src/tools/basic.ts 中
+// 8 × 200 KB ≈ 每个 id 最大 1.6 MB。这里镜像 src/tools/limits.ts 中
 // BASH_SPILL_KEEP_LAST = 32 的保留惯例；若真实使用超过此范围再调整。
 

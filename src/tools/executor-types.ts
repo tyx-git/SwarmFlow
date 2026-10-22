@@ -1,8 +1,8 @@
 ﻿/**
  * 工具执行器的共享类型。
  *
- * 放在专用文件中以避免 `src/tools/basic.ts`
- * 和 `src/agents/tool-loop.ts` 之间的循环依赖。
+ * 放在专用文件中以避免 `src/tools/dispatch.ts`
+ * 和 `src/agents/tool-loop/run.ts` 之间的循环依赖。
  */
 
 import type { ToolResult } from "../providers/response.js";
@@ -10,7 +10,7 @@ import type { ToolResult } from "../providers/response.js";
 /**
  * 传递给工具执行器的按调用运行时上下文。
  *
- * 保存会话中各个工具调用之间不同的值 — 不同于 `basic.ts`
+ * 保存会话中各个工具调用之间不同的值 — 不同于 `dispatch.ts`
  * 中的按会话静态 `ExecuteToolContext`，后者保存的值
  *（如 `projectRoot`）在会话期间是固定的。
  */

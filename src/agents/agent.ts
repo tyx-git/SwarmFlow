@@ -20,7 +20,8 @@ import { createProvider } from "../providers/registry.js";
 import { executeTool } from "../tools/dispatch.js";
 import { createEphemeralLogState } from "../context/ephemeral-log.js";
 import { asyncRunToolLoop } from "./tool-loop/run.js";
-import type { OnToolCallCallback, ToolExecutor, ToolLoopOptions, ToolLoopResult } from "./tool-loop/types.js";
+import type { OnToolCallCallback, ToolLoopOptions, ToolLoopResult } from "./tool-loop/types.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 
 // ------------------------------------------------------------------
 // 输出前缀检测

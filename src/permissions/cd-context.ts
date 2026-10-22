@@ -2,7 +2,7 @@
  * cd 感知的上下文解析 — 用于复合 bash 命令。
  *
  * 由权限分类器使用（用于决定规则是否适用）。
- * bash 执行器在 tools/basic.ts 中有内联的 cd 解析器，
+ * bash 执行器在 tools/mutations.ts 中有内联的 cd 解析器，
  * 以避免循环依赖。
  */
 

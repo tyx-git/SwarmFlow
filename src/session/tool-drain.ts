@@ -8,7 +8,8 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import type { ToolExecutor, ToolPreflightContext, ToolPreflightDecision } from "../agents/tool-loop/types.js";
+import type { ToolPreflightContext, ToolPreflightDecision } from "../agents/tool-loop/types.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 import { HookRuntime, type HookPayload } from "../hooks/index.js";
 import { ToolGate } from "../tools/runtime.js";
 import type { ApprovalRequest } from "../ask.js";

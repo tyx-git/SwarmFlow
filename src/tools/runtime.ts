@@ -371,7 +371,7 @@ export class ToolGate {
   }
 
   /**
-   * 创建与 tool-loop.ts 兼容的 BeforeToolExecuteCallback。
+   * 创建与 agents/tool-loop/types.ts 兼容的 BeforeToolExecuteCallback。
    * 不直接使用 —— Session 用额外逻辑包装此方法
    * （产出目录旁路、钩子、ApprovalRequest 构造）。
    * 保留作为 Gate→ToolPreflight 桥接的参考实现。

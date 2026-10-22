@@ -233,4 +233,3 @@ export interface ToolLoopOptions {
 }
 
 import type { ToolExecutor, ToolExecutorContext } from "../../tools/executor-types.js";
-export type { ToolExecutor, ToolExecutorContext };

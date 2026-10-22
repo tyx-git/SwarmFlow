@@ -7,8 +7,7 @@
  */
 
 import type { ModelConfig } from "../config/types.js";
-import { type ProviderClassKind } from "./provider-specs.js";
-import { EFFECTIVE_PROVIDER_SPECS } from "../providers/registry-effective.js";
+import { type ProviderClassKind, FACTORY_PROVIDER_SPECS } from "./provider-specs.js";
 import type { BaseProvider } from "./base.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OpenAIResponsesProvider } from "./openai-responses.js";
@@ -47,7 +46,7 @@ const EXTRA_PROVIDER_CLASSES: Record<string, ProviderClassKind> = {
 
 const PROVIDER_CLASS_BY_ID: Map<string, ProviderClassKind> = (() => {
   const m = new Map<string, ProviderClassKind>(Object.entries(EXTRA_PROVIDER_CLASSES));
-  for (const spec of EFFECTIVE_PROVIDER_SPECS) m.set(spec.id, spec.providerClass);
+  for (const spec of FACTORY_PROVIDER_SPECS) m.set(spec.id, spec.providerClass);
   return m;
 })();
 

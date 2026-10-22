@@ -5,7 +5,7 @@
  * 外部 shell 环境变量仅在初始化时作为导入候选。
  */
 
-import { EFFECTIVE_PROVIDER_SPECS } from "../providers/registry-effective.js";
+import { FACTORY_PROVIDER_SPECS } from "../providers/provider-specs.js";
 
 /** 受管凭证的元数据：内部变量名 + 外部候选变量列表。 */
 export interface ManagedProviderCredentialSpec {
@@ -16,7 +16,7 @@ export interface ManagedProviderCredentialSpec {
 
 /** 从 provider specs 派生（单一数据源：providers.json）。 */
 export const MANAGED_PROVIDER_CREDENTIAL_SPECS: ManagedProviderCredentialSpec[] =
-  EFFECTIVE_PROVIDER_SPECS.flatMap((spec) =>
+  FACTORY_PROVIDER_SPECS.flatMap((spec) =>
     spec.credential.kind === "managed"
       ? [{
           providerId: spec.id,
@@ -34,7 +34,7 @@ const SPEC_BY_PROVIDER = new Map(
 export type ProviderCredentialKind = "env" | "managed" | "oauth" | "local";
 
 const CREDENTIAL_KIND_BY_PROVIDER = new Map<string, ProviderCredentialKind>(
-  EFFECTIVE_PROVIDER_SPECS.map((spec) => [spec.id, spec.credential.kind] as const),
+  FACTORY_PROVIDER_SPECS.map((spec) => [spec.id, spec.credential.kind] as const),
 );
 
 /**

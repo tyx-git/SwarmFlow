@@ -7,7 +7,8 @@
 
 import { isNoReply, NO_REPLY_MARKER } from "../agents/agent.js";
 import type { Agent } from "../agents/agent.js";
-import type { BeforeToolExecuteCallback, ResolveToolCallVisibilityCallback, ToolExecutor, ToolLoopResult } from "../agents/tool-loop/types.js";
+import type { BeforeToolExecuteCallback, ResolveToolCallVisibilityCallback, ToolLoopResult } from "../agents/tool-loop/types.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 import { type HookRuntime } from "../hooks/index.js";
 import {
   createAskRequest,

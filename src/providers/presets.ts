@@ -3,8 +3,8 @@
 import {
   type ProviderSpec,
   credentialEnvVar,
+  FACTORY_PROVIDER_SPECS,
 } from "./provider-specs.js";
-import { EFFECTIVE_PROVIDER_SPECS } from "../providers/registry-effective.js";
 
 export interface ProviderPreset {
   id: string;
@@ -37,7 +37,7 @@ export function deriveProviderPresets(specs: readonly ProviderSpec[]): ProviderP
   });
 }
 
-export const PROVIDER_PRESETS = deriveProviderPresets(EFFECTIVE_PROVIDER_SPECS);
+export const PROVIDER_PRESETS = deriveProviderPresets(FACTORY_PROVIDER_SPECS);
 
 export function findProviderPreset(providerId: string): ProviderPreset | undefined {
   return PROVIDER_PRESETS.find((preset) => preset.id === providerId);

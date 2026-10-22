@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Agent } from "../../src/agents/agent.js";
-import type { ToolExecutor } from "../../src/agents/tool-loop/types.js";
+import type { ToolExecutor } from "../../src/tools/executor-types.js";
 import type { ApprovalRequest } from "../../src/ask.js";
 import { SessionStore } from "../../src/config/session-store.js";
 import { BaseProvider } from "../../src/providers/base.js";

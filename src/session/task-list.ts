@@ -18,7 +18,7 @@ import type { ChildSessionManager } from "./children/manager.js";
 import { TaskStore, taskStorePath } from "../tasks/store.js";
 import type { Task, TaskResumeHint, TaskUpdateFields } from "../tasks/types.js";
 import { ensureTaskTools } from "../tools/runtime.js";
-import { argOptionalString, argRequiredString } from "../tools/arg-helpers.js";
+import { argOptionalString, argRequiredString } from "../tools/arg-validation.js";
 import { readResumeHint } from "../tasks/resume.js";
 import { buildContinuationPrompt } from "./prompts.js";
 import { isAgentRoleId } from "../swarm/types.js";

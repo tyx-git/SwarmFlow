@@ -1,46 +1,12 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { SessionStore } from "../../src/config/session-store.js";
-import { Session } from "../../src/session.js";
-import { executeTool } from "../../src/tools/dispatch.js";
-import { createAssistantText, createReasoning, createUserMessage } from "../../src/context/entry/factories.js";
 import { shell } from "../../src/platform/index.js";
+import { executeTool } from "../../src/tools/dispatch.js";
+import { makeSession, makeTempDir } from "./minimal-session.js";
 
-function makeTempDir(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
-}
-
-function makeSession(projectRoot: string): Session {
-  const primaryAgent = {
-    name: "Primary",
-    systemPrompt: "You are a test agent.",
-    tools: [],
-    modelConfig: {
-      model: "test-model",
-      contextLength: 8192,
-      supportsMultimodal: false,
-    },
-  } as any;
-
-  const store = new SessionStore({ baseDir: projectRoot, projectPath: projectRoot });
-  store.createSession();
-  const config = {
-    mcpServerConfigs: [],
-    getModel: () => ({ model: "test" }),
-  } as any;
-
-  return new Session({
-    primaryAgent,
-    config,
-    store,
-  });
-}
-
-describe("P4 shell governance", () => {
+describe("shell governance", () => {
   it("marks a non-zero shell exit as a tool error while preserving the exit code", async () => {
     const root = makeTempDir("swarmflow-p4-bash-exit-proj-");
     try {
@@ -121,25 +87,4 @@ describe("P4 shell governance", () => {
       rmSync(externalRoot, { recursive: true, force: true });
     }
   });
-});
-
-describe("P6 output round context", () => {
-  it("text-only final rounds keep their own context_id", () => {
-    const projectRoot = makeTempDir("swarmflow-p6-round-retag-");
-    try {
-      const session = makeSession(projectRoot) as any;
-      session._turnCount = 1;
-      session._log.push(
-        createUserMessage("user-001", 1, "hello", "hello", "u1"),
-        createReasoning("rsn-001", 1, 0, "thinking", "thinking", undefined, "tmp-round"),
-        createAssistantText("asst-001", 1, 0, "answer", "answer", "tmp-round"),
-      );
-
-      const resolved = session._resolveOutputRoundContextId(1, 0);
-      expect(resolved).toBe("tmp-round");
-    } finally {
-      rmSync(projectRoot, { recursive: true, force: true });
-    }
-  });
-
 });

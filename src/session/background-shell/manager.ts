@@ -29,7 +29,7 @@ import {
   argRequiredString,
   argRequiredStringArray,
   toolArgError,
-} from "../../tools/arg-helpers.js";
+} from "../../tools/arg-validation.js";
 import type { MessageEnvelope } from "../tree-types.js";
 
 // ── 类型 ────────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@ export interface TaskResumeHint {
   tokensIn: number;
   /** 阈值与规则的判定结果。 */
   resumable: boolean;
-  /** 判定原因（见 task-reconcile.ts 的 ResumeReason）。 */
+  /** 判定原因（见 reconcile.ts 的 ResumeReason）。 */
   reason: string;
 }
 

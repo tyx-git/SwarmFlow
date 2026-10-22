@@ -6,7 +6,7 @@
  */
 
 import type { Agent } from "../agents/agent.js";
-import type { ToolExecutor } from "../agents/tool-loop/types.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 import type { MCPClientManager } from "../clients/mcp/manager.js";
 import { loadGlobalSettings, loadLocalSettings, mergeSettings, settingsToConfigInputs } from "../config/settings/io.js";
 import { registerMcpTools } from "../tools/runtime.js";

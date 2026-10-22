@@ -86,7 +86,7 @@ export function prepareRestoreFromLog(host: RestoreHost,
 
   // Parse on cloned data —everything that can fail (model resolution, log
   // surgery) happens here, so a failed restore never pollutes the live
-  // session (see session-persistence.ts).
+  // session (see session/log-surgery.ts).
   const clonedEntries = structuredClone(entries) as LogEntry[];
   const clonedAllocator = new LogIdAllocator();
   clonedAllocator.restoreFrom(clonedEntries);
