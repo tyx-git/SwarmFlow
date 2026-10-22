@@ -14,8 +14,9 @@ import { createUiText, getUiLanguage } from "../../ui/text.js";
 
 import { persistSettingsPatch } from "../settings-patch.js";
 import { type CommandContext } from "../types.js";
+import type { SessionLike } from "../../session/contract.js";
 
-export function currentSessionModelDisplayName(session: any): string {
+export function currentSessionModelDisplayName(session: SessionLike): string {
   return getCurrentModelDescriptor(session)?.compactScopedDetailedLabel ?? "";
 }
 

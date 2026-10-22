@@ -104,7 +104,6 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
           modelId: item.modelId,
         });
         const current = isCurrentSelection(
-          session,
           currentConfigName,
           providerId,
           selectionKey,

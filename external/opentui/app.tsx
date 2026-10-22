@@ -736,10 +736,10 @@ export function OpenTuiApp({
     };
   }, [session, autoSave]);
   useEffect(() => {
-    session.onMcpStatus = (statuses: any[]) => {
+    session.onMcpStatus = (statuses) => {
       const failed = statuses
-        .filter((s: any) => s.state === "failed")
-        .map((s: any) => ({ name: s.name, error: s.error }));
+        .filter((s) => s.state === "failed")
+        .map((s) => ({ name: s.name, error: s.error }));
       // Reflect current state: show on failure, auto-clear once servers recover.
       setMcpFailures(failed.length > 0 ? failed : null);
       // Hot-update /mcp picker if open

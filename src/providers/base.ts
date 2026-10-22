@@ -1,4 +1,4 @@
-/** BaseProvider 抽象合约：发送、凭据刷新与 401/403 重发一次。 */
+﻿/** BaseProvider 抽象合约：发送、凭据刷新与 401/403 重发一次。 */
 
 import { isUnauthorizedError } from "../network/retry.js";
 import { ProviderResponse } from "./response.js";
@@ -51,7 +51,7 @@ export abstract class BaseProvider {
    * 会检查 `onTextChunk`/`onReasoningChunk`，存在时路由到其
    * 流式实现。
    *
-   * 额外负责 401/403 的"刷新凭据→原样重发一次"。重试环（network-retry）
+   * 额外负责 401/403 的"刷新凭据→原样重发一次"。重试环（network/retry）
    * 故意不认 4xx：凭据不刷新时重发多少次都是同一个错误，所以这里只发一次，
    * 失败就抛。
    */

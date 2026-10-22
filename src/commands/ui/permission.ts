@@ -9,6 +9,12 @@ import { type CommandContext, type CommandOption, type CommandOptionsContext } f
 
 const PERMISSION_MODES = ["read_only", "reversible", "yolo"] as const;
 
+type PermissionModeValue = typeof PERMISSION_MODES[number];
+
+function isPermissionMode(value: string): value is PermissionModeValue {
+  return (PERMISSION_MODES as readonly string[]).includes(value);
+}
+
 function permissionText(homeDir?: string): UiText {
   return createUiText(getUiLanguage(homeDir));
 }
@@ -54,7 +60,7 @@ export async function cmdPermission(ctx: CommandContext, args: string): Promise<
     }
   }
 
-  if (!PERMISSION_MODES.includes(mode as any)) {
+  if (!isPermissionMode(mode)) {
     ctx.showMessage(t.get(["Commands", "/permission", "invalid"], {
       mode,
       modes: PERMISSION_MODES.map((item) => permissionLabel(item, t)).join(", "),

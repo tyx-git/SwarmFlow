@@ -61,7 +61,7 @@ class CopilotAnthropicImpl extends AnthropicProvider {
       // 避免 SDK 默认的 x-api-key 头（Copilot 代理会拒绝它）。
       apiKey: "unused-copilot-token-manager-owned",
       baseURL: apiToken.endpointApi,
-      // 禁用 SDK 内置重试循环。外层 tool-loop 有自己的 network-retry 层
+      // 禁用 SDK 内置重试循环。外层 tool-loop 有自己的 network/retry 层
       //（`src/network/retry.ts`），其作用域正确（排除 400、指数退避、有日志）。
       // SDK 内部第二层隐藏重试会在任何临时 429/5xx/`x-should-retry: true`
       // 上静默放大 Copilot 计费。

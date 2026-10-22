@@ -15,16 +15,18 @@ import { assembleSystemPrompt } from "./prompts/templates.js";
 import { Agent } from "./agents/agent.js";
 import type { ToolLoopResult, ToolPreflightContext, ToolPreflightDecision, ResolveToolCallVisibilityCallback } from "./agents/tool-loop/types.js";
 import type { ToolExecutor } from "./tools/executor-types.js";
+import type { SessionLike } from "./session/contract.js";
 import { allocateContextId, stripContextTags } from "./context/context-tags.js";
 
 import type { Config } from "./config/loader.js";
 import type { ModelConfig } from "./config/types.js";
-import type { MCPClientManager } from "./clients/mcp/manager.js";
+import type { MCPClientManager, McpServerStatus } from "./clients/mcp/manager.js";
 import { type ProgressReporter } from "./logging/progress.js";
 import { ToolResult } from "./providers/response.js";
 import type { FileMutation } from "./tools/mutations.js";
 import type { RewindPlan, RewindApplyResult } from "./ui/contracts.js";
 import { RewindEngine } from "./session/rewind/engine.js";
+import type { RewindTargetTurn } from "./session/rewind/types.js";
 import { ChildSessionManager } from "./session/children/manager.js";
 import type { ChildSessionHandle, PreparedChildRestore } from "./session/children/types.js";
 import {
@@ -280,9 +282,6 @@ export type { InlineImageInput, TurnLifecycleEvent, TurnLifecycleStatus } from "
 // Constants
 // ------------------------------------------------------------------
 
-const MAX_ACTIVATIONS_PER_TURN = 30;
-const MAX_COMPACT_PHASE_ROUNDS = 10;       // max activations during compact phase
-
 const SYSTEM_PREFIXES = [
   "[AUTO-COMPACT]",
   "[Context After Auto-Compact]",
@@ -309,7 +308,7 @@ const SYSTEM_PREFIXES = [
 // ------------------------------------------------------------------
 
 
-export class Session {
+export class Session implements SessionLike {
   primaryAgent: Agent;
   config: Config;
   agentTemplates: Record<string, Agent>;
@@ -495,7 +494,7 @@ export class Session {
   /** Callback for incremental persistence —called at save-worthy checkpoints. */
   onSaveRequest?: () => void | boolean;
   /** Callback for MCP connection status —called after initial connect or reload. */
-  onMcpStatus?: (statuses: Array<{ name: string; state: string; toolCount: number; error?: string }>) => void;
+  onMcpStatus?: (statuses: McpServerStatus[]) => void;
 
   // Counters
   _turnCount = 0;
@@ -1557,16 +1556,7 @@ export class Session {
    * Includes turns before compact markers (rewind undoes compacts).
    * Returns turns in reverse chronological order (most recent first).
    */
-  getRewindTargets(): Array<{
-    turnIndex: number;
-    entryIndex: number;
-    preview: string;
-    timestamp: number;
-    fileCount: number;
-    additions: number;
-    deletions: number;
-    filesReverted: boolean;
-  }> {
+  getRewindTargets(): RewindTargetTurn[] {
     const userTurns = this.listTurns().filter(t => t.turnKind === "user");
 
     // Collect per-turn mutation data: distinct paths, additions, deletions

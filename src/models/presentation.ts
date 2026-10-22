@@ -7,6 +7,7 @@ import {
 } from "../providers/provider-specs.js";
 import { loadGlobalSettings } from "../config/settings/io.js";
 import { getSwarmflowHomeDir } from "../config/home-dir.js";
+import type { SessionLike } from "../session/contract.js";
 
 function normalizeModelId(model: string): string {
   const idx = model.lastIndexOf("/");
@@ -203,7 +204,7 @@ export function describeModel(params: {
   };
 }
 
-export function getCurrentModelDescriptor(session: any): ModelDescriptor | null {
+export function getCurrentModelDescriptor(session: SessionLike): ModelDescriptor | null {
   const modelConfig = session?.primaryAgent?.modelConfig;
   if (!modelConfig) return null;
 

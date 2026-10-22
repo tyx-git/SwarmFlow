@@ -24,6 +24,7 @@ import {
   isManagedProvider,
 } from "../config/managed-provider-credentials.js";
 import { Config } from "../config/loader.js";
+import type { ModelPickerSessionView } from "../session/contract.js";
 import { getThinkingLevels, getSubAgentThinkingLevels, runtimeTransportProtocol } from "../config/model-capabilities.js";
 import { buildModelPickerTree } from "../models/picker/model-tree.js";
 import { labelModelPickerNode } from "../models/picker/labels.js";
@@ -290,7 +291,7 @@ export class InitService {
     return Boolean(process.env[preset.envVar]);
   }
 
-  private createPickerSession(currentSelection?: ModelSelection): any {
+  private createPickerSession(currentSelection?: ModelSelection): ModelPickerSessionView {
     const config = new Config({});
 
     for (const [providerId, entry] of this.configuredProviders) {
@@ -322,10 +323,10 @@ export class InitService {
       }
     }
 
-    let currentModelConfig: Record<string, unknown> | undefined;
+    let currentModelConfig: { provider?: string; model?: string } | undefined;
     if (currentSelection) {
       try {
-        currentModelConfig = config.getModel(currentSelection.configName) as unknown as Record<string, unknown>;
+        currentModelConfig = config.getModel(currentSelection.configName);
       } catch {
         currentModelConfig = { provider: currentSelection.providerId, model: currentSelection.modelId };
       }

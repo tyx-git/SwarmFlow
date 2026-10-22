@@ -7,7 +7,7 @@
 
 import type { Agent } from "../agents/agent.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
-import type { MCPClientManager } from "../clients/mcp/manager.js";
+import type { MCPClientManager, McpServerStatus } from "../clients/mcp/manager.js";
 import { loadGlobalSettings, loadLocalSettings, mergeSettings, settingsToConfigInputs } from "../config/settings/io.js";
 import { registerMcpTools } from "../tools/runtime.js";
 import type { DeliverMessageResult, MessageEnvelope } from "./tree-types.js";
@@ -36,7 +36,7 @@ export interface ToolAvailabilityNotice {
 export interface McpHost {
   primaryAgent: Agent;
   agentTemplates: Record<string, Agent>;
-  onMcpStatus?: (statuses: Array<{ name: string; state: string; toolCount: number; error?: string }>) => void;
+  onMcpStatus?: (statuses: McpServerStatus[]) => void;
   _mcpManager?: MCPClientManager;
   _mcpConnected: boolean;
   _mcpReadyPromise?: Promise<void>;

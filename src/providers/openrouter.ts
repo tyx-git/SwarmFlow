@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenRouter 提供者适配器。
  *
  * 扩展 OpenAIChatProvider，增加：
@@ -66,7 +66,7 @@ export class OpenRouterProvider extends OpenAIChatProvider {
       baseURL: baseUrl,
       // 关闭 SDK 内置重试：流式请求 SDK 本来就不重试，非流式则会用 0.5s/1s 的
       // 隐藏退避先跑几轮，用户看不到进度、也享受不到 5/10/20/40/80 的可观测
-      // 退避。重试统一由 tool-loop 的 network-retry 层负责（与 copilot.ts 同取舍）。
+      // 退避。重试统一由 tool-loop 的 network/retry 层负责（与 copilot.ts 同取舍）。
       maxRetries: 0,
       defaultHeaders: Object.keys(headers).length > 0 ? headers : undefined,
     });

@@ -155,7 +155,12 @@ run(process.execPath, [
 run(process.execPath, [join(root, "scripts", "copy-node-assets.mjs"), runtimeDist]);
 requireFile(join(runtimeDist, "src", "cli.js"), "compiled CLI");
 
-for (const directory of ["src", "assets", "prompts", "skills", "external/opentui"]) {
+// `external/opentui` 不在此列：TUI 由下面的 buildOpenTuiEntry() 用 esbuild 打成
+// 单文件 runtime/external/opentui/main.js（本地 import 全部内联，含 forked/ 与
+// tree-sitter 的 .wasm/.scm，后者以 assets/[name]-[hash] 落盘）。整目录拷贝进去的
+// 源码在运行期无人读取（约 7.9 MB），只会让 `resolveOpenTuiEntry()` 的
+// main.tsx 兜底分支在生产布局下有机会被误命中。
+for (const directory of ["src", "assets", "prompts", "skills"]) {
   copyRuntimeDirectory(directory);
 }
 await buildOpenTuiEntry();

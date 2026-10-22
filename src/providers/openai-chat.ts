@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OpenAI Chat Completions API 提供者。
  *
  * 也作为使用 OpenAI 兼容端点的 Kimi、GLM、MiniMax
@@ -47,7 +47,7 @@ export class OpenAIChatProvider extends BaseProvider {
       apiKey: config.apiKey,
       // 关闭 SDK 内置重试：流式请求 SDK 本来就不重试，非流式则会用
       // 0.5s/1s 的隐藏退避先跑几轮，用户看不到进度、也享受不到
-      // 5/10/20/40/80 的可观测退避。重试统一由 tool-loop 的 network-retry
+      // 5/10/20/40/80 的可观测退避。重试统一由 tool-loop 的 network/retry
       // 层负责（与 copilot.ts 同样的取舍：避免静默重复计费/放大用量）。
       maxRetries: 0,
     };

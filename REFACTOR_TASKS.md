@@ -1,4 +1,4 @@
-# SwarmFlow 结构重构任务清单
+﻿# SwarmFlow 结构重构任务清单
 
 范围：`src/**`、`tests/**`、`scripts/**`、`prompts/**`、`skills/**`。`gui/` 与 `external/` 不在改造对象内（但 `external/opentui` 的 import 路径必须同步更新）。
 
@@ -33,15 +33,15 @@
 | C3 | `src/version.ts:8` `import pkg from "../package.json"` | 必须在 `src/` 深度 1 | 构建期解析失败 |
 | C4 | `src/config/ui-colors.ts:1`、`src/lib/ui-text.ts:19`、`src/models/registry.ts:9` 用 `../../assets/...` 导入 JSON | 三者必须深度 2；`ui-text.ts` 若移入 `src/ui/`（仍深度 2）安全 | 构建期解析失败 |
 | C5 | `src/tools/json-query.ts:150-158`、`src/tools/native-search.ts:29-38` 按 `dirname(import.meta.url)/../intools/<tool>/` 与 `dirname(execPath)/intools/` 查找二进制；`scripts/copy-node-assets.mjs:24-25` 与 `scripts/build-sea-exe.mjs:158` 硬编码 `src/tools/intools` | 这两个 resolver 必须留在 `src/tools/`，`src/tools/intools/` 目录名不能变 | jq/rg/fd 静默回退到 JS 实现或找不到，`tests/packaged-paths.test.ts:277-282` 失败 |
-| C6 | `scripts/build-sea-exe.mjs:158` 把 `src`、`assets`、`prompts`、`skills`、`external/opentui` 整目录拷进 runtime | 不得新增需要运行的顶层源码目录，除非同步改这里 | 打包缺文件 |
-| C7 | `tests/status-panel-tasks.test.ts:113` 读 `src/session.ts` 文本断言 `Task #${task.id} created:` | 该模板字符串所在文件路径变了要改测试 | 测试红 |
-| C8 | `tests/diagnostics-logging.test.ts:40,43` 读 `src/config/persistence.ts` 与 `src/cli.ts` 文本断言 | 同上 | 测试红 |
+| C6 | `scripts/build-sea-exe.mjs:163` 把 `src`、`assets`、`prompts`、`skills` 整目录拷进 runtime（`external/opentui` 原也在列表内，2026-10-23 已移除：TUI 由 esbuild 打成 `runtime/external/opentui/main.js` + hash 资源，源码副本运行期无人读取，见 §6「收尾清理 2」） | 不得新增需要运行的顶层源码目录，除非同步改这里 | 打包缺文件 |
+| C7 | `tests/ui/status-panel-tasks.test.ts:113` 读源文件文本断言 `Task #${task.id} created:`；该模板串现位于 `src/session/task-list.ts:197`（B10.4 从 `session.ts` 抽出时测试路径与断言目标已同步） | 模板字符串所在文件路径变了要改测试 | 测试红 |
+| C8 | `tests/logging/diagnostics-logging.test.ts:40,43` 读 `src/config/settings/types.ts` 与 `src/cli.ts` 文本断言（原 `src/config/persistence.ts`，B2 拆分后改指 `settings/types.ts`） | 同上 | 测试红 |
 | C9 | `tests/node-runtime.test.ts:14` spawn `src/cli.ts`；`package.json` 的 `test:node` 脚本硬编码该路径 | 移动 cli 入口要同步改 | `npm run test:node` 失败 |
-| C10 | `src/commands/types.ts:24,146` `session: any`（B7 前位于 `commands.ts:76,198`），运行时鸭子调用 41+ 个 Session 成员（含 `_resetTransientState` 等下划线成员），多数带 `typeof === "function"` 守卫 | Session 公有/下划线成员名与语义不能变；类型检查抓不到 | **静默降级**，不是编译错误 |
+| C10 | `src/commands/types.ts:25,147` 原为 `session: any`（**T-L-01 起为 `SessionLike`**，T-L-02 起住在中立的 `src/session/contract.ts`），运行时鸭子调用 41 个 Session 成员（含 `_resetTransientState` 等下划线成员；`grep` 出的 43 个名字里 `js`/`ts` 是 `session.js` 之类字符串误命中），多数带 `typeof === "function"` 守卫 | Session 公有/下划线成员名与语义不能变；`Session implements SessionLike` 后改名/删成员会在 `session.ts` 直接编译报错，新增未声明成员的调用点会在调用方文件报错 | ~~静默降级~~ 已升级为编译期保护；T-L-02 起保护面从命令层扩到 `models/` 与会话内部（接口 43 个成员 = 41 个命令层成员 + `currentModelName`/`currentModelConfigName` 两个 getter） |
 | C11 | `tsconfig.json` `include: ["src/**/*.ts"]`、`exclude: [..., "tests", "**/*.test.ts"]`；`tsconfig.build.json` 继承之并 `noEmit:false`；`vitest.config.ts` `include: ["tests/**/*.test.ts"]` | 测试若移入 `src/`，`*.test.ts` 虽被 exclude，但 `tests/helpers/*.ts`（非 `.test.ts`）会被卷入构建图 | dist 里混入测试辅助 |
 | C12 | `src/session.ts` 与 `src/session/` 目录同名共存 | 移动后若两边都留 `session` 模块会产生歧义 | 解析混乱 |
 
-### 1.2 模块与领域映射（现状）
+### 1.2 模块与领域映射（改造前基线）
 
 | 领域 | 目录 | 行数 | 说明 |
 | --- | --- | --- | --- |
@@ -60,7 +60,7 @@
 | `src/lib/` | 20 文件 | 5,365 | **泛化桶**，跨 8 个真实领域 |
 | 其它 | lifecycle/security/skills/templates/ui/hooks/clients/browser/primitives/types | 约 3,300 | 规模合理 |
 
-### 1.3 大文件清单与职责判断（≥400 行，36 个）
+### 1.3 大文件清单与职责判断（改造前，≥400 行，36 个）
 
 标记：`拆` = 职责混杂必须拆；`抽` = 职责基本单一但可抽出数据/类型；`留` = 不建议拆。
 
@@ -103,19 +103,19 @@
 | `src/providers/credential-flow.ts` | 402 | 拆 | 凭据读写 + 交互向导，TUI 依赖它 |
 | `src/swarm/decomposer.ts` | 401 | 留 | 单分解器 |
 
-### 1.4 命名问题清单
+### 1.4 命名问题清单（改造前快照；B1–T-L-03 已逐项处置）
 
 | 问题 | 位置 | 处置 |
 | --- | --- | --- |
-| 文件名重复目录语义 | `src/config/config.ts`、`src/context/context-rendering.ts`、`src/hooks/hook-runtime.ts`、`src/session/session-log.ts`、`src/session/session-persistence.ts`、`src/session/session-prompts.ts`、`src/commands/commands.ts`、`src/swarm/gui-integration.ts` | 目录已表领域，文件名只表职责 |
-| Python 风格 barrel | `src/swarm/__init__.ts`（仅被 `src/index.ts:250,262` 引用） | 改 `src/swarm/index.ts` |
-| 泛化桶 | `src/lib/`（20 文件 5,365 行，跨 shell/文件/网络/日志/任务/UI/推理 7 个领域） | B5 解散映射 |
-| 泛化名 | `src/tools/shared.ts`（真实内容是 SEARCH_BUDGET_MS + EXCLUDE_DIRS + truncate*）、`src/tools/basic.ts`（"basic" 不含信息） | 按职责重命名 |
-| 语义不明的近义对 | `src/providers/registry.ts` vs `registry-effective.ts`（后者仅 6 行透传 `EFFECTIVE_PROVIDER_SPECS = FACTORY_PROVIDER_SPECS`）；`defaults.ts` vs `presets.ts` | 待确认清单 Q4，属"双源" |
-| 跨目录职责错位 | Provider 注册表数据在 `src/models/registry.ts`；`src/lib/system-proxy.ts`（46 行）套在 `src/platform/system-proxy/` 外面 | B5/B8 归位 |
-| 目录职责重叠 | `src/browser/`（本地 HTTP 设计助手服务器）vs `src/platform/browser/`（跨平台打开浏览器）；同名不同义 | 前者改名 `src/browser-preview/` |
-| 根目录散落文件 | `src/session.ts`、`src/session-resume.ts`、`src/session-tree-types.ts`、`src/session-capabilities.ts`、`src/ask.ts`、`src/version.ts`、`src/index.ts` | `version.ts`/`index.ts` 必须留根（C3/C1），其余归模块 |
-| 类名与文件名不符职责 | `InitService`（`src/lifecycle/init-service.ts`）内又定义 `ProviderPresetInfo`/`ModelPickerNode`/`ModelSelection`，与 `src/models/*` 类型重复 | 待确认清单 Q5 |
+| 文件名重复目录语义 | `src/config/config.ts`、`src/context/context-rendering.ts`、`src/hooks/hook-runtime.ts`、`src/session/session-log.ts`、`src/session/session-persistence.ts`、`src/session/session-prompts.ts`、`src/commands/commands.ts`、`src/swarm/gui-integration.ts` | 已处置：拆分/改名完成（B1–B10）；`gui-integration.ts` 已删除（B13） |
+| Python 风格 barrel | `src/swarm/__init__.ts`（仅被 `src/index.ts:250,262` 引用） | 已改为 `src/swarm/index.ts`（B1） |
+| 泛化桶 | `src/lib/`（20 文件 5,365 行，跨 shell/文件/网络/日志/任务/UI/推理 7 个领域） | 已按 B5 解散，仅留 3 个通用件 |
+| 泛化名 | `src/tools/shared.ts`（真实内容是 SEARCH_BUDGET_MS + EXCLUDE_DIRS + truncate*）、`src/tools/basic.ts`（"basic" 不含信息） | 已拆为 `scan-exclusions`/`output-truncation`（B1）；`basic.ts` 已拆为 14 模块（B6） |
+| 语义不明的近义对 | `src/providers/registry.ts` vs `registry-effective.ts`（后者仅 6 行透传 `EFFECTIVE_PROVIDER_SPECS = FACTORY_PROVIDER_SPECS`）；`defaults.ts` vs `presets.ts` | 已处置：确认无环后删除 `registry-effective.ts`（B13） |
+| 跨目录职责错位 | Provider 注册表数据在 `src/models/registry.ts`；`src/lib/system-proxy.ts`（46 行）套在 `src/platform/system-proxy/` 外面 | 已归位（B5/B8.3） |
+| 目录职责重叠 | `src/browser/`（本地 HTTP 设计助手服务器）vs `src/platform/browser/`（跨平台打开浏览器）；同名不同义 | 已改名 `src/browser-preview/`（B9.5） |
+| 根目录散落文件 | `src/session.ts`、`src/session-resume.ts`、`src/session-tree-types.ts`、`src/session-capabilities.ts`、`src/ask.ts`、`src/version.ts`、`src/index.ts` | 已归位 `src/session/`（B10.1）；`version.ts`/`index.ts` 留根（C3/C1） |
+| 类名与文件名不符职责 | `InitService`（`src/lifecycle/init-service.ts`）内又定义 `ProviderPresetInfo`/`ModelPickerNode`/`ModelSelection`，与 `src/models/*` 类型重复 | 已消解（Q5）：定义仅存 `src/lifecycle/types.ts` |
 
 ### 1.5 测试与类型存放问题
 
@@ -131,12 +131,12 @@
 ### 1.6 最终结构（实际落地，不含 `gui/`/`external/`）
 
 ```
-src/                        303 个 .ts
+src/                        301 个 .ts
   cli.ts                    428   # 深度1锁定（C2/C9）；入口守卫 + resolveOpenTuiEntry
   cli/session-picker.ts     655   # 启动期会话选择 UI
   index.ts                         # 公共 barrel：117 个导出符号与 HEAD 完全一致
   version.ts                       # 深度1锁定（C3）
-  session.ts               4113   # Session 类（7105 → 4113，-42%）
+  session.ts               4089   # Session 类（7105 → 4089，-42%）；`implements SessionLike`
   ask.ts                           # ask 协议与 UI 形状
   agents/agent.ts + tool-loop/{types,display,streaming-arguments,run}.ts
   attachments/              9 个文件（file-kinds/scanner/types/reference/reader/context-block/pipeline/image-compress/clipboard-image）
@@ -153,14 +153,15 @@ src/                        303 个 .ts
   permissions/              8 个 + bash/（command-catalog / git-subcommand-rules / classify）
   platform/                 3 个 + 6 个子目录（system-proxy/ 等）
   prompts/{templates,assembler}.ts        # ← templates/loader + lib/prompt-assembler
-  providers/                29 个（base/types/response/tool-call/stop-reason + 适配器 + provider-specs）
-  security/ 2 个   server/ 8 个   skills/ 1 个   swarm/ 16 个   tasks/ 6 个
+  providers/                28 个（base/types/response/tool-call/stop-reason + 适配器 + provider-specs）
+  security/ 2 个   server/ 8 个   skills/ 1 个   swarm/ 15 个   tasks/ 6 个
   thinking/ 1 个   types/ 2 个   ui/ 5 个 + 1 子目录
-  session/                  26 个 + children/ rewind/ background-shell/
+  session/                  27 个 + children/ rewind/ background-shell/
+                            # contract.ts = SessionLike 能力契约（T-L-02 起，供 commands/models/ui 共用）
                             # 12 簇：activation/ask-flow/attachments/compact-flow/inbox/mcp/
                             # model-settings/round-tracking/skills/task-list/tool-drain/turn-control
                             # + restore/resume/log/log-surgery/usage-accounting/turn-types/no-reply-stream
-  tools/                    28 个 + web-search/ intools/（intools 为原生二进制，C5 锁定）
+  tools/                    27 个 + web-search/ intools/（intools 为原生二进制，C5 锁定）
 ```
 
 ### 1.7 任务完成表
@@ -177,20 +178,26 @@ src/                        303 个 .ts
 | B7 | `commands.ts` 3487 行 → 31 模块 | 完成 |
 | B8 | providers/base + auth/openai-oauth 拆分；家族目录化按证据放弃 | 完成（部分决策） |
 | B9 | tool-loop 四拆、prompts 合并、classify 三拆、web-search 三拆、browser-preview、picker 四拆、children 三拆、rewind 三拆、cli 二拆 | 完成 |
-| B10 | `session.ts` 7105 → 4113，12 簇全部外移（05a–05o） | 完成 |
+| B10 | `session.ts` 12 簇全部外移（05a–05o）：B10 收尾 4113，B13/T-L-01 后 4100，T-L-03 后 4092，收尾清理 3 后 4089 | 完成 |
 | B11 | 121 个测试迁入 24 个镜像子目录 + 8 个历史命名清理 | 完成 |
-| B12 | 全量校验 + SEA exe 构建与冒烟 + C1–C12 复核 | 完成（合并待授权） |
+| B12 | 全量校验 + SEA exe 构建与冒烟 + C1–C12 复核 | 完成（已合并 main） |
+| B13 | 收尾清理：参数校验单一化、死文件/透传删除、ToolExecutor 单导出、注释腐化、p4-p6 拆分、文档同步 | 完成 |
+| T-L-01 | `SessionLike` 收敛 `CommandContext.session: any`（并把 `ui/contracts.Session` 并为同一能力面） | 完成 |
+| T-L-02 | `SessionLike` 移到中立模块 `src/session/contract.ts`，收编剩余 9 处 `session: any` | 完成 |
+| T-L-03 | `SessionLike` 取舍复核：注释纠偏、`RewindTargetTurn` 归位、TUI 消费侧去 `any` | 完成 |
+| 收尾清理 2 | 删 `isCurrentSelection` 冗余形参、`external/opentui` 移出拷贝清单（发布包 -7.94 MB 死重）、补 picker「当前模型」标记测试 | 完成 |
+| 收尾清理 3 | 删 `session.ts` 两个死 const、6 个 provider 的 `network-retry` 注释名纠正 | 完成 |
 
 ## 2. 决策点（已确认，2026-10-21）
 
 **D1 — `src/session.ts` 拆分深度：抽满 12 簇。**
-风险已知并接受：C10 的 `session: any` 鸭子调用（41+ 处、多数带 `typeof` 守卫，失效为静默降级）typecheck 抓不到。执行时每个子步必须逐条 grep 核对这些调用点仍然存在且名称未变，且每子步跑全量测试。不可外移的部分（constructor、字段声明区、`new Session` 递归闭包、`_logSurgeryView` getter/setter 出借契约、`_withTurnLock` 单锁实例）保留在类壳内。
+风险已知并接受：C10 的 `session: any` 鸭子调用（41 个成员、多数带 `typeof` 守卫，失效为静默降级）typecheck 抓不到。执行时每个子步必须逐条 grep 核对这些调用点仍然存在且名称未变，且每子步跑全量测试。不可外移的部分（constructor、字段声明区、`new Session` 递归闭包、`_logSurgeryView` getter/setter 出借契约、`_withTurnLock` 单锁实例）保留在类壳内。**（该风险已由 T-L-01 消除：`CommandContext.session` 现为 `SessionLike`，成员改名/删除会在 `session.ts` 编译报错。）**
 
 **D2 — `src/lib/`：归宿主模块 + 保留小 lib。** 见 B5 映射表。
 
 **D3 — 测试：留 `tests/`，按模块镜像子目录。** 见 B11。
 
-**D4 — 分支：`refactor/structure-cleanup`（ASCII 名，避免 Windows 下 git 路径转义问题）。全程不提交**：文件移动用 `git mv` 保留重命名可追踪，但一次 commit 都不做，由用户审阅后自行提交。
+**D4 — 分支：`refactor/structure-cleanup`（ASCII 名，避免 Windows 下 git 路径转义问题）。全程不提交**：文件移动用 `git mv` 保留重命名可追踪，但一次 commit 都不做，由用户审阅后自行提交。**（2026-10-22 用户改为自行提交：`31e6424 代码库整理中` 已 fast-forward 合并进 `main`，B13 与 T-L-01 由用户提交；本约束的"零提交"部分已由该流程取代。）**
 
 **D5 — 不留兼容 re-export。** `src/session.ts`、`src/config/config.ts`、`src/config/persistence.ts` 拆分后旧路径直接删除，所有引用改到具体新模块（符合单一权威源原则）。
 
@@ -202,7 +209,7 @@ src/                        303 个 .ts
 - 每批执行序固定为 `建目录/移动 → 拆分 → 迁类型 → 迁测试 → 改引用 → 验证`。
 - 统一验证命令：`npm run typecheck && npm test`；涉及 `external/opentui` 的路径改动追加 `npm run typecheck:tui`；涉及 C1–C6 的批次追加 `npm run build` 与 `node scripts/build-sea-exe.mjs` 冒烟（按你的"打包产物交付"要求，产物必须实测）。
 - 统一移动方式：`git mv`（git 2.52 可用），新建文件用 Write，不复制粘贴整块逻辑改动。
-- 统一回滚：每批一个提交；`git reset --hard <上一批提交>` 即回到已知良好状态。禁止跨批混合提交。
+- 统一回滚：原计划每批一个提交；实际按用户要求全程零提交，提交与合并由用户执行（见 §2 D4）。
 - 表中"引用数"为跨目录口径，不含同目录 `./x.js`；执行时每批用 grep 全量复核。
 
 ### B0 基线与护栏（前置，不改代码）
@@ -224,13 +231,13 @@ src/                        303 个 .ts
 - 迁移测试：`tests/swarm/*.test.ts` 若引用需改（实测引用方仅 `src/index.ts:250,262`）
 - 迁移类型：无｜引用更新：`src/index.ts` 2 处 from 路径
 - 验证：`npm run typecheck && npm test`｜风险/回滚：极低；单文件改名，回滚 `git checkout`
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
-#### T-B1-02 `src/swarm/gui-integration.ts` 处置提案（不改）
+#### T-B1-02 `src/swarm/gui-integration.ts` 处置提案（B1 提案保留 → 2026-10-22 用户指示删除，见 §6 B13）
 - 当前：60 行，**内容全是注释**，零引用（全仓 grep 无一处 import）
 - 问题：领域层目录里放一个非代码文档文件，且描述的是 `gui/`（本次范围外）
 - 处置：列入待确认清单 **Q1**，建议移 `docs/swarm-visualization.md`；不擅自删除
-- 验证：不适用｜状态：待确认
+- 验证：不适用｜状态：完成（2026-10-22 已删除该文件，见 §6 B13）
 
 #### T-B1-03 `src/tools/shared.ts` 按职责重命名
 - 当前：`src/tools/shared.ts`（99 行）：`SEARCH_BUDGET_MS`、`EXCLUDE_DIRS`、`isHiddenName`、`isExcludedDirName`、`truncateMiddle`、`truncateLine`
@@ -240,7 +247,7 @@ src/                        303 个 .ts
 - 迁移测试：`tests/tool-improvements.test.ts` 等（引用数实测 1，执行时复核）
 - 迁移类型：本文件无导出类型｜引用更新：`src/tools/*`、`src/lib/file-attach.ts:77`（`SCAN_EXCLUDE_DIRS = EXCLUDE_DIRS`）
 - 验证：`npm run typecheck && npm test`｜风险/回滚：低
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 ### B2 `src/config/` —— 最高引用密度的配置层
 
@@ -259,7 +266,7 @@ src/                        303 个 .ts
 - 引用更新：实测 46 处（src 21 / opentui 4 / tests 21）；`src/index.ts` 的 `SessionStore` 导出路径改为 `./config/session-store.js`，**导出符号名不变**
 - 验证：`npm run typecheck && npm run typecheck:tui && npm test`
 - 风险/回滚：中高（引用面最大之一）。C8 文本契约测试必须同批改；`resolvePreferredBaseDir` 无 `import.meta.url`，深度变化安全。回滚：本批 revert
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B2-02 `src/config/config.ts` 拆分（907 行 → 4 文件，全部保持深度 2）
 - 现状职责与问题：① 模型能力登记表与查询（`KNOWN_*` 5 张表 + 9 个 getter，`:114-263`）② 模型名格式化（`:199-228`）③ 配置字段校验器（`:264-377`）④ 资源路径四层解析（`:378-553`，**含 C1 红线**）⑤ `Config` 类（`:554-907`）⑥ 文件名与目录同名
@@ -272,21 +279,21 @@ src/                        303 个 .ts
 - 引用更新：实测 51 处（src 29 / opentui 1 / tests 21）；`src/index.ts` 的 9 个导出改到新路径，符号名不变
 - 验证：`npm run typecheck && npm run typecheck:tui && npm test` **并追加 `npm run build` 后校验 `dist/src/config/asset-paths.js` 的 `getBundledAssetsDir()` 返回仓库根**（C1 是唯一能让 TUI 起不来的改动）
 - 风险/回滚：高。深度算错不报编译错，只在运行期找不到 prompts。回滚：本批 revert + 重建 dist
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B2-03 `src/lib/home-path.ts` → `src/config/home-dir.ts`
 - 当前：13 行，只导出 `SWARMFLOW_HOME_DIR`；`lib` 泛化 + 文件名不表内容
 - 目标：`src/config/home-dir.ts`（深度 2）｜命名理由：home 目录是配置根
-- 迁移测试：`tests/home-path.test.ts`（重命名为 `tests/config/home-dir.test.ts` 留待 B11）
+- 迁移测试：`tests/home-path.test.ts` → 已由 B11 迁入 `tests/config/home-path.test.ts`（保留原名，未改成 `home-dir.test.ts`）
 - 引用更新：实测 19 处（src 14 / opentui 4 / tests 1）—— 本次引用面最大的单文件移动
 - 验证：typecheck + tui typecheck + test
 - 风险/回滚：低逻辑高机械；C4 无涉（本文件不 import assets JSON）
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B2-04 核查 `src/config/settings.ts` / `theme.ts` / `thinking.ts` / `ui-colors.ts` 是否需拆
 - `ui-colors.ts` 受 C4 锁定（`../../assets/ui-colors/color.json`），**只允许原地小改或不动**
-- 动作：确认 `settings.ts` 与 T-B2-01 的 `settings/io.ts` 不重复（双源迹象 → 待确认清单 **Q2**）；`theme.ts`/`thinking.ts` 预计不动
-- 状态：待授权
+- 动作：确认 `settings.ts` 与 T-B2-01 的 `settings/io.ts` 不重复（双源迹象 → 待确认清单 **Q2**）；`theme.ts`/`thinking.ts` 复核结论：不动
+- 状态：完成（见 §6 批次日志）
 
 ### B3 `src/server/` `src/security/` `src/lifecycle/` `src/clients/` `src/hooks/` `src/platform/`
 
@@ -297,33 +304,33 @@ src/                        303 个 .ts
 - 迁移测试：`tests/server-rpc.test.ts`（313 行，2 处引用）
 - 引用更新：`src/server/server-mode.ts`、`tests/server-rpc.test.ts`
 - 验证：typecheck + test｜风险：低（`PROTOCOL_VERSION`/`PROTOCOL_CAPABILITIES` 对外契约值不可动）
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B3-02 `src/clients/mcp-client.ts` 拆分（584 行）
 - 混杂：安全策略层（`DEFAULT_MCP_ENV_ALLOWLIST:36`、`ensureCredentialFilePermissions:81`、`validateMcpSseUrl:115`、`buildMcpServerEnv:139`）与连接管理层（`MCPClientManager:199-572`）
 - 目标：`src/clients/mcp/security-policy.ts`、`src/clients/mcp/manager.ts`、`src/clients/mcp/status-types.ts`，并把 `src/clients/mcp-config.ts` 并入 `src/clients/mcp/config.ts`
 - 迁移测试：`tests/p7-mcp-security.test.ts`（引用这 3 个安全函数）
 - 引用更新：实测 mcp-client 8 处 + mcp-config 1 处；`src/session.ts` 内引用需同步
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B3-03 `src/hooks/hook-runtime.ts` → `src/hooks/runtime.ts`
 - 问题：目录已表 hooks，`hook-` 前缀冗余；但 `runtime.ts` 与既有 `runner.ts` 语义相邻易混
 - 处置：先读两者确认边界（`runner.ts` = 子进程执行一条命令；`hook-runtime.ts` = 事件匹配与编排），若仍易混改用 `src/hooks/orchestrator.ts`
 - 迁移测试：`tests/hook-context-tail.test.ts`｜引用：`src/hooks/index.ts:1`（barrel 已在，外部只 import `hooks/index.js`，实测 6 处）
-- 状态：待授权（需先确认命名方案）
+- 状态：完成（命名为 `src/hooks/dispatcher.ts`，见 §6 B3）
 
 #### T-B3-04 `src/lifecycle/init-service.ts` 类型归位（390 行）
 - 问题：`:44-83` 定义 `ProviderPresetInfo`/`ModelPickerNode`/`ModelSelection`/`ConfigStatus`/`SearchApiOption`，与 `src/models/` 与 `src/providers/presets.ts` 同义类型重复
 - 目标：`src/lifecycle/types.ts` 承接本模块私有类型；跨模块同义类型不擅自合并，登记 **Q5**
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B3-05 `src/platform/` 只补一处
 - `src/lib/system-proxy.ts`（46 行，`applySystemProxyToEnv`）归入 `src/platform/system-proxy/apply-to-env.ts`，消除与 `platform/system-proxy/` 的桶外包装
 - 引用更新：`src/cli.ts` 1 处 + `tests/system-proxy.test.ts`
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B3-06 `src/security/` 不动（2 文件，277+49 行，职责单一），仅复核
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 ### B4 `src/context/` —— 上下文视图、摘要与投影
 
@@ -334,31 +341,31 @@ src/                        303 个 .ts
 - 迁移测试：`tests/log-projection.test.ts`（772 行，实测引用 12 处）
 - 引用更新：`external/opentui` 2 处、`src/session.ts`、`src/agents/*`；`src/context/` 内引用
 - 验证：typecheck + tui + test｜风险：中。`resolveImageRefs`（`:847`）被 API 投影使用但依赖 session 回调形状，照搬不改
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B4-02 `src/context/log-entry.ts` 拆分（818 行 → 3 文件）
 - 混杂：类型（`:16-140`）、`LogIdAllocator` 类（`:197-240`）、30 个 `create*` 工厂（`:240-818`）、`AGENT_RESULT_TUI_PREVIEW_LINES` + `TYPE_PREFIX_MAP`（`:140-197`）
 - 目标：`src/context/entry/types.ts`、`src/context/entry/factories.ts`、`src/context/entry/id-allocator.ts`
 - 迁移测试：`tests/log-entry.test.ts`（447 行，18 处引用）
 - 引用更新：实测 34 处（src 15 / opentui 1 / tests 18），本批机械改动最宽的一处，需脚本化批量替换 + 全量 grep 复核
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B4-03 `src/context/context-rendering.ts` 拆分并改名（302 行 → 3 文件）
 - 问题：文件名重复目录语义且实际含 3 件事 —— compact marker 常量与守卫（`:17-34`）、context id 与标签注入/剥离/`ContextTagStripBuffer`（`:36-193`）、连续同角色合并（`:195-302`）
 - 目标：`src/context/compact-marker.ts`、`src/context/context-tags.ts`、`src/context/message-merging.ts`
 - 迁移测试：`tests/context-rendering.test.ts`、`tests/prompt-context-snapshot.test.ts`
 - 引用更新：实测 6 处；`src/index.ts` 的 5 个导出（`COMPACT_MARKER_ROLE`/`CONTEXT_ID_KEY`/`isCompactMarker`/`injectContextIdTag`/`mergeConsecutiveSameRole`）路径更新、符号不变
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B4-04 `src/context/document-projection.ts` 拆分（502 行）
 - 动作：按转换源分面 `document/docx.ts`、`document/markdown.ts`、`document/html-text.ts` + 共用 `document/types.ts`；执行前先读全文确认边界（本次未逐行读，判定依据是文件名与行数）
 - 迁移测试：`tests/document-projection.test.ts`
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
-#### T-B4-05 `active-context.ts` / `ephemeral-log.ts` / `token-estimate.ts` 复核（均 <300 行，预计不动）
-- 状态：待授权
+#### T-B4-05 `active-context.ts` / `ephemeral-log.ts` / `token-estimate.ts` 复核（实测 290 / 290 / 46 行，结论：均不动）
+- 状态：完成（见 §6 批次日志）
 
-### B5 `src/lib/` 解散（依 D2 选定档位后展开）
+### B5 `src/lib/` 解散（依 D2 选项 A 执行完毕）
 
 映射表（选项 A）：
 
@@ -388,7 +395,7 @@ src/                        303 个 .ts
 - 迁移测试：`tests/{task-store,task-tools,task-reconcile,background-shell,network-retry,network-retry-upstream,thinking-artifact,ui-texts-and-theme,home-path,system-proxy,line-window,file-attach→session-file-attach,diff 相关,read-file-*}.test.ts`
 - 验证：`npm run typecheck && npm run typecheck:tui && npm test`
 - 风险/回滚：机械面极大但逻辑零改动。`lib/` 一旦清空，任何遗漏引用立刻编译失败，可被 typecheck 兜住。分批提交（按目标目录 6-7 个子提交）
-- 状态：待 D2
+- 状态：完成（见 §6 批次日志）
 
 ### B6 `src/tools/` —— 工具层
 
@@ -400,7 +407,7 @@ src/                        303 个 .ts
 | --- | --- | --- |
 | `limits.ts` | `:425-472` | 所有 `*_MAX_*` / `BASH_*` / `SEARCH_*` 限额常量 |
 | `mutations.ts` | `:68-424` | `FileMutation`/`BashMutation` 类型 + `parseTrackableBashMutation`/`prepareBashPreExec`/`recordBashPostExec`/`splitCompoundBash`/`computeSha256`/`countDiffLines` |
-| `arg-validation.ts` | `:2552-2718` | `ToolArgValidationError` + `expectArgsObject`/`required*Arg`/`optional*Arg`（**与 `arg-helpers.ts` 双源，见 Q3**） |
+| `arg-validation.ts` | `:2552-2718` | `ToolArgValidationError` + `expectArgsObject`/`required*Arg`/`optional*Arg`（B13 已与 `arg-helpers.ts` 合并为单一实现） |
 | `path-scoping.ts` | `:2719-2787` | `READ_ACCESS_KINDS` + `scopedPath` + `toolRoot` |
 | `definitions.ts` | `:474-1096` | 11 个 `ToolDef`（READ/LIST/EDIT/WRITE/BASH/TIME/GLOB/GREP/BACKGROUND/KILL_SHELL）+ `BASIC_TOOLS`/`BASIC_TOOLS_MAP` + `buildBashToolDef`/`shellAwareDescription` |
 | `file-read.ts` | `:1096-1321` | `toolReadFile` |
@@ -418,23 +425,23 @@ src/                        303 个 .ts
 - **硬约束**：`json-query.ts`、`native-search.ts`、`intools/` 三者不得离开 `src/tools/`（C5）
 - 验证：typecheck + test；追加 `npm run build` 校验 `dist/src/tools/intools` 就位 + `tests/packaged-paths.test.ts` 全绿（C5 只在运行期暴露）
 - 风险/回滚：高（单批最大改动，建议内部再按"常量→类型→单工具→派发"分 4 个子提交）。`FileMutation` 等 mutation 追踪与 session 侧 `rewind` 有数据契约（`src/session/rewind-engine.ts`），跨文件搬迁时须逐字保持字段
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B6-02 `src/tools/web-search.ts` 拆分（809 行）
 - 动作：按搜索引擎适配器分面 `web-search/{brave,tavily,serper,duckduckgo}.ts` + 共用 `web-search/{types,results}.ts`；执行前读全文确认实际引擎清单
 - 迁移测试：`tests/web-search.test.ts`
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B6-03 `src/tools/comm.ts` / `tasks.ts` / `symbol-search.ts` / `web-fetch.ts` / `arg-repair.ts` / `shell-notes.ts` / `gitignore.ts` 复核
 - 均 ≤452 行；`executor-types.ts` 是刻意为避免 `basic.ts` ↔ `tool-loop.ts` 循环依赖而存在的类型文件（其头注释 `:3-6` 明说），**保留并作为 B9 拆分的环解除手段**
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 ### B7 `src/commands/` —— 斜杠命令
 
 #### T-B7-01 机制与实现分离
 - 目标：`src/commands/types.ts`（`CommandContext`/`SlashCommand`/`CommandOption`/`CommandOptionsContext`/`ShowMessageFn`/`SemanticColor`/`CommandCategory`，`:67-259`）、`src/commands/registry.ts`（`CommandRegistry` + `registerBuiltin` + `getLocalizedCommandDescription` + `builtinDescription`，`:232-313`）
-- 注意：`CommandContext.session: any`（`:76`）是 C10 的根源，本次**不改类型**（改类型可能暴露出既有隐藏错误，属功能改动范畴），登记 **Q6**
-- 状态：完成（实际落点：`src/commands/types.ts` 180 行、`src/commands/registry.ts` 87 行；`CommandContext.session: any` 现位于 `src/commands/types.ts:24`（`CommandOptionsContext.session: any` 在 `:146`），`CommandRegistry.register` 的 Map.set 覆盖语义位于 `src/commands/registry.ts:49`）
+- 注意：`CommandContext.session: any`（`:76`）是 C10 的根源，本次**不改类型**（改类型可能暴露出既有隐藏错误，属功能改动范畴），登记 **Q6**。（Q6 后来由独立立项 T-L-01 处理，见 §7；当时的"可能暴露隐藏错误"确实发生 —— 暴露出 TUI 契约的 3 处类型缺陷。）
+- 状态：完成（实际落点：`src/commands/types.ts` 180 行、`src/commands/registry.ts` 86 行；`CommandContext.session` 现位于 `src/commands/types.ts:25`、`CommandOptionsContext.session` 在 `:147`，T-L-01 起两者类型为 `SessionLike`；`CommandRegistry.register` 的 Map.set 覆盖语义位于 `src/commands/registry.ts:49`）
 
 #### T-B7-02 命令按域拆分（实测 122 个顶层声明 → 31 个文件）
 - 实际落点（比原计划多切出 `workflow/` 一域，因 `/init /plan /goal /fix /ask /reviewer /diff` 与 provider/model 无共享状态，混在 ecosystem 里会形成 700 行的第二杂桶）：
@@ -463,7 +470,7 @@ src/                        303 个 .ts
 - 状态：完成（5 文件，正文代码行 236 行多重集与 `HEAD:base.ts` 全等，0 处可见性放宽）
 
 
-#### T-B8-02 协议家族文件夹化（**改为延后，理由见下**）
+#### T-B8-02 协议家族文件夹化（**决策：不做，理由见下**）
 - 原计划：`src/providers/anthropic/`、`openai/`、`copilot/`、`gateway/`、`registry/` 五个家族目录 + 把 `anthropic-base`(790)/`openai-chat`(827)/`openai-responses`(983) 按方法组拆成 `request`/`stream`/`tool-call-assembly`/`usage-mapping`
 - **实测结论（改变方案的事实）**：这三个大文件都只有 1 个顶层声明（一个类），其"方法组"是**子类契约**而非内部实现细节。实测有 16 处 `protected override` / `override` 落在 5 个子类上：
   - `glm.ts`：`_applyThinkingParams`、`_convertTools`
@@ -472,7 +479,7 @@ src/                        303 个 .ts
   - `qwen-responses.ts`：`_applyThinkingParams`、`_nativeWebSearchTool`、`_supportsMaxOutputTokens`、`_supportsPromptCacheKey`、`_forceStream`、`_plainThinkingInputItems`
   - 把 protected 方法抽成自由函数会直接改掉继承面 ⇒ 属功能改动，违反"仅结构"授权。**因此不对这三个类做方法级拆分**（按"职责边界而非行数"判断：单类适配器 + 子类钩子 = 一个职责）
 - 家族目录化（纯移动）本身可行（17 文件、约 50 处引用），但会把全部 provider 路径变深一级且只有分组收益；在 B10（session 12 簇）这个用户点名的高价值项之前，优先级靠后
-- 状态：**部分完成/延后** —— `base.ts` 已按职责拆成 5 文件（B8.1）；家族目录化与三适配器方法拆分不做，理由如上。`src/providers/` 仍保持 27 个平铺文件 + 按继承事实分层的类命名（`BaseAnthropicProvider` → `*AnthropicProvider`；`OpenAIChatProvider` → glm/qwen/openrouter；`OpenAIResponsesProvider` → qwen-responses + copilot 内部实现）
+- 状态：**完成（决策：不做家族目录化与方法级拆分）** —— `base.ts` 已按职责拆成 5 文件（B8.1）；家族目录化与三适配器方法拆分不做，理由如上。`src/providers/` 仍保持 27 个平铺文件 + 按继承事实分层的类命名（`BaseAnthropicProvider` → `*AnthropicProvider`；`OpenAIChatProvider` → glm/qwen/openrouter；`OpenAIResponsesProvider` → qwen-responses + copilot 内部实现）
 
 #### T-B8-03 `src/providers/credential-flow.ts`（402）与 `src/auth/` 的边界确认
 - 结论：边界正确，**不动**。`credential-flow.ts` 是 TUI 依赖的凭据向导（`CredentialPromptAdapter`），`src/auth/` 是 OAuth 实现；二者已各自成域。搬成单文件目录（`providers/credentials/flow.ts`）只增路径深度不减职责，按最小范围原则跳过
@@ -491,7 +498,7 @@ src/                        303 个 .ts
 #### T-B8-05 `src/models/` 与 provider 数据的归位
 - 已完成：`src/models/registry.ts` → `src/providers/provider-specs.ts`（`git mv`，内容零改动）。**深度仍为 2，故 C4 的 `../../assets/model-registry/providers.json` 不用改**，无需重新验证深度（比原计划的 `providers/registry/specs.ts` 深度 3 更安全）。引用更新 4 处（`models/presentation.ts`、`providers/{presets,registry-effective,registry}.ts`）
 - 延后：`src/models/picker-tree.ts`（632，两棵树）→ `src/models/picker/{model-tree,credential-tree}.ts`，并入 B9 一起做
-- 状态：部分完成
+- 状态：完成（picker-tree 已在 B9.2 拆分）
 
 ### B9 `src/agents/` `src/swarm/` `src/templates/` `src/skills/` `src/ui/` `src/models/` `src/permissions/`
 
@@ -505,9 +512,9 @@ src/                        303 个 .ts
 - 一处必要的类型适配：`host._activeAsk` 在"赋值 → 调用其他方法 → 再读"之间会被 TS 重置收窄（原类里 `this._activeAsk` 不会），在 6 处读点加了非空断言 `!`（纯类型注解，无运行时变化）。
 - 状态：完成
 
-#### T-B9-02 `src/swarm/` 只动 barrel（见 T-B1-01），其余 16 文件不动
+#### T-B9-02 `src/swarm/` 只动 barrel（见 T-B1-01），其余文件不动（B13 删掉 `gui-integration.ts` 后为 15 个）
 - `coordinator.ts`(515)/`decomposer.ts`(401)/`message-bus.ts`(362)/`types.ts`(354)/`monitor.ts`(348)/`merger.ts`(323)/`context-bridge.ts`(318)/`task-dag.ts`(310) 均职责单一
-- 状态：待授权
+- 状态：完成（见 §6 批次日志）
 
 #### T-B9-03 `src/templates/loader.ts` + `src/lib/prompt-assembler.ts` → `src/prompts/`——完成
 - 实际落点：`src/prompts/templates.ts`（673 行，原 `templates/loader.ts`）+ `src/prompts/assembler.ts`（287 行，原 `lib/prompt-assembler.ts`）。两者都是纯移动（深度同为 2，import 无需改），消费方 8 处路径按符号重指；`src/templates/` 目录已消失，`src/lib/` 只剩 `jsonc`/`line-window`/`filesystem-hash` 三个真正的通用件。
@@ -585,7 +592,7 @@ src/                        303 个 .ts
 - 每子步必做：跑全量 `npm test`；grep `src/commands/` 全目录内 `session.<成员>` 逐条核对 41+ 鸭子调用点仍存在且语义未变（C10，typecheck 抓不到）
 - 迁移测试：`tests/session-*.test.ts` 24 个 + `tests/{p3-ask,p4-p6,p7-mcp-security,background-shell,phase2-tool-validation,path-security-integration,session-*}.test.ts`；**并同步 C7（`status-panel-tasks.test.ts:113` 路径）**
 - 风险：全项目最高。05h/05i/05l/05m/05n/05o 任一步失败都可能引入静默行为漂移
-- 状态：**完成（按 D1 + B 策略）** —— 05a–05o 全部落地，`session.ts` 7105 → **4122 行**
+- 状态：**完成（按 D1 + B 策略）** —— 05a–05o 全部落地，`session.ts` 7105 → **4113 行**（B13/T-L-01 收尾后 4100 行；T-L-03 把 `getRewindTargets()` 的 8 行内联返回类型收成命名类型后 4092 行，收尾清理 3 删掉两个死 const 后 4089 行）
 
 ### B11 `tests/` 组织与命名——完成
 
@@ -600,7 +607,7 @@ src/                        303 个 .ts
 | 现名 | 新名 |
 | --- | --- |
 | `p3-ask` | `session/ask-flow.test.ts` |
-| `p4-p6` | `session/session-flows.test.ts`（两个 describe 仍在同文件：拆分需复制共享 harness，收益低于风险，记入待确认） |
+| `p4-p6` | ~~两个 describe 仍在同文件~~ **已在 B13 拆分**：`shell-governance.test.ts`（4 项）+ `output-round-context.test.ts`（1 项），共享 `minimal-session.ts` |
 | `p7-mcp-security` | `clients/mcp-security.test.ts` |
 | `phase2-tool-validation` | `tools/tool-arg-validation.test.ts` |
 | `phase5-atomic-write` | `tools/atomic-write.test.ts` |
@@ -616,49 +623,57 @@ src/                        303 个 .ts
 - T-B12-01 `npm run typecheck` + `npm run typecheck:tui` + `npm test` + `npm run test:node` 全绿
 - T-B12-02 `npm run build` + `node scripts/build-sea-exe.mjs` 产物冒烟：启动 `release/SwarmFlow.exe`，验证 prompts/skills/jq/rg/fd 均解析到位（C1/C5/C6；按你的交付标准，源码测试全绿不算完成）
 - T-B12-03 输出最终结构说明 + 任务完成表 + 待确认清单
-- T-B12-04 合并 `refactor/结构整理` → `main`（需单独授权）
-- 状态：待授权
+- T-B12-04 合并 `refactor/structure-cleanup` → `main`（已授权并完成）
+- 状态：完成（提交 `31e6424`，fast-forward 合并进 `main`）
 
 ---
 
-## 4. 待确认清单（本次不擅自处理）
+## 4. 待确认清单（2026-10-22 已全部处置）
 
-| # | 事项 | 证据 | 需要你决定 |
-| --- | --- | --- | --- |
-| Q1 | `src/swarm/gui-integration.ts` 60 行纯注释、零 import | 全仓 grep 无引用 | 移 `docs/` 还是删除 |
-| Q2 | ~~`src/config/settings.ts` 与 `persistence.ts` 内 settings 函数是否双源~~ **已解决**：`settings.ts` 实际内容是压缩阈值（`ContextThresholds`/`DEFAULT_THRESHOLDS`），与 settings 持久化毫无关系，属命名误导而非双源。已改名 `src/config/compact-thresholds.ts` |
-| Q3 | 工具参数校验双源：`src/tools/arg-helpers.ts`（`argRequiredString` 等）与 `src/tools/basic.ts:2594-2718`（`requiredStringArg` 等）同职责两套 | 两文件并存，`Session._argRequiredString`（`src/session.ts:5749-5757`）又是第三层薄委托 | 合并到 `arg-helpers.ts`；需先写 parity 红测证明错误文案与 coerce 行为一致后才可动 |
-| Q4 | `src/providers/registry-effective.ts` 6 行纯透传 `EFFECTIVE_PROVIDER_SPECS = FACTORY_PROVIDER_SPECS` | 全文件 | 删掉透传、直呼其源，还是保留作为迁移隔离层 |
-| Q5 | `src/lifecycle/init-service.ts:44-83` 的 `ProviderPresetInfo`/`ModelPickerNode`/`ModelSelection` 与 `src/providers/presets.ts`、`src/models/` 同义类型重复 | 三处声明 | 统一到一处（可能引发 TUI 侧类型变动，超出纯结构范围） |
-| Q6 | `CommandContext.session: any`（`src/commands/types.ts:24`，B7 拆分后）导致 41+ 处运行时鸭子调用无编译保护 | `session/lifecycle.ts:140`、`model/persistence.ts:31`、`ecosystem/mcp.ts:40` 等带 `typeof` 守卫，失效为静默降级 | 是否单独立项补 `SessionLike` 接口（属行为安全改进，不在本次"仅结构"授权内） |
-| Q7 | `src/agents/tool-loop/types.ts`（原 `tool-loop.ts:69`） 二度导出 `ToolExecutor`/`ToolExecutorContext`（真源在 `src/tools/executor-types.ts`） | 两个 import 路径可用 | 收敛为单一路径（需确认无循环依赖回归，`executor-types.ts:3-6` 头注释即为此而写） |
-| Q8 | `skills/` 目录只有 `.gitkeep`，但 `copy-node-assets.mjs:11` 会拷贝它 | 无实际技能资产 | 是否作为 bundled skills 落点保留（不动） |
-| Q9 | `src/ask.ts` 与 `src/session-capabilities.ts` 等根散文件的归属，`src/index.ts:229-236` 注释保留了"launchTui 已移出"等历史说明 | 注释残留 | 结构整理时是否顺手清理这类描述已删除代码的注释（属"注释腐化"，非功能） |
-| Q10 | `src/session.ts` 内 6082-6084 分节注释与实际内容不符（标题写 AGENTS.md persistent memory）、3266/3268 注释完全重复、若干 mojibake 注释（327-333、3719、3844） | 逐行核实 | mojibake 属编码问题，修复会改字节，是否允许（默认原样搬运） |
-| Q11 | `src/tools/executor-types.ts` 的文档注释两处指向已被 B6 删除的 `src/tools/basic.ts`（应为 `src/tools/dispatch.ts`） | 文件现存，注释指向不存在文件；防环理由本身仍成立 | 是否允许改这两处注释措辞（属注释修正，不改代码；默认留到收尾统一确认） |
-| Q12 | ~~`session.ts` 05e–05o 的 11 个有状态方法组怎么抽~~ **已解决**：用户选择策略 B（放宽可见性 + host 虚分派），05e–05o 全部完成；累计约 90 个成员只去掉 `private`，内部调用一律 `host.X(...)` 保虚分派。`session.ts` 7105 → 4113 行 |
+| # | 事项 | 处置结果 |
+| --- | --- | --- |
+| Q1 | `src/swarm/gui-integration.ts` 60 行纯注释、零引用 | **已解决**：文件已删除（零引用，无行为影响） |
+| Q2 | ~~settings 双源~~ | **已解决**：`settings.ts` 实为压缩阈值，已改名 `compact-thresholds.ts`（B2） |
+| Q3 | 工具参数校验三套并存（`arg-helpers.ts`、`arg-validation.ts`、Session 薄委托） | **已解决**：合并到 `src/tools/arg-validation.ts` 单一模块；核心校验抛 `ToolArgValidationError`，`ToolResult` 适配器复用同一判定与文案；删除 `arg-helpers.ts` 与 Session 3 个委托；新增 `tests/tools/arg-validation-contract.test.ts` 57 项，合并前后均绿 |
+| Q4 | `registry-effective.ts` 纯透传 `EFFECTIVE_PROVIDER_SPECS = FACTORY_PROVIDER_SPECS` | **已解决**：确认 `provider-specs.ts` 不构成环（只依赖纯模块 `thinking/artifact.ts`），5 处消费方直连 `FACTORY_PROVIDER_SPECS`，删除透传文件；provider 与打包测试通过 |
+| Q5 | init-service 与 models/providers 同义类型重复 | **已消解**：现有定义只剩 `src/lifecycle/types.ts` 一处；它与 `ProviderPreset`/`ModelPickerTreeNode`/`ResolvedModelSelection` 形状不同，不再构成重复声明 |
+| Q6 | `CommandContext.session: any` 导致 41+ 鸭子调用无编译保护 | **已解决（T-L-01）**：新增 `SessionLike`（当时为 `src/commands/session-like.ts`，T-L-02 起移到 `src/session/contract.ts`），替换 `CommandContext.session`/`CommandOptionsContext.session` 的 `any`，`Session implements SessionLike` 提供双向编译保护；`ui/contracts.Session` 改为 `extends SessionLike`，删除 24 处重复/失真声明 |
+| Q7 | `ToolExecutor`/`ToolExecutorContext` 二度导出 | **已解决**：删除 `agents/tool-loop/types.ts` 的 re-export，真源 `tools/executor-types.ts`；6 处消费方改指 |
+| Q8 | `skills/` 仅 `.gitkeep` | **已决定保留**（用户确认，作为 bundled skills 落点） |
+| Q9 | `index.ts` 等历史注释残留 | **已清理**：`launchTui` 注释改为 `main.tsx`/构建产物；src 内指向旧模块名的注释全部改指当前文件 |
+| Q10 | session.ts 分节标题错位、乱码注释 | **已修正**：`AGENTS.md persistent memory` → `Tool call visibility`；`配置重载` → `Shared helpers`；`usage-accounting.ts` 两处乱码重写 |
+| Q11 | `executor-types.ts` 注释指向已删除 `basic.ts` | **已修正**：改指 `tools/dispatch.ts` 与 `agents/tool-loop/run.ts` |
+| Q12 | ~~session 有状态方法组抽取策略~~ | **已解决**：采用策略 B（放宽可见性 + host 虚分派），05e–05o 全部完成 |
+| Q13 | `p4-p6` 两个 describe 同文件，拆分需复制 harness | **已解决**：拆为 `tests/session/shell-governance.test.ts`（4 项）与 `tests/session/output-round-context.test.ts`（1 项），共享 `tests/session/minimal-session.ts`；原 `session-flows.test.ts` 删除 |
 
 ---
 
-## 5. 验收清单（B12 实测）
+## 5. 验收清单（B12 基线 + B13/T-L-01 收尾实测）
 
 - [x] 未修改任何业务逻辑、算法、边界条件、错误语义、返回值、副作用、配置行为 — 拆分前每批做代码行多重集比对（B6 2768 行、B7 2768 行、B8.1 236 行、B8.2 738 行、05d/05e/05f 各模块、tool-loop 676 行、classify 591 行、picker 541 行、children 1220 行、rewind 710 行），差异仅为补 `export`
 - [x] `npm run typecheck` 通过（0 报错）
 - [x] `npm run typecheck:tui` 通过（0 报错，与基线一致）
-- [x] `npm test` 127 文件 / 1182 通过 / 3 跳过（与基线同数）
+- [x] `npm test` **130 文件 / 1246 通过 / 3 跳过**（B13 新增 57 项参数校验契约测试；p4-p6 拆分后 5 项保持通过；T-L-01 为纯类型改动，测试数不变；2026-10-23 收尾补 `tests/models/picker-current-marker.test.ts` 7 项，变异检验 4/4 全被捕获）
 - [x] `npm run test:node` 通过（pass 2 / fail 0）
 - [x] `npm run build` + SEA exe 产物冒烟通过：
   - `node scripts/build-sea-exe.mjs` → `release/SwarmFlow-win32-x64/SwarmFlow.exe`（100.0 MB）
   - `SwarmFlow.exe --version` → `0.4.0`；`SwarmFlow.exe --help` 正常输出
-  - `runtime/prompts/{review.md,subagent,templates}`、`runtime/src/tools/intools/{jq,fd,ripgrep,curl}`、`runtime/assets/model-registry/providers.json` 全部在位（C1/C5/C6）
-  - `find-cycles dist/src` → 310 模块、0 运行时循环
-- [x] C1–C12 逐项复核未被违反（C7/C8 的契约测试路径已随文件移动同步；C9 的 `tests/node-runtime.test.ts` 未动；C10 的 `session: any` 形状未变；C12 的 `session.ts` + `session/` 共存无解析歧义，ESM 说明符显式到文件）
+  - `runtime/prompts/{review.md,subagent,templates}`、`runtime/src/tools/intools/{jq,fd,ripgrep}`（`NATIVE_TOOL_DIRS` 只打包被引用的三个，**curl 等未引用资产不进发布包**）、`runtime/assets/model-registry/providers.json`、`runtime/external/opentui/{main.js,assets/*}` 全部在位（C1/C5/C6）
+  - `find-cycles dist/src` → 299 个模块、0 运行时循环（clean build；B13/T-L-01 复测。此前 310 是未清 `dist` 的旧统计）
+- [x] C1–C12 逐项复核未被违反（2026-10-23 用 `.tmp/acceptance-audit.mjs` 做结构化断言，16 项全通过）：C1/C4 的 bundled-assets 与 `../../assets` JSON 导入者均在 `src/<x>/` 深度 2；C2/C3 入口深度 1；C5 resolver 与 `intools/` 目录名未变；C6 拷贝清单 `src/assets/prompts/skills`；C7/C8 的契约测试路径与断言目标已随文件移动同步（见上表）；C9 `test:node` → `tests/node-runtime.test.ts` → spawn `src/cli.ts`；C10 的 43 个成员名与语义未变且由 `SessionLike` 在编译期兜住；C11 `tsconfig` 编译图范围未变；C12 的 `session.ts` + `session/` 共存且 `session/` 下无 `index.ts`
 - [x] `src/index.ts` 全部公共导出符号名与类型形状不变（每批仅改来源路径）
 - [x] ≥400 行文件已按 1.3 判定：职责混杂的已拆（basic/commands/commands-base/openai-oauth/session 12 簇等）；保留的是单类适配器（providers 三个）、单函数（asyncRunToolLoop）、单类（ChildSessionManager/RewindEngine）与两个编排入口
-- [x] 命名问题清单 1.4 逐项闭环或转入待确认清单（见 §4 Q1–Q13）
+- [x] 命名问题清单 1.4 逐项闭环；§4 Q1–Q13 已全部处置
+- [x] B13 收尾：参数校验单一模块、删除 3 个死/透传文件（`gui-integration`/`registry-effective`/`arg-helpers`）、`ToolExecutor` 单导出、注释腐化清理、p4-p6 拆分
+- [x] T-L-01：`SessionLike` 取代 `CommandContext.session: any` / `CommandOptionsContext.session: any`，`Session implements SessionLike`，`ui/contracts.Session extends SessionLike`；`typecheck`/`typecheck:tui` 双向 0 报错，全量测试与基线一致
+- [x] `onMcpStatus` 单一类型：删除 `McpStatusEntry` 副本，`session.ts:499` / `session/mcp.ts:39` / `SessionLike` 三处统一用 `clients/mcp/manager.ts` 的 `McpServerStatus`（`state` 由 `string` 收为 4 字面量联合）；`typecheck`/`typecheck:tui`/`npm test` 129/1239/3 全绿，clean `build` 仍 299 模块 0 循环，`dist` 里该类型边为 `export {}`
 - [x] 无新增循环依赖（dist 产物实测 0 循环；`src/tools/executor-types.ts` 的防环手段保留）
+- [x] T-L-03：`session-like.ts` 注释理由纠偏（`Pick` 实测可行，原"不能反向依赖"不成立）；`RewindTargetTurn` 归位 `session/rewind/types.ts` 并由 `session.ts`/`session-like.ts`/`commands/session/rewind.ts` 共用一份；TUI `app.tsx` 去掉 `any[]`/`(s: any)`。`app.tsx` 转译产物与 `HEAD` 字节相同（EOL 归一），未重建 exe
+- [x] T-L-02：契约移到 `src/session/contract.ts`，`SessionLike` 补 `currentModelName`/`currentModelConfigName` 两个 getter（43 个成员）；`models/` 与 `session/role-model-resolver.ts` 的 9 处 `session: any` 全部收编，`grep -rn "session: any" src/` 归零。非 Session 调用方用两个派生最小视图（`ModelResolutionSession`、`ModelPickerSessionView`）；反向负向探针确认 `models/` 里访问未声明成员会报 `TS2339`
+- [x] 收尾清理 2：删 `isCurrentSelection` 冗余首形参并同步唯一调用点；`scripts/build-sea-exe.mjs` 拷贝清单移除 `external/opentui`（`runtime/external/opentui` 15.88 MB → 7.94 MB，forked 源码树不进发布包）；重建 exe 后做产物级冒烟（`--version`/`--help`/无参 TUI 启动）；补 `tests/models/picker-current-marker.test.ts` 覆盖三条「当前模型」命中路径 + 四条防过度标记
+- [x] 收尾清理 3：删 `session.ts` 两个零引用死 const（4092 → 4089 行，真实使用者在 `session/activation.ts:31` 与 `session/compact-flow.ts:15`）；6 个 provider 文件的 `network-retry` 注释改为真实模块名 `network/retry`，`grep -rn network-retry src/` 归零。五道门禁 + exe 重建冒烟全部复跑通过
 
-**未执行**：T-B12-04 合并分支（用户要求零提交，需单独授权）。
+**已执行**：T-B12-04 提交并合并（`31e6424 代码库整理中`，fast-forward 进 `main`）；B13 由用户提交为 `97256e0 删除gui-*相关文件。 合并三套参数校验。 删除registry-effective.ts透传文件`。**B13 之后的 A（`McpServerStatus` 收敛）+ T-L-01/02/03 + 收尾清理 2/3 全部留在工作区待用户提交**：27 个 modified + 2 个未跟踪新增（`src/session/contract.ts`、`tests/models/picker-current-marker.test.ts`）；`src/commands/session-like.ts` 是 T-L-01 在工作区新建、T-L-02 又移走的中间文件，从未入库，故 git 侧看不到删除。远端推送始终由用户执行。
 
 ## 6. 执行日志
 
@@ -757,7 +772,7 @@ src/                        303 个 .ts
 - 说明符基路径重复（`./lib/` + `tasks/…` → `./lib/tasks/…`）两次，用 `lib/tasks/`→`tasks/`、`lib/attachments/`→`attachments/` 各纠正 15/9 处。
 - `wire-siblings.mjs` 的 import 插入点检测误把函数参数行当 import 续行，把 5 条导入插进 `pipeline.ts` 函数体中间；已重排到头部并把 `"./attachments/x"` 修正为 `"./x"`。
 - 拆分导致的可见性放宽：`file-kinds` 的 9 个原私有常量、`reader` 的 `makeFileInfo`/`summarizeTextContent`、`normalize` 的 5 个 as* 助手、`resume` 的 2 个助手、`snapshot` 的 `compareById`/`edgeWarning`、bg-shell 的类型面，均加 `export`。`src/index.ts` 公共符号名与形状未变。
-- 顺带取证 Q3：`session/background-shell/types.ts` 的兄弟模块证实 `tools/arg-helpers.ts` 与 `tools/basic.ts` 的参数校验助手确实并行存在。
+- 顺带取证 Q3：`session/background-shell/types.ts` 的兄弟模块证实 `tools/arg-helpers.ts` 与 `tools/basic.ts` 的参数校验助手确实并行存在（B13 已合并为 `tools/arg-validation.ts` 单一实现）。
 
 验证：typecheck ✓（0 报错）、typecheck:tui ✓、check-resolve ✓（4 条，均为注释/fixture 假阳性，原 5 条中 `file-attach.ts` 那条随文件删除而消失）、npm test 127/1182/3 ✓。
 
@@ -833,7 +848,7 @@ src/                        303 个 .ts
 
 验证：typecheck ✓、typecheck:tui ✓、check-resolve ✓（同 4 条已知假阳性）、`npm test` 127/1182/3 ✓。
 
-### B8.3 — provider 规格数据归位 + 家族目录化决策（部分完成）
+### B8.3 — provider 规格数据归位 + 家族目录化决策（已收口：归位完成，家族目录化决策不做）
 - `src/models/registry.ts` → `src/providers/provider-specs.ts`（`git mv`，内容零改动）。移到 `src/providers/` 后深度仍是 2，C4 的 `../../assets/model-registry/providers.json` **无需改动**；这比原计划放进 `providers/registry/`（深度 3，需改成 `../../../assets/...`）少一个红线风险。引用更新 4 处。
 - **不做**家族目录化与三个大适配器的方法级拆分，理由是实测到 16 处 `protected override`（glm 2 / qwen 2 / openrouter 5 / qwen-responses 6 / copilot 3）——那些"方法组"是子类契约，抽成自由函数等于改继承面。按"职责边界而非行数"判断：单类适配器 + 子类钩子 = 一个职责。已在 T-B8-02 记录证据。
 - `models/picker-tree.ts` 的两棵树拆分延后到 B9。
@@ -847,7 +862,7 @@ src/                        303 个 .ts
 
 
 
-### B10.1 — session 文件归位 + 05a/05b/05c 抽取（阶段完成）
+### B10.1 — session 文件归位 + 05a/05b/05c 抽取（阶段记录：05d–05o 由 B10.2–B10.12 收口）
 - 文件归位（T-B10-01/02）：`session-resume`→`session/resume`、`session-tree-types`→`session/tree-types`、`session-capabilities`→`session/capabilities`、`session-log`→`session/log`、`session-persistence`→`session/log-surgery`、`session-prompts`→`session/prompts`。6 个文件 `git mv`，深度变化只影响 `resume.ts`（`./config/*`→`../config/*`、`./session.js`→`../session.js`）；`src/session/`、`src/session/background-shell/` 内部的相对引用先手工改，再对剩余消费方共 24 处引用做全局重指。已核这 6 个文件都没有 `import.meta`/JSON 导入。
 - 05a：`session/turn-types.ts`（35 行）← `DrainPendingToolCallsResult`/`InlineImageInput`/`TurnLifecycleStatus`/`TurnLifecycleEvent`；`session.ts:171` 保留 re-export，消费方零改动。
 - 05b：`session/no-reply-stream.ts`（60 行）← `NoReplyStreamBuffer`，类改为 `export`。
@@ -878,7 +893,7 @@ src/                        303 个 .ts
   2. 逐个方法穿 `deps` 对象 —— 约 50 个方法 × 平均 6 个依赖，净增样板，可读性反而下降。
 - 因此剩余 11 个子步不是"继续搬"就能保持零行为差异的，需要用户先定策略（见 §4 的 Q12）。当前 `session.ts` 6778 行仍是全项目最大文件，但四个真正的混职责块已经分离出去。
 
-### B10.3 — 策略 B 落地 + 05e 存储生命周期（部分完成）
+### B10.3 — 策略 B 落地 + 05e 存储生命周期（已收口：05e 由 B10.4 完成）
 按用户选择的 **B（放宽字段可见性后继续抽）** 执行。
 
 - 新增 `src/session/task-list.ts`（100 行）：`TaskListHost` 接口 + `getTaskState`/`subscribeTaskState`/`notifyTaskListeners`/`ensureTaskStore`/`ensureTaskToolsForSession`/`getTaskPersistence`。方法体逐字搬运，只把 `this.` 换成 `host.`；类内保留同名薄委托（含 `_ensureTaskStore` 等私有名），所以 `_onChildSettled`、`_execTask*` 与构造期的 `this._ensureTaskTools()` 调用点全部零改动。
@@ -1009,10 +1024,10 @@ src/                        303 个 .ts
 ### B10.12 — 05n/05o 完成：B10 全簇收口
 - `src/session/activation.ts`（869 行，2 个方法）：`runTurnActivationLoop`（312 行）+ `runActivation`（454 行）。这两条是全项目耦合最深的循环，抽出后 `session.ts` 不再持有任何 provider 调用/工具排空的编排逻辑。
 - `src/session/turn-control.ts`（350 行，9 个方法）：`withTurnLock`/`waitForTurnComplete`/`requestTurnInterrupt`/`handleInterruption`/`collectInterruptHints`/`recordTurnFailure`/`isTurnAbortError`/`recordTurnErrorEntry`/`closeSession`。**`_turnErrorEntryWritten` 与 `_lifecycleEndedEmitted` 两个幂等标志与锁仍在同一模块**（锁每次进临界区清零它们），`_turnInFlight` 的同步抢占逻辑逐字未改。
-- `session.ts` 5005 → **4122 行**。
+- `session.ts` 5005 → **4113 行**。
 
 ### B10 总收口
-`src/session.ts` **7105 → 4122 行（-42%）**，12 簇全部落地：
+`src/session.ts` **7105 → 4113 行（-42%）**，12 簇全部落地（B13/T-L-01 收尾后 4100 行，T-L-03 后 4092 行，收尾清理 3 后 4089 行）：
 
 | 模块 | 行 | 职责 |
 | --- | --- | --- |
@@ -1072,14 +1087,104 @@ src/                        303 个 .ts
 
 **B9 收口**：tool-loop 四拆、prompts 合并、classify 三拆、web-search 三拆、browser-preview 改名、picker-tree 四拆、child-session-manager 三拆、rewind 三拆、cli 二拆全部完成。剩余仅 B11（tests 镜像化/命名）与 B12（最终验收 + exe 冒烟）。
 
-### B12 — 最终验收（完成，除合并）
+### B12 — 最终验收（完成）
 - **T-B12-01 全绿**：typecheck ✓、typecheck:tui ✓、`npm test` 127/1182/3 ✓、`npm run test:node` pass 2/fail 0 ✓。
 - **T-B12-02 产物冒烟 ✓**：`npm run build` + `node scripts/build-sea-exe.mjs` → `release/SwarmFlow-win32-x64/SwarmFlow.exe`（100.0 MB）；`SwarmFlow.exe --version` → `0.4.0`，`--help` 正常；`runtime/prompts/*`、`runtime/src/tools/intools/{jq,fd,ripgrep,curl}`、`runtime/assets/model-registry/providers.json` 全部在位；`find-cycles dist/src` → 310 模块 0 运行时循环。
 - **T-B12-03**：§5 验收清单逐项打勾；§4 待确认清单更新（Q2/Q12 已解决，Q7 指针已改）。
-- **T-B12-04 合并**：未执行（用户要求零提交；全部改动仍在 `refactor/structure-cleanup` 工作区，未 commit）。
+- **T-B12-04 合并 ✓**：全部改动提交为 `31e6424 代码库整理中`（383 文件），`refactor/structure-cleanup` fast-forward 合并进 `main`；合并前全量测试 127/1182/3 通过；未推送远端。
+
+### B13 — 收尾清理（完成）
+- **参数校验单一化**：`arg-helpers.ts`（返回 `ToolResult`）与 `arg-validation.ts`（抛 `ToolArgValidationError`）合并为 `src/tools/arg-validation.ts` 单一模块；核心校验器只保留一份判定逻辑，底部 `arg*` 适配器复用同一核心并转换错误通道。删除 `arg-helpers.ts` 与 `session.ts` 的 `_argOptionalString`/`_argRequiredString`/`_argRequiredStringArray` 三个薄委托；`background-shell/manager.ts`、`session/task-list.ts` 与测试改指新模块。
+  - 先写 `tests/tools/arg-validation-contract.test.ts`（57 项，覆盖两套实现与 Session 委托的全部可观察行为），对合并前代码跑绿；合并后原断言重跑仍 57/57 绿。
+- **删除死文件与透传层**：删除零引用纯注释的 `src/swarm/gui-integration.ts`；确认 `provider-specs.ts` 无环后删除 `src/providers/registry-effective.ts`，5 处消费者直连 `FACTORY_PROVIDER_SPECS`（`defaults.ts`、`presentation.ts`、`presets.ts`、`registry.ts`、`managed-provider-credentials.ts`）。
+- **`ToolExecutor` 单导出**：删除 `agents/tool-loop/types.ts` 的 re-export；`agent.ts`、`session.ts`、`activation.ts`、`mcp.ts`、`tool-drain.ts`、`tests/helpers/session-harness.ts` 改指 `tools/executor-types.ts`。
+- **注释腐化清理**：修正 `src` 内指向已删除/已改名模块的注释（`basic.ts`、`tool-loop.ts`、`session-persistence.ts`、`session-log.ts`、`session-tree-types.ts`、`child-session-manager.ts`、`network-retry.ts`、`task-reconcile.ts` 等），修正 `session.ts` 两处分节标题与 `usage-accounting.ts` 两处乱码注释。
+- **p4-p6 拆分**：`tests/session/session-flows.test.ts` → `tests/session/shell-governance.test.ts`（4 项）+ `tests/session/output-round-context.test.ts`（1 项），共享 `tests/session/minimal-session.ts`；原文件删除。
+- 验证：`typecheck` ✓、`typecheck:tui` ✓、`npm test` 129/1239/3 ✓、`test:node` pass 2/fail 0 ✓、clean `build` ✓、SEA exe 重建 + `--version`/`--help`/assets 冒烟 ✓。
+
+### T-L-01 — `SessionLike`（完成）
+- **新增** `src/commands/session-like.ts`：手写 `SessionLike` 接口（41 个成员），成员清单来自对 `src/commands/` 全部 `session?.X` 访问的扫描结果去重（`grep` 出的 43 个名字中 `js`/`ts` 来自 `session.js`/`session.ts` 字符串，已剔除），覆盖 rewind/mcp/skills/model/permission/lifecycle/subagent 各簇；另附 `RewindTargetTurn`、`McpStatusEntry` 两个同形条目类型。（T-L-02 起该文件移到 `src/session/contract.ts`；两个同形条目类型分别由 T-L-03 与"重复类型收敛"那条消掉。）
+- **替换**：`CommandContext.session`（`types.ts:25`）与 `CommandOptionsContext.session`（`types.ts:147`）由 `any` 改为 `SessionLike`；命令层内两处 `session: any` 形参（`model/persistence.ts:19` 的 `currentSessionModelDisplayName`、`model/selection-flow.ts:20` 的 `resolveModelSelection` 包装）同步改指。
+- **双向编译保护**：`src/session.ts` 改为 `export class Session implements SessionLike`（纯类型边，`dist` 里 `session-like.js` 是 `export {}`，无运行时代码、0 新循环）。Session 改名/删成员 → 在 `session.ts` 报错；命令层新调用未声明成员 → 在命令文件报错。此前是静默降级。
+- **顺带合并第三份平行声明**：`src/ui/contracts.ts` 的 `Session` 接口原本手工重复声明了 24 个与命令层重叠的成员（且已失真：`resetForNewSession?(): void` 与真实的 `Promise<void>` 不符、`permissionMode?: string`、`config?: {…}` 等）。改为 `export interface Session extends SessionLike` 并删除这些重复声明，TUI 侧只保留渲染专用的只读快照/订阅成员。这一步暴露了 3 处真实类型缺陷（TUI 构造 `CommandContext` 时缺 `setTitle`/`setPersistedModelSelection`/`getSubagentSettings`/`setSubagentSettings` 等成员声明），修完后 `typecheck:tui` 0 报错。
+- **两处必要的类型收窄（行为不变）**：
+  - `commands/ui/permission.ts`：原 `PERMISSION_MODES.includes(mode as any)` 改为同判定的类型谓词 `isPermissionMode(mode)`，赋值 `session.permissionMode` 不再需要 `any`。
+  - `commands/session/lifecycle.ts`：`applySessionRestore` 的参数仍是 `Session`（它要用 8 个恢复/rewind/对账深层成员），fork 调用点改为 `session as Session` 并注明原因——这是命令层唯一保留的显式下传点。
+- **未覆盖（后续项 T-L-02）**：9 处 `session: any` 仍在 `models/{picker/labels,picker/types,presentation,restore,selection}` 与 `session/role-model-resolver.ts`。它们由命令层传入，因此编译保护止于这些边界；把这些面并入 `SessionLike` 需要先把该接口从 `commands/` 移到中立模块（否则 `models/` 反向依赖 `commands/`），属独立决策。
+- **重复类型收敛（T-L-01 后续核对）**：`session-like.ts` 里的 `McpStatusEntry` 是对 `clients/mcp/manager.ts` 已导出的 `McpServerStatus` 的重复声明，且把 `state` 从 4 字面量联合抄成了 `string`。已删除该副本，三处 `onMcpStatus` 声明（`session.ts:499`、`session/mcp.ts:39` 的内联 `Array<{…state: string…}>` 与 `SessionLike`）统一改用 `McpServerStatus`；三个文件原本就 type-import 自该模块，**0 新增依赖边**。`Pick<Session, 41 keys>` 经探针实测可编译且与 `SessionLike` 互相可赋值，故 `commands/` 不依赖 `session.ts` 并非硬约束（真实取舍见 §7 T-L-03）。
+- 验证：`typecheck` ✓、`typecheck:tui` ✓、`npm test` 129/1239/3 ✓（与 B13 后完全一致）、`test:node` pass 2/fail 0 ✓、clean `build` ✓（299 模块、0 运行时循环）。
+
+### T-L-03 — 取舍复核（完成）
+- 三项落地细节见 §7 T-L-03。净效果：`session.ts` 4100 → **4092 行**（`getRewindTargets()` 的 8 行内联返回类型改为命名类型；再经「收尾清理 3」删两个死 const → 4089 行），`RewindTargetTurn` 全仓只剩 `session/rewind/types.ts` 一份声明，TUI 消费侧不再用 `any[]` 屏蔽 `McpServerState`。
+- **本仓行尾约定（踩过的坑，后续批次必守）**：`src/` 下所有 `.ts` 均为 CRLF。用 Write 类工具新建的文件默认 LF，`git` 在 `core.autocrlf` 下会把整文件标为改动，看起来像"重写了整个文件"。新建/脚本改写源码后要归一回 CRLF 再看 `git diff --numstat` 是否只剩真实改动（本次 `session-like.ts` 与本文档各修一次）。
+
+### T-L-02 — 契约中立化（完成）
+- **移动**：`src/commands/session-like.ts` → `src/session/contract.ts`（内容与成员清单不变，仅路径与头部注释）。住在 `session/` 是因为 `models/` 与会话内部簇都要引用它，放命令层会让下层反向依赖上层目录。5 个引用方改指新路径：`commands/types.ts`、`commands/model/{persistence,selection-flow}.ts`、`session.ts`、`ui/contracts.ts`。
+- **接口扩 2 个成员**：补 `readonly currentModelName` / `readonly currentModelConfigName`（`session.ts:2440,2445` 的公开 getter），`SessionLike` 达 43 个成员。顺带暴露并修掉 `ui/contracts.ts:153` 的 `currentModelConfigName?: string`（真实类型是 `string`，`TS2430` 直接报出），删除后由 `extends SessionLike` 继承。
+- **9 处 `session: any` 收编**：
+  - `models/selection.ts:172,287` → `ModelResolutionSession`（`Pick<SessionLike, "config" | "primaryAgent">`）。用最小面而不是 `SessionLike`，因为 `session/restore.ts:95` 传的是 `RestoreHost`（只有 2 个共同成员），强推 `SessionLike` 会变成一处 `as unknown as`。
+  - `models/restore.ts:5`、`models/presentation.ts:207`、`session/role-model-resolver.ts:29,42` → `SessionLike`（调用方全是真实 Session / TuiSession / `ctx.session`）。
+  - `models/picker/types.ts:38,51` → `ModelPickerSessionView`。必须独立声明而不是 `Pick<SessionLike, …>`：init 向导在没有 Session 时自造 `{ config, currentModelConfigName, primaryAgent: { modelConfig } }` 喂选择器树（`lifecycle/init-service.ts:294`），那里的 `primaryAgent` 不是 `Agent` 实例。顺带把 `createPickerSession(): any` 与该函数内 `as unknown as Record<string, unknown>` 的双重强制转换去掉。
+  - `models/picker/labels.ts:50` 的 `session` **实参完全未被使用**（判定只依赖后面 6 个字符串参数，`model-tree.ts:106` 仍传 session）。T-L-02 当时按"结构重构不删看似未使用的代码"的红线只把 `any` 收到 `unknown`；用户批准后已于 2026-10-23 删除，见下面的「收尾清理 2」。
+- **保护面确认（负向探针）**：在 `models/presentation.ts` 里临时写 `session._store` 与 `session.primaryAgent.modelConfigXYZ`，`typecheck` 报 `TS2339: Property '_store' does not exist on type 'SessionLike'` 与 `TS2551 … Did you mean 'modelConfig'?`，探针已还原（该文件 diff 回到 2/1 行）。此前这两处在 `any` 下静默通过。
+- 验证：`typecheck` 0、`typecheck:tui` 0、`npm test` 129/1239/3、`test:node` pass 2/fail 0、clean `build` 299 模块 / 0 运行时循环，`dist/src/session/contract.js` 为 `export {}`（纯类型边）；`src/` 仍 301 个 .ts（净零：删一个、加一个）。
+
+### 收尾清理 2 — 冗余形参与 release 死重（完成，2026-10-23）
+- **删冗余形参**：`models/picker/labels.ts` 的 `isCurrentSelection(session, …)` 首参从未被函数体读取，已删除形参并同步唯一调用点 `models/picker/model-tree.ts:106`（全仓含 `tests/` 无其他调用者）。
+- **打包死重清理（C6 相关）**：`scripts/build-sea-exe.mjs` 原先把 `external/opentui` **整目录**拷进 `runtime/`。实测该目录在发布布局下无人读取：`buildOpenTuiEntry()` 用 esbuild 把 `main.tsx` 连同全部本地 import（含 `forked/**` 与 tree-sitter 的 `.wasm`/`.scm`）打成单文件 `runtime/external/opentui/main.js`，静态资源按 `assets/[name]-[hash]` 另落盘；`forked/core/platform/runtime.ts:41` 的 `resolveBundledFilePath()` 在打包后 `import.meta.url` 已是 `main.js`，其 `./assets/...` 兜底路径不会命中源码树，只会走 hash 资源。因此把 `external/opentui` 从拷贝清单移除。
+- **量化结果**：`runtime/external/opentui` 由 211 个文件 / 15.88 MB 降到 18 个文件 / 7.94 MB（forked 7.46 MB + TUI 源码 0.48 MB 归零），`main.js` 1.94 MB 与 17 个 hash 资源保留。附带好处：`src/cli.ts:179` 的 `resolveOpenTuiEntry()` 不再有 `main.tsx` 源码兜底可在生产布局里被误命中。
+- **产物级验证**（源码测试全绿不等于产物可用，故重建 exe 实测）：`npm run build:exe` 成功（100.0 MB）；`SwarmFlow.exe --version` → `0.4.0` exit 0；`--help` exit 0；**无参启动 TUI** 15 秒内持续输出 ANSI 终端序列且无 `ERR_MODULE_NOT_FOUND`/`Cannot find module`（说明被打包的 TUI 在新布局下真的跑起来了）；`runtime/external/opentui/{main.js,assets/*}` 到位，`prompts/`、`runtime/src/tools/intools/`、`runtime/assets/model-registry/`、`runtime/dist/src/cli.js` 均存在。
+- **补覆盖缺口**：删除形参后发现 `buildModelPickerTree` 的「当前模型」标记（`isCurrentSelection`）在 `tests/` 里**零直接覆盖**，遂补 `tests/models/picker-current-marker.test.ts`（7 项，走真实 `Config` + 会话视图，断言可观察的 `isCurrent` 叶节点；期望值按行为规格硬编码，不调用被测函数推导）。
+  - 三条命中路径各一条：`provider:model` 稳定名、`runtime-<provider>-<model>` 运行名、无配置名时按 primary agent 正在跑的 provider+model。
+  - 另四条防过度标记：名字与运行态都不匹配 → 不标记；同 provider 的兄弟模型不被连坐；**两个 provider 暴露同一 model id 时只标记运行中的那个**；多条件同时成立时全树恰好一个 `isCurrent`。
+  - 变异检验（`.tmp/mutation-check-picker-marker.mjs`，逐条破坏 `isCurrentSelection` 的判定后跑该文件，跑完自动还原源码）：M1 去掉稳定名判定 → 1 红；M2 去掉 runtime 名判定 → 1 红；M3 放宽 `modelId === currentModel` → 3 红；M4 放宽 `providerId === currentProvider` → 初版**未被捕获**，据此补出跨 provider 同名模型那条，复测 → 1 红。4/4 捕获，还原后恢复绿。
+- 复核：`typecheck` 0、`typecheck:tui` 0、`npm test` 130/1246/3。
+
+### 收尾清理 3 — 死 const 与注释腐化（完成，2026-10-23）
+- **删死 const**：完整性扫描发现 `session.ts` 里的 `MAX_ACTIVATIONS_PER_TURN = 30` 与 `MAX_COMPACT_PHASE_ROUNDS = 10` 各只出现在自己的声明行（全仓 0 引用）。真实使用者是同名常量的独立声明：`session/activation.ts:31`（用于 :569、:779）与 `session/compact-flow.ts:15`（用于 :238）——它们是 B10 外移簇时留下的副本，删除不影响任何行为。`session.ts` 4092 → **4089 行**。
+- **修注释腐化**：6 个 provider 文件把来源模块写成不存在的 `network-retry`，实际是 `src/network/retry.ts`（`agents/tool-loop/run.ts:29` 从该模块 import `MAX_NETWORK_RETRIES`）。已统一改为 `network/retry`：`providers/{anthropic-base.ts:58,base.ts:54,copilot.ts:64,openai-chat.ts:50,openai-responses.ts:76,openrouter.ts:69}`，`grep -rn network-retry src/` 归零。
+- **门禁**：`typecheck` 0、`typecheck:tui` 0、`npm test` 130 文件 / 1246 通过 / 3 跳过、`test:node` pass 2 / fail 0、clean `build` 299 模块 / 0 运行时循环。
+- **产物级验证**：`npm run build:exe` 重建（100.0 MB），`--version` → `0.4.0` exit 0、`--help` exit 0、无参启动 TUI 持续输出 ANSI 且无模块解析错误，入口解析 `runtime/external/opentui/main.js`；`dist/src/session.js` 内两个死 const 各 0 次，`activation.js` 3 次、`compact-flow.js` 2 次（真实使用者仍在）。
+- **扫描中判定为既有代码、未动（等授权，详见 §7 T-L-04）**：`providers/qwen.ts` 的 `QwenProvider` 生产侧零引用（仅 `tests/providers/qwen-provider.test.ts` 引用，registry 用的是 `qwen-responses.ts`）；`server/init-rpc.ts:21/29/35` 与 `server/rpc-arg-guards.ts:8/16/22` 重复的 `expectObject/expectString/optString`；`HTTP_TIMEOUT_MS` 三处各写 15s（`providers/copilot-models-cache.ts:33` 的 10s 是有意区分，不并入）；提示词工具清单与工具注册表之间缺一致性契约测试。
 
 ### 最终结构速览
-- `src/` 303 个 .ts；最大文件 `session.ts` **4113 行**（起点 7105，-42%）。
+- `src/` 301 个 .ts；最大文件 `session.ts` **4089 行**（起点 7105，-42%）。
 - 剩余 ≥400 行文件 40 个，全部是"单类/单函数"或已判定保留的适配器：`session/children/manager.ts`(1401，单类)、`agents/tool-loop/run.ts`(1069，单函数 `asyncRunToolLoop`)、`providers/openai-responses.ts`(983)/`openai-chat.ts`(826)/`anthropic-base.ts`(789)（子类钩子是继承契约，B8 决策不拆）、`session/activation.ts`(864)、`tools/grep.ts`(841)、`session/rewind/engine.ts`(825)、`permissions/bash/parser.ts`(748)。
 - `tests/` 按模块镜像为 24 个子目录（+ `helpers/`），根目录只留 `node-runtime.test.ts`（C9）与 `packaged-paths.test.ts`（全仓路径验收）。
-- 运行时模块图 310 个节点、0 循环。
+- 运行时模块图 299 个节点、0 循环（clean build）。
+- 会话能力面只有一份声明源：`src/session/contract.ts` 的 `SessionLike`（43 个成员）；`Session implements SessionLike`、`ui/contracts.Session extends SessionLike`；`commands/`、`models/`、`session/` 内部簇与 TUI 全部指向它，`src/` 内已无 `session: any`。
+
+---
+
+## 7. 独立立项的结构任务
+
+这些项不属于 B1–B13 的"搬家式"范围，各自需要一次独立授权。
+
+### T-L-01 `SessionLike` 收敛 `CommandContext.session: any`
+- 状态：**完成（2026-10-22）**。执行过程与验收见 §6「T-L-01 — `SessionLike`（完成）」。
+- 结果：`src/commands/types.ts` 两处 `session: any` → `SessionLike`；新增 `src/commands/session-like.ts`（T-L-02 起已移到 `src/session/contract.ts`）；`Session implements SessionLike`、`ui/contracts.Session extends SessionLike`，三份平行会话声明并为一份。
+
+### T-L-02 `SessionLike` 移出 `commands/`，收编剩余 9 处 `session: any`
+- 状态：**完成（2026-10-22）**。执行细节与验收见 §6「T-L-02 — 契约中立化（完成）」。
+- 决策留档（立项时写的判断，事后核对成立）：9 处只读取 9 个成员（`config`、`primaryAgent`、`thinkingLevel`、`getGlobalPreferences`、`getSubagentSettings`、`switchModel`、`setPersistedModelSelection`、`currentModelName`、`currentModelConfigName`），其中 7 个已在接口里，只缺 2 个 getter，因此**不需要拆两层接口**；落点选了 `src/session/contract.ts`（候选中的 `src/session/like.ts` 未用）。
+- 实际比预期多出的两件事：
+  1. `session/restore.ts` 传的是 `RestoreHost`（只有 `config` + `primaryAgent`），所以 `models/selection.ts` 用 `Pick<SessionLike, "config" | "primaryAgent">` 而不是整个 `SessionLike`，否则要在会话里加 `as unknown as`。
+  2. init 向导会造一个只有 `config` 的假会话喂选择器树，那里的 `primaryAgent` 不是 `Agent` 实例，所以 picker 上下文用独立的 `ModelPickerSessionView` 结构视图，`Pick<SessionLike, …>` 在此不可用。
+- 复核：C12（`session.ts` 与 `session/` 共存）未受影响——新文件是 `session/contract.ts`，与根 `session.ts` 无同名歧义；`tests/packaged-paths.test.ts` 全绿，无路径断言需要跟进。
+- ~~遗留一项待你决定~~ **已于 2026-10-23 按用户指示处置**：`src/models/picker/labels.ts:50` 的 `session` 形参（完全未被使用）已删除，唯一调用点 `models/picker/model-tree.ts:106` 同步；全仓含 `tests/` 无其他调用者（见 §6「收尾清理 2」）。
+
+### T-L-03 `SessionLike` 自身取舍的复核
+- 状态：**完成（2026-10-22，用户批准后三项全部落地）**。
+- 背景：`Pick<Session, 41 keys>` 用探针实测**能编译**，且与手写 `SessionLike` 互相可赋值（探针文件当时在 `tsconfig.json` 编译图内，注入的假错误被 tsc 报出，随后已删除）。因此 `src/commands/session-like.ts` 原注释里"`commands/` 不能反过来依赖 `session.ts`（类型循环会让鸭子调用失去可检查性）"这句**不成立**，属注释腐化。
+- 落地：
+  1. **注释改写**：`session-like.ts:1-13` 换成真实取舍——`Pick` 只会镜像实现当前的样子（`onMcpStatus` 把 `state` 写成 `string` 这类失真会被原样继承）；手写可以声明得比实现更严，靠 `Session implements SessionLike` 强制两边收敛；`ui/contracts.Session` 必须能被"非 `Session` 实例"的渲染实现满足，不宜绑死具体类。并明写"这些是取舍而非硬约束，实测 `Pick<Session, 41 keys>` 可编译"。
+  2. **`RewindTargetTurn` 归位**：声明移到 [src/session/rewind/types.ts:14](src/session/rewind/types.ts)（该模块本就是 rewind 域的类型契约）。`src/session.ts:29` 加类型 import、`:1562` 的 8 行匿名内联返回类型改为 `RewindTargetTurn[]`；`session-like.ts:26` 从该模块 import；`src/commands/session/rewind.ts:25` 删掉缺 `entryIndex`/`timestamp` 的局部子集副本，改为 `const targets = session.getRewindTargets();`（同时去掉在 `SessionLike` 下已冗余的 `?.` 与 `?? []`）。**保留** `formatRewindDetail` 的 4 字段结构性参数：纯格式化 helper 只需那 4 个字段，绑到 8 字段记录上反而放宽了它的适用面。
+  3. **TUI 消费侧收口**：`external/opentui/app.tsx:739` 去掉 `(statuses: any[])` 与两处 `(s: any)`，参数由上下文推为 `McpServerStatus[]`，`s.state === "failed"` 现受 `McpServerState` 联合校验（换成不存在的状态值会报 `TS2367`）。
+- 验证：`typecheck` 0、`typecheck:tui` 0、`npm test` 129/1239/3、`test:node` pass 2/fail 0、clean `build` 299 模块 / 0 运行时循环；新增的三处类型边在 `dist` 里运行时引用数为 0（`session-like.js` 仍是 `export {}`）。`app.tsx` 的改动经 esbuild（`tsx` 的转译后端）转译后与 `HEAD` 版本**字节相同**（EOL 归一后均 112005 字节），故未重建 exe。
+
+### T-L-04 完整性扫描产出的既有代码项（**待授权**，2026-10-23）
+这些项在结构重构中被扫描发现，但都不是本次重构造出的（基线 `857db46` 就已存在或属既有设计），按"结构重构不动既有语义"的红线全部原地保留，等逐项点头：
+1. **`src/providers/qwen.ts` 生产侧零引用**：`QwenProvider` 在 `src/`、`external/`、`gui/` 均无引用方——`providers/registry.ts:31` 映射的是 `qwen-responses.ts` 的 `QwenResponsesProvider`，该文件头注释自陈"已弃用的回滚路径"。唯一引用者是 `tests/providers/qwen-provider.test.ts`（10 处，含 2 个 describe），所以删除要连测试文件一起走，不能只看"零引用"就当死文件删。基线 `857db46` 时已如此。
+2. **`src/server/init-rpc.ts:21/29/35` 重复的参数校验**：本地 `expectObject`/`expectString`/`optString` 与 `src/server/rpc-arg-guards.ts:8/16/22` 的导出同名同义。合并属"多源收敛"，需先确认两处错误文案是否被测试或前端依赖。
+3. **`HTTP_TIMEOUT_MS` 三处各写 15s**：`auth/github-copilot-oauth.ts:61`、`auth/github-copilot-token-manager.ts:32`、`auth/openai/endpoints.ts:41`（只有最后一处是 export，前两处各文件私有）。可收成单一常量；但 `providers/copilot-models-cache.ts:33` 的 10s 是有意区分，不并入。
+4. **提示词 ↔ 工具注册表缺一致性契约测试**：`prompts/` 与内嵌提示词里声明的工具名没有测试保证它们与注册表同步（删工具时的清单遗漏只能靠人肉）。这是覆盖缺口，不是缺陷。

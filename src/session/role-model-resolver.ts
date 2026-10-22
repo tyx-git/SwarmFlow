@@ -1,6 +1,7 @@
 import type { ModelConfig } from "../config/types.js";
 import { resolvePersistedModelSelection, type PersistedModelSelection } from "../models/selection.js";
 import { isAgentRoleId, type AgentRole } from "../swarm/types.js";
+import type { SessionLike } from "./contract.js";
 import type { SubagentSettings } from "./subagent-settings.js";
 
 export interface ResolvedRoleModel {
@@ -25,7 +26,7 @@ export class RoleModelResolutionError extends Error {
   }
 }
 
-export function resolveInheritedThinkingLevel(session: any): string {
+export function resolveInheritedThinkingLevel(session: SessionLike): string {
   const runtimeLevel = session.thinkingLevel;
   if (typeof runtimeLevel === "string" && runtimeLevel && runtimeLevel !== "none") {
     return runtimeLevel;
@@ -39,7 +40,7 @@ export function resolveInheritedThinkingLevel(session: any): string {
 
 /** Resolve every role from its session setting or the active Queen model. */
 export function resolveRoleModel(
-  session: any,
+  session: SessionLike,
   role: string,
   settings?: SubagentSettings,
   persistedSelection?: PersistedRoleModelSelection,

@@ -11,6 +11,7 @@ import {
   findProviderPreset,
 } from "../providers/presets.js";
 import { isManagedProvider } from "../config/managed-provider-credentials.js";
+import type { ModelResolutionSession } from "../session/contract.js";
 import { describeModel } from "../models/presentation.js";
 import { runtimeTransportProtocol } from "../config/model-capabilities.js";
 
@@ -169,7 +170,7 @@ export function runtimeModelName(provider: string, model: string): string {
  * 支持配置名称或 provider:model 格式。
  */
 export function resolveModelSelection(
-  session: any,
+  session: ModelResolutionSession,
   target: string,
 ): ResolvedModelSelection {
   const config = session.config;
@@ -283,7 +284,7 @@ export function resolveModelSelection(
  * 解析持久化的模型选择。
  */
 export function resolvePersistedModelSelection(
-  session: any,
+  session: ModelResolutionSession,
   selection: PersistedModelSelection,
 ): ResolvedModelSelection {
   const configName = selection.modelConfigName?.trim();

@@ -15,9 +15,10 @@ import { type ModelPickerOverrides, flatModelOptionsWithTree, modelOptionsWithTr
 import { createCommandPromptAdapter } from "../provider/credentials.js";
 import { cmdModelLocalDiscover } from "../provider/discovery.js";
 import { type CommandContext } from "../types.js";
+import type { SessionLike } from "../../session/contract.js";
 
 export function resolveModelSelection(
-  session: any,
+  session: SessionLike,
   target: string,
 ) {
   return resolveModelSelectionCore(session, target);

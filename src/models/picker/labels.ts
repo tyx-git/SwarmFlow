@@ -47,7 +47,6 @@ export function modelCredentialInfo(providerId: string, providerHasKey: Map<stri
 }
 
 export function isCurrentSelection(
-  session: any,
   currentConfigName: string,
   providerId: string,
   selectionKey: string,

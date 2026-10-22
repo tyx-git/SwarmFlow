@@ -1,8 +1,9 @@
 ﻿import type { PersistedModelSelection, ResolvedModelSelection } from "../models/selection.js";
+import type { SessionLike } from "../session/contract.js";
 import { resolvePersistedModelSelection } from "../models/selection.js";
 
 export function applyPersistedModelSelectionToSession(
-  session: any,
+  session: SessionLike,
   selection: PersistedModelSelection,
 ): ResolvedModelSelection {
   const resolved = resolvePersistedModelSelection(session, selection);

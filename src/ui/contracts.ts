@@ -15,8 +15,9 @@ import type {
 } from "../ask.js";
 import type { LogEntry } from "../context/entry/types.js";
 import type { LogIdAllocator } from "../context/entry/id-allocator.js";
-import type { ChildSessionSnapshot, DeliverMessageResult } from "../session/tree-types.js";
+import type { DeliverMessageResult } from "../session/tree-types.js";
 import type { CommandRegistry as ActualCommandRegistry } from "../commands/registry.js";
+import type { SessionLike } from "../session/contract.js";
 import type {
   CommandContext,
   SlashCommand as ActualSlashCommand,
@@ -97,7 +98,11 @@ export type { CommandContext };
 import type { InlineImageInput } from "../session.js";
 export type { InlineImageInput };
 
-export interface Session {
+/**
+ * TUI 侧的会话面 = 命令层依赖的 `SessionLike` + UI 渲染额外需要的只读快照/订阅。
+ * 命令层用到的成员一律继承自 `SessionLike`，不在此重复声明（避免两处漂移）。
+ */
+export interface Session extends SessionLike {
   turn(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[] }): Promise<string>;
   close(): Promise<void>;
   requestTurnInterrupt?(): { accepted: true };
@@ -105,19 +110,9 @@ export interface Session {
   hasRunningChildAgents?(): boolean;
   denyPendingAsk?(): boolean;
   denyAndInterruptPendingAsk?(): { accepted: boolean; reason?: string; turnFinished?: boolean };
-  primaryAgent: {
-    name: string;
-    modelConfig?: {
-      name?: string;
-      provider?: string;
-      model?: string;
-      contextLength?: number;
-    };
-  };
   setProgressReporter?(reporter: ProgressReporter | undefined): void;
   clearProgressReporter?(reporter: ProgressReporter): void;
   turnCount?: number;
-  currentTurnRunning?: boolean;
   canRunDeferredCommand?(): boolean;
   compactCount?: number;
   createdAt?: string;
@@ -125,7 +120,6 @@ export interface Session {
   lastTotalTokens: number;
   lastCacheReadTokens?: number;
   cacheSupported?: boolean;
-  getDisplayName?(): string;
   contextBudget: number;
   cumulativeInputTokens: number;
   cumulativeOutputTokens: number;
@@ -135,29 +129,10 @@ export interface Session {
   contextBreakdown: { systemPrompt: number; tools: number; agentsMd: number; skills: number; messages: number };
   computeGlobalTokenStats?(): { cumulativeInput: number; cumulativeOutput: number; cumulativeCacheRead: number; cumulativeUncached: number; sessionCount: number };
   onSaveRequest?: () => void;
-  onMcpStatus?: (statuses: Array<{ name: string; state: string; toolCount: number; error?: string }>) => void;
   setStore(store: SessionStore | null): void;
   getPendingAsk(): PendingAskUi | null;
   resolveAgentQuestionAsk?(askId: string, decision: AgentQuestionDecision): void;
   resolveApprovalAsk?(askId: string, choiceIndex: number): void;
-  permissionMode?: string;
-  hookRuntime?: { hooks: readonly any[]; getAdditionalContext(): string | null };
-  getGlobalPreferences?(): any;
-  getRewindTargets?(): Array<{
-    turnIndex: number;
-    entryIndex: number;
-    preview: string;
-    timestamp: number;
-    fileCount: number;
-    additions: number;
-    deletions: number;
-    filesReverted: boolean;
-  }>;
-  planRewind?(fromTurnIndex: number): Promise<RewindPlan>;
-  rewindConversation?(toTurnIndex: number): { removed: number; error?: string };
-  rewindFiles?(plan: RewindPlan): Promise<RewindApplyResult>;
-  rewindBoth?(toTurnIndex: number, plan: RewindPlan): Promise<RewindApplyResult & { removed: number }>;
-  finalizeRewindJournal?(): void;
   resumePendingTurn?(options?: { signal?: AbortSignal }): Promise<string>;
   hasPendingTurnToResume?(): boolean;
   runManualCompact?(instruction?: string, options?: { signal?: AbortSignal; completionDisplay?: string }): Promise<void>;
@@ -175,54 +150,22 @@ export interface Session {
     logTail: string; logTruncated: boolean;
   }) | null;
   stopBackgroundShell?(id: string): Promise<string>;
-  thinkingLevel?: string;
-  currentModelConfigName?: string;
-  switchModel?(modelConfigName: string): void;
-  reloadCurrentModelConfig?(): void;
-  config?: {
-    modelNames: string[];
-    getModel(name: string): { provider: string; model: string; contextLength: number; supportsMultimodal: boolean };
-    invalidateModel?(name: string): void;
-    invalidateModelsByProvider?(provider: string): void;
-  };
-  _resetTransientState(): void;
   _initConversation(): void;
   deliverMessage?(source: "user" | "system", content: string): DeliverMessageResult | void;
   restoreQueuedUserInput?(): string | null;
   log?: readonly LogEntry[];
   /** Log filtered by display cutoff — hides entries before /clear. */
   getDisplayLog?(): readonly LogEntry[];
-  /** Set display cutoff to current log length (hide all current entries from UI). */
-  setDisplayCutoff?(): void;
   subscribeLog?(listener: () => void): () => void;
   getLogRevision?(): number;
   /** 当前活动（流式/执行中）日志条目的 ID，或 null。 */
   activeLogEntryId?: string | null;
-  getChildSessionSnapshots?(): ChildSessionSnapshot[];
   getChildSessionLog?(childId: string): readonly LogEntry[] | null;
   interruptChildSession?(childId: string): { accepted: boolean; reason?: string };
-  killChildSession?(childId: string): { accepted: boolean; reason?: string };
   restoreFromLog?(meta: LogSessionMeta, entries: LogEntry[], idAllocator: LogIdAllocator): void;
   getLogForPersistence?(): { meta: LogSessionMeta; entries: readonly LogEntry[] };
-  resetForNewSession?(newStore?: any): void;
-  appendStatusMessage?(text: string, statusType?: string): void;
-  appendErrorMessage?(text: string, errorType?: string): void;
-  appendCommandEcho?(text: string, style: "switch" | "injected", tone?: "default" | "worked"): void;
   appendUserInputDisplay?(text: string): void;
-  getAllSkillNames?(): { name: string; description: string; enabled: boolean }[];
-  setSkillEnabled?(name: string, enabled: boolean): void;
   reloadSkills?(): { added: string[]; removed: string[]; total: number };
-  /** 是否存在尚未通过 /reload 应用的 skill 变更。 */
-  skillsDirty?: boolean;
-  /** 显式 /reload：重扫 skills/MCP 并重建 system snapshot。 */
-  reloadConfigurationFromCommand?(): Promise<string>;
-  reloadMcp?(options?: { notice?: boolean; reason?: string }): Promise<string>;
-  reconnectMcpServer?(serverName: string): Promise<boolean>;
-  /** 带轮次锁的包装命令变体，以便重新加载不会与活动轮次重叠。 */
-  reloadMcpFromCommand?(reason: string): Promise<string>;
-  reconnectMcpServerFromCommand?(serverName: string): Promise<boolean>;
-  ensureMcpReadyFromCommand?(): Promise<void>;
-  skills?: ReadonlyMap<string, unknown>;
   /** 当前会话的任务清单（内存权威，磁盘为 write-through 副本）。 */
   getTaskState?(): readonly Task[];
   /** 任务清单变更订阅（父面板与 badge 用；不读盘）。 */

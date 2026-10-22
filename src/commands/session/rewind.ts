@@ -22,14 +22,7 @@ function formatRewindDetail(target: {
 
 export function rewindOptions(ctx: CommandOptionsContext): CommandOption[] {
   const session = ctx.session;
-  const targets: Array<{
-    turnIndex: number;
-    preview: string;
-    fileCount: number;
-    additions: number;
-    deletions: number;
-    filesReverted: boolean;
-  }> = session.getRewindTargets?.() ?? [];
+  const targets = session.getRewindTargets();
   const header: CommandOption = { label: "Message", value: "", detail: "Changes", disabled: true };
   const current: CommandOption = { label: "(Current)", value: "0:cancel", detail: "" };
   if (targets.length === 0) {

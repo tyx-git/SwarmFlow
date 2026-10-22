@@ -10,6 +10,18 @@ export interface RewindEngineDeps {
   getArtifactsDir(): string | undefined;
 }
 
+/** `Session.getRewindTargets()` 返回的单个回退点（按用户轮次聚合）。 */
+export interface RewindTargetTurn {
+  turnIndex: number;
+  entryIndex: number;
+  preview: string;
+  timestamp: number;
+  fileCount: number;
+  additions: number;
+  deletions: number;
+  filesReverted: boolean;
+}
+
 export interface RewindPreimage {
   path: string;
   kind: "missing" | "file" | "directory" | "symlink";

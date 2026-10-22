@@ -12,6 +12,7 @@ import { basename, join } from "node:path";
 import { randomSessionId } from "../../config/storage-layout.js";
 
 import { applySessionRestore } from "../../session/resume.js";
+import type { Session } from "../../session.js";
 
 import { reRegisterSkillCommands } from "../ecosystem/skills.js";
 import { type CommandContext } from "../types.js";
@@ -208,7 +209,9 @@ export async function cmdFork(ctx: CommandContext): Promise<void> {
   ctx.resetUiState();
 
   // 分叉：任务清单随会话目录被复制，但必须消毒（清执行体关联、in_progress 降级）
-  const result = applySessionRestore(session, store, newDir, { fork: true });
+  // applySessionRestore 需要完整 Session（恢复/rewind/任务对账等深层操作），
+  // 而命令层只声明 SessionLike；TUI 与服务端在这里传入的始终是真实 Session。
+  const result = applySessionRestore(session as Session, store, newDir, { fork: true });
   for (const w of result.warnings) ctx.showMessage(w);
   if (!result.ok && result.error) {
     ctx.showMessage(result.error);

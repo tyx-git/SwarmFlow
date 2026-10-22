@@ -1,6 +1,8 @@
 /** 模型/凭据选择器的节点类型与上下文契约。 */
 ﻿import { hasOAuthTokens } from "../../auth/openai/token-store.js";
 
+import type { ModelPickerSessionView } from "../../session/contract.js";
+
 export type ModelPickerNodeKind =
   | "group"
   | "provider"
@@ -34,7 +36,7 @@ export interface ModelPickerTreeNode {
 }
 
 export interface ModelPickerTreeContext {
-  session: any;
+  session: ModelPickerSessionView;
   currentSelection?: {
     configName?: string;
     provider: string;
@@ -47,7 +49,7 @@ export interface ModelPickerTreeContext {
 }
 
 export interface CredentialEndpointTreeContext {
-  session: any;
+  session: ModelPickerSessionView;
 }
 
 export interface CredentialEndpointTreeOptions {

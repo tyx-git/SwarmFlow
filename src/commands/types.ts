@@ -7,6 +7,7 @@ import type { SessionStore } from "../config/session-store.js";
 import { type PromptSecretRequest, type PromptSelectRequest } from "../providers/credential-flow.js";
 
 import { CommandRegistry } from "./registry.js";
+import type { SessionLike } from "../session/contract.js";
 
 /**
  * Callback used by command handlers to display a message to the user.
@@ -20,8 +21,8 @@ export type ShowMessageFn = (text: string) => void;
  * Uses a generic interface so command handlers don't need direct TUI imports.
  */
 export interface CommandContext {
-  /* 活动会话实例（类型为‘ any ’以避免循环深度）。 */
-  session: any;
+  /** 活动会话实例；能力面见 `session/contract.ts`（`Session implements SessionLike`）。 */
+  session: SessionLike;
 
   /* 在对话区域显示消息。 */
   showMessage: ShowMessageFn;
@@ -143,7 +144,7 @@ export interface CommandOption {
 
 /* 为斜杠命令构建动态选择器选项时可用的上下文。 */
 export interface CommandOptionsContext {
-  session: any;
+  session: SessionLike;
   store?: SessionStore;
   /** Active global SwarmFlow directory, when the UI supplies one. */
   swarmflowHomeDir?: string;
