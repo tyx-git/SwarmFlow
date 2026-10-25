@@ -122,7 +122,7 @@ describe("显式 prune", () => {
       expect(result.sealedBytes).toBe(500);
     }
     expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(false);
-    expect(existsSync(join(dir, "archive", "window-0.json.gz"))).toBe(true);
+    expect(existsSync(join(dir, "archive", "window-0.jsonl.gz"))).toBe(true);
     expect(loadLogJsonl(dir).entries.map((entry) => entry.id)).toEqual([
       "sys-1", "cm-live", "ts-new", "u-new", "a-new", "te-new",
     ]);

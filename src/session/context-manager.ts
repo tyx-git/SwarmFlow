@@ -6,8 +6,8 @@
  * 消息传递、压缩执行、token 记账留在 Session，通过 deps 接口传入。
  *
  * 阈值层次：
- *   - 85%：回合前 compact
- *   - 90%：回合中 compact
+ *   - 80%：回合前 compact
+ *   - 80%：回合中 compact
  */
 
 import type { ModelConfig } from "../config/types.js";
@@ -20,8 +20,10 @@ export interface ContextManagerDeps {
   getModelConfig(): ModelConfig;
   getBudgetCalcMode(): string | undefined;
   isCompactInProgress(): boolean;
-  /** 根会话自动压缩；子会话仅有 90%  wrap-up 警告。 */
+  /** 根会话自动压缩；子会话不自动压缩。 */
   canAutoCompact(): boolean;
+  /** provider 没有返回 usage 时，用本地估算的活动窗口 + 静态前缀 token 数。 */
+  estimateContextTokens(): number;
 }
 
 export class ContextManager {
@@ -85,8 +87,8 @@ export class ContextManager {
       if (!hasToolCalls) return { compactNeeded: false };
 
       const tokensToCheck = fullContext
-        ? inputTokens
-        : inputTokens + outputTokens;
+        ? (inputTokens > 0 ? inputTokens : this.deps.estimateContextTokens())
+        : (inputTokens > 0 ? inputTokens : this.deps.estimateContextTokens()) + outputTokens;
 
       if (tokensToCheck > midTurnRatio * budget) {
         return { compactNeeded: true, scenario: "mid_turn" };

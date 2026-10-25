@@ -12,7 +12,7 @@ import {
   hydrateArchivedDisplay,
   loadArchivedDisplaysForEntries,
 } from "../../src/config/archive.js";
-import { writeGzipJson } from "../../src/config/gzip-json.js";
+import { writeGzipJsonlAtomic } from "../../src/config/gzip-json.js";
 import { createAssistantText } from "../../src/context/entry/factories.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
 
@@ -54,7 +54,7 @@ describe("归档 display 按窗口懒读", () => {
     seedWindow(dir, 0, a);
     seedWindow(dir, 1, b);
     // 旁边存在一个没有索引的旧窗口：新条目已能被 entryIds 定位，不应被它拖累。
-    writeGzipJson(join(dir, "archive", "window-9.json.gz"), [
+    writeGzipJsonlAtomic(join(dir, "archive", "window-9.json.gz"), [
       { id: "a-old", content: "old", display: "old", meta: {} },
     ]);
 
@@ -68,17 +68,18 @@ describe("归档 display 按窗口懒读", () => {
     expect(both.displays.size).toBe(2);
   });
 
-  it("旧窗口没有索引时兜底读取，仍能取回 display", () => {
+  it("不对旧 JSON archive 做运行时兼容回退", () => {
     const dir = makeDir();
     const c = archivedEntry(2);
     mkdirSync(join(dir, "archive"), { recursive: true });
-    writeGzipJson(join(dir, "archive", "window-2.json.gz"), [
+    writeGzipJsonlAtomic(join(dir, "archive", "window-2.json.gz"), [
       { id: "a-2", content: "display-2", display: "display-2", meta: {} },
     ]);
 
     const lookup = loadArchivedDisplaysForEntries(dir, [c]);
-    expect(lookup.windowsRead).toEqual([2]);
-    expect(lookup.displays.get("a-2")).toBe("display-2");
+    expect(lookup.windowsRead).toEqual([]);
+    expect(lookup.displays.has("a-2")).toBe(false);
+    expect(lookup.unresolved).toEqual(["a-2"]);
   });
 
   it("hydrateArchivedDisplay 复用同一按需路径", () => {

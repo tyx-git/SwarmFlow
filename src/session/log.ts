@@ -17,6 +17,15 @@ import {
 import { LOG_JSONL_VERSION, type EntryFlags, type JsonlRecord } from "../config/log-jsonl.js";
 import { entryToSnake } from "../config/log-codec.js";
 
+/** 压缩提交所需的路由信息；marker/context 必须一起落盘。 */
+export interface CompactCheckpointMeta {
+  checkpointId: string;
+  archiveFile: string;
+  archiveIndexFile: string;
+  compactIndex: number;
+  scenario: "before_turn" | "mid_turn" | "manual";
+}
+
 /** 为 provider-round 条目类型打 providerRoundId 标记（幂等）。 */
 export function stampProviderRoundId(entry: LogEntry): void {
   if (
@@ -37,7 +46,8 @@ export function stampProviderRoundId(entry: LogEntry): void {
 type PendingLogOp =
   | { kind: "upsert"; id: string }
   | { kind: "patch"; ids: string[]; flags: EntryFlags; dropPresentation?: true }
-  | { kind: "truncate"; fromEntryId: string };
+  | { kind: "truncate"; fromEntryId: string }
+  | { kind: "checkpoint"; markerId: string; contextId: string; meta: CompactCheckpointMeta };
 
 function snapshotEntry(entry: LogEntry): string {
   return JSON.stringify(entry);
@@ -128,7 +138,7 @@ export class SessionLog {
   /** 扩展索引到当前 _entries 长度。 */
   private _extendIndexes(): void {
     if (this._indexedUpTo > this._entries.length) {
-      // 数组在我们背后缩短了——从零重建。
+      // 数组在若缩短了——从零重建。
       this.invalidateIndexes();
     }
     for (let i = this._indexedUpTo; i < this._entries.length; i++) {
@@ -193,7 +203,7 @@ export class SessionLog {
 
   /**
    * 仅在全新/影子存储上重置：live session 的 revision 必须保持单调递增，
-   * 以便 UI 订阅者始终检测到交换。
+   * 以便 UI 监控始终检测到交换。
    */
   resetRevision(): void {
     this._revision = 0;
@@ -209,7 +219,14 @@ export class SessionLog {
 
   notifyListeners(): void {
     for (const listener of this._listeners) {
-      listener();
+      try {
+        listener();
+      } catch (error) {
+        // 监听器属于表现层：异常不能让日志提交回滚或中断。
+        console.warn(
+          `[log] listener failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
   }
 
@@ -243,6 +260,39 @@ export class SessionLog {
     this._entries.push(entry);
     if (this._guardEnabled) this._entrySnapshots.set(entry.id, snapshotEntry(entry));
     this._queueUpsert(entry.id);
+    this.touch();
+  }
+
+  /**
+   * 原子追加一次压缩提交：marker 与 context 进同一 pending checkpoint，
+   * 落盘时序列化为一条 compact_checkpoint 记录。
+   */
+  appendCheckpoint(
+    marker: LogEntry,
+    context: LogEntry,
+    meta: CompactCheckpointMeta,
+  ): void {
+    if (this._entries.length < this._indexedUpTo) {
+      this.invalidateIndexes();
+    }
+    marker.meta["checkpointId"] = meta.checkpointId;
+    marker.meta["archiveFile"] = meta.archiveFile;
+    marker.meta["archiveIndexFile"] = meta.archiveIndexFile;
+    marker.meta["compactIndex"] = meta.compactIndex;
+    marker.meta["scenario"] = meta.scenario;
+    context.meta["checkpointId"] = meta.checkpointId;
+    context.meta["compactIndex"] = meta.compactIndex;
+    this._entries.push(marker, context);
+    if (this._guardEnabled) {
+      this._entrySnapshots.set(marker.id, snapshotEntry(marker));
+      this._entrySnapshots.set(context.id, snapshotEntry(context));
+    }
+    this._pendingOps.push({
+      kind: "checkpoint",
+      markerId: marker.id,
+      contextId: context.id,
+      meta,
+    });
     this.touch();
   }
 
@@ -335,6 +385,9 @@ export class SessionLog {
         const ids = op.ids.filter((id) => survivingIds.has(id));
         return ids.length > 0 ? [{ ...op, ids }] : [];
       }
+      if (op.kind === "checkpoint") {
+        return survivingIds.has(op.markerId) && survivingIds.has(op.contextId) ? [op] : [];
+      }
       return [];
     });
     this._pendingOps.push({ kind: "truncate", fromEntryId: entryId });
@@ -342,13 +395,20 @@ export class SessionLog {
   }
 
   /** 归档条目：content 置空并标 archived；变更以 upsert 记录。 */
-  archiveEntries(ids: readonly string[]): void {
+  archiveEntries(
+    ids: readonly string[],
+    meta?: { checkpointId: string; archiveFile: string },
+  ): void {
     const changed: string[] = [];
     for (const id of ids) {
       const entry = this.findEntryById(id);
       if (!entry) continue;
       entry.content = null;
       entry.archived = true;
+      if (meta) {
+        entry.meta["checkpointId"] = meta.checkpointId;
+        entry.meta["archiveFile"] = meta.archiveFile;
+      }
       changed.push(id);
     }
     for (const id of changed) this._queueUpsert(id);
@@ -365,7 +425,9 @@ export class SessionLog {
       if (!record) continue;
       entry.content = record.content;
       if (record.display !== undefined) entry.display = record.display;
-      if (record.meta !== undefined) entry.meta = record.meta;
+      // 归档快照可能早于运行时的 revert 标记；当前条目的保留键必须覆盖快照。
+      const retained = retainArchivedMeta(entry.meta as Record<string, unknown>);
+      entry.meta = { ...(record.meta ?? {}), ...retained };
       entry.archived = false;
       changed.push(entry.id);
     }
@@ -387,6 +449,10 @@ export class SessionLog {
     for (const op of this._pendingOps) {
       if (op.kind === "upsert") touched.add(op.id);
       else if (op.kind === "patch") for (const id of op.ids) touched.add(id);
+      else if (op.kind === "checkpoint") {
+        touched.add(op.markerId);
+        touched.add(op.contextId);
+      }
     }
     return touched;
   }
@@ -417,6 +483,30 @@ export class SessionLog {
           ...(this._persistedIds.has(entry.id) ? { replaces: true as const } : {}),
         });
         this._peekedIds.add(entry.id);
+        continue;
+      }
+      if (op.kind === "checkpoint") {
+        const marker = this.findEntryById(op.markerId);
+        const context = this.findEntryById(op.contextId);
+        if (!marker || !context) continue;
+        const preparedMarker = this._prepareForDisk(marker);
+        const preparedContext = this._prepareForDisk(context);
+        if (!preparedMarker || !preparedContext) continue;
+        records.push({
+          v: LOG_JSONL_VERSION,
+          op: "compact_checkpoint",
+          seq: seq++,
+          ts,
+          checkpointId: op.meta.checkpointId,
+          archiveFile: op.meta.archiveFile,
+          archiveIndexFile: op.meta.archiveIndexFile,
+          compactIndex: op.meta.compactIndex,
+          scenario: op.meta.scenario,
+          marker: entryToSnake(preparedMarker),
+          context: entryToSnake(preparedContext),
+        });
+        this._peekedIds.add(marker.id);
+        this._peekedIds.add(context.id);
         continue;
       }
       if (op.kind === "patch") {

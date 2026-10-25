@@ -14,25 +14,24 @@
 
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { gzipSync } from "node:zlib";
 import { createPatch } from "diff";
+
+import { writeArchiveEnvelopeForMigration } from "../../src/config/archive.js";
 
 import { ToolResult } from "../../src/providers/response.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
-import { makeScriptedSession, type SessionHarness } from "../helpers/session-harness.js";
+import { makeScriptedSession, testToolDef, type SessionHarness } from "../helpers/session-harness.js";
 
 function sha256(text: string): string {
   return createHash("sha256").update(text, "utf-8").digest("hex");
 }
 
-/** 按目标格式写归档文件与 turn 索引，然后把内存条目清成归档后的样子。 */
 function writeFutureArchiveAndStrip(
   sessionDir: string,
   entries: LogEntry[],
-  fileName = "window-0.json.gz",
-  indexFileName = "window-0.index.json.gz",
+  fileName = "window-cp-0.jsonl.gz",
 ): void {
   mkdirSync(join(sessionDir, "archive"), { recursive: true });
   const payload = entries.map((entry) => ({
@@ -41,10 +40,7 @@ function writeFutureArchiveAndStrip(
     display: entry.display,
     meta: entry.meta,
   }));
-  writeFileSync(join(sessionDir, "archive", fileName), gzipSync(Buffer.from(JSON.stringify(payload))));
 
-  // listTurns/回退菜单读取的是轻量索引（archiveWindow 会同步写入），
-  // 这里模拟同一格式：turn 枚举 + 文件变更摘要。
   const turns = entries
     .filter((entry) => entry.type === "input_received" || entry.type === "turn_start")
     .map((entry) => {
@@ -75,7 +71,12 @@ function writeFutureArchiveAndStrip(
       deletions: typeof fm.deletions === "number" ? fm.deletions : 0,
     }];
   });
-  writeFileSync(join(sessionDir, "archive", indexFileName), gzipSync(Buffer.from(JSON.stringify({ turns, mutations }))));
+  const checkpointId = fileName.replace(/^window-/, "").replace(/\.jsonl\.gz$/, "");
+  writeArchiveEnvelopeForMigration(sessionDir, checkpointId, fileName, payload, {
+    turns,
+    mutations,
+    entryIds: payload.map((entry) => entry.id),
+  });
 
   for (const entry of entries) {
     entry.content = null;
@@ -148,6 +149,53 @@ describe("归档后的 rewind 与 turn 列表", () => {
       expect(target?.fileCount).toBe(1);
       expect(target?.additions).toBe(1);
       expect(target?.deletions).toBe(1);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("externalizes tool result images before appending and resolves them for the next request", async () => {
+    const base64 = Buffer.from("tool-result-image").toString("base64");
+    const h = makeScriptedSession({
+      tools: [testToolDef("image_tool")],
+      rounds: [
+        { toolCalls: [{ id: "call-image", name: "image_tool", arguments: {} }] },
+        { text: "done" },
+      ],
+      toolExecutorOverrides: {
+        image_tool: () => new ToolResult({
+          content: "image attached",
+          contentBlocks: [
+            { type: "text", text: "caption" },
+            { type: "image", media_type: "image/png", data: base64 },
+          ],
+        }),
+      },
+    });
+    h.session.permissionMode = "yolo";
+
+    try {
+      await h.session.turn("inspect the tool result");
+
+      const resultEntry = (h.session.log as LogEntry[]).find(
+        (entry) => entry.type === "tool_result" && entry.meta["toolCallId"] === "call-image",
+      );
+      expect(resultEntry).toBeDefined();
+      const metadata = resultEntry!.meta["toolMetadata"] as Record<string, unknown>;
+      const blocks = metadata["_contentBlocks"] as Array<Record<string, unknown>>;
+      expect(blocks[1]).toMatchObject({ type: "image_ref", media_type: "image/png" });
+      expect(JSON.stringify(resultEntry)).not.toContain(base64);
+
+      const sessionDir = h.internals._store.sessionDir as string;
+      const imagePath = join(sessionDir, blocks[1]!["path"] as string);
+      expect(existsSync(imagePath)).toBe(true);
+      expect(readFileSync(imagePath).toString("base64")).toBe(base64);
+
+      const toolMessage = h.provider.calls[1]?.find((message) => message["role"] === "tool_result");
+      expect(toolMessage?.["content"]).toEqual([
+        { type: "text", text: "caption" },
+        { type: "image", media_type: "image/png", data: base64 },
+      ]);
     } finally {
       h.dispose();
     }

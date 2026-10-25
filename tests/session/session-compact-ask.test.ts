@@ -18,7 +18,7 @@ describe("compact phase tool approvals", () => {
           toolCalls: [{ id: "tc-ask", name: "probe_tool", arguments: {} }],
           usage: new Usage(6000, 20),
         },
-        { text: "CONT", usage: new Usage(6500, 100) },
+        { text: `CONT ${"x".repeat(220)}`, usage: new Usage(6500, 100) },
       ],
     });
     try {
@@ -28,11 +28,10 @@ describe("compact phase tool approvals", () => {
       expect(h.session.compactCount).toBe(1);
       expect(h.internals._activeAsk).toBeFalsy();
       expect(holder.ask).toBeTruthy(); // 预检产生了审批请求，被压缩期降级
-      // 压缩成功后该 tool_result 已随窗口归档（content 剥离），只断言存在。
+      // 压缩成功后该 tool_result 已随窗口归档（content/meta 剥离），
+      // toolCallId 不再常驻；断言归档的 tool_result 存在即可。
       const denyResult = h.session.log.find(
-        (e) =>
-          e.type === "tool_result" &&
-          (e.meta as Record<string, unknown>)["toolCallId"] === "tc-ask",
+        (e) => e.type === "tool_result" && e.archived,
       );
       expect(denyResult).toBeTruthy();
       expect(

@@ -11,6 +11,7 @@ import { readLastSeq, writeLogJsonlSnapshot } from "../../src/config/log-jsonl.j
 import { createLogSessionMeta, saveSessionMeta, type LogSessionMeta } from "../../src/config/session-meta.js";
 import {
   createAssistantText,
+  createCompactContext,
   createSystemPrompt,
   createToolResult,
   createTurnEnd,
@@ -88,7 +89,7 @@ function makeMeta(bounded: boolean): LogSessionMeta {
 }
 
 function markerEntry(turnIndex: number, id = "cm-1"): LogEntry {
-  return {
+  return withCheckpointMetadata({
     id,
     type: "compact_marker",
     timestamp: 1,
@@ -100,11 +101,65 @@ function markerEntry(turnIndex: number, id = "cm-1"): LogEntry {
     content: null,
     archived: false,
     meta: { compactIndex: 0, originalTokens: 1, compactedTokens: 0 },
-  } as unknown as LogEntry;
+  } as unknown as LogEntry);
+}
+
+function withCheckpointMetadata(entry: LogEntry): LogEntry {
+  if (entry.type !== "compact_marker") return entry;
+  const checkpointId = String((entry.meta as Record<string, unknown>)["checkpointId"] ?? entry.id);
+  return {
+    ...entry,
+    meta: {
+      ...(entry.meta as Record<string, unknown>),
+      checkpointId,
+      archiveFile: `window-${checkpointId}.jsonl.gz`,
+      archiveIndexFile: `window-${checkpointId}.jsonl.gz`,
+    },
+  };
+}
+
+function checkpointContext(marker: LogEntry): LogEntry {
+  const meta = marker.meta as Record<string, unknown>;
+  const checkpointId = String(meta["checkpointId"]);
+  const compactIndex = Number(meta["compactIndex"] ?? 0);
+  return createCompactContext(
+    `cc-${checkpointId.replace(/^cm-/, "")}`,
+    marker.turnIndex,
+    "checkpoint continuation",
+    `ctx-${checkpointId}`,
+    compactIndex,
+  );
+}
+
+function normalizeCheckpointEntries(entries: LogEntry[]): LogEntry[] {
+  const normalized: LogEntry[] = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!;
+    if (entry.type !== "compact_marker") {
+      normalized.push(entry);
+      continue;
+    }
+    const marker = withCheckpointMetadata(entry);
+    normalized.push(marker);
+    const next = entries[index + 1];
+    if (next?.type === "compact_context") {
+      normalized.push({
+        ...next,
+        meta: {
+          ...(next.meta as Record<string, unknown>),
+          checkpointId: (marker.meta as Record<string, unknown>)["checkpointId"],
+        },
+      });
+      index += 1;
+    } else {
+      normalized.push(checkpointContext(marker));
+    }
+  }
+  return normalized;
 }
 
 function seed(dir: string, meta: LogSessionMeta, entries: LogEntry[]): void {
-  writeLogJsonlSnapshot(dir, meta, entries);
+  writeLogJsonlSnapshot(dir, meta, normalizeCheckpointEntries(entries));
   saveSessionMeta(dir, meta);
 }
 

@@ -78,7 +78,7 @@ afterEach(() => {
 describe("log.jsonl 常量", () => {
   it("文件名与版本固定", () => {
     expect(LOG_JSONL_FILENAME).toBe("log.jsonl");
-    expect(LOG_JSONL_VERSION).toBe(4);
+    expect(LOG_JSONL_VERSION).toBe(5);
   });
 });
 
@@ -116,7 +116,7 @@ describe("记录序列化与解析", () => {
     ["非对象", "[1,2,3]"],
     ["null", "null"],
     ["缺 v", JSON.stringify({ op: "session", seq: 1, ts: "t", session: {} })],
-    ["版本不是 4", JSON.stringify({ ...sessionRecord(), v: 3 })],
+    ["版本不是 5", JSON.stringify({ ...sessionRecord(), v: 4 })],
     ["缺 op", JSON.stringify({ v: 4, seq: 1, ts: "t" })],
     ["未知 op", JSON.stringify({ v: 4, op: "append", seq: 1, ts: "t" })],
     ["seq 非正整数", JSON.stringify({ ...sessionRecord(), seq: 0 })],

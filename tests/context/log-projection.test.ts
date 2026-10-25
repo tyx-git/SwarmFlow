@@ -138,7 +138,7 @@ describe("projectToTuiEntries", () => {
     expect(tui[0].kind).toBe("user");
   });
 
-  it("shows compact markers", () => {
+  it("shows compact markers and defaults to the active window", () => {
     const entries = [
       ...basicLog(),
       createCompactMarker("cm-001", 2, 0, 100000, 20000),
@@ -146,10 +146,15 @@ describe("projectToTuiEntries", () => {
       createUserMessage("user-002", 2, "Next", "Next", "c4"),
     ];
     const tui = projectToTuiEntries(entries);
-    // user + assistant + compact_mark + user (compact_context is invisible)
-    expect(tui).toHaveLength(4);
-    expect(tui[2].kind).toBe("compact_mark");
-    expect(tui[2].text).toContain("Compacted");
+    // compact_mark + user；compact_context 不可见。
+    expect(tui).toHaveLength(2);
+    expect(tui[0].kind).toBe("compact_mark");
+    expect(tui[0].text).toContain("Compacted");
+    expect(tui[1]).toMatchObject({ kind: "user", text: "Next" });
+
+    const full = projectToTuiEntries(entries, { includeEarlier: true });
+    expect(full).toHaveLength(4);
+    expect(full[2].kind).toBe("compact_mark");
   });
 
   it("splits interrupted assistant suffix into a dedicated TUI marker", () => {
@@ -195,7 +200,7 @@ describe("projectToTuiEntries", () => {
     ]);
   });
 
-  it("folds old windows when compact markers >= 3", () => {
+  it("defaults to the active window and includes earlier entries on request", () => {
     const entries: LogEntry[] = [
       createSystemPrompt("sys-001", "prompt"),
       // Window 0
@@ -215,17 +220,20 @@ describe("projectToTuiEntries", () => {
     ];
 
     const tui = projectToTuiEntries(entries);
+    expect(tui.some((entry) => entry.kind === "status" && entry.text.includes("earlier entries"))).toBe(false);
+    expect(tui.filter((e) => e.kind === "user").map((e) => e.text)).toEqual(["msg4"]);
 
-    // First entry should be fold placeholder
-    expect(tui[0].kind).toBe("status");
-    expect(tui[0].text).toContain("earlier entries");
-
-    // Should show window 1, 2, 3 (3 visible windows)
-    const userEntries = tui.filter((e) => e.kind === "user");
-    expect(userEntries.map((e) => e.text)).toEqual(["msg2", "msg3", "msg4"]);
+    const full = projectToTuiEntries(entries, { includeEarlier: true });
+    expect(full.some((entry) => entry.kind === "status" && entry.text.includes("earlier entries"))).toBe(false);
+    expect(full.filter((e) => e.kind === "user").map((e) => e.text)).toEqual([
+      "msg1",
+      "msg2",
+      "msg3",
+      "msg4",
+    ]);
   });
 
-  it("does not fold when compact markers < 3", () => {
+  it("does not fold the active window when compact markers < 3", () => {
     const entries: LogEntry[] = [
       createSystemPrompt("sys-001", "prompt"),
       createUserMessage("user-001", 1, "msg1", "msg1", "c1"),
@@ -235,9 +243,9 @@ describe("projectToTuiEntries", () => {
       createUserMessage("user-003", 3, "msg3", "msg3", "c3"),
     ];
 
-    const tui = projectToTuiEntries(entries);
-    const userEntries = tui.filter((e) => e.kind === "user");
-    expect(userEntries).toHaveLength(3); // All visible
+    expect(projectToTuiEntries(entries).filter((e) => e.kind === "user")).toHaveLength(1);
+    expect(projectToTuiEntries(entries, { includeEarlier: true })
+      .filter((e) => e.kind === "user")).toHaveLength(3);
   });
 
   it("shows status and error entries", () => {

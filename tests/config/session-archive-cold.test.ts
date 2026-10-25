@@ -23,6 +23,7 @@ import { loadLog } from "../../src/config/log-serialization.js";
 import { createLogSessionMeta } from "../../src/config/session-meta.js";
 import { SessionStore } from "../../src/config/session-store.js";
 import { projectSlug } from "../../src/config/storage-layout.js";
+import { acquireSessionLock } from "../../src/config/session-lock.js";
 import { createUserMessage } from "../../src/context/entry/factories.js";
 import { findSessionById } from "../../src/session/resume.js";
 
@@ -170,6 +171,20 @@ describe("W-5 冷会话归档", () => {
     expect(store.restoreSession(SESSION_ID).ok).toBe(true);
     expect(readFileSync(join(sessionDir, "log.json")).equals(before)).toBe(true);
     expect(existsSync(join(sessionDir, "log.json.gz"))).toBe(false);
+  });
+
+  it("归档尊重另一个写者持有的 session lock", () => {
+    const baseDir = makeBaseDir();
+    const sessionDir = seedSession(baseDir);
+    const foreignLock = acquireSessionLock(sessionDir, "foreign-writer");
+    expect(foreignLock.ok).toBe(true);
+
+    const store = new SessionStore({ projectPath: PROJECT_PATH, baseDir });
+    const result = store.archiveSession(SESSION_ID);
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(sessionDir)).toBe(true);
+    expect(existsSync(archivedDir(baseDir))).toBe(false);
   });
 
   it("守卫：非法 id / 未知 id / 重复归档 / 恢复目标已存在 / 活动会话", () => {

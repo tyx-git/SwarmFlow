@@ -13,10 +13,12 @@ import {
   type SessionHarness,
 } from "../helpers/session-harness.js";
 
+const CONTINUATION = `continuation summary text ${"x".repeat(220)}`;
+
 describe("manual compact", () => {
   it("appends marker + continuation and leaves the session idle (locked)", async () => {
     const h = makeScriptedSession({
-      rounds: [{ text: "continuation summary text" }],
+      rounds: [{ text: CONTINUATION }],
     });
     try {
       await h.session.runManualCompact();
@@ -36,7 +38,7 @@ describe("manual compact", () => {
   // P1.7 — Q4/B5: /compact 由 compact phase 自身消化，不得在簿记上留下「未回应的用户消息」。
   it("manual compact leaves no unprocessed-user-message bookkeeping behind", async () => {
     const h = makeScriptedSession({
-      rounds: [{ text: "continuation summary text" }],
+      rounds: [{ text: CONTINUATION }],
     });
     try {
       await h.session.runManualCompact();
@@ -51,7 +53,7 @@ describe("manual compact", () => {
     const abortController = new AbortController();
     abortController.abort();
     const h = makeScriptedSession({
-      rounds: [{ text: "continuation summary text" }],
+      rounds: [{ text: CONTINUATION }],
     });
     try {
       await expect(h.session.runManualCompact("", { signal: abortController.signal })).rejects.toMatchObject({
@@ -76,7 +78,7 @@ describe("messages arriving during compact (Q6)", () => {
     const h: SessionHarness = makeScriptedSession({
       rounds: [
         { toolCalls: [{ id: "probe-1", name: "probe_tool", arguments: {} }] },
-        { text: "continuation" },
+        { text: CONTINUATION },
       ],
       toolExecutorOverrides: {
         probe_tool: () => {

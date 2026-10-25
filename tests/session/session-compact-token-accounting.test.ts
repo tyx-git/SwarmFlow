@@ -22,6 +22,8 @@ import { Usage } from "../../src/providers/response.js";
 import { Session } from "../../src/session.js";
 import { makeScriptedSession } from "../helpers/session-harness.js";
 
+const CONTINUATION = `continuation summary text ${"x".repeat(220)}`;
+
 function restoreSession(entries: LogEntry[]): { session: Session; dispose: () => void } {
   const baseDir = mkdtempSync(join(tmpdir(), "swarmflow-compact-token-base-"));
   const projectRoot = mkdtempSync(join(tmpdir(), "swarmflow-compact-token-project-"));
@@ -80,7 +82,7 @@ function restoreSession(entries: LogEntry[]): { session: Session; dispose: () =>
 describe("compact token accounting", () => {
   it("resets per-response input tokens after manual compact while keeping cumulative usage", async () => {
     const h = makeScriptedSession({
-      rounds: [{ text: "continuation summary text", usage: new Usage(7000, 5) }],
+      rounds: [{ text: CONTINUATION, usage: new Usage(7000, 5) }],
     });
     try {
       h.internals._lastInputTokens = 7000;
@@ -99,7 +101,7 @@ describe("compact token accounting", () => {
   it("does not compact again on the first turn after manual compact", async () => {
     const h = makeScriptedSession({
       rounds: [
-        { text: "continuation summary text", usage: new Usage(7000, 5) },
+        { text: CONTINUATION, usage: new Usage(7000, 5) },
         { text: "unexpected second compact", usage: new Usage(100, 5) },
         { text: "final answer", usage: new Usage(100, 5) },
       ],

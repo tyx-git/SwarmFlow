@@ -190,6 +190,7 @@ export async function asyncRunToolLoop(
     signal,
     contextIdAllocator,
     toolContextIdAllocator,
+    externalizeContentBlocks,
     onTokenUpdate,
     onProviderResponse,
     compactCheck,
@@ -374,21 +375,24 @@ export async function asyncRunToolLoop(
       if (pending.tuiVisibility === "defer") return;
       const args = getToolArgsForEntry(pending) ?? {};
 
-      const sections = deriveSectionsForState(pending.name, pending);
+      // 工具完成后，参数流式副本与 call 侧 diff 不再需要；
+      // result 侧的 fileModifyData/tui_preview 是 TUI 权威。
+      const finalized = pending.execPhase === "completed" || pending.execPhase === "failed";
+      const sections = finalized ? [] : deriveSectionsForState(pending.name, pending);
       if (!pending.contextId && toolContextIdAllocator) {
         pending.contextId = toolContextIdAllocator();
       }
       const contextId = pending.contextId ?? ensureRoundContextId();
       const display = generateToolCallDisplay(pending.name, args);
-      const fmd = buildFileModifyData(pending);
+      const fmd = finalized ? undefined : buildFileModifyData(pending);
       const meta = buildToolCallMeta(
         { toolCallId: callId, toolName: pending.name, agentName, contextId },
         {
           toolStreamState: deriveToolStreamState(pending),
           toolExecState: pending.execPhase,
           toolStreamSections: sections.length > 0 ? sections : undefined,
-          toolStreamLanguage: pending.streamLanguage,
-          toolStreamMode: pending.streamMode,
+          toolStreamLanguage: finalized ? undefined : pending.streamLanguage,
+          toolStreamMode: finalized ? undefined : pending.streamMode,
           fileModifyData: fmd,
         },
       );
@@ -723,7 +727,9 @@ export async function asyncRunToolLoop(
 
         const mergedMetadata = { ...resolved.metadata };
         if (resolved.contentBlocks) {
-          mergedMetadata._contentBlocks = resolved.contentBlocks;
+          mergedMetadata._contentBlocks = externalizeContentBlocks
+            ? externalizeContentBlocks(resolved.contentBlocks)
+            : resolved.contentBlocks;
         }
         const isError = resolved.content.startsWith("ERROR:");
         if (pending.tuiVisibility === "hide" && isError) {

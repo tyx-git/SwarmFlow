@@ -213,11 +213,21 @@ function buildCodePreviewArtifacts(
   const language = inferDiffLanguage(toolMetadata);
   const textFg = RGBA.fromHex(colors.text);
 
-  // Prefer full new content from backend; fall back to extracting from diff text
+  // Prefer full new content from backend; fall back to fileModifyData.writeLines,
+  // then to extracting from diff text.
   const preview = toolMetadata?.["tui_preview"];
-  const newContent = preview && typeof preview === "object"
+  const previewNewContent = preview && typeof preview === "object"
     ? (preview as Record<string, unknown>)["newContent"]
     : undefined;
+  const fmd = toolMetadata?.["fileModifyData"];
+  const writeLines = fmd && typeof fmd === "object"
+    ? (fmd as Record<string, unknown>)["writeLines"]
+    : undefined;
+  const newContent = typeof previewNewContent === "string"
+    ? previewNewContent
+    : Array.isArray(writeLines) && writeLines.every((line) => typeof line === "string")
+      ? writeLines.join("\n")
+      : undefined;
   const codeLines = typeof newContent === "string"
     ? newContent.split("\n")
     : extractNewContentLines(text);

@@ -1,9 +1,12 @@
 /** Archive lifecycle for compact-window content and rewind restoration. */
 
 import { describe, expect, it } from "vitest";
-import { createCompactMarker } from "../../src/context/entry/factories.js";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { createAssistantText, createCompactMarker } from "../../src/context/entry/factories.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
 import { archiveWindow } from "../../src/config/archive.js";
+import { SessionLog } from "../../src/session/log.js";
 import { makeScriptedSession } from "../helpers/session-harness.js";
 
 function turnRange(log: readonly LogEntry[], turnIndex: number): { start: number; end: number } {
@@ -41,14 +44,18 @@ describe("rewind across a compact marker", () => {
       const originals = captureContents(log, start, end);
       expect(originals.size).toBeGreaterThan(0);
 
-      const archivedIds = archiveWindow(sessionDir, 0, log, start, end);
+      const checkpointId = "cm-test-0";
+      const archivedIds = archiveWindow(sessionDir, checkpointId, log, start, end);
       h.internals._logStore.archiveEntries(archivedIds);
       for (const id of originals.keys()) {
         const entry = log.find((item) => item.id === id)!;
         expect(entry.content).toBeNull();
         expect(entry.archived).toBe(true);
       }
-      h.internals._appendEntry(createCompactMarker("cm-test-0", 2, 0, 100, 0), false);
+      const marker = createCompactMarker(checkpointId, 2, 0, 100, 0);
+      marker.meta["checkpointId"] = checkpointId;
+      marker.meta["archiveFile"] = `window-${checkpointId}.jsonl.gz`;
+      h.internals._appendEntry(marker, false);
 
       const result = h.session.rewindConversation(2);
       expect(result.error).toBeUndefined();
@@ -64,7 +71,7 @@ describe("rewind across a compact marker", () => {
     }
   });
 
-  it("degrades silently when the archive file is missing", async () => {
+  it("fails rewind when the archive file is missing", async () => {
     const h = makeScriptedSession({ rounds: [{ text: "reply one" }, { text: "reply two" }] });
     try {
       await h.session.turn("one");
@@ -82,10 +89,14 @@ describe("rewind across a compact marker", () => {
         }
       }
       expect(archivedIds.length).toBeGreaterThan(0);
-      h.internals._appendEntry(createCompactMarker("cm-test-7", 2, 7, 100, 0), false);
+      const marker = createCompactMarker("cm-test-7", 2, 7, 100, 0);
+      marker.meta["checkpointId"] = marker.id;
+      marker.meta["archiveFile"] = "window-cm-test-7.jsonl.gz";
+      h.internals._appendEntry(marker, false);
 
       const result = h.session.rewindConversation(2);
-      expect(result.error).toBeUndefined();
+      expect(result.error).toMatch(/archive .*missing/i);
+      expect(h.session.log.some((entry) => entry.type === "compact_marker")).toBe(true);
       for (const id of archivedIds) {
         const entry = h.session.log.find((item) => item.id === id)!;
         expect(entry.archived).toBe(true);
@@ -94,5 +105,57 @@ describe("rewind across a compact marker", () => {
     } finally {
       h.dispose();
     }
+  });
+
+  it("fails rewind when the archive file is corrupt", async () => {
+    const h = makeScriptedSession({ rounds: [{ text: "reply one" }, { text: "reply two" }] });
+    try {
+      await h.session.turn("one");
+      await h.session.turn("two");
+
+      const log = h.session.log as LogEntry[];
+      const { start, end } = turnRange(log, 1);
+      for (let i = start; i <= end; i++) {
+        const entry = log[i];
+        if (entry.content !== null) {
+          entry.content = null;
+          entry.archived = true;
+        }
+      }
+      const marker = createCompactMarker("cm-corrupt", 2, 0, 100, 0);
+      marker.meta["archiveFile"] = "window-cm-corrupt.jsonl.gz";
+      h.internals._appendEntry(marker, false);
+      const archiveDir = join(h.internals._store.sessionDir as string, "archive");
+      mkdirSync(archiveDir, { recursive: true });
+      writeFileSync(join(archiveDir, "window-cm-corrupt.jsonl.gz"), Buffer.from("not gzip"));
+
+      const result = h.session.rewindConversation(2);
+      expect(result.error).toMatch(/corrupt or unreadable/i);
+      expect(h.session.log.some((entry) => entry.type === "compact_marker")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("restores archive content without overwriting runtime revert flags", () => {
+    const live = createAssistantText("a-1", 1, 0, "new", "new", "ctx-1");
+    live.archived = true;
+    live.content = null;
+    live.meta = { contextId: "ctx-1", fileMutationReverted: true };
+    const gateway = new SessionLog();
+    gateway.replace([live]);
+
+    gateway.restoreArchivedEntries([{
+      id: "a-1",
+      content: "old",
+      display: "old display",
+      meta: { contextId: "ctx-1", toolMetadata: { fileMutation: { path: "/p" } } },
+    }]);
+
+    expect(live.archived).toBe(false);
+    expect(live.content).toBe("old");
+    expect(live.display).toBe("old display");
+    expect(live.meta.fileMutationReverted).toBe(true);
+    expect(live.meta.toolMetadata).toBeDefined();
   });
 });

@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { buildDefaultRegistry } from "../../src/commands/registration.js";
 import { writeLogJsonlSnapshot } from "../../src/config/log-jsonl.js";
-import { writeGzipJson } from "../../src/config/gzip-json.js";
+import { writeArchiveEnvelopeForMigration } from "../../src/config/archive.js";
 import { createLogSessionMeta, saveSessionMeta, type LogSessionMeta } from "../../src/config/session-meta.js";
 import {
   createAssistantText,
@@ -140,7 +140,10 @@ describe("resume 走有界模型上下文", () => {
       expect(result.ok).toBe(true);
       expect(result.warnings.some((warning) => warning.includes("unbounded"))).toBe(true);
       expect(h.session.log).toHaveLength(makeEntries().length);
-      expect(h.session.hasEarlierHistory()).toBe(false);
+      expect(h.session.hasEarlierHistory()).toBe(true);
+      expect(h.session.getDisplayLog().map((entry) => entry.id)).toEqual([
+        "cm-1", "cc-1", "ts-2", "user-2", "asst-2", "te-2",
+      ]);
     } finally {
       h.dispose();
     }
@@ -160,7 +163,7 @@ describe("resume 走有界模型上下文", () => {
       expect(result.ok).toBe(true);
       expect(result.warnings.some((warning) => warning.includes("persistence policy"))).toBe(true);
       expect(h.session.log).toHaveLength(makeEntries().length);
-      expect(h.session.hasEarlierHistory()).toBe(false);
+      expect(h.session.hasEarlierHistory()).toBe(true);
     } finally {
       h.dispose();
     }
@@ -176,7 +179,7 @@ describe("resume 走有界模型上下文", () => {
       expect(result.ok).toBe(true);
       expect(result.warnings.some((warning) => warning.includes("unbounded"))).toBe(true);
       expect(h.session.log).toHaveLength(makeEntries().length);
-      expect(h.session.hasEarlierHistory()).toBe(false);
+      expect(h.session.hasEarlierHistory()).toBe(true);
     } finally {
       h.dispose();
     }
@@ -193,13 +196,18 @@ describe("resume 走有界模型上下文", () => {
     archived.meta = { contextId: "ctx-a" };
     writeLogJsonlSnapshot(dir, meta, entries);
     saveSessionMeta(dir, meta);
-    mkdirSync(join(dir, "archive"), { recursive: true });
-    writeGzipJson(join(dir, "archive", "window-0.json.gz"), [{
-      id: "asst-1",
-      content: "old answer",
-      display: "old answer",
-      meta: { contextId: "ctx-a" },
-    }]);
+    writeArchiveEnvelopeForMigration(
+      dir,
+      "cm-1",
+      "window-cm-1.jsonl.gz",
+      [{
+        id: "asst-1",
+        content: "old answer",
+        display: "old answer",
+        meta: { contextId: "ctx-a" },
+      }],
+      { turns: [], mutations: [], entryIds: ["asst-1"] },
+    );
 
     const h = makeScriptedSession();
     try {
@@ -222,7 +230,8 @@ describe("resume 走有界模型上下文", () => {
 
       await h.session.planRewind(1);
       expect(h.session.log).toHaveLength(makeEntries().length);
-      expect(h.session.hasEarlierHistory()).toBe(false);
+      // 物化后仍是完整日志；TUI 默认只显示活动窗口，历史可从内存分页。
+      expect(h.session.hasEarlierHistory()).toBe(true);
     } finally {
       h.dispose();
     }

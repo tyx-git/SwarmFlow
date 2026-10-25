@@ -9,10 +9,15 @@
  * 供 listTurns 在不加载全文的情况下恢复 turnKind/preview。
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { LogEntry } from "../context/entry/types.js";
-import { readGzipJson, writeGzipJson } from "./gzip-json.js";
+import {
+  readGzipJsonlEnvelope,
+  readGzipJsonlEnvelopeIndex,
+  writeGzipJsonlEnvelopeAtomic,
+  writeGzipJsonlEnvelopeAtomicSync,
+} from "./gzip-json.js";
 
 export interface ArchivedEntryRecord {
   id: string;
@@ -42,10 +47,7 @@ export interface ArchivedMutationInfo {
 export interface ArchivedWindowIndex {
   turns: ArchivedTurnInfo[];
   mutations: ArchivedMutationInfo[];
-  /** 新格式归档才带 display/meta；旧索引无此字段 → 视为 false。 */
-  hasPresentation?: boolean;
-  /** 该窗口归档的全部条目 id（M0 legacy 守卫用）。 */
-  entryIds?: string[];
+  entryIds: string[];
 }
 
 // ------------------------------------------------------------------
@@ -56,18 +58,7 @@ function archiveDir(dir: string): string {
   return join(dir, "archive");
 }
 
-/** 将归档条目压缩并写入归档文件 */
-function writeArchiveFile(
-  dir: string,
-  fileName: string,
-  archived: ArchivedEntryRecord[],
-): void {
-  const targetDir = archiveDir(dir);
-  mkdirSync(targetDir, { recursive: true });
-  writeGzipJson(join(targetDir, fileName), archived);
-}
-
-/** 只记录 turn 列表需要的字段，避免 listTurns 反序列化整份归档。 */
+/** 只记录 turn 列表需要的字段，避免历史索引反序列化整份归档。 */
 function buildTurnInfo(entry: LogEntry): ArchivedTurnInfo | null {
   if (entry.type !== "input_received" && entry.type !== "turn_start") return null;
   const meta = entry.meta as Record<string, unknown>;
@@ -85,7 +76,8 @@ function buildTurnInfo(entry: LogEntry): ArchivedTurnInfo | null {
   };
 }
 
-function writeArchiveIndex(dir: string, fileName: string, entries: readonly LogEntry[]): void {
+/** 只记录列表、回退菜单和历史页定位需要的字段。 */
+function buildArchiveIndex(entries: readonly LogEntry[]): ArchivedWindowIndex {
   const turns = entries.map(buildTurnInfo).filter((info): info is ArchivedTurnInfo => info !== null);
   const mutations: ArchivedMutationInfo[] = [];
   for (const entry of entries) {
@@ -106,40 +98,96 @@ function writeArchiveIndex(dir: string, fileName: string, entries: readonly LogE
       deletions: typeof fm.deletions === "number" ? fm.deletions : 0,
     });
   }
-  if (entries.length === 0) return;
-  const index: ArchivedWindowIndex = {
-    turns,
-    mutations,
-    hasPresentation: true,
-    entryIds: entries.map((entry) => entry.id),
-  };
-  writeGzipJson(join(archiveDir(dir), fileName), index);
+  return { turns, mutations, entryIds: entries.map((entry) => entry.id) };
 }
 
-/**
- * 归档指定窗口范围内的日志条目到压缩文件。
- *
- * 只写盘、不改内存：调用方拿到 id 后必须走 `SessionLog.archiveEntries`。
- * 这样落盘与内存变更只有一个入口；归档写入失败时内存也保持原样。
- */
+export interface ArchiveWindowResult {
+  ids: string[];
+  archiveFile: string;
+  archiveIndexFile: string;
+}
+
+/** 回滚未提交的 archive 写入；只删本事务的文件。 */
+export function deleteArchiveFiles(dir: string, archiveFile: string, archiveIndexFile = ""): void {
+  for (const name of new Set([archiveFile, archiveIndexFile])) {
+    if (!name) continue;
+    try { rmSync(join(archiveDir(dir), name), { force: true }); } catch { /* best effort */ }
+  }
+}
+
+/** 归档窗口内全部条目，index 与 entries 由一个 gzip envelope 原子提交。 */
+export async function archiveWindowById(
+  dir: string,
+  checkpointId: string,
+  entries: LogEntry[],
+  windowStartIdx: number,
+  windowEndIdx: number,
+): Promise<ArchiveWindowResult> {
+  const targets: LogEntry[] = [];
+  for (let i = windowStartIdx; i <= windowEndIdx && i < entries.length; i++) {
+    const entry = entries[i];
+    if (!entry || entry.archived || entry.discarded) continue;
+    targets.push(entry);
+  }
+  const archiveFile = `window-${checkpointId}.jsonl.gz`;
+  mkdirSync(archiveDir(dir), { recursive: true });
+  const records = (function* (): Iterable<ArchivedEntryRecord> {
+    for (const entry of targets) {
+      yield { id: entry.id, content: entry.content, display: entry.display, meta: entry.meta };
+    }
+  })();
+  await writeGzipJsonlEnvelopeAtomic(
+    join(archiveDir(dir), archiveFile),
+    checkpointId,
+    records,
+    buildArchiveIndex(targets),
+  );
+  return { ids: targets.map((entry) => entry.id), archiveFile, archiveIndexFile: archiveFile };
+}
+
+export function writeArchiveEnvelopeForMigration(
+  dir: string,
+  checkpointId: string,
+  archiveFile: string,
+  entries: readonly ArchivedEntryRecord[],
+  index: ArchivedWindowIndex,
+): void {
+  mkdirSync(archiveDir(dir), { recursive: true });
+  writeGzipJsonlEnvelopeAtomicSync(
+    join(archiveDir(dir), archiveFile),
+    checkpointId,
+    entries,
+    index,
+  );
+}
+
+/** 同步归档入口，供显式 prune 与测试夹具使用；运行时压缩使用异步流式入口。 */
 export function archiveWindow(
   dir: string,
-  windowIndex: number,
+  windowIndex: number | string,
   entries: LogEntry[],
   windowStartIdx: number,
   windowEndIdx: number,
 ): string[] {
   const targets: LogEntry[] = [];
   for (let i = windowStartIdx; i <= windowEndIdx && i < entries.length; i++) {
-    const e = entries[i];
-    if (e.content !== null && !e.archived) targets.push(e);
+    const entry = entries[i];
+    if (!entry || entry.archived || entry.discarded) continue;
+    targets.push(entry);
   }
-  writeArchiveFile(
-    dir,
-    `window-${windowIndex}.json.gz`,
-    targets.map((e) => ({ id: e.id, content: e.content, display: e.display, meta: e.meta })),
+  const archiveFile = `window-${windowIndex}.jsonl.gz`;
+  mkdirSync(archiveDir(dir), { recursive: true });
+  writeGzipJsonlEnvelopeAtomicSync(
+    join(archiveDir(dir), archiveFile),
+    String(windowIndex),
+    targets.map((entry) => ({
+      id: entry.id,
+      content: entry.content,
+      display: entry.display,
+      meta: entry.meta,
+    } satisfies ArchivedEntryRecord)),
+    buildArchiveIndex(targets),
   );
-  writeArchiveIndex(dir, `window-${windowIndex}.index.json.gz`, targets);
   return targets.map((entry) => entry.id);
 }
 
@@ -176,39 +224,40 @@ export function stripEntryForPersistence(entry: LogEntry): LogEntry {
 
 export interface ArchivedDisplayLookup {
   displays: Map<string, string>;
-  /** 实际读取的窗口号（测试/诊断用，用于证明没有整目录预载）。 */
-  windowsRead: number[];
+  /** 实际读取的窗口（数值窗口保留 number，checkpoint 窗口为文件名）。 */
+  windowsRead: Array<number | string>;
   /** 已归档但找不到 display 的条目 id。 */
   unresolved: string[];
 }
 
-interface WindowFile {
-  window: number;
-  name: string;
-}
-
-function listWindows(dir: string, pattern: RegExp): WindowFile[] {
+function listArchiveNames(dir: string): string[] {
   const directory = archiveDir(dir);
   if (!existsSync(directory)) return [];
   try {
-    return readdirSync(directory)
-      .map((name) => {
-        const match = pattern.exec(name);
-        return match ? { window: Number(match[1]), name } : null;
-      })
-      .filter((item): item is WindowFile => item !== null);
+    return readdirSync(directory).filter(
+      (name) => name.startsWith("window-") && name.endsWith(".jsonl.gz"),
+    );
   } catch {
     return [];
   }
 }
 
-/**
- * 只为给定条目按需读取归档窗口的 display。
- *
- * 新归档的 `window-N.index.json.gz` 带 `entryIds`，可直接定位窗口；
- * 旧索引只有 turn 信息，按 turnIndex 缩小范围；完全没有索引的旧窗口
- * 才逐个读取（兼容路径）。调用方通常只传当前历史页的条目。
- */
+function displayWindowKey(archiveName: string): number | string {
+  const match = /^window-(\d+)\.jsonl\.gz$/.exec(archiveName);
+  return match ? Number(match[1]) : archiveName;
+}
+
+function archivePath(dir: string, archiveName: string): string {
+  return join(archiveDir(dir), archiveName);
+}
+
+function archiveReadError(name: string, error: unknown): Error {
+  return new Error(
+    `Archive '${name}' is corrupt or unreadable (${error instanceof Error ? error.message : String(error)}).`,
+  );
+}
+
+/** 只为给定条目按需读取归档窗口的 display；索引来自同一 envelope 尾记录。 */
 export function loadArchivedDisplaysForEntries(
   dir: string,
   entries: readonly LogEntry[],
@@ -218,122 +267,78 @@ export function loadArchivedDisplaysForEntries(
     if (entry.archived && entry.display === "") needed.set(entry.id, entry);
   }
   const displays = new Map<string, string>();
-  const windowsRead = new Set<number>();
+  const windowsRead = new Set<number | string>();
   if (needed.size === 0) return { displays, windowsRead: [], unresolved: [] };
 
-  const indexFiles = listWindows(dir, /^window-(\d+)\.index\.json\.gz$/);
-  const windowFiles = listWindows(dir, /^window-(\d+)\.json\.gz$/);
-  const windowsWithEntryIds = new Set<number>();
-  const idToWindow = new Map<string, number>();
-  const turnToWindows = new Map<number, Set<number>>();
-  const targeted = new Set<number>();
-  const unresolvedAfterIndex = new Set(needed.keys());
-
-  for (const file of indexFiles) {
+  const targeted: string[] = [];
+  for (const archiveName of listArchiveNames(dir)) {
+    let index: ArchivedWindowIndex;
     try {
-      const parsed = readGzipJson<ArchivedWindowIndex | ArchivedTurnInfo[]>(
-        join(archiveDir(dir), file.name),
-      );
-      const index: ArchivedWindowIndex = Array.isArray(parsed)
-        ? { turns: parsed, mutations: [] }
-        : parsed;
-      if (Array.isArray(index.entryIds)) windowsWithEntryIds.add(file.window);
-      for (const id of index.entryIds ?? []) {
-        if (typeof id === "string" && needed.has(id)) {
-          idToWindow.set(id, file.window);
-          unresolvedAfterIndex.delete(id);
-        }
-      }
-      for (const info of index.turns ?? []) {
-        if (!needed.has(info.id)) continue;
-        let windows = turnToWindows.get(info.turnIndex);
-        if (!windows) {
-          windows = new Set();
-          turnToWindows.set(info.turnIndex, windows);
-        }
-        windows.add(file.window);
-        // turn 只能定位到窗口，仍需扫描记录才能确认 display，先不算已解析。
-      }
-    } catch {
-      // 索引损坏时无法定位，留给下面的兜底。
+      index = readGzipJsonlEnvelopeIndex<ArchivedWindowIndex>(archivePath(dir, archiveName)).index;
+    } catch (error) {
+      throw archiveReadError(archiveName, error);
     }
+    if (index.entryIds.some((id) => needed.has(id))) targeted.push(archiveName);
   }
 
-  for (const [id, entry] of needed) {
-    const exact = idToWindow.get(id);
-    if (exact !== undefined) {
-      targeted.add(exact);
-      continue;
-    }
-    const byTurn = turnToWindows.get(entry.turnIndex);
-    if (byTurn) {
-      for (const window of byTurn) targeted.add(window);
-      unresolvedAfterIndex.delete(id);
-    }
-  }
-
-  // 索引无法定位的条目才兜底读取“没有 entryIds”的旧窗口；新归档仍保持按需。
-  if (unresolvedAfterIndex.size > 0) {
-    for (const file of windowFiles) {
-      if (!windowsWithEntryIds.has(file.window)) targeted.add(file.window);
-    }
-  }
-
-  for (const window of [...targeted].sort((a, b) => a - b)) {
-    const file = windowFiles.find((item) => item.window === window);
-    if (!file) continue;
-    windowsRead.add(window);
+  for (const archiveName of targeted) {
+    windowsRead.add(displayWindowKey(archiveName));
+    let records: ArchivedEntryRecord[];
     try {
-      for (const record of readGzipJson<ArchivedEntryRecord[]>(join(archiveDir(dir), file.name))) {
-        if (!needed.has(record.id) || typeof record.display !== "string") continue;
-        displays.set(record.id, record.display);
-      }
-    } catch {
-      // 损坏窗口跳过；对应条目保持空 display。
+      records = readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>(archivePath(dir, archiveName)).entries;
+    } catch (error) {
+      throw archiveReadError(archiveName, error);
+    }
+    for (const record of records) {
+      if (needed.has(record.id) && typeof record.display === "string") displays.set(record.id, record.display);
     }
   }
 
-  const unresolved = [...needed.keys()].filter((id) => !displays.has(id));
-  return { displays, windowsRead: [...windowsRead], unresolved };
+  return {
+    displays,
+    windowsRead: [...windowsRead],
+    unresolved: [...needed.keys()].filter((id) => !displays.has(id)),
+  };
 }
 
 /** 收集所有带正文副本的归档条目 id（prune 的安全判据）。 */
 export function loadArchivedContentIds(dir: string): Set<string> {
   const ids = new Set<string>();
-  for (const file of listWindows(dir, /^window-\d+\.json\.gz$/)) {
+  for (const name of listArchiveNames(dir)) {
+    let records: ArchivedEntryRecord[];
     try {
-      for (const record of readGzipJson<ArchivedEntryRecord[]>(join(archiveDir(dir), file.name))) {
-        if (typeof record.id === "string" && record.content !== undefined && record.content !== null) {
-          ids.add(record.id);
-        }
-      }
-    } catch {
-      // 损坏窗口不贡献安全副本； prune 会因缺少副本而拒绝。
+      records = readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>(archivePath(dir, name)).entries;
+    } catch (error) {
+      throw archiveReadError(name, error);
+    }
+    for (const record of records) {
+      if (typeof record.id === "string" && record.content !== undefined && record.content !== null) ids.add(record.id);
     }
   }
   return ids;
 }
 
-/** 读取全部归档窗口的 display 映射（旧调用方/诊断用）。 */
+/** 读取全部归档窗口的 display 映射（诊断用，不用于启动恢复）。 */
 export function loadArchivedDisplays(dir: string): Map<string, string> {
   const displays = new Map<string, string>();
-  for (const file of listWindows(dir, /^window-(\d+)\.json\.gz$/)) {
+  for (const name of listArchiveNames(dir)) {
+    let records: ArchivedEntryRecord[];
     try {
-      for (const record of readGzipJson<ArchivedEntryRecord[]>(join(archiveDir(dir), file.name))) {
-        if (typeof record.display === "string") displays.set(record.id, record.display);
-      }
-    } catch {
-      // 损坏窗口跳过；对应条目保持空 display。
+      records = readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>(archivePath(dir, name)).entries;
+    } catch (error) {
+      throw archiveReadError(name, error);
+    }
+    for (const record of records) {
+      if (typeof record.display === "string") displays.set(record.id, record.display);
     }
   }
   return displays;
 }
 
-/** M0 重启补偿：只为已归档且 display 为空的条目从 archive 取回 display。 */
+/** 显式历史页加载：只为调用方传入的条目回填 display。 */
 export function hydrateArchivedDisplay(dir: string, entries: LogEntry[]): number {
   if (!entries.some((entry) => entry.archived && entry.display === "")) return 0;
   const { displays } = loadArchivedDisplaysForEntries(dir, entries);
-  if (displays.size === 0) return 0;
   let hydrated = 0;
   for (const entry of entries) {
     if (!entry.archived || entry.display !== "") continue;
@@ -377,134 +382,85 @@ export function stripArchivedPresentation(entries: readonly LogEntry[], foldEndI
   return stripped;
 }
 
-/** 新格式归档索引覆盖的条目 id（无 hasPresentation 的旧归档不返回）。 */
+/** 新格式 envelope 尾索引覆盖的全部条目 id。 */
 export function loadPresentationCapableEntryIds(dir: string): Set<string> {
   const ids = new Set<string>();
-  const directory = archiveDir(dir);
-  if (!existsSync(directory)) return ids;
-  for (const name of readdirSync(directory)) {
-    if (!/^window-\d+\.index\.json\.gz$/.test(name)) continue;
+  for (const name of listArchiveNames(dir)) {
+    let index: ArchivedWindowIndex;
     try {
-      const index = readGzipJson<ArchivedWindowIndex>(join(directory, name));
-      if (index.hasPresentation !== true || !Array.isArray(index.entryIds)) continue;
-      for (const id of index.entryIds) {
-        if (typeof id === "string") ids.add(id);
-      }
-    } catch {
-      // 损坏索引：保守视为不可剥。
+      index = readGzipJsonlEnvelopeIndex<ArchivedWindowIndex>(archivePath(dir, name)).index;
+    } catch (error) {
+      throw archiveReadError(name, error);
     }
+    for (const id of index.entryIds) ids.add(id);
   }
   return ids;
 }
 
-/** 加载指定窗口索引的归档文件 */
-export function loadArchive(
-  dir: string,
-  windowIndex: number,
-): ArchivedEntryRecord[] {
-  return readGzipJson<ArchivedEntryRecord[]>(join(archiveDir(dir), `window-${windowIndex}.json.gz`));
+/** 加载指定数值窗口，仅保留给显式 prune/旧测试使用；文件内容仍必须是新 envelope。 */
+export function loadArchive(dir: string, windowIndex: number): ArchivedEntryRecord[] {
+  return loadArchiveFile(dir, `window-${windowIndex}.jsonl.gz`) ?? [];
 }
 
-/**
- * 按名称加载归档文件。文件不存在时返回 null
- * （例如由旧版二进制写入的归档，或已被修剪的会话目录）
- * ——调用者会降级为保留条目的归档状态。
- */
-export function loadArchiveFile(
-  dir: string,
-  fileName: string,
-): ArchivedEntryRecord[] | null {
-  const archiveFile = join(archiveDir(dir), fileName);
-  if (!existsSync(archiveFile)) return null;
-  return readGzipJson<ArchivedEntryRecord[]>(archiveFile);
-}
-
-/** 读取全部窗口索引；单个文件损坏只跳过该窗口。 */
-function readAllArchiveIndexes(dir: string): ArchivedWindowIndex[] {
-  const targetDir = archiveDir(dir);
-  if (!existsSync(targetDir)) return [];
-  let files: string[];
+/** 按 checkpoint 字段加载归档；文件不存在返回 null，格式损坏直接抛出。 */
+export function loadArchiveFile(dir: string, fileName: string): ArchivedEntryRecord[] | null {
+  const file = archivePath(dir, fileName);
+  if (!existsSync(file)) return null;
   try {
-    files = readdirSync(targetDir).filter((name) => name.endsWith(".index.json.gz"));
-  } catch {
-    return [];
+    return readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>(file).entries;
+  } catch (error) {
+    throw archiveReadError(fileName, error);
   }
+}
+
+function readArchiveIndexes(dir: string): ArchivedWindowIndex[] {
   const result: ArchivedWindowIndex[] = [];
-  for (const name of files) {
+  for (const name of listArchiveNames(dir)) {
     try {
-      const parsed = readGzipJson<ArchivedWindowIndex | ArchivedTurnInfo[]>(join(targetDir, name));
-      result.push(Array.isArray(parsed)
-        ? { turns: parsed, mutations: [] }
-        : { turns: parsed.turns ?? [], mutations: parsed.mutations ?? [] });
-    } catch {
-      // 单个索引损坏不影响其余窗口。
+      result.push(readGzipJsonlEnvelopeIndex<ArchivedWindowIndex>(archivePath(dir, name)).index);
+    } catch (error) {
+      throw archiveReadError(name, error);
     }
   }
   return result;
 }
 
-/**
- * 加载全部窗口的 turn 索引。索引只含枚举字段，体积很小；
- * 缺失/损坏的索引文件跳过（旧版归档没有索引）。
- */
+/** 加载全部窗口的 turn 索引；索引与归档正文共享一个 envelope。 */
 export function loadArchiveTurnIndexes(dir: string): Map<string, ArchivedTurnInfo> {
   const result = new Map<string, ArchivedTurnInfo>();
-  for (const index of readAllArchiveIndexes(dir)) {
+  for (const index of readArchiveIndexes(dir)) {
     for (const info of index.turns) result.set(info.id, info);
   }
   return result;
 }
 
-/** 加载全部窗口的文件变更摘要（回退菜单用，不含 reversePatch）。 */
+/** 加载全部窗口的文件变更摘要（不加载 reversePatch）。 */
 export function loadArchiveMutationIndexes(dir: string): Map<string, ArchivedMutationInfo> {
   const result = new Map<string, ArchivedMutationInfo>();
-  for (const index of readAllArchiveIndexes(dir)) {
+  for (const index of readArchiveIndexes(dir)) {
     for (const info of index.mutations) result.set(info.id, info);
   }
   return result;
 }
 
-/**
- * 读取指定 turn 之后、已归档条目的 meta。
- * 只保留带 toolMetadata 的 tool_result（回退计划只需要 fileMutation /
- * bashMutation），并逐窗口读取，峰值只有一个归档窗口。
- */
+/** 读取指定 turn 之后、已归档条目的 meta；筛选先用 envelope 尾索引完成。 */
 export function loadArchivedMetaForTurns(
   dir: string,
   fromTurnIndex: number,
 ): Map<string, Record<string, unknown>> {
   const result = new Map<string, Record<string, unknown>>();
-  const targetDir = archiveDir(dir);
-  if (!existsSync(targetDir)) return result;
-  let files: string[];
-  try {
-    files = readdirSync(targetDir).filter((name) => /^window-\d+\.json\.gz$/.test(name));
-  } catch {
-    return result;
-  }
-  for (const name of files) {
-    const windowIndex = Number(/^window-(\d+)\.json\.gz$/.exec(name)![1]);
-    const indexFile = join(targetDir, `window-${windowIndex}.index.json.gz`);
-    let relevant = false;
-    if (existsSync(indexFile)) {
-      try {
-        const parsed = readGzipJson<ArchivedWindowIndex | ArchivedTurnInfo[]>(indexFile);
-        const turns = Array.isArray(parsed) ? parsed : parsed.turns;
-        relevant = turns.length === 0 || turns.some((info) => info.turnIndex >= fromTurnIndex);
-      } catch {
-        relevant = true;
-      }
-    } else {
-      // 没有索引（旧版归档）：保守加载。
-      relevant = true;
-    }
-    if (!relevant) continue;
+  for (const name of listArchiveNames(dir)) {
+    let envelope: ReturnType<typeof readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>>;
     try {
-      for (const record of readGzipJson<ArchivedEntryRecord[]>(join(targetDir, name))) {
-        if (record.meta?.["toolMetadata"]) result.set(record.id, record.meta);
-      }
-    } catch {
-      // 损坏的归档跳过，调用方按"缺失"降级。
+      envelope = readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>(archivePath(dir, name));
+    } catch (error) {
+      throw archiveReadError(name, error);
+    }
+    const relevant = envelope.index.turns.length === 0
+      || envelope.index.turns.some((info) => info.turnIndex >= fromTurnIndex);
+    if (!relevant) continue;
+    for (const record of envelope.entries) {
+      if (record.meta?.["toolMetadata"]) result.set(record.id, record.meta);
     }
   }
   return result;
@@ -526,7 +482,8 @@ export function restoreArchiveToEntries(
     if (!record) continue;
     e.content = record.content;
     if (record.display !== undefined) e.display = record.display;
-    if (record.meta !== undefined) e.meta = record.meta;
+    const retained = retainArchivedMeta(e.meta as Record<string, unknown>);
+    e.meta = { ...(record.meta ?? {}), ...retained };
     e.archived = false;
   }
 }

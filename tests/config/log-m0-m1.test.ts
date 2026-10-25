@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { archiveWindow, loadArchive } from "../../src/config/archive.js";
-import { writeGzipJson } from "../../src/config/gzip-json.js";
+import { loadArchivedDisplaysForEntries } from "../../src/config/archive.js";
 import {
   SEALED_INLINE_BUDGET_BYTES,
   isSealedRef,
@@ -71,7 +71,7 @@ function seedArchivedWindow(h: ReturnType<typeof makeScriptedSession>): { dir: s
 }
 
 describe("M0：标记前 presentation 不落盘", () => {
-  it("磁盘条目只留身份键与 display 空串；内存不变；重启后 display 从 archive 取回", () => {
+  it("磁盘条目只留身份键与 display 空串；历史页显式从 archive 取回 display", () => {
     const h = makeScriptedSession();
     try {
       const { dir, user } = seedArchivedWindow(h);
@@ -90,25 +90,25 @@ describe("M0：标记前 presentation 不落盘", () => {
 
       const loaded = loadLog(dir);
       const loadedUser = loaded.entries.find((entry) => entry.id === user.id)!;
-      expect(loadedUser.display).toBe("hello");
+      expect(loadedUser.display).toBe("");
       expect(loadedUser.meta["heavy"]).toBeUndefined();
       expect(loadedUser.meta["contextId"]).toBe("ctx-1");
+      const page = loadArchivedDisplaysForEntries(dir, [loadedUser]);
+      expect(page.displays.get(user.id)).toBe("hello");
+      expect(loadedUser.display).toBe("");
     } finally {
       h.dispose();
     }
   });
 
-  it("legacy 归档索引无 hasPresentation 时不剥", () => {
+  it("presentation 索引与正文共享 envelope，不读取旁路旧 index", () => {
     const h = makeScriptedSession();
     try {
       const { dir, user } = seedArchivedWindow(h);
-      // 模拟旧版索引：无 hasPresentation/entryIds。
-      writeGzipJson(join(dir, "archive", "window-0.index.json.gz"), { turns: [], mutations: [], entryIds: [user.id] });
-
       expect(h.session.persistToDisk()).toBe(true);
       const stored = persistedEntry(dir, user.id);
-      expect(stored.display).toBe("hello");
-      expect(stored.meta["heavy"]).toBe("h".repeat(1024));
+      expect(stored.display).toBe("");
+      expect(stored.meta["heavy"]).toBeUndefined();
     } finally {
       h.dispose();
     }

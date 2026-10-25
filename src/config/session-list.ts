@@ -8,7 +8,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { readLogHeader } from "./log-jsonl.js";
+import { readLogHeaderForList } from "./log-jsonl.js";
 import { readLegacyLogHeader } from "./log-legacy.js";
 import { looksLikeSessionId } from "./storage-layout.js";
 import { toLocalIsoFromUtc } from "./timestamps.js";
@@ -30,6 +30,8 @@ const KNOWN_SIZE_FILES: ReadonlySet<string> = new Set([
   "log.jsonl",
   "log.json",
   "log.json.pre-v4.bak",
+  "log.json.pre-v5.bak",
+  "log.jsonl.pre-compact-v1.bak",
   "log.index.jsonl",
   "meta.json",
 ]);
@@ -109,7 +111,7 @@ export function listSessionsInProject(projectDir: string): SessionInfo[] {
     const jsonlFile = join(d, "log.jsonl");
     if (existsSync(jsonlFile)) {
       try {
-        const header = readLogHeader(d);
+        const header = readLogHeaderForList(d);
         if (header.turnCount === 0) continue;
         const created = toLocalIsoFromUtc(header.createdAt) || header.createdAt;
         const lastActiveUtc = header.updatedAt || header.createdAt;

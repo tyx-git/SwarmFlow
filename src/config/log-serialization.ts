@@ -9,7 +9,6 @@ import { closeSync, existsSync, openSync, readFileSync, renameSync, writeFileSyn
 import { basename, dirname, join } from "node:path";
 
 import type { LogEntry } from "../context/entry/types.js";
-import { hydrateArchivedDisplay } from "./archive.js";
 import { buildLogHead, entryToSnake } from "./log-codec.js";
 import { loadLegacyLog } from "./log-legacy.js";
 import { LOG_JSONL_FILENAME, loadLogJsonl, migrateLogToJsonl } from "./log-jsonl.js";
@@ -129,8 +128,6 @@ export function loadLog(dir: string) {
     migrateLogToJsonl(dir);
     result = loadLogJsonl(dir);
   }
-  // M0 只从磁盘剥了 display；重启后从 archive 取回显示文本（不取重 meta）。
-  hydrateArchivedDisplay(dir, result.entries);
   return result;
 }
 

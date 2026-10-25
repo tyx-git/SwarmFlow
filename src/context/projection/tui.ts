@@ -68,6 +68,12 @@ const DISPLAY_KIND_TO_ENTRY_KIND: Record<TuiDisplayKind, ConversationEntryKind> 
 export interface TuiProjectionOptions {
   /** 覆盖压缩折叠阈值（默认：3） */
   compactFoldThreshold?: number;
+  /**
+   * 是否包含活动窗口之前的条目。
+   * 默认 false：只渲染最后一个 live compact_marker 起的活动窗口；
+   * 历史页已加载的条目由调用方显式传入 true。
+   */
+  includeEarlier?: boolean;
 }
 
 /** 中断标记文本 */
@@ -556,21 +562,38 @@ export function projectToTuiEntries(
   entries: readonly LogEntry[],
   options?: TuiProjectionOptions,
 ): ConversationEntry[] {
-  const threshold = options?.compactFoldThreshold ?? DEFAULT_COMPACT_FOLD_THRESHOLD;
+  // 默认只渲染活动窗口；历史页加载后由调用方传 includeEarlier。
+  let windowEntries: readonly LogEntry[] = entries;
+  if (options?.includeEarlier !== true) {
+    let markerIdx = -1;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      if (entries[i]!.type === "compact_marker" && !entries[i]!.discarded) {
+        markerIdx = i;
+        break;
+      }
+    }
+    if (markerIdx > 0) windowEntries = entries.slice(markerIdx);
+  }
+
+  const threshold = options?.includeEarlier === true
+    ? Number.MAX_SAFE_INTEGER
+    : options?.compactFoldThreshold ?? DEFAULT_COMPACT_FOLD_THRESHOLD;
   // TUI 显示完整的仅追加历史，包括被后续摘要覆盖的条目。
   // 只有 API 投影隐藏它们。这使用户能够回滚并验证摘要捕获的内容
   // （并允许选择器列出磁盘上仍然存在的分组）。
 
-  // 整个日志上的一个配对映射，两个窗口共享。窗口本地映射对于任一窗口
+  // 整个窗口上的一个配对映射。窗口本地映射对于任一窗口
   // 渲染的任何内容都会相同配对：结果总是跟随其调用，因此窗口永远不会
   // 渲染其结果位于更早窗口中的调用，未渲染条目的额外配对 simply 未使用。
-  const toolElapsedMap = buildToolElapsedMap(entries);
+  const toolElapsedMap = buildToolElapsedMap(windowEntries);
 
-  // 确定折叠边界：如果 N >= 阈值，折叠第 (N - 阈值 + 1) 个标记之前的条目
-  const { foldEndIdx, foldedCompactCount } = computeCompactFoldBoundary(entries, threshold);
+  // 确定折叠边界：如果 N >= 阈值，折叠第 (N - 阈值 + 1) 个标记之前的条目。
+  // 活动窗口默认只有一个 marker，因此不会再折叠；includeEarlier 时阈值取无穷大，
+  // 用户手动加载的历史不会被重新藏起来。
+  const { foldEndIdx, foldedCompactCount } = computeCompactFoldBoundary(windowEntries, threshold);
   let foldedCount = 0;
   if (foldEndIdx >= 0) {
-    foldedCount = projectTuiWindow(entries.slice(0, foldEndIdx + 1), toolElapsedMap).length;
+    foldedCount = projectTuiWindow(windowEntries.slice(0, foldEndIdx + 1) as LogEntry[], toolElapsedMap).length;
   }
 
   const result: ConversationEntry[] = [];
@@ -583,7 +606,7 @@ export function projectToTuiEntries(
     });
   }
 
-  result.push(...projectTuiWindow(entries.slice(foldEndIdx + 1), toolElapsedMap));
+  result.push(...projectTuiWindow(windowEntries.slice(foldEndIdx + 1) as LogEntry[], toolElapsedMap));
 
   return result;
 }

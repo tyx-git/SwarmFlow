@@ -14,6 +14,7 @@ import {
   appendRecords,
   loadLogJsonl,
   loadModelContext,
+  readLastSeq,
   writeLogJsonlSnapshot,
 } from "../../src/config/log-jsonl.js";
 import { entryToSnake } from "../../src/config/log-codec.js";
@@ -90,7 +91,7 @@ describe("loadModelContext", () => {
     appendRecords(dir, [{
       v: LOG_JSONL_VERSION,
       op: "patch",
-      seq: 9,
+      seq: readLastSeq(dir) + 1,
       ts: TS,
       ids: ["asst-002"],
       flags: { discarded: true },
@@ -117,7 +118,7 @@ describe("loadModelContext", () => {
     appendRecords(dir, [{
       v: LOG_JSONL_VERSION,
       op: "upsert",
-      seq: 9,
+      seq: readLastSeq(dir) + 1,
       ts: TS,
       entries: [entryToSnake(archived as LogEntry)],
     }]);
@@ -164,7 +165,7 @@ describe("loadModelContext", () => {
     appendRecords(dir, [{
       v: LOG_JSONL_VERSION,
       op: "truncate",
-      seq: 11,
+      seq: readLastSeq(dir) + 1,
       ts: TS,
       fromEntryId: "user-002",
     }]);
@@ -182,7 +183,7 @@ describe("loadModelContext", () => {
     appendRecords(dir, [{
       v: LOG_JSONL_VERSION,
       op: "truncate",
-      seq: 9,
+      seq: readLastSeq(dir) + 1,
       ts: TS,
       fromEntryId: "sys-001",
     }]);

@@ -397,6 +397,47 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
     });
 
   sessionsCmd
+    .command("migrate-compact <id>")
+    .description("One-time migration: legacy compact marker/context + window-N archives → checkpoint format")
+    .action(async (id: string, _opts: unknown, command: Command) => {
+      ranSubcommand = true;
+      const { SessionStore } = await import("./config/session-store.js");
+      const { migrateCompactFormat } = await import("./session/compact-migration.js");
+      const workDir = command.parent?.opts<{ workDir?: string }>().workDir;
+      const projectPath = workDir ? resolve(workDir) : process.cwd();
+      const store = new SessionStore({ projectPath, baseDir: homeDir });
+      const sessionDir = store.resolveSessionDir(id);
+      if (!sessionDir) {
+        console.log(`找不到会话：${id}`);
+        return;
+      }
+      if (store.sessionDir && resolve(store.sessionDir) === resolve(sessionDir)) {
+        console.log("不能迁移当前活动会话；先退出该会话。");
+        return;
+      }
+      const lock = store.acquireSessionLock(sessionDir);
+      if (!lock.ok) {
+        console.log("会话正在使用中，迁移已取消。");
+        return;
+      }
+      try {
+        const result = migrateCompactFormat(sessionDir);
+        if (!result.migrated) {
+          console.log("没有旧压缩格式，无需迁移。");
+          return;
+        }
+        console.log(
+          `迁移完成：${result.checkpoints} 个 checkpoint，${result.archivesMigrated} 个归档；`
+          + `旧日志备份：${result.backups.join(", ")}`,
+        );
+      } catch (error) {
+        console.log(`迁移失败：${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        store.releaseSessionLock(sessionDir);
+      }
+    });
+
+  sessionsCmd
     .command("prune <id>")
     .description("Prune archived prefix before the last live compact marker (inherits --work-dir)")
     .option("--dry-run", "Only report what would be removed")

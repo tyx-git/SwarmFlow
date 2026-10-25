@@ -43,7 +43,8 @@ describe("会话体积统计", () => {
     write(join(sessionDir, "meta.json"), meta);
     write(join(sessionDir, "log.jsonl"), "a".repeat(100));
     write(join(sessionDir, "log.index.jsonl"), "b".repeat(40));
-    write(join(sessionDir, "log.json.pre-v4.bak"), "c".repeat(25));
+    write(join(sessionDir, "log.json.pre-v5.bak"), "c".repeat(25));
+    write(join(sessionDir, "log.jsonl.pre-compact-v1.bak"), "d".repeat(15));
     write(join(sessionDir, "archive", "window-0.json.gz"), "d".repeat(50));
     write(join(sessionDir, "archive", "window-0.index.json.gz"), "e".repeat(15));
     write(join(sessionDir, "images", "img-1.png"), "f".repeat(30));
@@ -55,7 +56,8 @@ describe("会话体积统计", () => {
       statSync(join(sessionDir, "meta.json")).size
       + statSync(join(sessionDir, "log.jsonl")).size
       + statSync(join(sessionDir, "log.index.jsonl")).size
-      + statSync(join(sessionDir, "log.json.pre-v4.bak")).size
+      + statSync(join(sessionDir, "log.json.pre-v5.bak")).size
+      + statSync(join(sessionDir, "log.jsonl.pre-compact-v1.bak")).size
       + statSync(join(sessionDir, "archive", "window-0.json.gz")).size
       + statSync(join(sessionDir, "archive", "window-0.index.json.gz")).size
       + statSync(join(sessionDir, "images", "img-1.png")).size

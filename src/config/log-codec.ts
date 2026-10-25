@@ -80,6 +80,7 @@ export function buildLogHead(meta: LogSessionMeta): Record<string, unknown> {
     thinking_level: meta.thinkingLevel,
     child_sessions: meta.childSessions ?? null,
     inbox: meta.inbox ?? null,
+    compaction_format: meta.compactionFormat ?? 2,
   };
 }
 
@@ -189,6 +190,7 @@ export function sessionMetaFromSnake(raw: Record<string, unknown>): LogSessionMe
     compactCount: (raw.compact_count as number) ?? 0,
     thinkingLevel: (raw.thinking_level as string) ?? "",
     persistencePolicy: typeof raw.persistence_policy === "number" ? raw.persistence_policy : undefined,
+    compactionFormat: typeof raw.compaction_format === "number" ? raw.compaction_format : undefined,
     childSessions: Array.isArray(raw.child_sessions)
       ? (raw.child_sessions as unknown[]).map(normalizeChildSessionMeta).filter((record): record is ChildSessionMetaRecord => record !== undefined)
       : undefined,

@@ -82,6 +82,7 @@ export function aggregateTokenUsage(log: readonly LogEntry[]): TokenUsageAggrega
   let sawFirstUserMessage = false;
 
   for (const entry of log) {
+    if (entry.archived) continue;
     if (entry.type === "token_update") {
       const contribution = tokenUpdateContribution(entry);
       if (!contribution) continue;

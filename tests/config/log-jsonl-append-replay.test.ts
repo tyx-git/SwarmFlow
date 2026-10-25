@@ -308,7 +308,7 @@ describe("重放语义", () => {
         },
       })]),
       {
-        v: 4, op: "patch", seq: 3, ts: "t",
+        v: 5, op: "patch", seq: 3, ts: "t",
         ids: ["asst-1"],
         flags: { archived: true, discarded: true, fileMutationReverted: true, bashMutationRevertedIndices: [0, 2] },
         dropPresentation: true,
@@ -330,7 +330,7 @@ describe("重放语义", () => {
     const replayed = replayRecords([
       sessionRecord(1),
       upsert(2, [rawEntry("asst-1")]),
-      { v: 4, op: "patch", seq: 3, ts: "t", ids: ["missing"], flags: { archived: true } },
+      { v: 5, op: "patch", seq: 3, ts: "t", ids: ["missing"], flags: { archived: true } },
     ]);
     expect(replayed.entries.map((entry) => entry.id)).toEqual(["asst-1"]);
   });
@@ -339,7 +339,7 @@ describe("重放语义", () => {
     const replayed = replayRecords([
       sessionRecord(1),
       upsert(2, [rawEntry("a"), rawEntry("b")]),
-      { v: 4, op: "truncate", seq: 3, ts: "t", fromEntryId: "b" },
+      { v: 5, op: "truncate", seq: 3, ts: "t", fromEntryId: "b" },
       upsert(4, [rawEntry("c")]),
     ]);
     expect(replayed.entries.map((entry) => entry.id)).toEqual(["a", "c"]);

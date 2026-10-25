@@ -57,8 +57,16 @@ export function extractAndSaveImages(
   return content.map((block) => {
     if (block["type"] !== "image" || !block["data"]) return block;
 
-    const mediaType = (block["media_type"] as string) || "image/png";
-    const ext = mediaType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+    const mediaType = typeof block["media_type"] === "string" ? block["media_type"] : "image/png";
+    const extensionByMediaType: Record<string, string> = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/gif": "gif",
+      "image/webp": "webp",
+      "image/bmp": "bmp",
+    };
+    const ext = extensionByMediaType[mediaType.toLowerCase()];
+    if (!ext) return block;
     let filename = "";
     let filePath = "";
     do {
@@ -89,11 +97,23 @@ export function resolveImageRef(
   sessionDir: string | undefined,
   refPath: string,
 ): { data: string; media_type: string } | null {
-  if (!sessionDir) return null;
-  const fullPath = join(sessionDir, refPath);
+  if (!sessionDir || typeof refPath !== "string") return null;
+  const parts = refPath.split(/[\\/]/);
+  if (parts.length !== 2 || parts[0] !== "images" || !parts[1] || parts[1] === "." || parts[1] === "..") {
+    return null;
+  }
+  const imagesDir = join(sessionDir, "images");
   try {
-    const data = readFileSync(fullPath);
-    const ext = refPath.split(".").pop() || "png";
+    const checked = safePath({
+      baseDir: imagesDir,
+      requestedPath: resolve(sessionDir, refPath),
+      cwd: imagesDir,
+      mustExist: true,
+      expectFile: true,
+      accessKind: "read",
+    });
+    const data = readFileSync(checked.safePath!);
+    const ext = parts[1].split(".").pop() || "png";
     const mediaTypeMap: Record<string, string> = {
       png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
       gif: "image/gif", webp: "image/webp", bmp: "image/bmp",

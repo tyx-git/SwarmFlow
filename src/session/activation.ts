@@ -65,7 +65,9 @@ export interface ActivationHost {
   _setSelfPhase(phase: unknown): void;
   _getSystemPrompt(): string;
   _resolveImageRef(refPath: string): { data: string; media_type: string } | null;
+  _extractAndSaveImages(content: string | Array<Record<string, unknown>>): string | Array<Record<string, unknown>>;
   _recordSessionEvent(summary: string): void;
+  _buildRuntimeStateBlock(): string;
   _emitTurnLifecycle(event: TurnLifecycleEvent): void;
   _recordTurnErrorEntry(err: unknown, opts?: unknown): void;
   _waitForAllChildTurnsSettled(): Promise<void>;
@@ -79,7 +81,14 @@ export interface ActivationHost {
   _finishCurrentWork(status: "completed" | "interrupted" | "error", interruptHints?: string[]): void;
   _appendInterruptionSystemMessage(partialToolNames?: readonly string[], compactWasInterrupted?: boolean): void;
   _discardCompactAttemptEntries(fromIndex: number): void;
-  _doAutoCompact(scenario: "before_turn" | "mid_turn", signal?: AbortSignal, promptOverride?: string, hideCompactMarker?: boolean): Promise<void>;
+  _truncateCompactAttemptEntries(fromIndex: number): void;
+  _doAutoCompact(
+    scenario: "before_turn" | "mid_turn",
+    signal?: AbortSignal,
+    promptOverride?: string,
+    hideCompactMarker?: boolean,
+    origin?: "auto" | "manual",
+  ): Promise<{ status: "committed"; checkpointId: string; compactIndex: number }>;
   _drainInboxAsEntries(): number;
   _findToolCallContextId(toolCallId: string, roundIndex?: number): string | undefined;
   _resolveOutputRoundContextId(turnIndex: number, roundIndex: number): string;
@@ -409,9 +418,12 @@ export async function runActivation(host: ActivationHost,
   // v2: callback-based message management
   // getMessages projects from _log via projectToApiMessages.
   const getMessages = (): Array<Record<string, unknown>> => {
+    const runtimeState = host._buildRuntimeStateBlock();
+    const hookContext = host.hookRuntime.getAdditionalContext() ?? "";
+    const ephemeralTail = [runtimeState, hookContext].filter(Boolean).join("\n\n");
     return projectToApiMessages(host._log, {
       systemPrompt: host._getSystemPrompt(),
-      ephemeralTail: host.hookRuntime.getAdditionalContext() ?? undefined,
+      ephemeralTail: ephemeralTail || undefined,
       resolveImageRef: (refPath) => host._resolveImageRef(refPath),
       resolveReasoningState: host._resolveSealedReasoningState
         ? (value) => host._resolveSealedReasoningState!(value)
@@ -531,6 +543,10 @@ export async function runActivation(host: ActivationHost,
     signal,
     contextIdAllocator: (roundIndex) => getRoundContextId(roundIndex),
     toolContextIdAllocator: () => host._allocateContextId(),
+    externalizeContentBlocks: (blocks) => {
+      const result = host._extractAndSaveImages(blocks);
+      return Array.isArray(result) ? result : blocks;
+    },
     compactCheck: host._buildCompactCheck(),
     onTokenUpdate,
     onProviderResponse: () => host.hookRuntime.clearNextRoundContext(),
@@ -737,7 +753,14 @@ export async function runTurnActivationLoop(host: ActivationHost,
         try {
           await host._doAutoCompact(result.compactScenario!, activeSignal);
         } catch (compactErr) {
-          host._discardCompactAttemptEntries(logLenBefore);
+          const compactCommitted = Boolean(
+            compactErr
+            && typeof compactErr === "object"
+            && (compactErr as { committed?: unknown }).committed === true,
+          );
+          if (!compactCommitted) {
+            host._truncateCompactAttemptEntries(logLenBefore);
+          }
           if (activeSignal.aborted || host._isCompactAbortError(compactErr)) {
             host._appendInterruptionSystemMessage([], true);
             host._recordSessionEvent("interrupted by user");

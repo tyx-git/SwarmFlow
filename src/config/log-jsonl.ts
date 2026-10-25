@@ -35,9 +35,9 @@ import {
 import { loadLegacyLog } from "./log-legacy.js";
 import type { LogSessionMeta } from "./session-meta.js";
 
-export const LOG_JSONL_VERSION = 4;
+export const LOG_JSONL_VERSION = 5;
 export const LOG_JSONL_FILENAME = "log.jsonl";
-export const LOG_JSONL_BACKUP_SUFFIX = ".pre-v4.bak";
+export const LOG_JSONL_BACKUP_SUFFIX = ".pre-v5.bak";
 
 /** 允许通过 patch 记录更新的闭集字段。 */
 export interface EntryFlags {
@@ -101,12 +101,31 @@ export interface UsageRecord {
   totals: UsageTotals;
 }
 
+/** 一次压缩的提交单元：marker + continuation 必须同条记录落盘。 */
+export type CompactScenario = "before_turn" | "mid_turn" | "manual";
+
+export interface CompactCheckpointRecord {
+  v: typeof LOG_JSONL_VERSION;
+  op: "compact_checkpoint";
+  seq: number;
+  ts: string;
+  checkpointId: string;
+  /** 归档窗口文件名；无会话目录时为空串。 */
+  archiveFile: string;
+  archiveIndexFile: string;
+  compactIndex: number;
+  scenario: CompactScenario;
+  marker: Record<string, unknown>;
+  context: Record<string, unknown>;
+}
+
 export type JsonlRecord =
   | SessionRecord
   | UpsertRecord
   | PatchRecord
   | TruncateRecord
-  | UsageRecord;
+  | UsageRecord
+  | CompactCheckpointRecord;
 
 export interface AppendResult {
   appendedBytes: number;
@@ -200,6 +219,36 @@ function validateRecord(value: unknown): asserts value is JsonlRecord {
         }
       }
       return;
+    case "compact_checkpoint": {
+      if (typeof value.checkpointId !== "string" || value.checkpointId.length === 0) {
+        invalid("compact_checkpoint.checkpointId must be a non-empty string");
+      }
+      if (typeof value.archiveFile !== "string" || typeof value.archiveIndexFile !== "string") {
+        invalid("compact_checkpoint archive file names must be strings");
+      }
+      if (!Number.isInteger(value.compactIndex) || (value.compactIndex as number) < 0) {
+        invalid("compact_checkpoint.compactIndex must be a non-negative integer");
+      }
+      if (value.scenario !== "before_turn" && value.scenario !== "mid_turn" && value.scenario !== "manual") {
+        invalid("compact_checkpoint.scenario must be before_turn, mid_turn or manual");
+      }
+      if (!isPlainObject(value.marker) || !isPlainObject(value.context)) {
+        invalid("compact_checkpoint.marker/context must be objects");
+      }
+      if (value.marker["type"] !== "compact_marker") {
+        invalid("compact_checkpoint.marker.type must be compact_marker");
+      }
+      if (value.context["type"] !== "compact_context") {
+        invalid("compact_checkpoint.context.type must be compact_context");
+      }
+      if (typeof value.marker["id"] !== "string" || value.marker["id"].length === 0) {
+        invalid("compact_checkpoint.marker.id must be a non-empty string");
+      }
+      if (typeof value.context["id"] !== "string" || value.context["id"].length === 0) {
+        invalid("compact_checkpoint.context.id must be a non-empty string");
+      }
+      return;
+    }
     default:
       invalid(`unknown op '${String(value.op)}'`);
   }
@@ -224,6 +273,13 @@ export function parseRecordLine(line: string): JsonlRecord {
   }
   validateRecord(parsed);
   return parsed;
+}
+
+/** 记录是否携带新的压缩 checkpoint（用于 usage 记录/写入路径判断）。 */
+export function recordHasCompactMarker(record: JsonlRecord): boolean {
+  if (record.op === "compact_checkpoint") return true;
+  return record.op === "upsert"
+    && record.entries.some((entry) => entry.type === "compact_marker");
 }
 
 /** 追加一批记录；已有字节不得被重写。已有文件时再传 session 记录必须拒绝。 */
@@ -370,6 +426,16 @@ function readFirstLine(dir: string): string {
   }
 }
 
+export function readLogJsonlVersion(dir: string): number | undefined {
+  const line = readFirstLine(dir);
+  try {
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    return typeof parsed["v"] === "number" ? parsed["v"] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 第一行 session 记录；用于迁移/有界读取。 */
 function readHeaderRecord(dir: string): SessionRecord {
   const record = parseRecordLine(readFirstLine(dir));
@@ -382,6 +448,24 @@ function readHeaderRecord(dir: string): SessionRecord {
 /** 只读第一行 session 记录，不解析正文。 */
 export function readLogHeader(dir: string): LogSessionMeta {
   return mergeMetaFromSidecar(dir, sessionMetaFromSnake(readHeaderRecord(dir).session));
+}
+
+/** 列表快路径允许读取上一版的 session 头；运行时加载仍由 readHeaderRecord 严格校验当前版本。 */
+export function readLogHeaderForList(dir: string): LogSessionMeta {
+  const line = readFirstLine(dir);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch (error) {
+    throw new Error(`Invalid JSONL header (${error instanceof Error ? error.message : String(error)})`);
+  }
+  if (!isPlainObject(parsed)
+    || (parsed.v !== 4 && parsed.v !== LOG_JSONL_VERSION)
+    || parsed.op !== "session"
+    || !isPlainObject(parsed.session)) {
+    throw new Error("Invalid JSONL session header");
+  }
+  return mergeMetaFromSidecar(dir, sessionMetaFromSnake(parsed.session));
 }
 
 function applyPatch(entry: LogEntry, flags?: EntryFlags, dropPresentation?: true): void {
@@ -429,6 +513,15 @@ export function replayRecords(records: readonly JsonlRecord[]): LoadLogResult {
         const entry = entryFromSnake(raw);
         entriesById.set(entry.id, entry);
       }
+    } else if (record.op === "compact_checkpoint") {
+      const marker = entryFromSnake(record.marker);
+      const context = entryFromSnake(record.context);
+      marker.meta["checkpointId"] ??= record.checkpointId;
+      marker.meta["archiveFile"] ??= record.archiveFile;
+      marker.meta["archiveIndexFile"] ??= record.archiveIndexFile;
+      context.meta["checkpointId"] ??= record.checkpointId;
+      entriesById.set(marker.id, marker);
+      entriesById.set(context.id, context);
     } else if (record.op === "patch") {
       for (const id of record.ids) {
         const entry = entriesById.get(id);
@@ -565,6 +658,25 @@ function scanBackwardForWindow(file: string): WindowScan {
         firstLine = false;
 
         if (record.op === "session") continue;
+
+        if (record.op === "compact_checkpoint") {
+          const markerId = typeof record.marker.id === "string" ? record.marker.id : "";
+          const contextId = typeof record.context.id === "string" ? record.context.id : "";
+          if (deadUntil !== null) {
+            if (markerId === deadUntil || contextId === deadUntil) deadUntil = null;
+            continue;
+          }
+          collected.push(record);
+          if (markerId && !seenUpsertIds.has(markerId)) {
+            seenUpsertIds.add(markerId);
+            if (record.marker.discarded !== true && patchedDiscarded.get(markerId) !== true) {
+              bounded = true;
+              windowStartOffset = lineStart;
+              done = true;
+            }
+          }
+          continue;
+        }
 
         if (record.op === "truncate") {
           // 只影响它之前（文件序更早）的记录；已收集的尾部记录是截断后追加的，保留。
@@ -802,10 +914,56 @@ export function writeLogJsonlSnapshot(
     session: { ...buildLogHead(meta), version: LOG_JSONL_VERSION },
   }];
   const expectedIds: string[] = [];
-  let seq = 2;
+  const preparedEntries: LogEntry[] = [];
   for (const entry of entries) {
     const prepared = prepare ? prepare(entry) : entry;
-    if (!prepared) continue;
+    if (prepared) preparedEntries.push(prepared);
+  }
+  let seq = 2;
+  for (let index = 0; index < preparedEntries.length; index += 1) {
+    const prepared = preparedEntries[index]!;
+    const next = preparedEntries[index + 1];
+    if (prepared.type === "compact_marker" && next?.type === "compact_context") {
+      const checkpointId = String(
+        prepared.meta["checkpointId"] ?? next.meta["checkpointId"] ?? prepared.id,
+      );
+      const archiveFile = String(
+        prepared.meta["archiveFile"] ?? `window-${checkpointId}.jsonl.gz`,
+      );
+      const archiveIndexFile = String(
+        prepared.meta["archiveIndexFile"] ?? archiveFile,
+      );
+      const compactIndexRaw = Number(prepared.meta["compactIndex"] ?? 0);
+      const compactIndex = Number.isInteger(compactIndexRaw) && compactIndexRaw >= 0 ? compactIndexRaw : 0;
+      const scenarioRaw = prepared.meta["scenario"];
+      const scenario: CompactScenario = scenarioRaw === "before_turn" || scenarioRaw === "mid_turn"
+        ? scenarioRaw
+        : "manual";
+      const markerForDisk: LogEntry = {
+        ...prepared,
+        meta: { ...prepared.meta, checkpointId, archiveFile, archiveIndexFile },
+      };
+      const contextForDisk: LogEntry = {
+        ...next,
+        meta: { ...next.meta, checkpointId },
+      };
+      expectedIds.push(markerForDisk.id, contextForDisk.id);
+      records.push({
+        v: LOG_JSONL_VERSION,
+        op: "compact_checkpoint",
+        seq: seq++,
+        ts: now,
+        checkpointId,
+        archiveFile,
+        archiveIndexFile,
+        compactIndex,
+        scenario,
+        marker: entryToSnake(markerForDisk),
+        context: entryToSnake(contextForDisk),
+      });
+      index += 1;
+      continue;
+    }
     expectedIds.push(prepared.id);
     records.push({
       v: LOG_JSONL_VERSION,
@@ -815,8 +973,7 @@ export function writeLogJsonlSnapshot(
       entries: [entryToSnake(prepared)],
     });
   }
-  const hasCompactMarker = records.some((record) =>
-    record.op === "upsert" && record.entries.some((entry) => entry.type === "compact_marker"));
+  const hasCompactMarker = records.some(recordHasCompactMarker);
   if (usage && hasCompactMarker) {
     records.push({
       v: LOG_JSONL_VERSION,

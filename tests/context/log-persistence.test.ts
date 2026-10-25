@@ -77,7 +77,7 @@ describe("saveLog + loadLog", () => {
     saveLog(testDir, meta, sampleLog());
 
     const loaded = loadLog(testDir);
-    expect(loaded.meta.version).toBe(4);
+    expect(loaded.meta.version).toBe(5);
     expect(loaded.meta.projectPath).toBe("/test/project");
     expect(loaded.meta.modelConfigName).toBe("test-model");
     expect(loaded.meta.modelProvider).toBe("openai");

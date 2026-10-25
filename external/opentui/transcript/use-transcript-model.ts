@@ -56,7 +56,8 @@ export function getActiveTranscriptSource(
 }
 
 export function projectTranscriptEntries(log: readonly LogEntry[]): ReconciledConversationEntry[] {
-  return reconcileEntries([], projectToTuiEntries(log));
+  // source.log 已经是 getDisplayLog() 的结果（活动窗口 + 用户已加载的历史页）。
+  return reconcileEntries([], projectToTuiEntries(log, { includeEarlier: true }));
 }
 
 export function shouldSyncTranscript(
@@ -100,7 +101,7 @@ export function useTranscriptModel(
       return;
     }
 
-    const nextEntries = projectToTuiEntries(source.log ?? []);
+    const nextEntries = projectToTuiEntries(source.log ?? [], { includeEarlier: true });
     setItems((current) => reconcileEntries(current, nextEntries));
     syncStateRef.current = {
       session,

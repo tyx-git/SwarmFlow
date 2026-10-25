@@ -103,6 +103,6 @@ describe("CLI sessions prune", () => {
     expect(outputText()).toContain("丢失回退 turn: 1");
     expect(statSync(join(dir, "log.jsonl")).size).toBeLessThan(before);
     expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(false);
-    expect(existsSync(join(dir, "archive", "window-0.json.gz"))).toBe(true);
+    expect(existsSync(join(dir, "archive", "window-0.jsonl.gz"))).toBe(true);
   });
 });

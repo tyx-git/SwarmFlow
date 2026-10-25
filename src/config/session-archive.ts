@@ -16,8 +16,11 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
+
+import { acquireSessionLock, releaseSessionLock } from "./session-lock.js";
 
 export const COLD_ARCHIVE_DIR = "archived_sessions";
 
@@ -85,45 +88,56 @@ export function archiveSessionDir(sessionDir: string): ColdArchiveMove {
   }
   const baseDir = dirname(projectsRoot);
   const archiveDir = join(baseDir, COLD_ARCHIVE_DIR, basename(projectDir), basename(sessionDir));
-  if (existsSync(archiveDir)) throw new Error(`已存在归档：${archiveDir}`);
+  const lockToken = `cold-archive-${randomUUID()}`;
+  const lock = acquireSessionLock(sessionDir, lockToken);
+  if (!lock.ok) throw new Error(`会话正在被其他写者使用：${sessionDir}`);
 
-  const logFile = findActiveLog(sessionDir);
-  if (!logFile) throw new Error(`会话缺少活动日志：${sessionDir}`);
-
-  // 压缩放在搬迁之前：失败时目录原地不动，不需要回滚。
-  const before = readFileSync(join(sessionDir, logFile));
-  const compressed = gzipSync(before);
-
-  mkdirSync(dirname(archiveDir), { recursive: true });
-  renameSync(sessionDir, archiveDir);
-
-  const logPath = join(archiveDir, logFile);
+  let lockDir = sessionDir;
   try {
-    const gzPath = `${logPath}.gz`;
-    const tmp = `${gzPath}.tmp-${process.pid}`;
-    writeFileSync(tmp, compressed);
-    renameSync(tmp, gzPath);
-    // 先置标志、再删明文：任何一步失败时明文仍在，可以整体回滚。
-    writeArchivedFlag(archiveDir, true);
-    unlinkSync(logPath);
-  } catch (error) {
-    if (existsSync(logPath)) {
-      try {
-        renameSync(archiveDir, sessionDir);
-      } catch {
-        // 回滚失败：至少保留归档目录（明文仍在），restore 仍可还原。
-      }
-    }
-    throw error;
-  }
+    if (existsSync(archiveDir)) throw new Error(`已存在归档：${archiveDir}`);
 
-  return {
-    from: sessionDir,
-    to: archiveDir,
-    logFile,
-    logBytes: before.length,
-    compressedBytes: compressed.length,
-  };
+    const logFile = findActiveLog(sessionDir);
+    if (!logFile) throw new Error(`会话缺少活动日志：${sessionDir}`);
+
+    // 压缩放在搬迁之前：失败时目录原地不动，不需要回滚。
+    const before = readFileSync(join(sessionDir, logFile));
+    const compressed = gzipSync(before);
+
+    mkdirSync(dirname(archiveDir), { recursive: true });
+    renameSync(sessionDir, archiveDir);
+    lockDir = archiveDir;
+
+    const logPath = join(archiveDir, logFile);
+    try {
+      const gzPath = `${logPath}.gz`;
+      const tmp = `${gzPath}.tmp-${process.pid}`;
+      writeFileSync(tmp, compressed);
+      renameSync(tmp, gzPath);
+      // 先置标志、再删明文：任何一步失败时明文仍在，可以整体回滚。
+      writeArchivedFlag(archiveDir, true);
+      unlinkSync(logPath);
+    } catch (error) {
+      if (existsSync(logPath)) {
+        try {
+          renameSync(archiveDir, sessionDir);
+          lockDir = sessionDir;
+        } catch {
+          // 回滚失败：至少保留归档目录（明文仍在），restore 仍可还原。
+        }
+      }
+      throw error;
+    }
+
+    return {
+      from: sessionDir,
+      to: archiveDir,
+      logFile,
+      logBytes: before.length,
+      compressedBytes: compressed.length,
+    };
+  } finally {
+    releaseSessionLock(lockDir, lockToken);
+  }
 }
 
 /**

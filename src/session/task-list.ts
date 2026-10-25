@@ -115,7 +115,7 @@ export function indexChildOutcomesFromLog(
 ): Map<string, { outcome: ChildOutcome; cause?: TerminationCause }> {
   const indexed = new Map<string, { outcome: ChildOutcome; cause?: TerminationCause }>();
   for (const entry of host._log) {
-    if (entry.type !== "agent_result" || entry.discarded) continue;
+    if (entry.type !== "agent_result" || entry.discarded || entry.archived) continue;
     const meta = entry.meta as Record<string, unknown>;
     const agentId = typeof meta["agentId"] === "string" ? meta["agentId"] : undefined;
     if (!agentId) continue;

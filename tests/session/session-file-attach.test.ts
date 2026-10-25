@@ -1,11 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import { Session } from "../../src/session.js";
+import { resolveImageRef, extractAndSaveImages } from "../../src/session/attachments.js";
 import { executeTool } from "../../src/tools/dispatch.js";
 
 // All four document formats below are real minimal files run through the real
@@ -131,6 +132,58 @@ async function callProcessFileAttachments(
 }
 
 describe("Session file attachment integration", () => {
+  it("resolves image refs only from the session images directory", () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "swarmflow-image-ref-session-"));
+    try {
+      mkdirSync(join(sessionDir, "images"));
+      const imageBytes = Buffer.from("valid image bytes");
+      writeFileSync(join(sessionDir, "images", "img-001.png"), imageBytes);
+      const outsideImage = join(dirname(sessionDir), "outside-image.png");
+      writeFileSync(outsideImage, "external secret");
+
+      expect(resolveImageRef(sessionDir, "images/img-001.png")?.data).toBe(imageBytes.toString("base64"));
+      expect(resolveImageRef(sessionDir, "../outside-image.png")).toBeNull();
+      expect(resolveImageRef(sessionDir, outsideImage)).toBeNull();
+
+      try {
+        symlinkSync(dirname(outsideImage), join(sessionDir, "images", "external"), "dir");
+        expect(resolveImageRef(sessionDir, "images/external/outside-image.png")).toBeNull();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EPERM" && (error as NodeJS.ErrnoException).code !== "EACCES") {
+          throw error;
+        }
+      }
+    } finally {
+      rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(join(dirname(sessionDir), "outside-image.png"), { force: true });
+    }
+  });
+
+  it("rejects image media types that could escape the images directory", () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "swarmflow-image-write-session-"));
+    const escaped = join(dirname(sessionDir), "escape.bin");
+    try {
+      const context = {
+        projectRoot: sessionDir,
+        sessionDir: () => sessionDir,
+        artifactsDir: () => undefined,
+        supportsMultimodal: () => true,
+        nextImageNumber: () => 1,
+      };
+      const content = [{
+        type: "image",
+        media_type: "image/png\\..\\..\\escape.bin",
+        data: Buffer.from("secret").toString("base64"),
+      }];
+
+      expect(extractAndSaveImages(context, content)).toEqual(content);
+      expect(existsSync(escaped)).toBe(false);
+    } finally {
+      rmSync(sessionDir, { recursive: true, force: true });
+      rmSync(escaped, { force: true });
+    }
+  });
+
   it("injects text file context and removes @path from user text", async () => {
     const dir = mkdtempSync(join(tmpdir(), "swarmflow-attach-text-"));
     try {

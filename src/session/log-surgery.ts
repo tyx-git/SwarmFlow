@@ -495,7 +495,7 @@ function rebuildRuntimeSignalsIn(entries: readonly LogEntry[]): RestoredRuntimeS
   };
 
   for (const entry of entries) {
-    if (entry.discarded) continue;
+    if (entry.discarded || entry.archived) continue;
     if (entry.type === "tool_call" && entry.apiRole === "assistant") {
       signals.lifetimeToolCallCount += 1;
       signals.lastToolCallSummary = entry.display || signals.lastToolCallSummary;
@@ -604,8 +604,11 @@ export function parseRestoredState(
   const workCount = Math.max(scannedWorkCount, meta.workCount ?? 0);
 
   // 有界恢复只带窗口 token_update；窗口外累计量以 meta.tokens 为基线。
+  // 全量恢复若包含已归档窗口，token_update 的 meta 也已被 strip，
+  // 同样必须用 meta.tokens 作基线，否则累计用量会归零。
+  const hasArchivedEntries = entries.some((entry) => entry.archived);
   const usageAgg = aggregateTokenUsage(entries);
-  const usageBase = deps.bounded === true && meta.tokens
+  const usageBase = meta.tokens && (deps.bounded === true || hasArchivedEntries)
     ? { ...meta.tokens, ids: new Set(entries.filter((e) => e.type === "token_update").map((e) => e.id)) }
     : null;
   const firstInput = usageBase ? (meta.firstInput ?? usageAgg.firstInput) : usageAgg.firstInput;

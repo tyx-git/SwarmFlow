@@ -20,8 +20,8 @@ export interface ContextThresholds {
 // Defaults
 // ------------------------------------------------------------------
 
-/** 默认阈值常量：85% 回合前压缩，90% 回合中压缩。 */
+/** 默认阈值常量：回合前/回合中统一 80%。 */
 export const DEFAULT_THRESHOLDS: ContextThresholds = {
-  compact_before_turn: 85,
-  compact_mid_turn: 90,
+  compact_before_turn: 80,
+  compact_mid_turn: 80,
 };

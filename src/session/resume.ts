@@ -3,8 +3,7 @@ import { join } from "node:path";
 
 import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import { loadLog } from "../config/log-serialization.js";
-import { LOG_JSONL_FILENAME, loadModelContext } from "../config/log-jsonl.js";
-import { hydrateArchivedDisplay } from "../config/archive.js";
+import { LOG_JSONL_FILENAME, LOG_JSONL_VERSION, loadModelContext, readLogJsonlVersion } from "../config/log-jsonl.js";
 import { validateAndRepairLog } from "../config/log-repair.js";
 import { listSessionsInProject, type SessionInfo } from "../config/session-list.js";
 import type { SessionStore } from "../config/session-store.js";
@@ -116,6 +115,11 @@ export interface RestoreResult {
   error?: string;
 }
 
+function legacyLogJsonlVersion(sessionDir: string): number | undefined {
+  const file = join(sessionDir, LOG_JSONL_FILENAME);
+  return existsSync(file) ? readLogJsonlVersion(sessionDir) : undefined;
+}
+
 /**
  * 将会话日志加载到现有（ freshly bootstrapped）Session 中，
  * 交换其历史记录、模型、标题等。存储绑定到恢复的目录。
@@ -144,18 +148,55 @@ export function applySessionRestore(
     };
   }
 
+  const legacyVersion = legacyLogJsonlVersion(sessionDir);
+  if (legacyVersion !== undefined && legacyVersion !== LOG_JSONL_VERSION) {
+    if (!alreadyHeld) store.releaseSessionLock(sessionDir);
+    return {
+      ok: false,
+      warnings: [],
+      error:
+        `E_COMPACT_FORMAT_LEGACY: log.jsonl version ${legacyVersion} is not supported by this runtime. `
+        + "Run `swarmflow sessions migrate-compact <id>` before resuming it.",
+    };
+  }
+
   let logData;
   try {
     logData = existsSync(join(sessionDir, LOG_JSONL_FILENAME))
       ? loadModelContext(sessionDir)
       : loadLog(sessionDir);
-    hydrateArchivedDisplay(sessionDir, logData.entries);
   } catch (e) {
     if (!alreadyHeld) store.releaseSessionLock(sessionDir);
     return {
       ok: false,
       warnings: [],
       error: `Failed to load log: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  const legacyMarker = logData.entries.some((entry) =>
+    entry.type === "compact_marker"
+    && !entry.discarded
+    && typeof (entry.meta as Record<string, unknown>)["checkpointId"] !== "string");
+  let hasLegacyArchive = false;
+  try {
+    const archiveDir = join(sessionDir, "archive");
+    hasLegacyArchive = existsSync(archiveDir)
+      && readdirSync(archiveDir).some((name) => /^window-\d+(?:\.index)?\.json\.gz$/.test(name));
+  } catch { /* no archive dir */ }
+  const hasArchivedEntriesWithoutCheckpoint = logData.entries.some((entry) => entry.archived)
+    && !logData.entries.some((entry) =>
+      entry.type === "compact_marker"
+      && !entry.discarded
+      && typeof (entry.meta as Record<string, unknown>)["checkpointId"] === "string");
+  if (legacyMarker || hasLegacyArchive || hasArchivedEntriesWithoutCheckpoint) {
+    if (!alreadyHeld) store.releaseSessionLock(sessionDir);
+    return {
+      ok: false,
+      warnings: [],
+      error:
+        "E_COMPACT_FORMAT_LEGACY: this session uses the legacy compact format. "
+        + "Run `swarmflow sessions migrate-compact <id>` before resuming it.",
     };
   }
 
@@ -179,7 +220,6 @@ export function applySessionRestore(
     if (logData.bounded && logData.meta.persistencePolicy !== 3) {
       // 旧 policy 会在下一次保存做整份归一化；有界条目不足以重写完整历史。
       logData = loadLog(sessionDir);
-      hydrateArchivedDisplay(sessionDir, logData.entries);
       warnings.push("[load] legacy persistence policy; loaded the full log to keep history intact");
       const fullPrepared = session.prepareRestoreFromLog(logData.meta, logData.entries, logData.idAllocator, {
         bounded: false,

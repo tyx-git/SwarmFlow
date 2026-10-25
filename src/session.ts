@@ -48,6 +48,7 @@ import { type SkillMeta } from "./skills/loader.js";
 import { toolBuiltinWebSearchPassthrough } from "./tools/web-search/tool.js";
 
 import { TaskStore } from "./tasks/store.js";
+import { formatTaskSnapshot } from "./tasks/snapshot.js";
 
 import type { Task } from "./tasks/types.js";
 import {
@@ -120,6 +121,7 @@ import {
   loadLogJsonl,
   migrateLogToJsonl,
   readLastSeq,
+  recordHasCompactMarker,
   writeLogJsonlSnapshot,
 } from "./config/log-jsonl.js";
 import {
@@ -190,6 +192,7 @@ import {
   type PromptSectionEstimates,
   type UsageStats,
 } from "./session/usage-accounting.js";
+import { estimateEntryTokens } from "./context/token-estimate.js";
 import {
   ensureSkillToolForSession,
   execSkill,
@@ -284,9 +287,12 @@ import {
   discardCompactAttemptEntries,
   doAutoCompact,
   getManualCompactBlocker,
+  isCommittedCompactError,
   runCompactPhase,
   runManualCompact,
   runManualCompactBody,
+  type CompactCommitResult,
+  type CompactOrigin,
 } from "./session/compact-flow.js";
 import {
   beforeToolExecute,
@@ -451,6 +457,7 @@ export class Session implements SessionLike {
   // Per-section gptEncode estimates of the system prompt. Invalidated only
   // when the prompt is reassembled (_reloadPromptAndTools / _resetTransientState).
   private _promptSectionEstimates: { systemPrompt: number; tools: number; agentsMd: number; skills: number } | null = null;
+  private _contextEstimateCache: { revision: number; tokens: number } | null = null;
 
   // Compact phase
   _compactInProgress = false;
@@ -582,6 +589,8 @@ export class Session implements SessionLike {
   private _currentWorkId: string | null = null;
   private _currentWorkStartedAt = 0;
   _compactCount = 0;
+  /** 本 turn 已提交的自动压缩次数；手动 /compact 不占配额。 */
+  _autoCompactCountThisTurn = 0;
   private _usedContextIds = new Set<string>();
 
   // Last time we ran a sync GC at idle (ms epoch). Used to throttle the
@@ -875,6 +884,7 @@ export class Session implements SessionLike {
         (this.primaryAgent as unknown as { _provider?: { budgetCalcMode?: string } })._provider?.budgetCalcMode,
       isCompactInProgress: () => this._compactInProgress,
       canAutoCompact: () => this._capabilities.includeSpawnTool,
+      estimateContextTokens: () => this._estimateContextTokens(),
     });
 
     // Apply context budget percentage.
@@ -1556,6 +1566,7 @@ export class Session implements SessionLike {
     this._usageFirstInput = 0;
     this._usageFirstUserMessageTokens = 0;
     this._promptSectionEstimates = null;
+    this._contextEstimateCache = null;
     this._compactInProgress = false;
     this._agentState = "idle";
     this._inbox = [];
@@ -1603,6 +1614,8 @@ export class Session implements SessionLike {
   private _historyStartOffset: number | null = null;
   private _historyPager: TuiHistoryPager | null = null;
   private _historyExhausted = true;
+  /** live 会话（日志完整在内存）的历史游标；null 表示尚未开始翻页。 */
+  private _liveHistoryCursor: number | null = null;
   private _earlierEntries: LogEntry[] = [];
   private _earlierEntriesBytes = 0;
   private _historyCacheCapped = false;
@@ -1610,12 +1623,15 @@ export class Session implements SessionLike {
 
   /** Read-only snapshot of the log filtered by display cutoff, including loaded earlier history. */
   getDisplayLog(): readonly LogEntry[] {
-    const live = this._displayCutoff > 0
-      ? this._log.slice(this._displayCutoff)
-      : this._log;
-    return this._earlierEntries.length > 0
-      ? [...this._earlierEntries, ...live]
-      : live;
+    // 默认只展示活动窗口（含最近的 compact marker）；更早条目通过分页加入。
+    const activeStart = this._logStore.activeWindowStartIdx();
+    const windowStart = activeStart > 0 ? activeStart - 1 : 0;
+    const cutoff = Math.max(this._displayCutoff, windowStart);
+    const live = cutoff > 0 ? this._log.slice(cutoff) : this._log;
+    if (this._earlierEntries.length === 0) return live;
+    const liveIds = new Set(live.map((entry) => entry.id));
+    const earlier = this._earlierEntries.filter((entry) => !liveIds.has(entry.id));
+    return earlier.length > 0 ? [...earlier, ...live] : live;
   }
 
   /** 有界恢复后启用历史分页；startOffset 必须是行首（R-2 的 windowStartOffset）。 */
@@ -1626,7 +1642,12 @@ export class Session implements SessionLike {
   }
 
   hasEarlierHistory(): boolean {
-    return this._historyStartOffset !== null && !this._historyExhausted;
+    if (this._historyCacheCapped) return false;
+    if (this._historyStartOffset !== null) return !this._historyExhausted;
+    const activeStart = this._logStore.activeWindowStartIdx();
+    if (activeStart <= 0) return false;
+    const cursor = this._liveHistoryCursor ?? activeStart;
+    return cursor > 0;
   }
 
   /** 页缓存是否已达到 8 MiB 上限（此时不再加载更早历史）。 */
@@ -1636,8 +1657,11 @@ export class Session implements SessionLike {
 
   /** 取一页更早的历史并合并到展示日志；返回本次加载条数与是否还有更早页。 */
   loadEarlierHistoryPage(maxEntries = 200): { loaded: number; hasMore: boolean; capped?: boolean } {
+    if (this._historyStartOffset === null) {
+      return this._loadLiveHistoryPage(maxEntries);
+    }
     const dir = this._resolvePersistDir();
-    if (!dir || this._historyStartOffset === null || this._historyExhausted) {
+    if (!dir || this._historyExhausted) {
       return { loaded: 0, hasMore: false };
     }
     try {
@@ -1697,11 +1721,55 @@ export class Session implements SessionLike {
     }
   }
 
+  /** live 会话：从内存日志向更早页移动，不重新读盘。 */
+  private _loadLiveHistoryPage(maxEntries: number): { loaded: number; hasMore: boolean; capped?: boolean } {
+    const activeStart = this._logStore.activeWindowStartIdx();
+    if (activeStart <= 0) {
+      this._liveHistoryCursor = 0;
+      return { loaded: 0, hasMore: false };
+    }
+    const cursor = this._liveHistoryCursor ?? activeStart;
+    if (cursor <= 0) return { loaded: 0, hasMore: false };
+    const start = Math.max(0, cursor - Math.max(1, maxEntries));
+    const page = this._log.slice(start, cursor);
+    if (page.length === 0) return { loaded: 0, hasMore: false };
+
+    const freshBytes = estimateEntriesBytes(page);
+    if (this._earlierEntriesBytes + freshBytes > HISTORY_PAGE_CACHE_BYTES) {
+      this._historyCacheCapped = true;
+      this._liveHistoryCursor = start;
+      return { loaded: 0, hasMore: false, capped: true };
+    }
+
+    const dir = this._resolvePersistDir();
+    const missingDisplay = dir
+      ? page.filter((entry) =>
+          entry.archived && entry.display === "" && !this._archivedDisplays?.has(entry.id))
+      : [];
+    if (dir && missingDisplay.length > 0) {
+      const lookup = loadArchivedDisplaysForEntries(dir, missingDisplay);
+      this._archivedDisplays ??= new Map();
+      for (const [id, display] of lookup.displays) this._archivedDisplays.set(id, display);
+    }
+    for (const entry of page) {
+      if (!entry.archived || entry.display !== "") continue;
+      entry.display = this._archivedDisplays?.get(entry.id) ?? "";
+    }
+
+    this._earlierEntries = [...page, ...this._earlierEntries];
+    this._earlierEntriesBytes += freshBytes;
+    this._liveHistoryCursor = start;
+    this._bumpLogRevision();
+    this._notifyLogListeners();
+    return { loaded: page.length, hasMore: start > 0 };
+  }
+
   private _closeHistoryPaging(): void {
     this._historyPager?.close();
     this._historyPager = null;
     this._historyExhausted = true;
     this._historyStartOffset = null;
+    this._liveHistoryCursor = null;
     this._earlierEntries = [];
     this._earlierEntriesBytes = 0;
     this._historyCacheCapped = false;
@@ -1802,22 +1870,14 @@ export class Session implements SessionLike {
   private _loadArchivedTurnInfo(): Map<string, ArchivedTurnInfo> | undefined {
     const sessionDir = this._store?.sessionDir;
     if (!sessionDir) return undefined;
-    try {
-      return loadArchiveTurnIndexes(sessionDir);
-    } catch {
-      return undefined;
-    }
+    return loadArchiveTurnIndexes(sessionDir);
   }
 
   /** 回退菜单的文件统计只读摘要索引，不加载 reversePatch。 */
   private _loadArchivedMutations(): Map<string, ArchivedMutationInfo> | undefined {
     const sessionDir = this._store?.sessionDir;
     if (!sessionDir) return undefined;
-    try {
-      return loadArchiveMutationIndexes(sessionDir);
-    } catch {
-      return undefined;
-    }
+    return loadArchiveMutationIndexes(sessionDir);
   }
 
   /**
@@ -1828,13 +1888,10 @@ export class Session implements SessionLike {
     const previous = this._archivedMetaLookup;
     const sessionDir = this._store?.sessionDir;
     if (sessionDir && this._log.some((entry) => entry.archived)) {
+      // 归档不可读时必须失败：空 lookup 会让 rewind 生成“成功但没有 mutation”的计划。
       const lookup = new Map<string, Record<string, unknown>>();
-      try {
-        for (const [id, meta] of loadArchivedMetaForTurns(sessionDir, fromTurnIndex)) {
-          lookup.set(id, meta);
-        }
-      } catch {
-        // 归档不可读时退化为内存 meta（与归档丢失的旧行为一致）。
+      for (const [id, meta] of loadArchivedMetaForTurns(sessionDir, fromTurnIndex)) {
+        lookup.set(id, meta);
       }
       this._archivedMetaLookup = lookup;
     }
@@ -2231,9 +2288,19 @@ export class Session implements SessionLike {
       return { removed: 0, error: `Turn ${toTurnIndex} not found in log.` };
     }
 
-    this._killChildSessionsAndShells();
     const removed = this._log.length - cutoff;
     const removedEntries = this._log.slice(cutoff);
+    // 先恢复被撤销的归档，再截断。归档缺失/损坏时不能在内存里先砍日志，
+    // 否则用户会看到“回退失败但历史已丢”的半完成状态。
+    try {
+      this._restoreArchivesRescindedBy(removedEntries);
+    } catch (error) {
+      return {
+        removed: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    this._killChildSessionsAndShells();
     // 网关负责截断、失效索引并记录 truncate。
     this._logStore.truncateFrom(removedEntries[0]!.id);
     if (this._usageBase) {
@@ -2250,7 +2317,6 @@ export class Session implements SessionLike {
       this._usageBaseVersion += 1;
       this._usageStatsCache = null;
     }
-    this._restoreArchivesRescindedBy(removedEntries);
     this._resetAfterRewind();
     return { removed };
   }
@@ -2261,27 +2327,41 @@ export class Session implements SessionLike {
    * entries are live context again after the rewind, but the API projection
    * silently skips archived entries with null content —so restore their
    * content from the archive files, or the revived window would have holes.
-   * Missing/corrupt archive files degrade to leaving the entries archived.
+   * Missing/corrupt archives are a hard failure: a silent rewind would leave
+   * the user with a conversation whose files and context disagree.
    */
   private _restoreArchivesRescindedBy(removedEntries: LogEntry[]): void {
     const sessionDir = this._store?.sessionDir as string | undefined;
     if (!sessionDir) return;
+    // 没有 archived 条目就没有需要复活的冷区；旧测试/未压缩窗口不应被强制要求 archive。
+    if (!this._log.some((entry) => entry.archived)) return;
     for (const entry of removedEntries) {
       if (entry.discarded) continue;
       let fileName: string | null = null;
       if (entry.type === "summary") {
         fileName = `summary-${entry.id}.json.gz`;
       } else if (entry.type === "compact_marker") {
-        const idx = (entry.meta as Record<string, unknown>)["compactIndex"];
-        if (typeof idx === "number") fileName = `window-${idx}.json.gz`;
+        const meta = entry.meta as Record<string, unknown>;
+        const archiveFile = meta["archiveFile"];
+        if (typeof archiveFile === "string" && archiveFile.length > 0) {
+          fileName = archiveFile;
+        }
       }
       if (!fileName) continue;
+      let archived: ReturnType<typeof loadArchiveFile>;
       try {
-        const archived = loadArchiveFile(sessionDir, fileName);
-        if (archived) this._logStore.restoreArchivedEntries(archived);
-      } catch {
-        // Corrupt archive —keep the entries archived (today's behavior).
+        archived = loadArchiveFile(sessionDir, fileName);
+      } catch (error) {
+        throw new Error(
+          `Cannot rewind: archive '${fileName}' is corrupt or unreadable (${error instanceof Error ? error.message : String(error)}).`,
+        );
       }
+      if (!archived) {
+        throw new Error(
+          `Cannot rewind: archive '${fileName}' is missing; the revived context would contain holes.`,
+        );
+      }
+      this._logStore.restoreArchivedEntries(archived);
     }
   }
 
@@ -2359,12 +2439,15 @@ export class Session implements SessionLike {
       const ctx = (entry.meta as Record<string, unknown>)?.["contextId"];
       if (typeof ctx === "string") this._usedContextIds.add(ctx);
       if (entry.type === "compact_marker" && !entry.discarded) {
-        this._compactCount += 1;
+        const raw = (entry.meta as Record<string, unknown>)["compactIndex"];
+        const index = typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw + 1 : 1;
+        this._compactCount = Math.max(this._compactCount, index);
       }
       if (entry.type === "work_start" && !entry.discarded) {
         this._workCount += 1;
       }
     }
+    this._autoCompactCountThisTurn = 0;
 
     this._bumpLogRevision();
     this._notifyLogListeners();
@@ -2497,14 +2580,14 @@ export class Session implements SessionLike {
     return this._sessionArtifactsOverride ? dirname(this._sessionArtifactsOverride) : undefined;
   }
 
-  /** M0：最后一个 live marker 之前、且归档带 presentation 的条目。 */
+  /** 归档 envelope 已包含 presentation 索引；只剥离已被归档且滑出活动窗口的条目。 */
   private _refreshPersistenceStripIds(): void {
     const dir = this._resolvePersistDir();
     if (dir) {
       const archiveDir = join(dir, "archive");
       let count = -1;
       try {
-        count = readdirSync(archiveDir).filter((name) => name.endsWith(".index.json.gz")).length;
+        count = readdirSync(archiveDir).filter((name) => name.startsWith("window-") && name.endsWith(".jsonl.gz")).length;
       } catch { /* no archive yet */ }
       if (!this._presentationArchiveIds || count !== this._presentationArchiveCount) {
         this._presentationArchiveIds = loadPresentationCapableEntryIds(dir);
@@ -2639,8 +2722,7 @@ export class Session implements SessionLike {
     const lastSeq = readLastSeq(dir);
     if (lastSeq === 0) throw new Error("log.jsonl has no session header");
     const records = this._logStore.peekPendingRecords(lastSeq + 1);
-    const hasCompactMarker = records.some((record) =>
-      record.op === "upsert" && record.entries.some((entry) => entry.type === "compact_marker"));
+    const hasCompactMarker = records.some(recordHasCompactMarker);
     if (hasCompactMarker) {
       const stats = this._computeUsageStats();
       records.push({
@@ -3068,6 +3150,45 @@ export class Session implements SessionLike {
     return getTaskState(this);
   }
 
+  /**
+   * 每个请求末尾的 ephemeral 运行时快照：open tasks / active children / shells。
+   * 不写日志、不进入缓存前缀；压缩上下文不再烘静态任务快照。
+   */
+  _buildRuntimeStateBlock(): string {
+    const tasks = getTaskState(this).filter((task) => task.status !== "completed");
+    const agents = [...this._childSessions.values()]
+      .filter((handle) => handle.lifecycle !== "archived" && handle.status !== "completed")
+      .slice(-8);
+    const shellReport = this._buildShellReport();
+    const shellLines = shellReport.startsWith("No shells tracked.")
+      ? []
+      : shellReport.split("\n").filter((line) => line.startsWith("- ") || line.startsWith("    ")).slice(0, 12);
+
+    if (tasks.length === 0 && agents.length === 0 && shellLines.length === 0) return "";
+
+    const lines: string[] = [
+      "[RUNTIME STATE]",
+      "Read-only runtime snapshot; do not treat it as a new user request.",
+    ];
+    if (tasks.length > 0) {
+      const snapshot = formatTaskSnapshot(tasks).replace(/^\[Current Tasks\]\n/, "");
+      lines.push("Open tasks:", snapshot);
+    }
+    if (agents.length > 0) {
+      lines.push("Active child agents:");
+      for (const handle of agents) {
+        const last = handle.recentEvents.length > 0
+          ? `; last: ${handle.recentEvents[handle.recentEvents.length - 1]}`
+          : "";
+        lines.push(`- #${handle.numericId} ${handle.template} [${handle.status}/${handle.phase}]${last}`);
+      }
+    }
+    if (shellLines.length > 0) {
+      lines.push("Shells:", ...shellLines);
+    }
+    return lines.join("\n");
+  }
+
   subscribeTaskState(listener: () => void): () => void {
     return subscribeTaskState(this, listener);
   }
@@ -3321,6 +3442,39 @@ export class Session implements SessionLike {
       skills: this._skills.values(),
     });
     return this._promptSectionEstimates;
+  }
+
+  /**
+   * provider 不返回 usage 时的本地估算：活动窗口条目 + 静态前缀。
+   * 按 log revision 缓存，避免每次 tool round 全扫。
+   */
+  _estimateContextTokens(): number {
+    const revision = this._logStore.revision;
+    if (this._contextEstimateCache?.revision === revision) {
+      return this._contextEstimateCache.tokens;
+    }
+    const activeStart = Math.max(0, this._logStore.activeWindowStartIdx() - 1);
+    let tokens = 0;
+    for (let i = activeStart; i < this._log.length; i += 1) {
+      const entry = this._log[i]!;
+      if (entry.discarded || entry.archived) continue;
+      tokens += estimateEntryTokens(entry);
+    }
+    tokens += this._estimateStaticContextTokens();
+    this._contextEstimateCache = { revision, tokens };
+    return tokens;
+  }
+
+  _estimateStaticContextTokens(): number {
+    const est = this._getPromptSectionEstimates();
+    return est.systemPrompt + est.tools + est.agentsMd + est.skills;
+  }
+
+  _estimateEphemeralTailTokens(): number {
+    const runtimeState = this._buildRuntimeStateBlock();
+    const hookContext = this.hookRuntime.getAdditionalContext() ?? "";
+    const tail = [runtimeState, hookContext].filter(Boolean).join("\n\n");
+    return tail ? gptEncode(tail).length : 0;
   }
 
   /**
@@ -3785,6 +3939,7 @@ export class Session implements SessionLike {
 
   /** Inner turn logic, called from within the turn lock. */
   async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
+    this._autoCompactCountThisTurn = 0;
     // A pending ask owns the conversation: the turn cannot run until the user
     // answers. New input is queued (Q5) and delivered when work resumes —    // never dropped, never run into the suspended round's bookkeeping.
     if (this._activeAsk) {
@@ -3912,14 +4067,18 @@ export class Session implements SessionLike {
     if (this._capabilities.includeSpawnTool && !this._compactInProgress) {
       const { budget } = this._contextBudgetInfo();
       if (budget > 0) {
-        const estimatedTokens = this._lastInputTokens + gptEncode(userInput).length;
+        const estimatedTokens = (this._lastInputTokens > 0
+          ? this._lastInputTokens
+          : this._estimateContextTokens()) + gptEncode(userInput).length;
         const beforeTurnRatio = this._thresholds.compact_before_turn / 100;
         if (estimatedTokens > beforeTurnRatio * budget) {
           const logLenBefore = this._log.length;
           try {
             await this._doAutoCompact("before_turn", signal);
           } catch (compactErr) {
-            this._discardCompactAttemptEntries(logLenBefore);
+            if (!isCommittedCompactError(compactErr)) {
+              this._truncateCompactAttemptEntries(logLenBefore);
+            }
             if (signal?.aborted || this._isCompactAbortError(compactErr)) {
               this._beginWorkIfNeeded();
               this._appendInterruptionSystemMessage([], true);
@@ -4384,6 +4543,7 @@ export class Session implements SessionLike {
   _rebuildSystemPrompt(): void {
     this._cachedSystemPrompt = this._assembleSystemPrompt();
     this._promptSectionEstimates = null;
+    this._contextEstimateCache = null;
   }
 
   // ==================================================================
@@ -4425,8 +4585,48 @@ export class Session implements SessionLike {
     signal?: AbortSignal,
     promptOverride?: string,
     hideCompactMarker = false,
-  ): Promise<void> {
-    return doAutoCompact(this, scenario, signal, promptOverride, hideCompactMarker);
+    origin?: CompactOrigin,
+  ): Promise<CompactCommitResult> {
+    return doAutoCompact(this, scenario, signal, promptOverride, hideCompactMarker, origin);
+  }
+
+  _appendCompactCheckpoint(
+    marker: LogEntry,
+    context: LogEntry,
+    meta: {
+      checkpointId: string;
+      archiveFile: string;
+      archiveIndexFile: string;
+      compactIndex: number;
+      scenario: "before_turn" | "mid_turn" | "manual";
+    },
+  ): void {
+    this._logStore.appendCheckpoint(marker, context, meta);
+  }
+
+  /**
+   * 归档前把当前累计用量折成 usage base。
+   * 冷区 token_update 的 meta 会被 strip，不能靠继续扫描日志保账。
+   */
+  _foldArchivedUsage(): void {
+    const totals = this._computeUsageStats();
+    this._usageBase = {
+      input: totals.cumulativeInput,
+      output: totals.cumulativeOutput,
+      cacheRead: totals.cumulativeCacheRead,
+    };
+    for (const entry of this._log) {
+      if (entry.type === "token_update") this._usageBaseIds.add(entry.id);
+    }
+    this._usageBaseVersion += 1;
+    this._usageStatsCache = null;
+  }
+
+  /** 未提交的压缩尝试：物理截断到尝试起点，而不是只打 discarded。 */
+  _truncateCompactAttemptEntries(fromIndex: number): void {
+    const first = this._log[fromIndex];
+    if (!first) return;
+    this._logStore.truncateFrom(first.id);
   }
 
   /**
@@ -4836,7 +5036,7 @@ export class Session implements SessionLike {
   // ==================================================================
 
 
-  private _extractAndSaveImages(
+  _extractAndSaveImages(
     content: string | Array<Record<string, unknown>>,
   ): string | Array<Record<string, unknown>> {
     return extractAndSaveImages({
@@ -4880,18 +5080,27 @@ export class Session implements SessionLike {
   _generateSummary(): string {
     for (const entry of this._log) {
       if (entry.type !== "user_message") continue;
-      // 切换类/注入类命令回显使用 user_message 作为日志载体，但
-      // apiRole 为 null，不能成为会话自动标题或摘要。
       if (entry.apiRole !== "user") continue;
-      if (entry.discarded) continue;
+      if (entry.discarded || entry.archived) continue;
       const display = entry.display;
       if (!display) continue;
       if (SYSTEM_PREFIXES.some((prefix) => display.startsWith(prefix))) continue;
-      // 每次从真实用户消息重新校验，避免旧版本把 command_echo 写进
-      // meta.summary 后，恢复会话时继续沿用错误的自动标题。
       this._cachedSummary = stripContextTags(display).slice(0, 100).trim();
       return this._cachedSummary;
     }
+
+    const sessionDir = this._store?.sessionDir;
+    if (sessionDir) {
+      const archivedInputs = [...loadArchiveTurnIndexes(sessionDir).values()]
+        .filter((turn) => turn.type === "input_received" && turn.turnKind === "user" && turn.preview)
+        .sort((a, b) => a.turnIndex - b.turnIndex);
+      const preview = archivedInputs[0]?.preview;
+      if (preview) {
+        this._cachedSummary = stripContextTags(preview).slice(0, 100).trim();
+        return this._cachedSummary;
+      }
+    }
+
     this._cachedSummary = undefined;
     return "New session";
   }

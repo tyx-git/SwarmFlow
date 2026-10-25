@@ -39,8 +39,10 @@ export function validateAndRepairLog(
         break;
       }
     }
-    // 将最后一个 compact_marker 之后的 compactPhase 条目标记为丢弃
+    // 将最后一个 compact_marker 之后的 compactPhase 条目标记为丢弃。
+    // archived 是冷区，完整 meta 在 archive 中，repair 不对其做副作用。
     for (let i = lastCompactMarkerIdx + 1; i < entries.length; i++) {
+      if (entries[i].archived) continue;
       if (entries[i].meta?.compactPhase && !entries[i].discarded) {
         entries[i].discarded = true;
         warnings.push(`Discarded orphaned compactPhase entry ${entries[i].id}.`);
@@ -52,6 +54,7 @@ export function validateAndRepairLog(
   // --- 2. 修复孤立的 tool_calls（缺少 tool_results）---
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
+    if (entry.archived) continue;
     if (entry.type !== "tool_call" || entry.discarded) continue;
     if (entry.apiRole !== "assistant") continue;
 
@@ -59,6 +62,7 @@ export function validateAndRepairLog(
     // 检查是否有匹配的 tool_result
     let hasResult = false;
     for (let j = i + 1; j < entries.length; j++) {
+      if (entries[j].archived) continue;
       if (entries[j].type === "tool_result" && entries[j].meta.toolCallId === toolCallId && !entries[j].discarded) {
         hasResult = true;
         break;
@@ -115,7 +119,7 @@ export function validateAndRepairLog(
     const askResolutions = new Map<string, number>();
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      if (e.discarded) continue;
+      if (e.discarded || e.archived) continue;
       if (e.type === "ask_request") {
         askRequests.set(e.meta.askId as string, i);
       } else if (e.type === "ask_resolution") {
@@ -145,6 +149,7 @@ export function validateAndRepairLog(
       // 检查解析后是否有此 toolCallId 的 tool_result
       let hasToolResult = false;
       for (let j = resIdx + 1; j < entries.length; j++) {
+        if (entries[j].archived) continue;
         if (entries[j].type === "tool_result" && entries[j].meta.toolCallId === toolCallId && !entries[j].discarded) {
           hasToolResult = true;
           break;
@@ -200,7 +205,7 @@ export function validateAndRepairLog(
     const actionKeys = new Set<string>();
     const roundTurns = new Map<number, Set<number>>();
     for (const entry of entries) {
-      if (entry.discarded || entry.roundIndex === undefined) continue;
+      if (entry.discarded || entry.archived || entry.roundIndex === undefined) continue;
       if (!ACTION_TYPES.has(entry.type)) continue;
       actionKeys.add(`${entry.turnIndex}:${entry.roundIndex}`);
       let turns = roundTurns.get(entry.roundIndex);
@@ -212,7 +217,7 @@ export function validateAndRepairLog(
     }
 
     for (const entry of entries) {
-      if (entry.type !== "reasoning" || entry.discarded) continue;
+      if (entry.type !== "reasoning" || entry.discarded || entry.archived) continue;
       if (entry.roundIndex === undefined) continue;
 
       // 自己的 (turnIndex, roundIndex) 已有 action → 不孤立。

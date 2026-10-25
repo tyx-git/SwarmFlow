@@ -125,7 +125,6 @@ export async function toolWriteFile(
         kind: "diff",
         text: diffPreview.text,
         truncated: diffPreview.truncated,
-        newContent: finalContent,
       };
       return new ToolResult({
         content: `OK: Wrote ${finalContent.length} characters to ${filePath} [mtime_ms=${newMtimeMs}]`,

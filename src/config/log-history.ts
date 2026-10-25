@@ -207,7 +207,12 @@ export class TuiHistoryPager {
     }
 
     if (this.deadUntil !== null) {
-      if (record.op === "upsert" && record.entries.some((raw) => raw.id === this.deadUntil)) {
+      const deadIds = record.op === "compact_checkpoint"
+        ? [record.marker.id, record.context.id]
+        : record.op === "upsert"
+          ? record.entries.map((raw) => raw.id)
+          : [];
+      if (deadIds.some((id) => id === this.deadUntil)) {
         this.deadUntil = null;
       }
       return 0;
@@ -237,11 +242,17 @@ export class TuiHistoryPager {
     }
 
     let bytes = 0;
-    for (const raw of record.entries) {
+    const rawEntries = record.op === "compact_checkpoint"
+      ? [record.context, record.marker]
+      : record.op === "upsert"
+        ? record.entries
+        : [];
+    const replaces = record.op === "upsert" && record.replaces === true;
+    for (const raw of rawEntries) {
       const id = raw.id;
       if (typeof id !== "string" || this.emittedIds.has(id)) continue;
 
-      if (record.replaces === true) {
+      if (replaces) {
         // 覆盖记录：先持有最新内容，等扫到创建记录再按创建位置发射。
         // 反向扫描时第一条 replaces 就是最新值，更早的覆盖直接忽略。
         if (this.held.has(id)) continue;

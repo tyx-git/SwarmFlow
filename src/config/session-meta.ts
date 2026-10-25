@@ -51,6 +51,8 @@ export interface LogSessionMeta {
   thinkingLevel: string;
   /** 落盘策略版本；缺省表示 M0/M1 之前的旧文件，需要一次归一化。 */
   persistencePolicy?: number;
+  /** 压缩/归档持久化格式版本。 */
+  compactionFormat?: number;
   /** 子会话元数据记录 */
   childSessions?: ChildSessionMetaRecord[];
   /** 根会话的冻结收件箱（关闭时持久化，用于快照/恢复） */
@@ -168,6 +170,7 @@ export function saveSessionMeta(sessionDir: string, meta: LogSessionMeta): void 
     last_turn_end_status: meta.lastTurnEndStatus ?? null,
     self_phase: meta.selfPhase ?? null,
     persistence_policy: 3,
+    compaction_format: meta.compactionFormat ?? 2,
   };
   const serialized = JSON.stringify(payload);
   if (existing && JSON.stringify(existing) === serialized) return;

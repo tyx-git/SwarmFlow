@@ -200,11 +200,22 @@ export class ProgressReporter {
     }));
   }
 
-  onCompactEnd(agent: string, scenario: string, originalTokens: number): void {
+  onCompactEnd(
+    agent: string,
+    scenario: string,
+    originalTokens: number,
+    compactedTokens: number | undefined,
+    outcome: { status: "completed" | "failed"; committed: boolean },
+  ): void {
+    const message = outcome.status === "completed"
+      ? `  [${agent}] compacted: ${originalTokens.toLocaleString()} tokens`
+        + (compactedTokens !== undefined ? ` → ${compactedTokens.toLocaleString()}` : "")
+      : `  [${agent}] compact failed${outcome.committed ? " after commit" : " before commit"}`;
     this.emit(makeEvent({
       step: 0, agent, action: "compact_end",
-      message: `  [${agent}] compacted: ${originalTokens.toLocaleString()} tokens`,
-      level: "normal", usage: {}, extra: { scenario, originalTokens },
+      message,
+      level: "normal", usage: {},
+      extra: { scenario, originalTokens, compactedTokens, ...outcome },
     }));
   }
 

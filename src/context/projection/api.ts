@@ -122,7 +122,7 @@ export function projectToApiMessages(
       role: "tool_result",
       tool_call_id: entry.meta.toolCallId,
       tool_name: entry.meta.toolName,
-      content: contentBlocks ?? trContent,
+      content: contentBlocks ? resolveImageRefs(contentBlocks, options?.resolveImageRef) : trContent,
       tool_summary: resultContent.toolSummary,
     };
     if (trCtxId !== undefined) trMsg["_context_id"] = trCtxId;

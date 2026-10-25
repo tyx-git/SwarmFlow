@@ -284,7 +284,7 @@ describe("new user turn task cleanup", () => {
   });
 
   it("does not clear completed tasks during compact or restore reconciliation", async () => {
-    harness = makeScriptedSession({ rounds: [{ text: "compact summary" }] });
+    harness = makeScriptedSession({ rounds: [{ text: `compact summary ${"x".repeat(220)}` }] });
     await exec("task_create", { subject: "Completed before compact", description: "done" });
     await exec("task_update", { task_id: "1", status: "completed" });
     let notifications = 0;

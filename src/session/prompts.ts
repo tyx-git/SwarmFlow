@@ -22,7 +22,7 @@ export const COMPACT_PROMPT_OUTPUT = `Condense this conversation into a continua
 
 Do not call tools during this phase; respond with the continuation prompt only.
 
-**What the new instance will already have:** your system prompt and persistent memory (global MEMORY.md and project AGENTS.md) are automatically re-injected after compact. The session task list — ids, statuses, owners, dependency edges, and interruption hints — is re-injected as well. Do not duplicate any of their contents in the continuation prompt: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
+**What the new instance will already have:** your system prompt and persistent memory (global MEMORY.md and project AGENTS.md) are automatically re-injected after compact. A [RUNTIME STATE] block (open tasks, active child agents, running shells) is appended to each request, and a deterministic [VERBATIM TAIL] with the latest user/assistant/tool text is appended to this continuation. Do not duplicate any of that content: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
 
 Preserve the current assignment verbatim: allowed paths, acceptance checks, stop conditions, and the required handoff format.
 
@@ -49,7 +49,7 @@ export const COMPACT_PROMPT_TOOLCALL = `[SYSTEM: COMPACT REQUIRED] The conversat
 
 You just made a tool call and received its result above. That result is real and should be reflected in your summary, but do not act on it — your only job right now is to write the continuation prompt. Do not call tools during this phase; respond with the continuation prompt only.
 
-**What the new instance will already have:** your system prompt and persistent memory (global MEMORY.md and project AGENTS.md) are automatically re-injected after compact. The session task list — ids, statuses, owners, dependency edges, and interruption hints — is re-injected as well. Do not duplicate any of their contents in the continuation prompt: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
+**What the new instance will already have:** your system prompt and persistent memory (global MEMORY.md and project AGENTS.md) are automatically re-injected after compact. A [RUNTIME STATE] block (open tasks, active child agents, running shells) is appended to each request, and a deterministic [VERBATIM TAIL] with the latest user/assistant/tool text is appended to this continuation. Do not duplicate any of that content: do not restate task ids or statuses, and focus on what they cannot convey: current progress, session-specific context, and in-flight work state.
 
 Preserve the current assignment verbatim: allowed paths, acceptance checks, stop conditions, and the required handoff format.
 

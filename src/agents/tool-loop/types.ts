@@ -171,6 +171,10 @@ export interface ToolLoopOptions {
   contextIdAllocator?: (roundIndex: number) => string;
   /** 为每个 tool_call 分配独立的 context_id。 */
   toolContextIdAllocator?: () => string;
+  /** 工具结果中的图片块在追加日志前外置为 image_ref；无 callback 时保留原块。 */
+  externalizeContentBlocks?: (
+    blocks: Array<Record<string, unknown>>,
+  ) => Array<Record<string, unknown>>;
   /** 每次 provider 响应后调用，报告最新输入 token 数和完整使用量。 */
   onTokenUpdate?: (inputTokens: number, usage?: import("../../providers/response.js").Usage) => void;
   /**

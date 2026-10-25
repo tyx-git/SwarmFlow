@@ -11,6 +11,7 @@ import { writeLogJsonlSnapshot } from "../../src/config/log-jsonl.js";
 import { createLogSessionMeta, saveSessionMeta } from "../../src/config/session-meta.js";
 import {
   createAssistantText,
+  createCompactContext,
   createCompactMarker,
   createSystemPrompt,
 } from "../../src/context/entry/factories.js";
@@ -37,7 +38,14 @@ function seedBigHistory(): string {
   for (let index = 1; index <= 9; index += 1) {
     entries.push(createAssistantText(`old-${index}`, 1, 0, big, big));
   }
-  entries.push(createCompactMarker("cm-1", 2, 0, 100, 0));
+  const marker = createCompactMarker("cm-1", 2, 0, 100, 0);
+  marker.meta["checkpointId"] = "cm-1";
+  marker.meta["archiveFile"] = "window-cm-1.jsonl.gz";
+  marker.meta["archiveIndexFile"] = "window-cm-1.jsonl.gz";
+  entries.push(
+    marker,
+    createCompactContext("cc-1", 2, "checkpoint continuation", "ctx-live", 0),
+  );
   const meta = createLogSessionMeta({
     sessionId: "s-history-cache",
     createdAt: "2026-10-20T00:00:00.000Z",
@@ -48,7 +56,7 @@ function seedBigHistory(): string {
     turnCount: 1,
     compactCount: 1,
     thinkingLevel: "off",
-    idCounters: { sys: 1, asst: 9, cm: 1 },
+    idCounters: { sys: 1, asst: 9, cm: 1, cc: 1 },
     workCount: 0,
     tokens: { input: 100, output: 10, cacheRead: 80 },
   });

@@ -96,7 +96,7 @@ describe("真实 turn 的 JSONL 持久化", () => {
 
   it("手动压缩：marker/context 增量落盘，并写 usage 检查点", async () => {
     const h = makeScriptedSession({
-      rounds: [{ text: "first answer" }, { text: "continuation summary" }],
+      rounds: [{ text: "first answer" }, { text: `continuation summary ${"x".repeat(220)}` }],
     });
     try {
       await h.session.turn("first");
@@ -109,8 +109,9 @@ describe("真实 turn 的 JSONL 持久化", () => {
       expect(statSync(join(dir, LOG_JSONL_FILENAME)).size).toBeGreaterThan(sizeAfterTurn);
 
       const records = readRecords(dir).records;
+      expect(records.some((record) => record.op === "compact_checkpoint")).toBe(true);
       expect(records.some((record) =>
-        record.op === "upsert" && record.entries.some((entry) => entry.type === "compact_marker"))).toBe(true);
+        record.op === "upsert" && record.entries.some((entry) => entry.type === "compact_marker"))).toBe(false);
       const usage = records.filter((record) => record.op === "usage");
       expect(usage.length).toBeGreaterThanOrEqual(1);
       expect(usage.at(-1)).toMatchObject({
@@ -122,7 +123,10 @@ describe("真实 turn 的 JSONL 持久化", () => {
       });
 
       const loaded = loadLog(dir);
-      expect(loaded.entries).toEqual(expectedPersisted(h.session.log));
+      // loadLog 会按 M0 从 archive 回填已归档条目的 display；
+      // 持久化本体仍是 strip 视图，比较时忽略回填的 display。
+      expect(loaded.entries.map((entry) => entry.archived ? { ...entry, display: "" } : entry))
+        .toEqual(expectedPersisted(h.session.log));
       expect(loaded.entries.some((entry) => entry.type === "compact_context")).toBe(true);
     } finally {
       h.dispose();
