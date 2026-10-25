@@ -65,6 +65,8 @@ export interface OpenTuiScreenProps {
   sessionName: string;
   permissionMode?: string;
   presentationEntries: readonly PresentationEntry[];
+  historyBanner?: { label: string; canLoad: boolean } | null;
+  onLoadEarlierHistory?: () => void;
   processing: boolean;
   diffDisplayMode: "compact" | "full";
   mainScrollRef: React.RefObject<ScrollBoxRenderable | null>;
@@ -176,6 +178,8 @@ export function OpenTuiScreen({
   sessionName,
   permissionMode,
   presentationEntries,
+  historyBanner = null,
+  onLoadEarlierHistory,
   processing,
   diffDisplayMode,
   mainScrollRef,
@@ -503,6 +507,21 @@ export function OpenTuiScreen({
               stickyStart="bottom"
               multiplier={osCapabilities.conversationScrollMultiplier}
             >
+              {historyBanner ? (
+                <box
+                  paddingLeft={2}
+                  paddingBottom={1}
+                  onMouseDown={historyBanner.canLoad && onLoadEarlierHistory
+                    ? (event: any) => {
+                      event.stopPropagation();
+                      event.preventDefault();
+                      onLoadEarlierHistory();
+                    }
+                    : undefined}
+                >
+                  <text fg={theme.colors.dim} content={historyBanner.label} />
+                </box>
+              ) : null}
               <PresentationPanel
                 items={presentationEntries}
                 processing={processing}

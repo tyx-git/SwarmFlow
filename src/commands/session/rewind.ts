@@ -121,7 +121,13 @@ export async function cmdRewind(ctx: CommandContext, args: string): Promise<void
     return;
   }
 
-  const plan = await session.planRewind(turnIndex);
+  let plan;
+  try {
+    plan = await session.planRewind(turnIndex);
+  } catch (error) {
+    ctx.showMessage(`Rewind failed: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   const hasFiles = plan.applicable.length + plan.warnings.length > 0;
   const hasConflicts = plan.conflicts.length > 0;
   const hasBash = plan.bashEntries.length > 0;

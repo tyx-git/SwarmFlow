@@ -5,6 +5,7 @@
 import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { looksLikeSessionId, resolvePreferredBaseDir } from "./storage-layout.js";
+import { readLogHeader } from "./log-jsonl.js";
 import { nowTimestamps } from "./timestamps.js";
 import type { SessionMetaSummary } from "./session-meta.js";
 
@@ -83,9 +84,31 @@ export function fixStorage(baseDir?: string): FixStorageResult {
 
       const metaFile = join(sessionDir, "meta.json");
       const logFile = join(sessionDir, "log.json");
+      const jsonlFile = join(sessionDir, "log.jsonl");
 
       if (!existsSync(metaFile)) {
-        if (existsSync(logFile)) {
+        if (existsSync(jsonlFile)) {
+          try {
+            const header = readLogHeader(sessionDir);
+            const payload: SessionMetaSummary = {
+              session_id: header.sessionId || sessionName,
+              created_at: header.createdAt,
+              last_active_at: header.updatedAt,
+              summary: header.summary,
+              title: header.title,
+              turn_count: header.turnCount,
+            };
+            const tmp = metaFile + ".tmp";
+            writeFileSync(tmp, JSON.stringify(payload, null, 2));
+            renameSync(tmp, metaFile);
+            result.sessionsFixed++;
+            if (payload.last_active_at > latestActiveAt) {
+              latestActiveAt = payload.last_active_at;
+            }
+          } catch {
+            result.warnings.push(`Could not parse log.jsonl for ${projectName}/${sessionName}`);
+          }
+        } else if (existsSync(logFile)) {
           try {
             const raw = JSON.parse(readFileSync(logFile, "utf-8"));
             const payload: SessionMetaSummary = {

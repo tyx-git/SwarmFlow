@@ -34,7 +34,7 @@ const MAX_ACTIVATIONS_PER_TURN = 30;
 export interface ActivationHost {
   primaryAgent: Agent;
   hookRuntime: HookRuntime;
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _log: LogEntry[];
   _logStore: SessionLog;
   _turnCount: number;
@@ -55,6 +55,7 @@ export interface ActivationHost {
   _toolExecutors: Record<string, ToolExecutor>;
   _beforeToolExecute: BeforeToolExecuteCallback;
   _resolveToolCallVisibility: ResolveToolCallVisibilityCallback;
+  _resolveSealedReasoningState?(value: unknown): unknown | null;
   _nextLogId(type: LogEntry["type"]): string;
   _appendEntry(entry: LogEntry, save?: boolean): void;
   _touchLog(): void;
@@ -181,12 +182,12 @@ export async function runActivation(host: ActivationHost,
             streamedAssistantEntries.set(roundIndex, nextEntry);
             host._setActiveLogEntry(nextEntry.id);
           } else {
-            entry.display += cleanChunk;
-            entry.content = String(entry.content ?? "") + cleanChunk;
+            host._logStore.updateEntry(entry.id, (target) => {
+              target.display += cleanChunk;
+              target.content = String(target.content ?? "") + cleanChunk;
+            });
             if (host._activeLogEntryId !== entry.id) {
               host._setActiveLogEntry(entry.id);
-            } else {
-              host._touchLog();
             }
           }
         });
@@ -225,13 +226,13 @@ export async function runActivation(host: ActivationHost,
         streamedReasoningEntries.set(roundIndex, nextEntry);
         host._setActiveLogEntry(nextEntry.id);
       } else {
-        entry.display += chunk;
-        entry.content = String(entry.content ?? "") + chunk;
+        host._logStore.updateEntry(entry.id, (target) => {
+          target.display += chunk;
+          target.content = String(target.content ?? "") + chunk;
+        });
         // Keep active tracker pointing to this reasoning entry
         if (host._activeLogEntryId !== entry.id) {
           host._setActiveLogEntry(entry.id);
-        } else {
-          host._touchLog();
         }
       }
       return true;
@@ -246,17 +247,15 @@ export async function runActivation(host: ActivationHost,
   ) => {
     const entry = streamedReasoningEntries.get(roundIndex);
     if (entry) {
-      (entry.meta as Record<string, unknown>).reasoningComplete = true;
-      if (reasoningState !== undefined) {
-        (entry.meta as Record<string, unknown>).reasoningState = reasoningState;
-      }
-      if (thinkingArtifact) {
-        (entry.meta as Record<string, unknown>).thinkingArtifact = thinkingArtifact;
-      }
+      host._logStore.updateEntry(entry.id, (target) => {
+        const meta = target.meta as Record<string, unknown>;
+        meta.reasoningComplete = true;
+        if (reasoningState !== undefined) meta.reasoningState = reasoningState;
+        if (thinkingArtifact) meta.thinkingArtifact = thinkingArtifact;
+      });
       if (host._activeLogEntryId === entry.id) {
         host._activeLogEntryId = null;
       }
-      host._touchLog();
     }
   };
 
@@ -414,6 +413,9 @@ export async function runActivation(host: ActivationHost,
       systemPrompt: host._getSystemPrompt(),
       ephemeralTail: host.hookRuntime.getAdditionalContext() ?? undefined,
       resolveImageRef: (refPath) => host._resolveImageRef(refPath),
+      resolveReasoningState: host._resolveSealedReasoningState
+        ? (value) => host._resolveSealedReasoningState!(value)
+        : undefined,
       requiresAlternatingRoles: (host.primaryAgent as any)._provider?.requiresAlternatingRoles,
       enforceToolCallProtocol: true,
     });
@@ -459,12 +461,14 @@ export async function runActivation(host: ActivationHost,
     // fixed at append time and must not be patched here.
     const entry = host._logStore.findEntryById(entryId);
     if (!entry) return;
-    if (patch.apiRole !== undefined) entry.apiRole = patch.apiRole;
-    if (patch.content !== undefined) entry.content = patch.content;
-    if (patch.display !== undefined) entry.display = patch.display;
-    if (patch.tuiVisible !== undefined) entry.tuiVisible = patch.tuiVisible;
-    if (patch.displayKind !== undefined) entry.displayKind = patch.displayKind;
-    if (patch.meta !== undefined) entry.meta = patch.meta;
+    host._logStore.updateEntry(entryId, (target) => {
+      if (patch.apiRole !== undefined) target.apiRole = patch.apiRole;
+      if (patch.content !== undefined) target.content = patch.content;
+      if (patch.display !== undefined) target.display = patch.display;
+      if (patch.tuiVisible !== undefined) target.tuiVisible = patch.tuiVisible;
+      if (patch.displayKind !== undefined) target.displayKind = patch.displayKind;
+      if (patch.meta !== undefined) target.meta = patch.meta;
+    });
     if (entry.type === "tool_call" && !entry.tuiVisible) {
       if (host._activeLogEntryId === entry.id) {
         host._setActiveLogEntry(null);
@@ -506,9 +510,10 @@ export async function runActivation(host: ActivationHost,
   const discardEntryFn = (entryId: string): void => {
     const entry = host._logStore.findEntryById(entryId);
     if (!entry) return;
-    entry.discarded = true;
-    entry.tuiVisible = false;
-    host._touchLog();
+    host._logStore.updateEntry(entryId, (target) => {
+      target.discarded = true;
+      target.tuiVisible = false;
+    });
   };
 
   return host.primaryAgent.asyncRunWithMessages({

@@ -24,6 +24,7 @@ import { applyPatch, parsePatch } from "diff";
 import { hashFilesystemPath } from "../../lib/filesystem-hash.js";
 
 import type { FileMutation, BashMutation, BashMutationEntry } from "../../tools/mutations.js";
+import type { LogEntry } from "../../context/entry/types.js";
 import type {
   RewindPlan,
   RewindApplyResult,
@@ -31,6 +32,11 @@ import type {
   BashRewindEntry,
 } from "../../ui/contracts.js";
 import { pathsOverlap } from "./paths.js";
+import {
+  isRewindJournalBackupName,
+  rewindJournalBackupDir,
+  rewindJournalPath,
+} from "./artifacts.js";
 import { type RewindAppliedMutation, type RewindEngineDeps, type RewindJournal, type RewindPreimage } from "./types.js";
 
 export class RewindEngine {
@@ -325,7 +331,7 @@ export class RewindEngine {
   finalizeJournal(): void {
     const dir = this.deps.getArtifactsDir();
     if (!dir) return;
-    const journalPath = join(dir, "rewind-journal.json");
+    const journalPath = rewindJournalPath(dir);
     if (!existsSync(journalPath)) return;
     this._deleteRewindJournal(this._readRewindJournal(journalPath));
   }
@@ -381,16 +387,25 @@ export class RewindEngine {
     const entry = this.deps.getLog().find(e => e.id === entryId);
     if (!entry) return;
     const meta = entry.meta as Record<string, unknown>;
-    const indices = (meta.bashMutationRevertedIndices as number[]) ?? [];
+    const indices = [...((meta.bashMutationRevertedIndices as number[]) ?? [])];
     if (!indices.includes(bashEntryIndex)) indices.push(bashEntryIndex);
-    meta.bashMutationRevertedIndices = indices;
 
     // 若所有条目都已回退，同时设置遗留标志
     const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
     const bm = toolMeta?.bashMutation as BashMutation | undefined;
-    if (bm && indices.length >= bm.entries.length) {
-      meta.bashMutationReverted = true;
-    }
+    const allReverted = Boolean(bm && indices.length >= bm.entries.length);
+    this.deps.patchFlags([entryId], {
+      bashMutationRevertedIndices: indices,
+      ...(allReverted ? { bashMutationReverted: true } : {}),
+    });
+  }
+
+  /** 读取条目 meta；已归档条目用归档值兜底，运行时标记（已回退等）优先。 */
+  private _entryMeta(entry: LogEntry): Record<string, unknown> {
+    const live = entry.meta as Record<string, unknown>;
+    const archived = this.deps.getArchivedMeta?.(entry.id);
+    if (!archived) return live;
+    return Object.keys(live).length > 0 ? { ...archived, ...live } : archived;
   }
 
   /** 收集 fromTurnIndex 之后所有未回退的文件 mutations。 */
@@ -403,7 +418,7 @@ export class RewindEngine {
       const entry = log[li]!;
       if (entry.turnIndex < fromTurnIndex) continue;
       if (entry.type !== "tool_result" || entry.discarded) continue;
-      const meta = entry.meta as Record<string, unknown>;
+      const meta = this._entryMeta(entry);
       if (meta.fileMutationReverted) continue;
       const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
       const fm = toolMeta?.fileMutation as FileMutation | undefined;
@@ -423,7 +438,7 @@ export class RewindEngine {
       const entry = log[li]!;
       if (entry.turnIndex < fromTurnIndex) continue;
       if (entry.type !== "tool_result" || entry.discarded) continue;
-      const meta = entry.meta as Record<string, unknown>;
+      const meta = this._entryMeta(entry);
       if (meta.bashMutationReverted) continue;
       const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
       const bm = toolMeta?.bashMutation as BashMutation | undefined;
@@ -576,24 +591,21 @@ export class RewindEngine {
   private _isMutationFileCreation(entryId: string): boolean {
     const entry = this.deps.getLog().find(e => e.id === entryId);
     if (!entry) return false;
-    const meta = entry.meta as Record<string, unknown>;
+    const meta = this._entryMeta(entry);
     const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
     const fm = toolMeta?.fileMutation as FileMutation | undefined;
     return fm?.kind === "created";
   }
 
   private _markMutationReverted(entryId: string): void {
-    const entry = this.deps.getLog().find(e => e.id === entryId);
-    if (entry) {
-      (entry.meta as Record<string, unknown>).fileMutationReverted = true;
-    }
+    this.deps.patchFlags([entryId], { fileMutationReverted: true });
   }
 
   private _getRewindJournalPath(): string {
     const dir = this.deps.getArtifactsDir();
     if (!dir) throw new Error("Session artifacts are unavailable; refusing an unjournaled rewind.");
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    return join(dir, "rewind-journal.json");
+    return rewindJournalPath(dir);
   }
 
   /** 为文件和 shell 回退将要触碰的路径建立崩溃恢复快照。 */
@@ -603,7 +615,7 @@ export class RewindEngine {
       throw new Error("A previous rewind journal still needs recovery; resume the session before retrying.");
     }
 
-    const backupDir = `${journalPath}.data-${randomUUID()}`;
+    const backupDir = rewindJournalBackupDir(journalPath, randomUUID());
     const journal: RewindJournal = {
       version: 1,
       filePath: journalPath,
@@ -705,7 +717,7 @@ export class RewindEngine {
     const backupDir = resolve(raw.backupDir);
     if (
       dirname(backupDir) !== dirname(resolve(path)) ||
-      !basename(backupDir).startsWith(`${basename(path)}.data-`) ||
+      !isRewindJournalBackupName(basename(backupDir)) ||
       !raw.preimages.every((image) => this._isValidJournalPreimage(image, backupDir)) ||
       !raw.applied.every((item) => this._isValidJournalMutation(item)) ||
       !raw.pending.every((item) => this._isValidJournalMutation(item))
@@ -803,15 +815,16 @@ export class RewindEngine {
       if (!entry) continue;
       const meta = entry.meta as Record<string, unknown>;
       if (mutation.bashEntryIndex === undefined) {
-        delete meta.fileMutationReverted;
+        this.deps.patchFlags([entry.id], { fileMutationReverted: false });
         continue;
       }
       const indices = Array.isArray(meta.bashMutationRevertedIndices)
-        ? (meta.bashMutationRevertedIndices as unknown[]).filter((value) => value !== mutation.bashEntryIndex)
+        ? (meta.bashMutationRevertedIndices as number[]).filter((value) => value !== mutation.bashEntryIndex)
         : [];
-      if (indices.length > 0) meta.bashMutationRevertedIndices = indices;
-      else delete meta.bashMutationRevertedIndices;
-      delete meta.bashMutationReverted;
+      this.deps.patchFlags([entry.id], {
+        bashMutationRevertedIndices: indices,
+        bashMutationReverted: false,
+      });
     }
   }
 

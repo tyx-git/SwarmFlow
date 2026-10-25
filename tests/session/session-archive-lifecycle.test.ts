@@ -41,7 +41,8 @@ describe("rewind across a compact marker", () => {
       const originals = captureContents(log, start, end);
       expect(originals.size).toBeGreaterThan(0);
 
-      archiveWindow(sessionDir, 0, log, start, end);
+      const archivedIds = archiveWindow(sessionDir, 0, log, start, end);
+      h.internals._logStore.archiveEntries(archivedIds);
       for (const id of originals.keys()) {
         const entry = log.find((item) => item.id === id)!;
         expect(entry.content).toBeNull();

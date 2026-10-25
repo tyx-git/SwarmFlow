@@ -131,7 +131,7 @@ describe("child approval routing", () => {
       expect(handle.lastOutcome).toBe("none");
       expect(h.session.log.some((e) => e.type === "agent_result")).toBe(false);
       // The blocked child was persisted (real save, not a mock call count).
-      expect(existsSync(join(handle.sessionDir, "log.json"))).toBe(true);
+      expect(existsSync(join(handle.sessionDir, "log.jsonl"))).toBe(true);
     } finally {
       h.dispose();
     }

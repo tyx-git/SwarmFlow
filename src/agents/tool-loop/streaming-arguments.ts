@@ -70,6 +70,8 @@ export interface PendingToolCallState {
   streamLanguage?: string;
   streamMode?: StreamMode;
   contextId?: string;
+  /** 上次解析/同步流式参数的时间；用于把每 chunk 的重建压到 ~100ms 一次。 */
+  lastPartialParseAt?: number;
 }
 
 interface ParsedPartialField {

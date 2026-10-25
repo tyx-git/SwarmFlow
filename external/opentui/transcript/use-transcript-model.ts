@@ -8,6 +8,9 @@ import type { Session as TuiSession } from "../../../src/ui/contracts.js";
 import { reconcileEntries } from "./reconcile.js";
 import type { ReconciledConversationEntry } from "./types.js";
 
+/** 流式通知合并窗口：每个 chunk 都全量投影整份日志太贵。 */
+const TRANSCRIPT_SYNC_COALESCE_MS = 50;
+
 export interface ActiveTranscriptSource {
   sourceKey: string;
   logRevision: number;
@@ -106,13 +109,22 @@ export function useTranscriptModel(
     };
   }, [session]);
 
+  const pendingSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleSync = useCallback(() => {
+    if (pendingSyncRef.current) return;
+    pendingSyncRef.current = setTimeout(() => {
+      pendingSyncRef.current = null;
+      syncTranscript();
+    }, TRANSCRIPT_SYNC_COALESCE_MS);
+  }, [syncTranscript]);
+
   useEffect(() => {
     syncTranscript();
   }, [childSessions, selectedChildId, syncTranscript]);
 
   useEffect(() => {
     const unsubscribe = typeof session.subscribeLog === "function"
-      ? session.subscribeLog(syncTranscript)
+      ? session.subscribeLog(scheduleSync)
       : undefined;
     // subscribeLog is the primary signal; the poller is a fallback for state
     // that changes without a log bump. Idle sessions don't need it hot.
@@ -120,8 +132,12 @@ export function useTranscriptModel(
     return () => {
       if (unsubscribe) unsubscribe();
       clearInterval(poller);
+      if (pendingSyncRef.current) {
+        clearTimeout(pendingSyncRef.current);
+        pendingSyncRef.current = null;
+      }
     };
-  }, [session, syncTranscript, active]);
+  }, [session, scheduleSync, syncTranscript, active]);
 
   return items;
 }

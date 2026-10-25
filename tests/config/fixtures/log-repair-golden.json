@@ -1,0 +1,726 @@
+{
+  "fixtures": [
+    {
+      "name": "own-action",
+      "input": [
+        {
+          "id": "r-own",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-own",
+          "apiRole": null,
+          "content": "think-r-own",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-own",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-own",
+          "apiRole": "assistant",
+          "content": "content-a-own",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-own",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-own",
+            "apiRole": null,
+            "content": "think-r-own",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-own",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-own",
+            "apiRole": "assistant",
+            "content": "content-a-own",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": false,
+        "warnings": []
+      }
+    },
+    {
+      "name": "restamp-single",
+      "input": [
+        {
+          "id": "r-single",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-single",
+          "apiRole": null,
+          "content": "think-r-single",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-single",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-single",
+          "apiRole": "assistant",
+          "content": "content-a-single",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-single",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-single",
+            "apiRole": null,
+            "content": "think-r-single",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-single",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-single",
+            "apiRole": "assistant",
+            "content": "content-a-single",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": true,
+        "warnings": [
+          "Re-stamped orphaned reasoning r-single turnIndex 9 →1 (round 1; split by mid-activation turn drift)."
+        ]
+      }
+    },
+    {
+      "name": "restamp-discarded-own",
+      "input": [
+        {
+          "id": "r-disc",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-disc",
+          "apiRole": null,
+          "content": "think-r-disc",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-disc",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-disc",
+          "apiRole": "assistant",
+          "content": "content-a-disc",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1,
+          "discarded": true
+        },
+        {
+          "id": "a-live",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-live",
+          "apiRole": "assistant",
+          "content": "content-a-live",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-disc",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-disc",
+            "apiRole": null,
+            "content": "think-r-disc",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-disc",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 9,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-disc",
+            "apiRole": "assistant",
+            "content": "content-a-disc",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1,
+            "discarded": true
+          },
+          {
+            "id": "a-live",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-live",
+            "apiRole": "assistant",
+            "content": "content-a-live",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": true,
+        "warnings": [
+          "Re-stamped orphaned reasoning r-disc turnIndex 9 →1 (round 1; split by mid-activation turn drift)."
+        ]
+      }
+    },
+    {
+      "name": "two-other-turns",
+      "input": [
+        {
+          "id": "r-two",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-two",
+          "apiRole": null,
+          "content": "think-r-two",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-t1",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-t1",
+          "apiRole": "assistant",
+          "content": "content-a-t1",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-t2",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 2,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-t2",
+          "apiRole": "assistant",
+          "content": "content-a-t2",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-two",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 9,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-two",
+            "apiRole": null,
+            "content": "think-r-two",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-t1",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-t1",
+            "apiRole": "assistant",
+            "content": "content-a-t1",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-t2",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 2,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-t2",
+            "apiRole": "assistant",
+            "content": "content-a-t2",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": false,
+        "warnings": []
+      }
+    },
+    {
+      "name": "no-action",
+      "input": [
+        {
+          "id": "r-none",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-none",
+          "apiRole": null,
+          "content": "think-r-none",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-none",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 9,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-none",
+            "apiRole": null,
+            "content": "think-r-none",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": false,
+        "warnings": []
+      }
+    },
+    {
+      "name": "multiple-reasoning-same-round",
+      "input": [
+        {
+          "id": "r-m1",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-m1",
+          "apiRole": null,
+          "content": "think-r-m1",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "r-m2",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 8,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-m2",
+          "apiRole": null,
+          "content": "think-r-m2",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-m",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-m",
+          "apiRole": "assistant",
+          "content": "content-a-m",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-m1",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-m1",
+            "apiRole": null,
+            "content": "think-r-m1",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "r-m2",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-m2",
+            "apiRole": null,
+            "content": "think-r-m2",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-m",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-m",
+            "apiRole": "assistant",
+            "content": "content-a-m",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": true,
+        "warnings": [
+          "Re-stamped orphaned reasoning r-m1 turnIndex 9 →1 (round 1; split by mid-activation turn drift).",
+          "Re-stamped orphaned reasoning r-m2 turnIndex 8 →1 (round 1; split by mid-activation turn drift)."
+        ]
+      }
+    },
+    {
+      "name": "action-round-undefined",
+      "input": [
+        {
+          "id": "r-ua",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-ua",
+          "apiRole": null,
+          "content": "think-r-ua",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        },
+        {
+          "id": "a-ua",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-ua",
+          "apiRole": "assistant",
+          "content": "content-a-ua",
+          "archived": false,
+          "meta": {}
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-ua",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 9,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-ua",
+            "apiRole": null,
+            "content": "think-r-ua",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          },
+          {
+            "id": "a-ua",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-ua",
+            "apiRole": "assistant",
+            "content": "content-a-ua",
+            "archived": false,
+            "meta": {}
+          }
+        ],
+        "repaired": false,
+        "warnings": []
+      }
+    },
+    {
+      "name": "reasoning-round-undefined",
+      "input": [
+        {
+          "id": "r-nr",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-nr",
+          "apiRole": null,
+          "content": "think-r-nr",
+          "archived": false,
+          "meta": {}
+        },
+        {
+          "id": "a-nr",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-nr",
+          "apiRole": "assistant",
+          "content": "content-a-nr",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 1
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-nr",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 9,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-nr",
+            "apiRole": null,
+            "content": "think-r-nr",
+            "archived": false,
+            "meta": {}
+          },
+          {
+            "id": "a-nr",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-nr",
+            "apiRole": "assistant",
+            "content": "content-a-nr",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 1
+          }
+        ],
+        "repaired": false,
+        "warnings": []
+      }
+    },
+    {
+      "name": "mixed",
+      "input": [
+        {
+          "id": "r-x1",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-x1",
+          "apiRole": null,
+          "content": "think-r-x1",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 3
+        },
+        {
+          "id": "a-x1",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 1,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-x1",
+          "apiRole": "assistant",
+          "content": "content-a-x1",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 3
+        },
+        {
+          "id": "r-x2",
+          "type": "reasoning",
+          "timestamp": 1792862938375,
+          "turnIndex": 9,
+          "tuiVisible": true,
+          "displayKind": "reasoning",
+          "display": "think-r-x2",
+          "apiRole": null,
+          "content": "think-r-x2",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 4
+        },
+        {
+          "id": "a-x2",
+          "type": "assistant_text",
+          "timestamp": 1792862938375,
+          "turnIndex": 2,
+          "tuiVisible": true,
+          "displayKind": "assistant",
+          "display": "display-a-x2",
+          "apiRole": "assistant",
+          "content": "content-a-x2",
+          "archived": false,
+          "meta": {},
+          "roundIndex": 4
+        }
+      ],
+      "output": {
+        "entries": [
+          {
+            "id": "r-x1",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-x1",
+            "apiRole": null,
+            "content": "think-r-x1",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 3
+          },
+          {
+            "id": "a-x1",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 1,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-x1",
+            "apiRole": "assistant",
+            "content": "content-a-x1",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 3
+          },
+          {
+            "id": "r-x2",
+            "type": "reasoning",
+            "timestamp": 1792862938375,
+            "turnIndex": 2,
+            "tuiVisible": true,
+            "displayKind": "reasoning",
+            "display": "think-r-x2",
+            "apiRole": null,
+            "content": "think-r-x2",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 4
+          },
+          {
+            "id": "a-x2",
+            "type": "assistant_text",
+            "timestamp": 1792862938375,
+            "turnIndex": 2,
+            "tuiVisible": true,
+            "displayKind": "assistant",
+            "display": "display-a-x2",
+            "apiRole": "assistant",
+            "content": "content-a-x2",
+            "archived": false,
+            "meta": {},
+            "roundIndex": 4
+          }
+        ],
+        "repaired": true,
+        "warnings": [
+          "Re-stamped orphaned reasoning r-x2 turnIndex 9 →2 (round 4; split by mid-activation turn drift)."
+        ]
+      }
+    }
+  ]
+}

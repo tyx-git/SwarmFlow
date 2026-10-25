@@ -54,6 +54,11 @@ export class LogIdAllocator {
    */
   restoreFrom(entries: LogEntry[]): void {
     this._counters.clear();
+    this.mergeFrom(entries);
+  }
+
+  /** 与 restoreFrom 相同但不先清零：用于把"窗口内最大值"合并到持久化计数器之上。 */
+  mergeFrom(entries: readonly LogEntry[]): void {
     for (const entry of entries) {
       const dashIdx = entry.id.lastIndexOf("-");
       if (dashIdx === -1) continue;
@@ -64,6 +69,22 @@ export class LogIdAllocator {
         if (num > current) {
           this._counters.set(prefix, num);
         }
+      }
+    }
+  }
+
+  /** 前缀 → 已用最大序号；写入 meta.json，供有界恢复保持追加安全。 */
+  snapshotCounters(): Record<string, number> {
+    return Object.fromEntries(this._counters);
+  }
+
+  /** 从 meta.json 恢复计数器；只接受非负整数，且只向上合并。 */
+  restoreCounters(counters: Record<string, number> | undefined): void {
+    if (!counters) return;
+    for (const [prefix, count] of Object.entries(counters)) {
+      if (!Number.isInteger(count) || count < 0) continue;
+      if (count > (this._counters.get(prefix) ?? 0)) {
+        this._counters.set(prefix, count);
       }
     }
   }

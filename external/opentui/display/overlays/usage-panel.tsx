@@ -32,6 +32,8 @@ export interface UsageStatsData {
   cumulativeUncached: number;
   cumulativeOutput: number;
   sessionCount: number;
+  /** 没有 meta.tokens 的会话（只提示，不整读日志）。 */
+  sessionsWithoutTokens?: string[];
 }
 
 function cacheHitRate(data: UsageData): number {
@@ -102,6 +104,14 @@ function StatsBody({ data, colors }: { data: UsageStatsData; colors: DisplayThem
   return (
     <box flexDirection="column">
       <MetricRow label="Sessions" value={String(data.sessionCount)} fg={colors.text} dim={colors.dim} />
+      {data.sessionsWithoutTokens && data.sessionsWithoutTokens.length > 0 ? (
+        <MetricRow
+          label="Untracked"
+          value={String(data.sessionsWithoutTokens.length)}
+          fg={colors.dim}
+          dim={colors.dim}
+        />
+      ) : null}
       <MetricRow label="Total input" value={formatMetricNumber(data.cumulativeInput)} fg={colors.text} dim={colors.dim} />
       <MetricRow label="Cached" value={formatMetricNumber(data.cumulativeCacheRead)} pct={formatSharePct(data.cumulativeCacheRead, data.cumulativeInput)} fg={colors.text} dim={colors.dim} indent />
       <MetricRow label="Uncached" value={formatMetricNumber(data.cumulativeUncached)} pct={formatSharePct(data.cumulativeUncached, data.cumulativeInput)} fg={colors.text} dim={colors.dim} indent />

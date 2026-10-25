@@ -28,6 +28,8 @@ export interface UsageStats {
   systemPromptTotal: number;
   /** Per-section breakdown of systemPromptTotal (ratio-scaled estimates). */
   systemPromptBreakdown: ContextBreakdown;
+  firstInput: number;
+  firstUserMessageTokens: number;
 }
 
 /** Per-section token estimates for the context breakdown. */
@@ -53,6 +55,23 @@ export interface TokenUsageAggregate {
  * 累加日志里每个 token_update 条目，并记录第一条 user 消息的 token 数。
  * 首个非零 input 视为"首轮调用"，用于反推固定 system prompt 的体积。
  */
+export interface TokenContribution {
+  input: number;
+  output: number;
+  cacheRead: number;
+}
+
+/** 单个 token_update 条目的计费贡献；无效/零输入返回 null。 */
+export function tokenUpdateContribution(entry: LogEntry): TokenContribution | null {
+  if (entry.type !== "token_update") return null;
+  const meta = entry.meta as Record<string, unknown>;
+  const input = meta["inputTokens"] as number;
+  if (!Number.isFinite(input) || input <= 0) return null;
+  const total = (meta["totalTokens"] as number | undefined) ?? input;
+  const cacheRead = (meta["cacheReadTokens"] as number | undefined) ?? 0;
+  return { input, output: Math.max(0, total - input), cacheRead };
+}
+
 export function aggregateTokenUsage(log: readonly LogEntry[]): TokenUsageAggregate {
   let cumulativeInput = 0;
   let cumulativeOutput = 0;
@@ -64,16 +83,13 @@ export function aggregateTokenUsage(log: readonly LogEntry[]): TokenUsageAggrega
 
   for (const entry of log) {
     if (entry.type === "token_update") {
-      const meta = entry.meta as Record<string, unknown>;
-      const input = meta["inputTokens"] as number;
-      if (!Number.isFinite(input) || input <= 0) continue;
-      const total = (meta["totalTokens"] as number | undefined) ?? input;
-      const cacheRead = (meta["cacheReadTokens"] as number | undefined) ?? 0;
-      cumulativeInput += input;
-      cumulativeOutput += Math.max(0, total - input);
-      cumulativeCacheRead += cacheRead;
-      cumulativeUncached += Math.max(0, input - cacheRead);
-      if (firstInput === 0) firstInput = input;
+      const contribution = tokenUpdateContribution(entry);
+      if (!contribution) continue;
+      cumulativeInput += contribution.input;
+      cumulativeOutput += contribution.output;
+      cumulativeCacheRead += contribution.cacheRead;
+      cumulativeUncached += Math.max(0, contribution.input - contribution.cacheRead);
+      if (firstInput === 0) firstInput = contribution.input;
     } else if (
       !sawFirstUserMessage &&
       entry.type === "user_message" &&

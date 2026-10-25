@@ -10,6 +10,20 @@ function resolveSessionTimezone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
+/**
+ * 两个 ISO 时间戳是否落在同一分钟（UTC 绝对时间）。
+ *
+ * 伴生文件节流用：同一分钟内只需要保留首次的 last_active_at。
+ * 无法解析或缺失时返回 false，调用方按"已变化"处理。
+ */
+export function isSameUtcMinute(a: unknown, b: unknown): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const left = Date.parse(a);
+  const right = Date.parse(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  return Math.floor(left / 60_000) === Math.floor(right / 60_000);
+}
+
 /** 将 Date 对象格式化为带本地时区偏移的 ISO 字符串 */
 function formatLocalIso(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");

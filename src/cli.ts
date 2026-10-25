@@ -340,8 +340,8 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       }
     });
 
-  // sessions：列出项目保存的会话
-  program
+  // sessions：列出项目保存的会话；archive/restore 做显式冷归档
+  const sessionsCmd = program
     .command("sessions")
     .description("List saved sessions for a project directory")
     .option("--json", "Output as JSON")
@@ -350,7 +350,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       ranSubcommand = true;
       const { SessionStore } = await import("./config/session-store.js");
       const projectPath = opts.workDir ? resolve(opts.workDir) : process.cwd();
-      const store = new SessionStore({ projectPath });
+      const store = new SessionStore({ projectPath, baseDir: homeDir });
       const sessions = store.listSessions();
       if (opts.json) {
         process.stdout.write(JSON.stringify(sessions) + "\n");
@@ -358,6 +358,99 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
         for (const s of sessions) {
           console.log(`${s.sessionId}  ${s.title || s.summary || "(untitled)"}  (${s.turns} turns)`);
         }
+      }
+    });
+
+  sessionsCmd
+    .command("archive <id>")
+    .description("Move a session to archived_sessions/ and gzip its log (inherits --work-dir)")
+    .action(async (id: string, _opts: unknown, command: Command) => {
+      ranSubcommand = true;
+      const { SessionStore } = await import("./config/session-store.js");
+      const workDir = command.parent?.opts<{ workDir?: string }>().workDir;
+      const projectPath = workDir ? resolve(workDir) : process.cwd();
+      const store = new SessionStore({ projectPath, baseDir: homeDir });
+      const result = store.archiveSession(id);
+      if (!result.ok) {
+        console.log(`归档失败：${result.error}`);
+        return;
+      }
+      const ratio = result.logBytes > 0 ? (result.compressedBytes / result.logBytes).toFixed(2) : "-";
+      console.log(`已归档 ${id} -> ${result.to}（日志 ${result.logBytes} B -> ${result.compressedBytes} B，${ratio}×）`);
+    });
+
+  sessionsCmd
+    .command("restore <id>")
+    .description("Restore an archived session back under projects/ (inherits --work-dir)")
+    .action(async (id: string, _opts: unknown, command: Command) => {
+      ranSubcommand = true;
+      const { SessionStore } = await import("./config/session-store.js");
+      const workDir = command.parent?.opts<{ workDir?: string }>().workDir;
+      const projectPath = workDir ? resolve(workDir) : process.cwd();
+      const store = new SessionStore({ projectPath, baseDir: homeDir });
+      const result = store.restoreSession(id);
+      if (!result.ok) {
+        console.log(`恢复失败：${result.error}`);
+        return;
+      }
+      console.log(`已恢复 ${id} -> ${result.to}`);
+    });
+
+  sessionsCmd
+    .command("prune <id>")
+    .description("Prune archived prefix before the last live compact marker (inherits --work-dir)")
+    .option("--dry-run", "Only report what would be removed")
+    .option("--max-log-bytes <bytes>", "Only prune when log.jsonl exceeds this size")
+    .action(async (id: string, opts: { dryRun?: boolean; maxLogBytes?: string }, command: Command) => {
+      ranSubcommand = true;
+      const { SessionStore } = await import("./config/session-store.js");
+      const { pruneSessionDirectory } = await import("./session/session-prune.js");
+      const { createUiText, getUiLanguage } = await import("./ui/text.js");
+      const workDir = command.parent?.opts<{ workDir?: string }>().workDir;
+      const projectPath = workDir ? resolve(workDir) : process.cwd();
+      const store = new SessionStore({ projectPath, baseDir: homeDir });
+      const sessionDir = store.resolveSessionDir(id);
+      if (!sessionDir) {
+        console.log(`找不到会话：${id}`);
+        return;
+      }
+      if (store.sessionDir && resolve(store.sessionDir) === resolve(sessionDir)) {
+        console.log("不能清理当前活动会话；先退出该会话。");
+        return;
+      }
+      const maxLogBytes = opts.maxLogBytes === undefined ? undefined : Number(opts.maxLogBytes);
+      if (maxLogBytes !== undefined && (!Number.isInteger(maxLogBytes) || maxLogBytes <= 0)) {
+        console.log("--max-log-bytes 必须是正整数。");
+        return;
+      }
+      const lock = store.acquireSessionLock(sessionDir);
+      if (!lock.ok) {
+        console.log(createUiText(getUiLanguage(homeDir)).get(["Error", "sessionBusy"]));
+        return;
+      }
+      try {
+        const result = pruneSessionDirectory(sessionDir, { dryRun: opts.dryRun === true, maxLogBytes });
+        if (!result.ok) {
+          console.log(`清理失败：${result.error}`);
+          return;
+        }
+        if (!result.pruned) {
+          const reason = result.reason === "no-live-marker"
+            ? "没有 live compact_marker，无法安全清理"
+            : result.reason === "below-threshold"
+              ? "日志未超过阈值，未清理"
+              : "没有可清理的已归档前缀";
+          console.log(`${reason}${result.dryRun ? "（dry-run）" : ""}`);
+          return;
+        }
+        const turns = result.droppedUserTurns.length > 0 ? result.droppedUserTurns.join(", ") : "无";
+        if (result.dryRun) {
+          console.log(`dry-run：预计清理 ${result.droppedEntries} 条，保留 ${result.entriesAfter} 条；丢失回退 turn: ${turns}；当前日志 ${result.logBytesBefore} B。`);
+        } else {
+          console.log(`已清理 ${result.droppedEntries} 条（日志 ${result.logBytesBefore} B -> ${result.logBytesAfter} B，保留 ${result.entriesAfter} 条）；丢失回退 turn: ${turns}；archive ${result.archiveBytes} B / artifacts ${result.artifactsBytes} B / sealed ${result.sealedBytes} B（未删除）。`);
+        }
+      } finally {
+        store.releaseSessionLock(sessionDir);
       }
     });
 

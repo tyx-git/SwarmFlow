@@ -18,7 +18,7 @@ import { loadSubagentSettings, saveSubagentSettings, subagentSettingsPath, type 
 export interface ModelSettingsHost {
   primaryAgent: Agent;
   config: Config;
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   currentModelConfigName: string;
   _thinkingLevel: string;
   _preferredThinkingLevel: string;

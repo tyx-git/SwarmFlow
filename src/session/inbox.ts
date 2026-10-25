@@ -9,12 +9,14 @@ import type { LogEntry } from "../context/entry/types.js";
 import { createUserMessage as createUserMessageEntry } from "../context/entry/factories.js";
 import type { TaskStore } from "../tasks/store.js";
 import type { DeliverMessageResult, MessageEnvelope } from "./tree-types.js";
+import type { SessionLog } from "./log.js";
 
 /** 投递与排空所需的会话侧成员（B 策略下由 Session 公开）。 */
 export interface InboxHost {
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _inbox: MessageEnvelope[];
   _log: LogEntry[];
+  _logStore: SessionLog;
   _agentState: string;
   _compactInProgress: boolean;
   _pendingTurnState: unknown;
@@ -169,11 +171,10 @@ export function restoreQueuedUserInput(host: InboxHost): string | null {
   const item = queued[0];
   if (!item) return null;
   host._inbox.splice(item.inboxIndex, 1);
-  item.inputEntry.discarded = true;
+  host._logStore.patchFlags([item.inputEntry.id], { discarded: true });
   if (host._turnCount === item.inputEntry.turnIndex) {
     host._turnCount = host._maxLiveInputIndex();
   }
-  host._touchLog();
   host.onSaveRequest?.();
   return item.message.content;
 }

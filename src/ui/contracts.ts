@@ -127,8 +127,8 @@ export interface Session extends SessionLike {
   cumulativeUncachedTokens: number;
   systemPromptTokens: number;
   contextBreakdown: { systemPrompt: number; tools: number; agentsMd: number; skills: number; messages: number };
-  computeGlobalTokenStats?(): { cumulativeInput: number; cumulativeOutput: number; cumulativeCacheRead: number; cumulativeUncached: number; sessionCount: number };
-  onSaveRequest?: () => void;
+  computeGlobalTokenStats?(): { cumulativeInput: number; cumulativeOutput: number; cumulativeCacheRead: number; cumulativeUncached: number; sessionCount: number; sessionsWithoutTokens: string[] };
+  onSaveRequest?: () => boolean;
   setStore(store: SessionStore | null): void;
   getPendingAsk(): PendingAskUi | null;
   resolveAgentQuestionAsk?(askId: string, decision: AgentQuestionDecision): void;
@@ -164,6 +164,13 @@ export interface Session extends SessionLike {
   interruptChildSession?(childId: string): { accepted: boolean; reason?: string };
   restoreFromLog?(meta: LogSessionMeta, entries: LogEntry[], idAllocator: LogIdAllocator): void;
   getLogForPersistence?(): { meta: LogSessionMeta; entries: readonly LogEntry[] };
+  persistToDisk?(): boolean;
+  /** R-3：是否还有更早的历史可加载。 */
+  hasEarlierHistory?(): boolean;
+  /** R-3：加载一页更早的历史并合并到展示日志。 */
+  loadEarlierHistoryPage?(maxEntries?: number): { loaded: number; hasMore: boolean; capped?: boolean };
+  /** R-3：页缓存是否已达 8 MiB 上限。 */
+  isHistoryCacheCapped?(): boolean;
   appendUserInputDisplay?(text: string): void;
   reloadSkills?(): { added: string[]; removed: string[]; total: number };
   /** 当前会话的任务清单（内存权威，磁盘为 write-through 副本）。 */

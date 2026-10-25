@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { saveLog, loadLog } from "../../src/config/log-serialization.js";
 import { validateAndRepairLog } from "../../src/config/log-repair.js";
 import { archiveWindow, loadArchive, restoreArchiveToEntries } from "../../src/config/archive.js";
+import { SessionLog } from "../../src/session/log.js";
 import { createLogSessionMeta, type LogSessionMeta } from "../../src/config/session-meta.js";
 import { createSystemPrompt, createUserMessage, createAssistantText, createReasoning, createToolCall, createToolResult, createCompactMarker, createCompactContext, createAskRequest, createAskResolution } from "../../src/context/entry/factories.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
@@ -76,7 +77,7 @@ describe("saveLog + loadLog", () => {
     saveLog(testDir, meta, sampleLog());
 
     const loaded = loadLog(testDir);
-    expect(loaded.meta.version).toBe(2);
+    expect(loaded.meta.version).toBe(4);
     expect(loaded.meta.projectPath).toBe("/test/project");
     expect(loaded.meta.modelConfigName).toBe("test-model");
     expect(loaded.meta.modelProvider).toBe("openai");
@@ -351,7 +352,10 @@ describe("archiveWindow / loadArchive", () => {
     ];
 
     // Archive window 0 (entries 0-2, before the compact marker)
-    archiveWindow(testDir, 0, entries, 0, 2);
+    const ids = archiveWindow(testDir, 0, entries, 0, 2);
+    const gateway = new SessionLog();
+    gateway.replace(entries);
+    gateway.archiveEntries(ids);
 
     // Entries should have content nulled
     expect(entries[0].content).toBeNull();

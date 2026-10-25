@@ -57,6 +57,11 @@ import {
 // 工具执行器类型
 // ------------------------------------------------------------------
 
+/** 流式参数的解析/TUI 同步间隔；每 chunk 重建是平方级分配。 */
+const PARTIAL_STREAM_UPDATE_INTERVAL_MS = 100;
+/** 参数小于该阈值时逐 chunk 更新（成本可忽略，保持小工具的即时预览）。 */
+const PARTIAL_STREAM_ALWAYS_UPDATE_BYTES = 4 * 1024;
+
 
 // ------------------------------------------------------------------
 // 工具摘要 / 显示帮助函数
@@ -557,6 +562,19 @@ export async function asyncRunToolLoop(
     ): void => {
       const pending = ensurePendingToolCall(callId, toolName);
       pending.rawArguments = rawArguments;
+      // 每个 chunk 都重建 sections/fileModifyData 是 O(n²)：1KB chunk 流
+      // 一个 256KB 参数会重复处理约 132 倍字节。大参数按 100ms 节流；
+      // 小参数保持逐 chunk 更新（成本可忽略，交互更跟手）。
+      // closeCommittedToolCall 会无条件做一次最终解析与同步。
+      const now = Date.now();
+      if (
+        rawArguments.length >= PARTIAL_STREAM_ALWAYS_UPDATE_BYTES
+        && pending.lastPartialParseAt !== undefined
+        && now - pending.lastPartialParseAt < PARTIAL_STREAM_UPDATE_INTERVAL_MS
+      ) {
+        return;
+      }
+      pending.lastPartialParseAt = now;
       pending.completeTopLevelArgs = extractCompleteFlatArgs(parsePartialFlatObject(rawArguments));
       const streamable = buildStreamableToolCall(toolName, rawArguments);
       if (streamable) {

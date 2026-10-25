@@ -18,7 +18,7 @@ import {
 
 /** 轮次簿记所需的会话侧成员（B 策略下由 Session 公开）。 */
 export interface RoundTrackingHost {
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _log: LogEntry[];
   _logSurgeryView(): LogSurgery;
   _turnCount: number;

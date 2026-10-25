@@ -19,6 +19,7 @@ import {
 import {
   cmdCompact,
   cmdFork,
+  cmdHistory,
   cmdNew,
   cmdReload,
   cmdRename,
@@ -48,6 +49,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   registerBuiltin(registry, { name: "/new", handler: cmdNew, executionMode: "always", category: "Session" });
   registerBuiltin(registry, { name: "/rename", handler: cmdRename, executionMode: "whenBusy", category: "Session" });
   registerBuiltin(registry, { name: "/status", handler: cmdStatus, executionMode: "always", category: "Session" });
+  registerBuiltin(registry, { name: "/history", handler: cmdHistory, executionMode: "always", category: "Session" });
 
   registerBuiltin(registry, { name: "/compact", handler: cmdCompact, executionMode: "queued", category: "Context" });
   registerBuiltin(registry, { name: "/clear", handler: cmdClear, executionMode: "always", category: "Context" });

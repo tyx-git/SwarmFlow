@@ -78,7 +78,7 @@ export interface ChildSessionSpawnOpts {
   shellLogDir: string;
   promptCacheKey: string;
   onTurnOutput: (text: string) => void;
-  onSaveRequest: () => void;
+  onSaveRequest: () => boolean;
 }
 
 export interface ChildSessionManagerDeps {

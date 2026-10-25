@@ -196,26 +196,32 @@ export function validateAndRepairLog(
   // NO action sibling AND the round's real entries live under one other turn.
   {
     const ACTION_TYPES = new Set(["tool_call", "tool_result", "assistant_text", "no_reply"]);
+    // 一次预扫描：只收未丢弃、roundIndex 明确的 action；reasoning 不参与索引。
+    const actionKeys = new Set<string>();
+    const roundTurns = new Map<number, Set<number>>();
+    for (const entry of entries) {
+      if (entry.discarded || entry.roundIndex === undefined) continue;
+      if (!ACTION_TYPES.has(entry.type)) continue;
+      actionKeys.add(`${entry.turnIndex}:${entry.roundIndex}`);
+      let turns = roundTurns.get(entry.roundIndex);
+      if (!turns) {
+        turns = new Set<number>();
+        roundTurns.set(entry.roundIndex, turns);
+      }
+      turns.add(entry.turnIndex);
+    }
+
     for (const entry of entries) {
       if (entry.type !== "reasoning" || entry.discarded) continue;
       if (entry.roundIndex === undefined) continue;
 
-      // 此推理条目自己的 (turnIndex, roundIndex) 是否缺少任何操作？
-      // 如果操作兄弟条目共享完全相同的 turn+round，则它不是孤立的。
-      let hasOwnAction = false;
-      const roundTurns = new Set<number>();
-      for (const e of entries) {
-        if (e.discarded || e.roundIndex !== entry.roundIndex) continue;
-        if (!ACTION_TYPES.has(e.type)) continue;
-        if (e.turnIndex === entry.turnIndex) { hasOwnAction = true; break; }
-        roundTurns.add(e.turnIndex);
-      }
-      if (hasOwnAction) continue;
-      // 轮次的操作条目必须全部位于完全另一个 turn 下，
-      // 否则我们无法明确选择正确的 turnIndex。
-      if (roundTurns.size !== 1) continue;
+      // 自己的 (turnIndex, roundIndex) 已有 action → 不孤立。
+      if (actionKeys.has(`${entry.turnIndex}:${entry.roundIndex}`)) continue;
+      const turns = roundTurns.get(entry.roundIndex);
+      // 轮次的操作条目必须全部位于完全另一个 turn 下，否则无法明确选择。
+      if (!turns || turns.size !== 1) continue;
 
-      const targetTurn = [...roundTurns][0];
+      const targetTurn = turns.values().next().value as number;
       warnings.push(
         `Re-stamped orphaned reasoning ${entry.id} turnIndex ${entry.turnIndex} →${targetTurn} ` +
         `(round ${entry.roundIndex}; split by mid-activation turn drift).`,

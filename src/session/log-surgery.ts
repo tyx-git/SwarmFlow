@@ -32,6 +32,7 @@ import type { AskAuditRecord } from "../ask.js";
 import type { ChildSessionPhase } from "./tree-types.js";
 import type { PersistedModelSelection } from "../models/selection.js";
 import { stampProviderRoundId } from "./log.js";
+import { aggregateTokenUsage } from "./usage-accounting.js";
 
 /** 中断后不会留下部分副作用的工具。 */
 export const SAFE_INTERRUPT_TOOLS = new Set([
@@ -278,6 +279,7 @@ export function discardInterruptedRoundReasoningInLog(
   entries: readonly LogEntry[],
   fromIdx: number,
   interruptedTurnIndex: number,
+  patchFlags?: (ids: readonly string[], flags: import("../config/log-jsonl.js").EntryFlags) => void,
 ): void {
   let latestRound: number | undefined;
 
@@ -303,14 +305,24 @@ export function discardInterruptedRoundReasoningInLog(
     if (entry.type === "tool_call" && entry.apiRole === null) hasPartialToolCall = true;
   }
 
+  const ids: string[] = [];
   for (let i = fromIdx; i < entries.length; i++) {
     const entry = entries[i];
     if (entry.discarded || entry.turnIndex !== interruptedTurnIndex || entry.roundIndex !== latestRound) continue;
     if (entry.type !== "reasoning") continue;
     const reasoningComplete = (entry.meta as Record<string, unknown>)["reasoningComplete"] === true;
     if (hasPartialToolCall || (!reasoningComplete && !hasAssistantText && !hasClosedToolCall)) {
-      entry.discarded = true;
+      ids.push(entry.id);
     }
+  }
+  if (ids.length === 0) return;
+  if (patchFlags) {
+    patchFlags(ids, { discarded: true });
+    return;
+  }
+  const idSet = new Set(ids);
+  for (const entry of entries) {
+    if (idSet.has(entry.id)) entry.discarded = true;
   }
 }
 
@@ -319,7 +331,11 @@ export function discardInterruptedRoundReasoningInLog(
  * 丢弃悬空推理、完成缺失的 tool_results、
  * 注入恢复 system-message、关闭 work span 为 interrupted。
  */
-export function normalizeInterruptedTurnInLog(s: LogSurgery, message: string): void {
+export function normalizeInterruptedTurnInLog(
+  s: LogSurgery,
+  message: string,
+  patchFlags?: (ids: readonly string[], flags: import("../config/log-jsonl.js").EntryFlags) => void,
+): void {
   let turnStartIndex = -1;
   let interruptedTurnIndex = -1;
 
@@ -339,7 +355,7 @@ export function normalizeInterruptedTurnInLog(s: LogSurgery, message: string): v
   if (turnStartIndex < 0 || interruptedTurnIndex < 0) return;
   s.activeLogEntryId = null;
 
-  discardInterruptedRoundReasoningInLog(s.entries, turnStartIndex, interruptedTurnIndex);
+  discardInterruptedRoundReasoningInLog(s.entries, turnStartIndex, interruptedTurnIndex, patchFlags);
 
   const originalTurnCount = s.turnCount;
   s.turnCount = interruptedTurnIndex;
@@ -547,6 +563,10 @@ export interface RestoredSessionState {
   cacheSupported: boolean;
   signals: RestoredRuntimeSignals;
   askHistory: AskAuditRecord[];
+  /** 有界恢复的累计用量基线；null=全量恢复（从条目重算）。 */
+  usageBase: { input: number; output: number; cacheRead: number; ids: Set<string> } | null;
+  firstInput: number;
+  firstUserMessageTokens: number;
 }
 
 /**
@@ -555,7 +575,7 @@ export interface RestoredSessionState {
  * 所有可能抛出的工作（模型解析、手术）都在此处。
  */
 export function parseRestoredState(
-  deps: ParseRestoreDeps,
+  deps: ParseRestoreDeps & { bounded?: boolean },
   meta: LogSessionMeta,
   entries: LogEntry[],
   idAllocator: LogIdAllocator,
@@ -573,13 +593,25 @@ export function parseRestoredState(
   };
 
   // 从 entries 重建 usedContextIds / work count。
+  // 有界恢复只带活动窗口，标记前的 work_start 从 meta.json 补齐（取最大值，避免双计）。
   const usedContextIds = new Set<string>();
-  let workCount = 0;
+  let scannedWorkCount = 0;
   for (const e of entries) {
     const ctxId = (e.meta as Record<string, unknown>)["contextId"];
     if (ctxId) usedContextIds.add(String(ctxId));
-    if (e.type === "work_start" && !e.discarded) workCount += 1;
+    if (e.type === "work_start" && !e.discarded) scannedWorkCount += 1;
   }
+  const workCount = Math.max(scannedWorkCount, meta.workCount ?? 0);
+
+  // 有界恢复只带窗口 token_update；窗口外累计量以 meta.tokens 为基线。
+  const usageAgg = aggregateTokenUsage(entries);
+  const usageBase = deps.bounded === true && meta.tokens
+    ? { ...meta.tokens, ids: new Set(entries.filter((e) => e.type === "token_update").map((e) => e.id)) }
+    : null;
+  const firstInput = usageBase ? (meta.firstInput ?? usageAgg.firstInput) : usageAgg.firstInput;
+  const firstUserMessageTokens = usageBase
+    ? (meta.firstUserMessageTokens ?? usageAgg.firstUserMessageTokens)
+    : usageAgg.firstUserMessageTokens;
 
   // 从日志恢复最后 token 计数。只认最近一次压缩点之后的测量：
   // 压缩阶段的 token_update 记录的是压缩前的输入大小，跨过 marker 回读
@@ -602,7 +634,24 @@ export function parseRestoredState(
     }
   }
 
-  const signals = rebuildRuntimeSignalsIn(entries);
+  // 全量恢复以窗口扫描为准（元数据可能落后于最后一次追加）；只有有界恢复才用 meta 快照补缺失。
+  const scannedSignals = rebuildRuntimeSignalsIn(entries);
+  const useMetaSignals = deps.bounded === true;
+  const signals: RestoredRuntimeSignals = {
+    lifetimeToolCallCount: Math.max(scannedSignals.lifetimeToolCallCount, meta.lifetimeToolCallCount ?? 0),
+    lastToolCallSummary: useMetaSignals && meta.lastToolCallSummary !== undefined
+      ? meta.lastToolCallSummary
+      : scannedSignals.lastToolCallSummary,
+    recentSessionEvents: useMetaSignals && meta.recentSessionEvents !== undefined
+      ? [...meta.recentSessionEvents]
+      : scannedSignals.recentSessionEvents,
+    lastTurnEndStatus: useMetaSignals && meta.lastTurnEndStatus !== undefined
+      ? meta.lastTurnEndStatus
+      : scannedSignals.lastTurnEndStatus,
+    selfPhase: useMetaSignals && meta.selfPhase !== undefined
+      ? meta.selfPhase
+      : scannedSignals.selfPhase,
+  };
 
   // 在克隆数据上的纯手术状态。
   const surgery: LogSurgery = {
@@ -667,6 +716,9 @@ export function parseRestoredState(
     turnCount: meta.turnCount,
     workCount: surgery.workCount,
     compactCount: meta.compactCount,
+    usageBase,
+    firstInput,
+    firstUserMessageTokens,
     createdAt: meta.createdAt || deps.fallbackCreatedAt,
     initialModel: ((meta as unknown as Record<string, unknown>)["initialModel"] as string | undefined) || deps.describeInitialModelFallback(),
     promptCacheAffinityKey: meta.promptCacheAffinityKey,

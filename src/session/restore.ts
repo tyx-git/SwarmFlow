@@ -20,6 +20,7 @@ import {
   type ArchivedChildRecord,
   type ChildSessionLifecycle,
   type ChildSessionMetaRecord,
+  type ChildSessionPhase,
   type MessageEnvelope,
 } from "./tree-types.js";
 
@@ -49,6 +50,16 @@ export interface RestoreHost {
   _inbox: MessageEnvelope[];
   _turnCount: number;
   _compactCount: number;
+  workCount: number;
+  idCounters: Record<string, number>;
+  lifetimeToolCallCount: number;
+  lastToolCallSummary: string;
+  recentSessionEvents: readonly string[];
+  lastTurnEndStatus: "completed" | "interrupted" | "error" | null;
+  sessionPhase: ChildSessionPhase;
+  usageTotals: { input: number; output: number; cacheRead: number };
+  usageFirstInput: number;
+  usageFirstUserMessageTokens: number;
   _thinkingLevel: string;
   _currentTurnSignal: AbortSignal | null;
   _currentTurnAbortController: AbortController | null;
@@ -77,6 +88,7 @@ export function prepareRestoreFromLog(host: RestoreHost,
   meta: LogSessionMeta,
   entries: LogEntry[],
   _idAllocator: LogIdAllocator,
+  opts?: { bounded?: boolean },
 ): PreparedSessionRestore {
   if ((meta.childSessions?.length ?? 0) > 0 && !host._sessionArtifactsOverride && !host._getArtifactsDirIfAvailable()) {
     throw new Error(
@@ -89,9 +101,12 @@ export function prepareRestoreFromLog(host: RestoreHost,
   // session (see session/log-surgery.ts).
   const clonedEntries = structuredClone(entries) as LogEntry[];
   const clonedAllocator = new LogIdAllocator();
-  clonedAllocator.restoreFrom(clonedEntries);
+  // 有界恢复只带窗口条目；已截断/标记前的前缀计数从 meta.json 补。
+  clonedAllocator.restoreCounters(meta.idCounters);
+  clonedAllocator.mergeFrom(clonedEntries);
   const rootState = parseRestoredState(
     {
+      bounded: opts?.bounded === true,
       resolveModelSelection: (m) => resolvePersistedModelSelection(host, {
         modelConfigName: m.modelConfigName || undefined,
         modelProvider: m.modelProvider,
@@ -157,7 +172,7 @@ export function restoreFromLog(host: RestoreHost,
 
 /**
  * Get log data for persistence (v2).
- * Returns meta + entries suitable for saveLog().
+ * Returns meta + entries suitable for persistToDisk().
  */
 export function getLogForPersistence(host: RestoreHost): { meta: LogSessionMeta; entries: readonly LogEntry[] } {
   // Include both active and archived children in persistence meta
@@ -208,6 +223,16 @@ export function getLogForPersistence(host: RestoreHost): { meta: LogSessionMeta;
       summary: host._generateSummary(),
       childSessions: childSessionsMeta,
       inbox: host._inbox.length > 0 ? [...host._inbox] : undefined,
+      workCount: host.workCount,
+      idCounters: host.idCounters,
+      lifetimeToolCallCount: host.lifetimeToolCallCount,
+      lastToolCallSummary: host.lastToolCallSummary,
+      recentSessionEvents: [...host.recentSessionEvents],
+      lastTurnEndStatus: host.lastTurnEndStatus ?? undefined,
+      selfPhase: host.sessionPhase,
+      tokens: host.usageTotals,
+      firstInput: host.usageFirstInput,
+      firstUserMessageTokens: host.usageFirstUserMessageTokens,
     }),
     entries: host._log,
   };

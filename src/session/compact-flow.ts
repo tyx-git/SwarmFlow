@@ -9,6 +9,7 @@ import type { Agent } from "../agents/agent.js";
 import type { ToolLoopResult } from "../agents/tool-loop/types.js";
 import { createAssistantText, createCompactContext, createCompactMarker, createReasoning } from "../context/entry/factories.js";
 import { archiveWindow } from "../config/archive.js";
+import { computeCompactFoldBoundary } from "../context/projection/tui.js";
 import { appendManualInstruction, COMPACT_PROMPT_OUTPUT, COMPACT_PROMPT_TOOLCALL } from "./prompts.js";
 import { createUserMessage as createUserMessageEntry } from "../context/entry/factories.js";
 
@@ -20,14 +21,16 @@ import type { ContextManager } from "./context-manager.js";
 import type { ProgressReporter } from "../logging/progress.js";
 import type { Task } from "../tasks/types.js";
 import { type LogSurgery } from "./log-surgery.js";
+import type { SessionLog } from "./log.js";
 import type { AskRequest } from "../ask.js";
 
 /** 压缩流程所需的会话侧成员（B 策略下由 Session 公开）。 */
 export interface CompactHost {
   primaryAgent: Agent;
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _store: SessionStore | undefined;
   _log: LogEntry[];
+  _logStore: SessionLog;
   _turnCount: number;
   _compactCount: number;
   _compactInProgress: boolean;
@@ -366,14 +369,21 @@ export async function doAutoCompact(host: CompactHost,
     const archiveStartIdx = previousMarkerIdx >= 0 ? previousMarkerIdx + 1 : 1;
     const archiveEndIdx = currentMarkerIdx - 1;
     if (archiveEndIdx >= archiveStartIdx) {
-      archiveWindow(
+      const archivedIds = archiveWindow(
         sessionDir,
         host._compactCount - 1,
         host._log,
         archiveStartIdx,
         archiveEndIdx,
       );
-      // Stripping window content is TUI-projection-visible.
+      host._logStore.archiveEntries(archivedIds);
+      // 滑出 TUI 折叠边界的窗口：display/meta 也搬进归档，避免压缩后
+      // 这些大字段继续常驻。边界与 projectToTuiEntries 共用同一计算。
+      const { foldEndIdx } = computeCompactFoldBoundary(host._log);
+      if (foldEndIdx >= 0) {
+        host._logStore.stripArchivedPresentation(foldEndIdx);
+      }
+      // Stripping archived fields is TUI-projection-visible.
       host._touchLog();
     }
   }
@@ -399,9 +409,11 @@ export async function doAutoCompact(host: CompactHost,
  * 调用方必须在追加失败/中断记录之前调用。
  */
 export function discardCompactAttemptEntries(host: CompactHost, fromIndex: number): void {
+  const ids: string[] = [];
   for (let i = fromIndex; i < host._log.length; i++) {
     const entry = host._log[i];
     if (!entry || entry.discarded) continue;
-    entry.discarded = true;
+    ids.push(entry.id);
   }
+  if (ids.length > 0) host._logStore.patchFlags(ids, { discarded: true });
 }

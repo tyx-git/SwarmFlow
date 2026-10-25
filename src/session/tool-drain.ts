@@ -29,7 +29,7 @@ export interface ToolDrainHost {
   primaryAgent: Agent;
   toolGate: ToolGate;
   hookRuntime: HookRuntime;
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _projectRoot: string;
   _log: LogEntry[];
   _logStore: SessionLog;

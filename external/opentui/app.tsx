@@ -9,8 +9,11 @@ import type {
 } from "../../src/ui/contracts.js";
 import type { SessionStore } from "../../src/config/session-store.js";
 import type { ChildSessionSnapshot } from "../../src/session/tree-types.js";
+import { shouldLoadEarlierHistory, shouldLoadOnPageUp } from "./transcript/history-autoload.js";
+import { buildHistoryBanner } from "./transcript/history-banner.js";
+import { persistSessionLog } from "./autosave.js";
+import { TUI_HISTORY_PAGE_ENTRIES } from "../../src/config/log-history.js";
 import { resolveInheritedThinkingLevel } from "../../src/session/role-model-resolver.js";
-import { saveLog } from "../../src/config/log-serialization.js";
 import { persistCurrentModelSelection } from "../../src/config/settings/io.js";
 import { projectQueuedInputs } from "../../src/context/projection/tui.js";
 import { enqueueDeferredCommand, takeReadyDeferredCommand, type DeferredCommand } from "../../src/ui/deferred-command.js";
@@ -439,6 +442,7 @@ export function OpenTuiApp({
   const [activeShellDetail, setActiveShellDetail] = useState<ShellDetailUi | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const presentationEntries = usePresentationEntries({ session, selectedChildId, childSessions, processing });
+  const historyBanner = buildHistoryBanner(session, uiText, selectedChildId, TUI_HISTORY_PAGE_ENTRIES);
   const turnTimer = useTurnTimer(phase);
   const turnElapsed = turnTimer.elapsed;
   const tasks = useTasks(session);
@@ -602,6 +606,7 @@ export function OpenTuiApp({
   // currently visible scrollbox.
   const mainScrollRef = useRef<ScrollBoxRenderable>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
+  const lastConversationScrollTopRef = useRef(0);
   const inputRef = useRef<TextareaRenderable | null>(null);
   const promptSecretInputRef = useRef<InputRenderable | null>(null);
   const askInputRef = useRef<InputRenderable | null>(null);
@@ -638,6 +643,25 @@ export function OpenTuiApp({
     setShikiTheme(theme.mode);
     setSyntaxHighlightTheme(theme.mode);
   }, [theme.mode]);
+  // R-3：滚动到顶自动加载一页更早历史（边沿触发，避免停在顶部反复加载）。
+  useEffect(() => {
+    lastConversationScrollTopRef.current = 0;
+    const timer = setInterval(() => {
+      const sb = getActiveScrollBox();
+      if (!sb || sb !== mainScrollRef.current) {
+        lastConversationScrollTopRef.current = 0;
+        return;
+      }
+      const currentTop = sb.scrollTop;
+      const previousTop = lastConversationScrollTopRef.current;
+      lastConversationScrollTopRef.current = currentTop;
+      const hasEarlier = Boolean(session.hasEarlierHistory?.());
+      if (!shouldLoadEarlierHistory(previousTop, currentTop, hasEarlier)) return;
+      session.loadEarlierHistoryPage?.();
+    }, 250);
+    return () => clearInterval(timer);
+  }, [session, getActiveScrollBox]);
+
   // -- Usage poller lifecycle (Codex + Copilot) --
   // Start/stop based on current provider. The poller survives model switches
   // within the same session, but must be torn down and rebuilt when the user
@@ -702,7 +726,13 @@ export function OpenTuiApp({
     setAskInputValue("");
     setOptionNotes(new Map());
   }, [pendingAsk?.id]);
-  const autoSave = useCallback(() => {
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 立即落盘：turn 结束、退出、命令完成等明确需要持久化的时机调用。
+  const autoSave = useCallback((): boolean => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
     if (typeof session.getGlobalPreferences === "function") {
       try {
         const prefs = session.getGlobalPreferences();
@@ -720,21 +750,31 @@ export function OpenTuiApp({
         // 选择状态保存失败不应阻断会话日志保存。
       }
     }
-    if (!store || !store.sessionDir || typeof session.getLogForPersistence !== "function") return;
-    try {
-      const { meta, entries: persistedEntries } = session.getLogForPersistence();
-      if (meta.turnCount === 0) return;
-      saveLog(store.sessionDir, meta, persistedEntries as any[]);
-    } catch {
-      // ignore autosave failures in the prototype
-    }
+    return persistSessionLog(session, Boolean(store?.sessionDir));
   }, [session, store]);
+  // 检查点落盘：会话在每个 tool_result 后会触发 onSaveRequest，合并为
+  // 2 秒一次；现在每次保存只追加增量，但仍避免每个工具结果都触发一次 IO。
+  // 异常退出最多丢 2 秒。返回 false 表示本次只排队、尚未同步落盘。
+  const scheduleSave = useCallback((): boolean => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      autoSave();
+    }, 2000);
+    return false;
+  }, [autoSave]);
   useEffect(() => {
-    session.onSaveRequest = autoSave;
+    session.onSaveRequest = scheduleSave;
     return () => {
       session.onSaveRequest = undefined;
+      // 卸载/切换会话时把待写的检查点立刻补齐，别把它丢在定时器里。
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        autoSave();
+      }
     };
-  }, [session, autoSave]);
+  }, [session, scheduleSave, autoSave]);
   useEffect(() => {
     session.onMcpStatus = (statuses) => {
       const failed = statuses
@@ -2678,7 +2718,11 @@ export function OpenTuiApp({
     }
     if (event.name === "pageup") {
       const sb = getActiveScrollBox();
+      const atTop = (sb?.scrollTop ?? Number.POSITIVE_INFINITY) <= 1;
       sb?.scrollBy(-(sb.height / 2));
+      if (sb === mainScrollRef.current && shouldLoadOnPageUp(atTop, Boolean(session.hasEarlierHistory?.()))) {
+        session.loadEarlierHistoryPage?.();
+      }
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -3145,6 +3189,7 @@ export function OpenTuiApp({
           cumulativeUncached: stats.cumulativeUncached,
           cumulativeOutput: stats.cumulativeOutput,
           sessionCount: stats.sessionCount,
+          sessionsWithoutTokens: stats.sessionsWithoutTokens,
         });
       }
     }, 0);
@@ -3179,6 +3224,8 @@ export function OpenTuiApp({
       sessionName={sessionName}
       permissionMode={permissionModeState}
       presentationEntries={effectiveEntries}
+      historyBanner={historyBanner}
+      onLoadEarlierHistory={() => session.loadEarlierHistoryPage?.()}
       processing={effectiveProcessing}
       diffDisplayMode={diffDisplayMode}
       mainScrollRef={mainScrollRef}

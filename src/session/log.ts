@@ -8,6 +8,14 @@
 
 import { LogIdAllocator } from "../context/entry/id-allocator.js";
 import type { LogEntry, TurnKind } from "../context/entry/types.js";
+import {
+  collectPresentationStripIds,
+  retainArchivedMeta,
+  type ArchivedEntryRecord,
+  type ArchivedTurnInfo,
+} from "../config/archive.js";
+import { LOG_JSONL_VERSION, type EntryFlags, type JsonlRecord } from "../config/log-jsonl.js";
+import { entryToSnake } from "../config/log-codec.js";
 
 /** 为 provider-round 条目类型打 providerRoundId 标记（幂等）。 */
 export function stampProviderRoundId(entry: LogEntry): void {
@@ -26,6 +34,15 @@ export function stampProviderRoundId(entry: LogEntry): void {
 }
 
 /** 用于列出 turn 的摘要信息。 */
+type PendingLogOp =
+  | { kind: "upsert"; id: string }
+  | { kind: "patch"; ids: string[]; flags: EntryFlags; dropPresentation?: true }
+  | { kind: "truncate"; fromEntryId: string };
+
+function snapshotEntry(entry: LogEntry): string {
+  return JSON.stringify(entry);
+}
+
 export interface TurnListing {
   turnIndex: number;
   entryIndex: number;
@@ -34,6 +51,13 @@ export interface TurnListing {
   timestamp: number;
   /** 该 turn 是否在活动窗口内（最近一次 compact_marker 之后）。 */
   inActiveWindow: boolean;
+}
+
+export interface SessionLogOptions {
+  /** 是否写入追加日志（ephemeral/未完成态过滤）。 */
+  shouldPersist?: (entry: LogEntry) => boolean;
+  /** 落盘前的减重变换（截断/外置）；返回 null 表示跳过。 */
+  prepareForPersistence?: (entry: LogEntry) => LogEntry | null;
 }
 
 /**
@@ -60,6 +84,22 @@ export class SessionLog {
   private _toolCallIdIndex = new Map<string, number>();
   private _indexedUpTo = 0;
 
+  // W-1 变更网关：所有落盘变更先进入待写队列，drain 时再序列化。
+  private _pendingOps: PendingLogOp[] = [];
+  /** 已成功落盘的条目 id；用于区分创建 vs 覆盖（TUI 历史分页的顺序依据）。 */
+  private _persistedIds = new Set<string>();
+  /** 本次 peek 实际写入的 id（append 成功后由 commit 合并进 _persistedIds）。 */
+  private _peekedIds = new Set<string>();
+  private _entrySnapshots = new Map<string, string>();
+  private _guardEnabled = false;
+  private _shouldPersist?: (entry: LogEntry) => boolean;
+  private _prepareForPersistence?: (entry: LogEntry) => LogEntry | null;
+
+  constructor(opts?: SessionLogOptions) {
+    this._shouldPersist = opts?.shouldPersist;
+    this._prepareForPersistence = opts?.prepareForPersistence;
+  }
+
   /** 实时条目数组。调用方可以就地修改条目（修改后 touch()）。 */
   get entries(): LogEntry[] {
     return this._entries;
@@ -68,6 +108,13 @@ export class SessionLog {
   /** 替换后端数组（初始化、恢复时使用）。 */
   replace(entries: LogEntry[]): void {
     this._entries = entries;
+    this._pendingOps = [];
+    this._persistedIds = new Set(entries.map((entry) => entry.id));
+    this._peekedIds.clear();
+    this._entrySnapshots.clear();
+    if (this._guardEnabled) {
+      for (const entry of entries) this._entrySnapshots.set(entry.id, snapshotEntry(entry));
+    }
     this.invalidateIndexes();
   }
 
@@ -194,7 +241,269 @@ export class SessionLog {
       this.invalidateIndexes();
     }
     this._entries.push(entry);
+    if (this._guardEnabled) this._entrySnapshots.set(entry.id, snapshotEntry(entry));
+    this._queueUpsert(entry.id);
     this.touch();
+  }
+
+  private _queueUpsert(id: string): void {
+    const last = this._pendingOps[this._pendingOps.length - 1];
+    if (last?.kind === "upsert" && last.id === id) return;
+    this._pendingOps.push({ kind: "upsert", id });
+  }
+
+  private _applyFlags(entry: LogEntry, flags: EntryFlags, dropPresentation?: true): void {
+    if (flags.discarded !== undefined) {
+      if (flags.discarded) entry.discarded = true;
+      else delete entry.discarded;
+    }
+    if (flags.archived !== undefined) entry.archived = flags.archived;
+
+    const meta = entry.meta as Record<string, unknown>;
+    if (flags.fileMutationReverted !== undefined) {
+      if (flags.fileMutationReverted) meta.fileMutationReverted = true;
+      else delete meta.fileMutationReverted;
+    }
+    if (flags.bashMutationReverted !== undefined) {
+      if (flags.bashMutationReverted) meta.bashMutationReverted = true;
+      else delete meta.bashMutationReverted;
+    }
+    if (flags.bashMutationRevertedIndices !== undefined) {
+      if (flags.bashMutationRevertedIndices.length > 0) {
+        meta.bashMutationRevertedIndices = [...flags.bashMutationRevertedIndices];
+      } else {
+        delete meta.bashMutationRevertedIndices;
+      }
+    }
+
+    if (dropPresentation) {
+      entry.display = "";
+      entry.meta = retainArchivedMeta(meta);
+    }
+  }
+
+  /** 通过网关更新条目；直接改 entries 不会被持久化。 */
+  updateEntry(id: string, mutator: (entry: LogEntry) => void): void {
+    const entry = this.findEntryById(id);
+    if (!entry) return;
+    mutator(entry);
+    this._queueUpsert(id);
+    this.touch();
+  }
+
+  /** 批量翻转闭集 flags；compact_marker 一律走完整 upsert。 */
+  patchFlags(ids: readonly string[], flags: EntryFlags, opts?: { dropPresentation?: true }): void {
+    const dropPresentation = opts?.dropPresentation;
+    const hasFlags = Object.keys(flags).length > 0 || dropPresentation === true;
+    if (!hasFlags) return;
+
+    const patchIds: string[] = [];
+    for (const id of ids) {
+      const entry = this.findEntryById(id);
+      if (!entry) continue;
+      this._applyFlags(entry, flags, dropPresentation);
+      if (entry.type === "compact_marker") {
+        this._queueUpsert(id);
+      } else {
+        patchIds.push(id);
+      }
+    }
+    if (patchIds.length > 0) {
+      const op: PendingLogOp = { kind: "patch", ids: patchIds, flags: { ...flags } };
+      if (dropPresentation) op.dropPresentation = true;
+      this._pendingOps.push(op);
+    }
+    this.touch();
+  }
+
+  /** 回退：截断该条目及其之后的全部条目，并记录 truncate。 */
+  truncateFrom(entryId: string): void {
+    const index = this._entries.findIndex((entry) => entry.id === entryId);
+    if (index < 0) return;
+    const removed = this._entries.slice(index);
+    this._entries.length = index;
+    for (const entry of removed) {
+      this._entrySnapshots.delete(entry.id);
+      this._persistedIds.delete(entry.id);
+    }
+    this.invalidateIndexes();
+
+    const survivingIds = new Set(this._entries.map((entry) => entry.id));
+    this._pendingOps = this._pendingOps.flatMap((op): PendingLogOp[] => {
+      if (op.kind === "upsert") return survivingIds.has(op.id) ? [op] : [];
+      if (op.kind === "patch") {
+        const ids = op.ids.filter((id) => survivingIds.has(id));
+        return ids.length > 0 ? [{ ...op, ids }] : [];
+      }
+      return [];
+    });
+    this._pendingOps.push({ kind: "truncate", fromEntryId: entryId });
+    this.touch();
+  }
+
+  /** 归档条目：content 置空并标 archived；变更以 upsert 记录。 */
+  archiveEntries(ids: readonly string[]): void {
+    const changed: string[] = [];
+    for (const id of ids) {
+      const entry = this.findEntryById(id);
+      if (!entry) continue;
+      entry.content = null;
+      entry.archived = true;
+      changed.push(id);
+    }
+    for (const id of changed) this._queueUpsert(id);
+    if (changed.length > 0) this.touch();
+  }
+
+  /** 撤销归档：按归档记录恢复 content/display/meta，并清 archived。 */
+  restoreArchivedEntries(records: readonly ArchivedEntryRecord[]): void {
+    const recordMap = new Map(records.map((record) => [record.id, record]));
+    const changed: string[] = [];
+    for (const entry of this._entries) {
+      if (!entry.archived) continue;
+      const record = recordMap.get(entry.id);
+      if (!record) continue;
+      entry.content = record.content;
+      if (record.display !== undefined) entry.display = record.display;
+      if (record.meta !== undefined) entry.meta = record.meta;
+      entry.archived = false;
+      changed.push(entry.id);
+    }
+    for (const id of changed) this._queueUpsert(id);
+    if (changed.length > 0) this.touch();
+  }
+
+  /** 清理折叠边界前已归档条目的 display/meta（走 patch + dropPresentation）。 */
+  stripArchivedPresentation(foldEndIdx: number): number {
+    const ids = collectPresentationStripIds(this._entries, foldEndIdx);
+    if (ids.length > 0) {
+      this.patchFlags(ids, { archived: true }, { dropPresentation: true });
+    }
+    return ids.length;
+  }
+
+  private _touchedIds(): Set<string> {
+    const touched = new Set<string>();
+    for (const op of this._pendingOps) {
+      if (op.kind === "upsert") touched.add(op.id);
+      else if (op.kind === "patch") for (const id of op.ids) touched.add(id);
+    }
+    return touched;
+  }
+
+  private _prepareForDisk(entry: LogEntry): LogEntry | null {
+    if (this._shouldPersist && !this._shouldPersist(entry)) return null;
+    return this._prepareForPersistence ? this._prepareForPersistence(entry) : entry;
+  }
+
+  /** 预览待写记录（不清队列）；append 成功后再 commit。 */
+  peekPendingRecords(startSeq: number): JsonlRecord[] {
+    const records: JsonlRecord[] = [];
+    const ts = new Date().toISOString();
+    this._peekedIds.clear();
+    let seq = startSeq;
+    for (const op of this._pendingOps) {
+      if (op.kind === "upsert") {
+        const entry = this.findEntryById(op.id);
+        if (!entry) continue;
+        const prepared = this._prepareForDisk(entry);
+        if (!prepared) continue;
+        records.push({
+          v: LOG_JSONL_VERSION,
+          op: "upsert",
+          seq: seq++,
+          ts,
+          entries: [entryToSnake(prepared)],
+          ...(this._persistedIds.has(entry.id) ? { replaces: true as const } : {}),
+        });
+        this._peekedIds.add(entry.id);
+        continue;
+      }
+      if (op.kind === "patch") {
+        const ids = this._shouldPersist
+          ? op.ids.filter((id) => {
+              const entry = this.findEntryById(id);
+              return entry ? this._shouldPersist!(entry) : false;
+            })
+          : [...op.ids];
+        if (ids.length === 0) continue;
+        const flags = { ...op.flags };
+        const hasFlags = Object.keys(flags).length > 0;
+        if (!hasFlags && !op.dropPresentation) continue;
+        records.push({
+          v: LOG_JSONL_VERSION,
+          op: "patch",
+          seq: seq++,
+          ts,
+          ids,
+          ...(hasFlags ? { flags } : {}),
+          ...(op.dropPresentation ? { dropPresentation: true as const } : {}),
+        });
+        continue;
+      }
+      records.push({
+        v: LOG_JSONL_VERSION,
+        op: "truncate",
+        seq: seq++,
+        ts,
+        fromEntryId: op.fromEntryId,
+      });
+    }
+    return records;
+  }
+
+  /** 追加成功后提交：清空队列并刷新守卫快照。 */
+  commitPendingRecords(): void {
+    const touched = this._touchedIds();
+    for (const id of this._peekedIds) this._persistedIds.add(id);
+    this._peekedIds.clear();
+    this._pendingOps = [];
+    if (this._guardEnabled) {
+      for (const id of touched) {
+        const entry = this.findEntryById(id);
+        if (entry) this._entrySnapshots.set(id, snapshotEntry(entry));
+        else this._entrySnapshots.delete(id);
+      }
+    }
+  }
+
+  /** 取出并清空待写记录；seq 由调用方给定的起点连续分配。 */
+  drainPendingRecords(startSeq: number): JsonlRecord[] {
+    const records = this.peekPendingRecords(startSeq);
+    this.commitPendingRecords();
+    return records;
+  }
+
+  /** 快照写入成功后登记已落盘 id（快照里的条目都是文件中的首次出现）。 */
+  markPersisted(ids: Iterable<string>): void {
+    for (const id of ids) this._persistedIds.add(id);
+  }
+
+  /** 开发/测试守卫：显式开启后才记录快照，生产不承担额外内存。 */
+  enableDirectMutationGuard(): void {
+    this._guardEnabled = true;
+    this._entrySnapshots.clear();
+    for (const entry of this._entries) this._entrySnapshots.set(entry.id, snapshotEntry(entry));
+  }
+
+  /** 开发/测试守卫：直接改 entries 会在这里暴露。 */
+  assertNoDirectMutations(): void {
+    if (!this._guardEnabled) return;
+    const pendingIds = new Set<string>();
+    for (const op of this._pendingOps) {
+      if (op.kind === "upsert") pendingIds.add(op.id);
+      else if (op.kind === "patch") for (const id of op.ids) pendingIds.add(id);
+    }
+    for (const entry of this._entries) {
+      if (pendingIds.has(entry.id)) continue;
+      const snapshot = this._entrySnapshots.get(entry.id);
+      if (snapshot === undefined) continue;
+      if (snapshot !== snapshotEntry(entry)) {
+        throw new Error(
+          `Direct mutation detected for entry '${entry.id}'; use SessionLog gateway methods instead.`,
+        );
+      }
+    }
   }
 
   /** 最近一次 live compact_marker 之后第一个条目的索引。 */
@@ -211,8 +520,10 @@ export class SessionLog {
    * 返回日志中每个 turn 的元数据。
    * 每个条目包含 turnKind（来自 turn_start meta）和预览文本。
    * 调用方按 turnKind、活动窗口等条件过滤。
+   *
+   * 已归档且 presentation 被清理的条目，其 turnKind/preview 由归档索引兜底。
    */
-  listTurns(): TurnListing[] {
+  listTurns(archivedTurnInfo?: ReadonlyMap<string, ArchivedTurnInfo>): TurnListing[] {
     let lastCompactMarkerIdx = -1;
     for (let i = this._entries.length - 1; i >= 0; i--) {
       if (this._entries[i].type === "compact_marker" && !this._entries[i].discarded) {
@@ -229,13 +540,16 @@ export class SessionLog {
       if (entry.type !== "input_received" && entry.type !== "turn_start") continue;
 
       const meta = entry.meta as Record<string, unknown>;
-      const turnKind = entry.type === "input_received"
-        ? ((meta.inputKind as TurnKind) ?? "user")
-        : ((meta.turnKind as TurnKind) ?? "user");
+      const archived = archivedTurnInfo?.get(entry.id);
+      const rawKind = entry.type === "input_received" ? meta.inputKind : meta.turnKind;
+      const turnKind: TurnKind = (typeof rawKind === "string"
+        ? rawKind as TurnKind
+        : archived?.turnKind as TurnKind | undefined) ?? "user";
       if (turnKind !== "user" && turnKind !== "summarize" && turnKind !== "compact") continue;
 
+      const display = entry.display || archived?.preview || "";
       const preview = entry.type === "input_received"
-        ? (entry.display || "").replace(/\s+/g, " ").trim().slice(0, 240)
+        ? display.replace(/\s+/g, " ").trim().slice(0, 240)
         : "";
 
       turns.push({

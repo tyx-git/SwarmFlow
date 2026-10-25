@@ -20,7 +20,7 @@ import { discardInterruptedRoundReasoningInLog } from "./log-surgery.js";
 /** 轮次控制所需的会话侧成员（B 策略下由 Session 公开）。 */
 export interface TurnControlHost {
   primaryAgent: Agent;
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _log: LogEntry[];
   _logStore: SessionLog;
   _turnCount: number;
@@ -170,7 +170,12 @@ export function handleInterruption(host: TurnControlHost,
   host._pendingTurnState = null;
   host._activeLogEntryId = null;
   if (!activationCompleted) {
-    discardInterruptedRoundReasoningInLog(host._log, logLenBefore, host._turnCount);
+    discardInterruptedRoundReasoningInLog(
+      host._log,
+      logLenBefore,
+      host._turnCount,
+      (ids, flags) => host._logStore.patchFlags(ids, flags),
+    );
   }
 
   // Materialize any unsaved partial text from mid-activation streaming.

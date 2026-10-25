@@ -34,6 +34,8 @@ export interface ApiProjectionOptions {
    * 如果未提供，image_ref 块按原样传递。
    */
   resolveImageRef?: (refPath: string) => { data: string; media_type: string } | null;
+  /** 将 sealedRef 解析为原始 reasoningState；返回 null 表示不可用。 */
+  resolveReasoningState?: (value: unknown) => unknown | null;
   /** 为需要交替的提供商合并连续同角色消息 */
   requiresAlternatingRoles?: boolean;
   /** 在提交前强制执行提供商工具调用排序不变量 */
@@ -163,7 +165,7 @@ export function projectToApiMessages(
         i++;
       }
 
-      messages.push(buildAssistantMessage(assistantEntries, entries));
+      messages.push(buildAssistantMessage(assistantEntries, entries, options?.resolveReasoningState));
 
       // 重新排序 tool_results 以匹配 tool_call 声明顺序。
       const toolCallOrder = new Map<string, number>();
@@ -324,32 +326,31 @@ function resolveImageRefs(
 function buildAssistantMessage(
   roundEntries: LogEntry[],
   _allEntries: LogEntry[],
+  resolveReasoningState?: (value: unknown) => unknown | null,
 ): InternalMessage {
   const msg: InternalMessage = { role: "assistant" };
 
   // 提取推理/思维链
   const reasoning = roundEntries.find((e) => e.type === "reasoning");
   if (reasoning) {
+    const rawState = (reasoning.meta as Record<string, unknown>)["reasoningState"];
+    const resolvedState = rawState === undefined
+      ? undefined
+      : (resolveReasoningState ? resolveReasoningState(rawState) : rawState);
+    const reasoningState = resolvedState === null ? undefined : resolvedState;
     const artifact = normalizeThinkingArtifact(
       (reasoning.meta as Record<string, unknown>)["thinkingArtifact"],
-    ) ?? inferThinkingArtifact(
-      reasoning.content,
-      (reasoning.meta as Record<string, unknown>)["reasoningState"],
-    );
+    ) ?? inferThinkingArtifact(reasoning.content, reasoningState);
     if (artifact) {
       msg.reasoning_content = artifact.plainReplayText;
       msg._thinking_artifact = artifact;
       if (artifact.encryption !== "none") {
         msg._reasoning_state = artifact.sealedPayload;
-      } else {
-        const reasoningState = (reasoning.meta as Record<string, unknown>)["reasoningState"];
-        if (reasoningState !== undefined) {
-          msg._reasoning_state = reasoningState;
-        }
+      } else if (reasoningState !== undefined) {
+        msg._reasoning_state = reasoningState;
       }
     } else {
       msg.reasoning_content = reasoning.content;
-      const reasoningState = (reasoning.meta as Record<string, unknown>)["reasoningState"];
       if (reasoningState !== undefined) {
         msg._reasoning_state = reasoningState;
       }

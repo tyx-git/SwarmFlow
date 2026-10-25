@@ -2,10 +2,17 @@
 import { join } from "node:path";
 
 import { getSwarmflowHomeDir } from "../config/home-dir.js";
-import { loadLog, saveLog } from "../config/log-serialization.js";
+import { loadLog } from "../config/log-serialization.js";
+import { LOG_JSONL_FILENAME, loadModelContext } from "../config/log-jsonl.js";
+import { hydrateArchivedDisplay } from "../config/archive.js";
 import { validateAndRepairLog } from "../config/log-repair.js";
+import { listSessionsInProject, type SessionInfo } from "../config/session-list.js";
 import type { SessionStore } from "../config/session-store.js";
 import type { Session } from "../session.js";
+import { createUiText, getUiLanguage } from "../ui/text.js";
+
+export type { SessionInfo };
+export { listSessionsInProject as listSessionsForProject };
 
 /**
  * 磁盘上的一个 swarmflow 会话。由 `findSessionById` 暴露。
@@ -19,41 +26,6 @@ export interface FoundSession {
   projectPath: string | undefined;
   /** 来自 meta.json 的标题，如果可用。 */
   title: string | undefined;
-}
-
-/** 用于名称匹配的会话信息。 */
-export interface SessionInfo {
-  sessionId: string;
-  path: string;
-  created: string;
-  lastActiveAt: string;
-  summary: string;
-  title?: string;
-  turns: number;
-  /** 会话目录大小（字节） */
-  sizeBytes: number;
-}
-
-/** 会话 UUID 格式正则。 */
-const LOOKS_LIKE_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** 计算目录大小（递归） */
-function dirSize(dir: string): number {
-  let total = 0;
-  try {
-    for (const entry of readdirSync(dir)) {
-      const p = join(dir, entry);
-      try {
-        const s = statSync(p);
-        if (s.isDirectory()) {
-          total += dirSize(p);
-        } else {
-          total += s.size;
-        }
-      } catch { /* skip */ }
-    }
-  } catch { /* skip */ }
-  return total;
 }
 
 /** 格式化字节大小为人类可读格式 */
@@ -111,74 +83,6 @@ export function findSessionById(sessionId: string, homeDir?: string): FoundSessi
 }
 
 /**
- * 列出指定项目目录中的所有会话，按最后活跃时间降序排列。
- * 不依赖 SessionStore 实例。
- */
-export function listSessionsForProject(projectDir: string): SessionInfo[] {
-  if (!existsSync(projectDir)) return [];
-
-  const sessions: SessionInfo[] = [];
-  const entries = readdirSync(projectDir).sort().reverse();
-
-  for (const name of entries) {
-    if (!LOOKS_LIKE_SESSION_ID.test(name)) continue;
-    const d = join(projectDir, name);
-    try {
-      if (!statSync(d).isDirectory()) continue;
-    } catch {
-      continue;
-    }
-
-    // 优先使用 meta.json 进行快速列表
-    const metaFile = join(d, "meta.json");
-    if (existsSync(metaFile)) {
-      try {
-        const raw = JSON.parse(readFileSync(metaFile, "utf-8"));
-        const created = (raw.created_at as string) ?? "";
-        const lastActiveAt = (raw.last_active_at as string) ?? created;
-        const summary = (raw.summary as string) ?? "";
-        const title = typeof raw.title === "string" && raw.title.length > 0 ? raw.title : undefined;
-        const turns = (raw.turn_count as number) ?? 0;
-        if (turns === 0) continue;
-        if (raw.archived) continue;
-        const sizeBytes = dirSize(d);
-        sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns, sizeBytes });
-        continue;
-      } catch {
-        // Fall through to log.json
-      }
-    }
-
-    // 回退到 log.json
-    const logFile = join(d, "log.json");
-    if (!existsSync(logFile)) continue;
-    try {
-      const raw = JSON.parse(readFileSync(logFile, "utf-8"));
-      const created = (raw["created_at"] as string) ?? "";
-      const lastActiveAt = (raw["updated_at"] as string) ?? created;
-      const summary = (raw["summary"] as string) ?? "";
-      const title = typeof raw["title"] === "string" && raw["title"].length > 0 ? raw["title"] : undefined;
-      const turns = (raw["turn_count"] as number) ?? 0;
-      if (turns === 0) continue;
-      if (raw.archived) continue;
-      const sizeBytes = dirSize(d);
-      sessions.push({ sessionId: name, path: d, created, lastActiveAt, summary, title, turns, sizeBytes });
-    } catch {
-      continue;
-    }
-  }
-
-  sessions.sort((a, b) => {
-    if (!a.lastActiveAt && !b.lastActiveAt) return 0;
-    if (!a.lastActiveAt) return 1;
-    if (!b.lastActiveAt) return -1;
-    return b.lastActiveAt.localeCompare(a.lastActiveAt);
-  });
-
-  return sessions;
-}
-
-/**
  * 按名称（title/summary）在指定项目目录中查找会话。
  * 匹配优先级：title 精确匹配 → title 包含 → summary 包含。
  */
@@ -186,7 +90,7 @@ export function findSessionByName(
   name: string,
   projectDir: string,
 ): { sessionId: string; path: string; title?: string } | null {
-  const sessions = listSessionsForProject(projectDir);
+  const sessions = listSessionsInProject(projectDir);
   if (sessions.length === 0) return null;
 
   const lower = name.toLowerCase();
@@ -225,14 +129,29 @@ export function applySessionRestore(
   opts: { fork?: boolean } = {},
 ): RestoreResult {
   const logJsonPath = join(sessionDir, "log.json");
-  if (!existsSync(logJsonPath)) {
-    return { ok: false, warnings: [], error: "No log.json found for this session." };
+  const logJsonlPath = join(sessionDir, "log.jsonl");
+  if (!existsSync(logJsonPath) && !existsSync(logJsonlPath)) {
+    return { ok: false, warnings: [], error: "No log.json or log.jsonl found for this session." };
+  }
+
+  const alreadyHeld = store.holdsSessionLock(sessionDir);
+  const lock = store.acquireSessionLock(sessionDir);
+  if (!lock.ok) {
+    return {
+      ok: false,
+      warnings: [],
+      error: createUiText(getUiLanguage()).get(["Error", "sessionBusy"]),
+    };
   }
 
   let logData;
   try {
-    logData = loadLog(sessionDir);
+    logData = existsSync(join(sessionDir, LOG_JSONL_FILENAME))
+      ? loadModelContext(sessionDir)
+      : loadLog(sessionDir);
+    hydrateArchivedDisplay(sessionDir, logData.entries);
   } catch (e) {
+    if (!alreadyHeld) store.releaseSessionLock(sessionDir);
     return {
       ok: false,
       warnings: [],
@@ -253,8 +172,24 @@ export function applySessionRestore(
     if (typeof (session as { setStore?: (s: SessionStore) => void }).setStore === "function") {
       (session as { setStore: (s: SessionStore) => void }).setStore(store);
     }
-    const prepared = session.prepareRestoreFromLog(logData.meta, repairedEntries, logData.idAllocator);
+    const prepared = session.prepareRestoreFromLog(logData.meta, repairedEntries, logData.idAllocator, {
+      bounded: logData.bounded === true,
+    });
     const restoreWarnings = session.commitPreparedRestore(prepared);
+    if (logData.bounded && logData.meta.persistencePolicy !== 3) {
+      // 旧 policy 会在下一次保存做整份归一化；有界条目不足以重写完整历史。
+      logData = loadLog(sessionDir);
+      hydrateArchivedDisplay(sessionDir, logData.entries);
+      warnings.push("[load] legacy persistence policy; loaded the full log to keep history intact");
+      const fullPrepared = session.prepareRestoreFromLog(logData.meta, logData.entries, logData.idAllocator, {
+        bounded: false,
+      });
+      session.commitPreparedRestore(fullPrepared);
+    } else if (logData.bounded && logData.windowStartOffset !== undefined) {
+      session.enableBoundedHistory(logData.windowStartOffset);
+    } else {
+      warnings.push("[load] model context is unbounded (no live marker or missing counters); loaded the full log");
+    }
     for (const w of restoreWarnings) warnings.push(`[resume] ${w}`);
     try {
       rewindRecovered = session.recoverRewindIfNeeded();
@@ -274,8 +209,7 @@ export function applySessionRestore(
 
     if (rewindRecovered) {
       try {
-        const restored = session.getLogForPersistence();
-        saveLog(sessionDir, restored.meta, [...restored.entries]);
+        if (!session.persistToDisk()) throw new Error("session directory is not bound");
         session.finalizeRewindJournal();
       } catch (e) {
         warnings.push(`[rewind] recovery log could not be saved; the journal was retained: ${e instanceof Error ? e.message : String(e)}`);
@@ -283,6 +217,7 @@ export function applySessionRestore(
     }
   } catch (e) {
     store.restoreBindingState(bindingState);
+    if (!alreadyHeld) store.releaseSessionLock(sessionDir);
     return {
       ok: false,
       warnings,
@@ -292,5 +227,6 @@ export function applySessionRestore(
 
   // 重新附加（防御性：prepareRestoreFromLog 在某些错误路径下可能使 store 处于中间状态）。
   store.attachToExistingSession(sessionDir);
+  store.releaseOtherSessionLocks(sessionDir);
   return { ok: true, warnings };
 }

@@ -17,7 +17,6 @@ import type { PermissionMode } from "../permissions/index.js";
 import { projectToTuiEntries } from "../context/projection/tui.js";
 import { randomSessionId } from "../config/storage-layout.js";
 import { saveGlobalSettingsPatch } from "../config/settings/io.js";
-import { saveLog } from "../config/log-serialization.js";
 import { SessionStore } from "../config/session-store.js";
 import { applySessionRestore } from "../session/resume.js";
 import { getSubAgentThinkingLevels } from "../config/model-capabilities.js";
@@ -80,10 +79,9 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     const currentDir = getCurrentSessionDir();
     if (!currentDir) return false;
     try {
-      const { meta, entries } = session.getLogForPersistence();
+      const { meta } = session.getLogForPersistence();
       if (meta.turnCount === 0) return true;
-      saveLog(currentDir, meta, [...entries]);
-      return true;
+      return session.persistToDisk();
     } catch (err) {
       server.emit("server.stderr", {
         text: `[autosave] ${err instanceof Error ? err.message : String(err)}\n`,

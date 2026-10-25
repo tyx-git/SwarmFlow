@@ -45,6 +45,22 @@ export async function cmdCompact(ctx: CommandContext, args: string): Promise<voi
   ctx.onManualCompactRequested(args.trim());
 }
 
+/** 载入一页更早的历史（R-3 有界恢复）；可带条数参数。 */
+export async function cmdHistory(ctx: CommandContext, args: string): Promise<void> {
+  const session = ctx.session as unknown as { loadEarlierHistoryPage?: (maxEntries?: number) => { loaded: number; hasMore: boolean } };
+  if (typeof session.loadEarlierHistoryPage !== "function") {
+    ctx.showMessage("History paging is unavailable in this session.");
+    return;
+  }
+  const parsed = Number.parseInt(args.trim(), 10);
+  const result = session.loadEarlierHistoryPage(Number.isFinite(parsed) ? parsed : undefined);
+  if (result.loaded === 0) {
+    ctx.showMessage(result.hasMore ? "No earlier entries on this page." : "No earlier history.");
+    return;
+  }
+  ctx.showMessage(`Loaded ${result.loaded} earlier entries${result.hasMore ? " (more available)" : ""}.`);
+}
+
 export async function cmdShells(ctx: CommandContext, _args: string): Promise<void> {
   if (!ctx.onShellsRequested) {
     ctx.showMessage("The process panel is not available in this UI.");

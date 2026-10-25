@@ -8,6 +8,39 @@ import type { LogEntry, TuiDisplayKind } from "../entry/types.js";
 import { buildAgentResultTuiPreview } from "../entry/agent-result-preview.js";
 import type { ConversationEntry, ConversationEntryKind } from "../../ui/contracts.js";
 
+/** 折叠边界前保留的压缩窗口数；归档清理与 TUI 折叠共用同一边界。 */
+export const DEFAULT_COMPACT_FOLD_THRESHOLD = 3;
+
+export interface CompactFoldBoundary {
+  /** 该索引及之前的条目被折叠；-1 表示不折叠。 */
+  foldEndIdx: number;
+  foldedCompactCount: number;
+}
+
+/**
+ * 计算 TUI 折叠边界。归档后的 presentation 清理必须与这里保持一致，
+ * 否则会清掉 TUI 仍需渲染的窗口。
+ */
+export function computeCompactFoldBoundary(
+  entries: readonly LogEntry[],
+  threshold = DEFAULT_COMPACT_FOLD_THRESHOLD,
+): CompactFoldBoundary {
+  const compactMarkerIndices: number[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].type === "compact_marker" && !entries[i].discarded) {
+      compactMarkerIndices.push(i);
+    }
+  }
+  if (compactMarkerIndices.length < threshold) {
+    return { foldEndIdx: -1, foldedCompactCount: 0 };
+  }
+  const foldEndIdx = compactMarkerIndices[compactMarkerIndices.length - threshold]!;
+  return {
+    foldEndIdx,
+    foldedCompactCount: compactMarkerIndices.length - threshold + 1,
+  };
+}
+
 // ------------------------------------------------------------------
 // TuiDisplayKind → ConversationEntryKind 映射
 // ------------------------------------------------------------------
@@ -523,18 +556,10 @@ export function projectToTuiEntries(
   entries: readonly LogEntry[],
   options?: TuiProjectionOptions,
 ): ConversationEntry[] {
-  const threshold = options?.compactFoldThreshold ?? 3;
+  const threshold = options?.compactFoldThreshold ?? DEFAULT_COMPACT_FOLD_THRESHOLD;
   // TUI 显示完整的仅追加历史，包括被后续摘要覆盖的条目。
   // 只有 API 投影隐藏它们。这使用户能够回滚并验证摘要捕获的内容
   // （并允许选择器列出磁盘上仍然存在的分组）。
-
-  // 查找所有 compact_marker 索引
-  const compactMarkerIndices: number[] = [];
-  for (let i = 0; i < entries.length; i++) {
-    if (entries[i].type === "compact_marker" && !entries[i].discarded) {
-      compactMarkerIndices.push(i);
-    }
-  }
 
   // 整个日志上的一个配对映射，两个窗口共享。窗口本地映射对于任一窗口
   // 渲染的任何内容都会相同配对：结果总是跟随其调用，因此窗口永远不会
@@ -542,14 +567,10 @@ export function projectToTuiEntries(
   const toolElapsedMap = buildToolElapsedMap(entries);
 
   // 确定折叠边界：如果 N >= 阈值，折叠第 (N - 阈值 + 1) 个标记之前的条目
-  let foldEndIdx = -1; // entries at index <= foldEndIdx are folded
+  const { foldEndIdx, foldedCompactCount } = computeCompactFoldBoundary(entries, threshold);
   let foldedCount = 0;
-  let foldedCompactCount = 0;
-  if (compactMarkerIndices.length >= threshold) {
-    const foldUpToMarker = compactMarkerIndices[compactMarkerIndices.length - threshold];
-    foldEndIdx = foldUpToMarker;
+  if (foldEndIdx >= 0) {
     foldedCount = projectTuiWindow(entries.slice(0, foldEndIdx + 1), toolElapsedMap).length;
-    foldedCompactCount = compactMarkerIndices.length - threshold + 1;
   }
 
   const result: ConversationEntry[] = [];

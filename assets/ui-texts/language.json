@@ -33,7 +33,8 @@
       "interruptChildFailed": "中断子代理失败：{reason}",
       "killSubagentFailed": "终止子代理失败：{reason}",
       "backToPrimary": "请先返回主会话再发送消息。",
-      "subAgentModelFixed": "子代理模型由模板或模型层级固定，不能手动修改。"
+      "subAgentModelFixed": "子代理模型由模板或模型层级固定，不能手动修改。",
+      "sessionBusy": "当前会话正在被占用"
     },
     "Commands": {
       "/theme": {
@@ -239,6 +240,7 @@
       "/new": { "description": "开始新会话" },
       "/rename": { "description": "重命名当前会话", "echo": "会话已更名为:" },
       "/status": { "description": "查看当前会话状态" },
+      "/history": { "description": "加载一页更早的会话历史" },
       "/compact": { "description": "压缩当前上下文", "compacted": "上下文已压缩" },
       "/clear": { "description": "清屏并重置后续上下文" },
       "/fork": { "description": "从当前会话创建分支" },
@@ -263,6 +265,11 @@
       },
       "activity": {
         "compacting": "正在压缩上下文 {seconds}秒"
+      },
+      "history": {
+        "earlier": "更早 {count} 条",
+        "loadHint": "点击或按 PageUp 加载",
+        "cacheCapped": "更早历史已达 8 MiB 缓存上限"
       },
       "sessionManager": {
         "title": "[Session]",
@@ -443,7 +450,8 @@
       "interruptChildFailed": "Interrupt failed: {reason}",
       "killSubagentFailed": "Failed to terminate sub-agent: {reason}",
       "backToPrimary": "Return to the primary session to send messages.",
-      "subAgentModelFixed": "Sub-Agent models are fixed by their template or tier and cannot be changed manually."
+      "subAgentModelFixed": "Sub-Agent models are fixed by their template or tier and cannot be changed manually.",
+      "sessionBusy": "This session is already in use by another process."
     },
     "Commands": {
       "/theme": {
@@ -649,6 +657,7 @@
       "/new": { "description": "Start a new session" },
       "/rename": { "description": "Rename the current session", "echo": "Session renamed to:" },
       "/status": { "description": "View current session status" },
+      "/history": { "description": "Load an earlier page of session history" },
       "/compact": { "description": "Compact the active context", "compacted": "Context Compacted" },
       "/clear": { "description": "Clear the screen and future context" },
       "/fork": { "description": "Fork the current session" },
@@ -673,6 +682,11 @@
       },
       "activity": {
         "compacting": "Compacting context for {seconds}s"
+      },
+      "history": {
+        "earlier": "Earlier {count} entries",
+        "loadHint": "Click or press PageUp to load",
+        "cacheCapped": "Earlier history reached the 8 MiB cache limit"
       },
       "sessionManager": {
         "title": "[Session]",

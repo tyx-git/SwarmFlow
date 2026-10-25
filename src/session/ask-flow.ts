@@ -33,7 +33,7 @@ import type { ChildSessionManager } from "./children/manager.js";
 export interface AskHost {
   primaryAgent: Agent;
   permissionMode: string;
-  onSaveRequest?: () => void | boolean;
+  onSaveRequest?: () => boolean;
   _activeAsk: AskRequest | null;
   _askHistory: AskAuditRecord[];
   _askListeners: Set<() => void>;

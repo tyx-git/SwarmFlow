@@ -74,7 +74,6 @@ export async function launchTui(): Promise<void> {
   const { bootstrapOpenTuiRuntime } = await import("./bootstrap.js");
   const { OpenTuiApp } = await import("./app.js");
   const { parseSettingsOverrides } = await import("../../src/config/settings/io.js");
-  const { saveLog } = await import("../../src/config/log-serialization.js");
 
   process.env.OPENTUI_FORCE_EXPLICIT_WIDTH = "false";
   const args = parseArgs(process.argv.slice(2));
@@ -292,11 +291,11 @@ export async function launchTui(): Promise<void> {
 
   const saveRuntimeIfNeeded = (target: OpenTuiRuntime): void => {
     const sessionDir = target.store.sessionDir;
-    if (!sessionDir || typeof target.session.getLogForPersistence !== "function") return;
+    if (!sessionDir || typeof target.session.persistToDisk !== "function") return;
     try {
-      const { meta, entries } = target.session.getLogForPersistence();
+      const { meta } = target.session.getLogForPersistence!();
       if (meta.turnCount === 0) return;
-      saveLog(sessionDir, meta, [...entries]);
+      target.session.persistToDisk();
     } catch (err) {
       writeOpenTuiDiag("main.new.save_failed", { error: formatError(err) });
     }
