@@ -1,7 +1,7 @@
 /**
  * M1：封存态（meta.reasoningState）外置。
  *
- * 契约见 LOG_WRITE_DESIGN.md W-2 / 设计 §6.1：
+ * 契约：
  * - ≥ 4 KiB 的 reasoningState 写 sealed/<entryId>.json.gz；
  * - 日志里只留 { sealedRef, bytes, encoding:"gzip" }；
  * - readSealed 失败返回 null，绝不抛错打断回合。

@@ -1,6 +1,6 @@
 /**
  * W-1 格式契约：log.jsonl 的 header、记录形状、校验与解析。
- * 期望值来自 LOG_WRITE_DESIGN.md §W3，不来自实现。
+ * 期望值来自 log.jsonl envelope 格式约定，不来自实现。
  */
 
 import { afterEach, describe, expect, it } from "vitest";

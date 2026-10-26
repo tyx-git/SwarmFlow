@@ -1,6 +1,6 @@
 /**
  * W-2 写前策略（只写完成态、64 KiB 截断、图片外置）与 W-7 迁移契约。
- * 期望值来自 LOG_WRITE_DESIGN.md §W4.3/§W7，不来自实现。
+ * 期望值来自写前策略与一次性迁移的格式约定，不来自实现。
  */
 
 import { afterEach, describe, expect, it } from "vitest";

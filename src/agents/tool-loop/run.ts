@@ -130,9 +130,16 @@ function detectTurnDefect(
     );
   }
   if (resp.stopReason === "incomplete_stream") {
-    return new TurnIncompleteError(
-      "Provider stream ended without a terminal status; the turn did not complete.",
-    );
+    // 事件数把"网关压根没回 event-stream"和"流到一半被截断"分开了：前者重掷
+    // 同一请求永远一样失败（多半是 base_url 少了 /v1），后者才值得再赌一次。
+    if (resp.streamEventCount === null) {
+      return new TurnIncompleteError(
+        "Provider stream ended without a terminal status; the turn did not complete.",
+      );
+    }
+    return new TurnIncompleteError(resp.streamEventCount === 0
+      ? "Provider stream ended without a terminal status after 0 SSE events; the endpoint returned no event-stream body (check the provider base_url)."
+      : `Provider stream ended without a terminal status after ${resp.streamEventCount} SSE events; the turn did not complete.`);
   }
   if (unclosed) {
     return new TurnIncompleteError(

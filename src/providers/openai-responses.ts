@@ -500,7 +500,9 @@ export class OpenAIResponsesProvider extends BaseProvider {
 
     let effort: string;
     if (level) {
-      effort = level;
+      // Responses 的合法 effort 到 xhigh 为止（具体仍按模型，见 OpenAI reasoning 文档）；
+      // 内部最高档 max 收敛到该上限，不把非法值发给端点。
+      effort = level === "max" ? "xhigh" : level;
     } else {
       // 默认：从预算推导
       const budget = this._config.thinkingBudget;
@@ -732,6 +734,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
     const streamedReasoningItems: Record<string, unknown>[] = [];
     let activeFunctionCallId: string | null = null;
     let finalResponse: Record<string, unknown> | null = null;
+    let eventCount = 0;
 
     const getEventString = (value: unknown): string => typeof value === "string" ? value : "";
     const getEventNumber = (value: unknown): number | undefined =>
@@ -840,6 +843,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
 
     for await (const event of responseStream) {
       const eventType = event["type"] as string;
+      eventCount++;
 
       if (eventType === "response.output_text.delta") {
         closeAllOpenToolCalls();
@@ -919,6 +923,16 @@ export class OpenAIResponsesProvider extends BaseProvider {
           ? event["arguments"] as string
           : (acc?.rawArguments ?? "");
         closeToolCall(acc?.callId ?? (callId || itemId || activeFunctionCallId), argsStr);
+      } else if (eventType === "response.failed") {
+        // 线格式里失败是终止事件，error 挂在 response.error 上；SDK 不会替我们抛。
+        // 这是确定性失败，抛普通 Error 让它直接见用户，不占 incomplete 重掷预算。
+        const failed = event["response"] as Record<string, unknown> | undefined;
+        const upstream = failed?.["error"] as Record<string, unknown> | undefined;
+        const code = typeof upstream?.["code"] === "string" ? upstream["code"] : "unknown";
+        const detail = typeof upstream?.["message"] === "string"
+          ? upstream["message"]
+          : "upstream reported response.failed";
+        throw new Error(`Responses upstream failed (code=${code}): ${detail}`);
       } else if (
         eventType === "response.completed"
         || eventType === "response.incomplete"
@@ -974,6 +988,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
       usage: new Usage(),
       raw: null,
       stopReason: "incomplete_stream",
+      streamEventCount: eventCount,
       reasoningContent: reasoningText,
       reasoningState: reasoningText || null,
       thinkingArtifact: this._buildThinkingArtifact(reasoningText, reasoningText || null),

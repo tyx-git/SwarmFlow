@@ -47,4 +47,30 @@ describe("init wizard custom provider endpoint", () => {
     expect(prompts.select.mock.invocationCallOrder[3]).toBeLessThan(prompts.input.mock.invocationCallOrder[1]);
     expect(prompts.input.mock.calls[1]?.[0].message).toContain("Anthropic Messages");
   });
+
+  it("adds the /v1 root when the wizard receives a host-only Responses endpoint", async () => {
+    const home = mkdtempSync(join(tmpdir(), "swarmflow-init-provider-"));
+    createdHomes.push(home);
+    vi.stubEnv("TAVILY_API_KEY", "test-search-key");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    prompts.select
+      .mockResolvedValueOnce("zh")
+      .mockResolvedValueOnce("brief")
+      .mockResolvedValueOnce("yes")
+      .mockResolvedValueOnce("openai-responses");
+    prompts.input
+      .mockResolvedValueOnce("Niko")
+      .mockResolvedValueOnce("https://jp.nikoapi.xyz")
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce("deepseek-test")
+      .mockResolvedValueOnce("128000");
+
+    await runInitWizard(home);
+
+    expect(loadGlobalSettings(home).providers?.niko).toMatchObject({
+      base_url: "https://jp.nikoapi.xyz/v1",
+      protocol: "openai-responses",
+    });
+  });
 });

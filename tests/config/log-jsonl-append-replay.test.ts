@@ -1,6 +1,6 @@
 /**
  * W-1 追加、重放、崩溃尾行与写放大契约。
- * 期望值来自 LOG_WRITE_DESIGN.md §W4/§W5/§W6，不来自实现。
+ * 期望值来自 log.jsonl 追加/重放格式约定，不来自实现。
  */
 
 import { afterEach, describe, expect, it } from "vitest";

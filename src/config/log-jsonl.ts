@@ -1,7 +1,6 @@
 /**
  * W-1：log.jsonl 的格式、追加、重放与一次性迁移。
  *
- * 设计见 LOG_WRITE_DESIGN.md §W3/§W4/§W6/§W7。
  * 运行期写入由 SessionLog 网关调用 appendRecords/writeLogJsonlSnapshot；
  * 读取由 loadLog 统一入口调用 loadLogJsonl。
  */
@@ -579,7 +578,7 @@ interface WindowScan {
 /**
  * 从文件尾反向扫描，收集最新 live compact_marker 及之后的记录。
  *
- * 规则（LOG_READ_DESIGN.md §R3.2）：
+ * 规则：
  * - 同一 id 只看离文件尾最近的 upsert；
  * - `truncate` 建立“死区”，跳过被截断的条目，直到遇到 fromEntryId 的 upsert；
  * - 压缩时在 marker 之后补写的 `archived: true` upsert 属于标记前的窗口，必须过滤；

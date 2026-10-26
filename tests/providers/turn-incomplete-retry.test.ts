@@ -106,8 +106,38 @@ describe("tool-loop incomplete-turn retries", () => {
     );
     const h = makeScriptedSession({ rounds });
     try {
-      await expect(h.session.turn("hello")).rejects.toThrow(/terminal status/);
+      let caught: unknown;
+      try { await h.session.turn("hello"); } catch (e) { caught = e; }
+      expect(String((caught as Error).message)).toMatch(/terminal status/);
+      // 不报事件数的 provider（如本夹具）不能凭空编一个计数进文案。
+      expect(String((caught as Error).message)).not.toMatch(/SSE events/);
       expect(h.provider.callCount).toBe(MAX_INCOMPLETE_TURN_RETRIES + 1);
+    } finally {
+      h.dispose();
+    }
+  }, 15_000);
+
+  it("names the event count so a non-event-stream reply is not read as a truncation", async () => {
+    const rounds = Array.from(
+      { length: MAX_INCOMPLETE_TURN_RETRIES + 1 },
+      () => ({ text: "", stopReason: "incomplete_stream" as const, streamEventCount: 0 }),
+    );
+    const h = makeScriptedSession({ rounds });
+    try {
+      await expect(h.session.turn("hello")).rejects.toThrow(/0 SSE events/);
+    } finally {
+      h.dispose();
+    }
+  }, 15_000);
+
+  it("reports how many events arrived when the stream stops mid-flight", async () => {
+    const rounds = Array.from(
+      { length: MAX_INCOMPLETE_TURN_RETRIES + 1 },
+      () => ({ text: "半句话", stopReason: "incomplete_stream" as const, streamEventCount: 2 }),
+    );
+    const h = makeScriptedSession({ rounds });
+    try {
+      await expect(h.session.turn("hello")).rejects.toThrow(/after 2 SSE events/);
     } finally {
       h.dispose();
     }

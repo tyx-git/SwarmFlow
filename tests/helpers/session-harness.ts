@@ -31,6 +31,8 @@ export interface ScriptedRound {
   toolCalls?: ScriptedToolCall[];
   /** Terminal reason reported by the provider; null (default) means "not exposed". */
   stopReason?: StopReason | null;
+  /** SSE events produced before the stream ended; only meaningful with "incomplete_stream". */
+  streamEventCount?: number;
   /** Token usage reported for this provider call; defaults to Usage(50, 5). */
   usage?: Usage;
   /** Runs when the provider receives this round's request, before emitting events. */
@@ -64,6 +66,7 @@ export class ScriptedProvider extends BaseProvider {
       text: round.text ?? "",
       usage: round.usage ?? new Usage(50, 5),
       stopReason: round.stopReason ?? null,
+      streamEventCount: round.streamEventCount,
     });
   }
 

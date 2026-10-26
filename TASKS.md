@@ -1,7 +1,6 @@
 # SwarmFlow 待办清单（唯一）
 
-> 2026-10-26 整理：日志持久化重构（写侧 W-1…W-5 含写锁/seq、读侧 R-1…R-5、M0/M1、D7/D8/D10/D13/D19/D20、D22 显式 prune）已全部落地并接线，历史拆解、量测与验收记录不再保留在此。
-> 规格来源仍是三份设计文档：[LOG_PERSISTENCE_DESIGN.md](LOG_PERSISTENCE_DESIGN.md)（决策/量测）、[LOG_WRITE_DESIGN.md](LOG_WRITE_DESIGN.md)（写侧格式）、[LOG_READ_DESIGN.md](LOG_READ_DESIGN.md)（读侧行为）。`src/config/log-*.ts` 与 `tests/config|session/log-*.ts` 的注释按章节号引用它们，删掉会让测试期望值失去独立规格来源。
+> 2026-10-26 整理：日志持久化重构（写侧 W-1…W-5 含写锁/seq、读侧 R-1…R-5、M0/M1、D7/D8/D10/D13/D19/D20、D22 显式 prune）已全部落地并接线，设计稿与执行清单已出树。本文件只留未完成项；每项的验收口径见文末"门禁与红线"。
 
 ## T-1 D22 自动总量配额与保留清理（未做，需授权）
 
@@ -26,12 +25,12 @@
 
 ## T-3 挂起项（有重入门槛，不到门槛不做）
 
-- **P-10/M2**：工具产出 `image_ref` 与 64 KiB 单条上限。重入门槛：任一 `tool_result` 的 `meta` 单条 > 64 KB，或 `_contentBlocks`/`reversePatch` 合计占 `log` > 5%（写侧 §W4.3）。
+- **P-10/M2**：工具产出 `image_ref` 与 64 KiB 单条上限。重入门槛：任一 `tool_result` 的 `meta` 单条 > 64 KB，或 `_contentBlocks`/`reversePatch` 合计占 `log` > 5%。
 - **R-6**：fork lineage 分段、归档态透明 resume —— 当前明确不做。
 
 ## 已定案不做（别再提）
 
-resume 期修复不落盘、迁移 + 归一化双快照、`readLogHeader` 64 KiB 上限、未使用导出（`nextSeq`/`collectSealedRefs`/`prepareEntryForPersistence`）：结论见 [LOG_WRITE_DESIGN.md](LOG_WRITE_DESIGN.md) §W8.4 与 §W10。
+resume 期修复不落盘（每次加载重新推导，确定性）、迁移 + 归一化双快照（一次性开销）、`readLogHeader` 64 KiB 上限（超限 legacy 会回退整读）、未使用导出（`nextSeq`/`collectSealedRefs`/`prepareEntryForPersistence`）。
 
 ## 门禁与红线（每项任务的收尾口径）
 

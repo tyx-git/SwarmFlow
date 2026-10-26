@@ -40,6 +40,11 @@ export class ProviderResponse {
   extra: Record<string, unknown>;
   /** 归一化终止原因；null = 该 provider 未暴露终止信息。 */
   stopReason: StopReason | null;
+  /**
+   * 流式 provider 实际产出的事件数；只在 `incomplete_stream` 时用来区分
+   * "网关压根没返回 event-stream"（0）与"流到一半被截断"（>0）。
+   */
+  streamEventCount: number | null;
 
   constructor(opts: {
     text?: string;
@@ -52,6 +57,7 @@ export class ProviderResponse {
     citations?: Citation[];
     extra?: Record<string, unknown>;
     stopReason?: StopReason | null;
+    streamEventCount?: number | null;
   } = {}) {
     this.text = opts.text ?? "";
     this.toolCalls = opts.toolCalls ?? [];
@@ -63,6 +69,7 @@ export class ProviderResponse {
     this.citations = opts.citations ?? [];
     this.extra = opts.extra ?? {};
     this.stopReason = opts.stopReason ?? null;
+    this.streamEventCount = opts.streamEventCount ?? null;
   }
 
   get hasToolCalls(): boolean {

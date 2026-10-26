@@ -335,7 +335,7 @@ export class OpenAIChatProvider extends BaseProvider {
    */
   private _chatCompletionsEffort(level: string | undefined): string | undefined {
     if (!level || level === "off" || level === "none") return undefined;
-    return level;
+    return level === "xhigh" || level === "max" ? "high" : level;
   }
 
   // ------------------------------------------------------------------

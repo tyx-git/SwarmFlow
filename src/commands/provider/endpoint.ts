@@ -21,7 +21,8 @@ export function slugifyProviderId(label: string): string {
  * Normalize a user-pasted endpoint into the base URL its selected SDK expects.
  * The optional protocol keeps suffix inference available for callers that have
  * not selected a protocol yet; provider setup passes the selected protocol.
- * `changed` reports whitespace, trailing slash, or endpoint suffix cleanup.
+ * `changed` reports whitespace, trailing slash, endpoint suffix cleanup, or a
+ * missing version root.
  */
 export function normalizeEndpointUrl(raw: string, selectedProtocol?: string): {
   baseUrl: string;
@@ -49,6 +50,16 @@ export function normalizeEndpointUrl(raw: string, selectedProtocol?: string): {
     baseUrl = baseUrl.replace(/\/models\/[^/]+:generateContent$/i, "");
     baseUrl = baseUrl.replace(/:generateContent$/i, "");
     protocol ??= "gemini";
+  }
+
+  // openai SDK 请求 `<baseURL>/chat/completions` 与 `<baseURL>/responses`，而
+  // OpenAI 兼容服务（含 /v1/models 发现）一律挂在 /v1 下；用户只填到主机名时
+  // 补上版本根。Anthropic SDK 自带 `/v1/messages`，所以它的 base 不能带版本段。
+  const effectiveWire = wireProtocol ?? (protocol ? wireProtocolFromStored(protocol) : undefined);
+  if ((effectiveWire === "openai-chat-completions" || effectiveWire === "openai-responses")
+    && /^https?:\/\//i.test(baseUrl)
+    && !/\/v\d+$/i.test(baseUrl)) {
+    baseUrl = `${baseUrl}/v1`;
   }
 
   return { baseUrl, protocol, changed: baseUrl !== raw };

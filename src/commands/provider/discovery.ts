@@ -10,6 +10,7 @@ import { findProviderPreset } from "../../providers/presets.js";
 import { runtimeModelName } from "../../models/selection.js";
 
 import { persistModelSelection, promptThinkingLevel } from "../model/persistence.js";
+import { normalizeEndpointUrl } from "./endpoint.js";
 import { providerText } from "./presentation.js";
 import { persistSettingsPatch } from "../settings-patch.js";
 import { type CommandContext } from "../types.js";
@@ -43,13 +44,13 @@ export async function cmdModelLocalDiscover(ctx: CommandContext, providerId: str
   });
   if (!urlChoice) return;
 
-  let baseUrl = urlChoice;
+  let baseUrl = normalizeEndpointUrl(urlChoice, "openai-chat").baseUrl;
   if (urlChoice === "__custom__") {
     const custom = await ctx.promptSecret?.({
         message: t.get(["Commands", "/provider", "local", "enterUrl"], { provider: preset.name }),
     });
     if (!custom?.trim()) return;
-    baseUrl = custom.trim();
+    baseUrl = normalizeEndpointUrl(custom, "openai-chat").baseUrl;
   }
 
   // 发现模型——先不带钥匙试一试，然后再问是否需要

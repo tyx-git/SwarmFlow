@@ -72,6 +72,43 @@ describe("normalizeEndpointUrl", () => {
     });
   });
 
+  // 规格依据（不来自实现）：openai SDK 把请求拼成 `<baseURL>/chat/completions` 与
+  // `<baseURL>/responses`，OpenAI 兼容服务（含 /v1/models 发现）一律挂在 /v1 下；
+  // Anthropic SDK 自己发 `/v1/messages`，所以它的 base 不能带 /v1。
+  it.each([
+    ["openai-chat-completions", "https://jp.example", "https://jp.example/v1"],
+    ["openai-chat-completions", "https://jp.example/", "https://jp.example/v1"],
+    ["openai-chat", "http://localhost:11434", "http://localhost:11434/v1"],
+    ["openai-responses", "https://jp.nikoapi.xyz", "https://jp.nikoapi.xyz/v1"],
+    ["openai-responses", "https://jp.example/gateway", "https://jp.example/gateway/v1"],
+    ["openai-responses", "https://jp.example/v2", "https://jp.example/v2"],
+    ["openai-chat-completions", "https://jp.example/api/v1", "https://jp.example/api/v1"],
+  ])("ensures the /v1 root for %1 base %2", (protocol, input, baseUrl) => {
+    expect(normalizeEndpointUrl(input, protocol)).toMatchObject({ baseUrl, changed: baseUrl !== input });
+  });
+
+  it.each([
+    ["anthropic-messages", "https://claude.example"],
+    ["gemini-generate-content", "https://gemini.example"],
+  ])("leaves the unversioned %1 base untouched", (protocol, input) => {
+    expect(normalizeEndpointUrl(input, protocol)).toMatchObject({ baseUrl: input, changed: false });
+  });
+
+  it("does not guess /v1 when no protocol was selected", () => {
+    expect(normalizeEndpointUrl("https://jp.example")).toMatchObject({
+      baseUrl: "https://jp.example",
+      protocol: null,
+      changed: false,
+    });
+  });
+
+  it("does not decorate a value that is not an http(s) URL", () => {
+    expect(normalizeEndpointUrl("__custom__", "openai-chat")).toMatchObject({
+      baseUrl: "__custom__",
+      changed: false,
+    });
+  });
+
   it("reports changed=true when only trailing slashes were trimmed", () => {
     expect(normalizeEndpointUrl("https://api.example.com/v1/")).toEqual({
       baseUrl: "https://api.example.com/v1",

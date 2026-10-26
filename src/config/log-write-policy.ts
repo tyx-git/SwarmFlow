@@ -1,7 +1,5 @@
 /**
  * W-2 写前策略：只写完成态、截断大工具输出、把图片换成 image_ref。
- *
- * 设计口径见 LOG_WRITE_DESIGN.md §W4.3。
  */
 
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";

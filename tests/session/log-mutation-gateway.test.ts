@@ -1,6 +1,6 @@
 /**
  * W-1 变更网关与 fork 独立性契约。
- * 期望值来自 LOG_WRITE_DESIGN.md §W4.1/§W4.2，不来自实现。
+ * 期望值来自变更网关的记录契约，不来自实现。
  */
 
 import { afterEach, describe, expect, it } from "vitest";

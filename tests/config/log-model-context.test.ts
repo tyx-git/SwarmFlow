@@ -1,6 +1,6 @@
 /**
  * R-2 有界模型上下文：反向扫到最新 live compact_marker，返回 marker 及之后的窗口。
- * 期望值来自 LOG_READ_DESIGN.md §R3.2 / §R5，不来自实现。
+ * 期望值来自有界模型上下文窗口的读取约定，不来自实现。
  */
 
 import { afterEach, describe, expect, it } from "vitest";

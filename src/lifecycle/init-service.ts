@@ -15,6 +15,7 @@ import {
   type ProviderPreset,
 } from "../providers/presets.js";
 import { fetchModelsFromServer } from "../models/discovery.js";
+import { normalizeEndpointUrl } from "../commands/provider/endpoint.js";
 import { setDotenvKey } from "../lifecycle/dotenv.js";
 import type { SwarmflowSettings, ProviderEntry } from "../config/settings/types.js";
 import { saveSettings, globalSettingsPath, loadGlobalSettings } from "../config/settings/io.js";
@@ -121,7 +122,11 @@ export class InitService {
     models: Array<{ id: string; contextLength?: number }>;
   }> {
     const effectiveKey = apiKey?.trim() || "local";
-    const models = await fetchModelsFromServer(baseUrl, 5000, effectiveKey);
+    const models = await fetchModelsFromServer(
+      normalizeEndpointUrl(baseUrl, "openai-chat").baseUrl,
+      5000,
+      effectiveKey,
+    );
     return { ok: true, models };
   }
 
@@ -133,7 +138,7 @@ export class InitService {
     apiKey?: string,
   ): void {
     const entry: ProviderEntry = {
-      base_url: baseUrl,
+      base_url: normalizeEndpointUrl(baseUrl, "openai-chat").baseUrl,
       model: modelId,
       context_length: contextLength,
     };
