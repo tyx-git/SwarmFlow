@@ -10,31 +10,13 @@
  */
 
 import type { RpcServer } from "./rpc-transport.js";
+import { expectObject, expectString, optString } from "./rpc-arg-guards.js";
 import { InitService } from "../lifecycle/init-service.js";
 import type { ModelSelection } from "../lifecycle/types.js";
 
 export interface InitRpcOptions {
   readonly server: RpcServer;
   readonly onInitComplete: () => Promise<void>;
-}
-
-function expectObject(params: unknown, method: string): Record<string, unknown> {
-  if (params == null) return {};
-  if (typeof params !== "object" || Array.isArray(params)) {
-    throw new Error(`${method}: params must be an object`);
-  }
-  return params as Record<string, unknown>;
-}
-
-function expectString(params: Record<string, unknown>, key: string, method: string): string {
-  const v = params[key];
-  if (typeof v !== "string") throw new Error(`${method}: '${key}' must be a string`);
-  return v;
-}
-
-function optString(params: Record<string, unknown>, key: string): string | undefined {
-  const v = params[key];
-  return typeof v === "string" ? v : undefined;
 }
 
 export function registerInitRpc(opts: InitRpcOptions): { dispose: () => void } {

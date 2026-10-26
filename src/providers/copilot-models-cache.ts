@@ -22,6 +22,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSwarmflowHomeDir } from "../config/home-dir.js";
 import { copilotTokenManager } from "../auth/github-copilot-token-manager.js";
+import { HTTP_TIMEOUT_MS } from "../network/http-timeout.js";
 import { buildCopilotRequestHeaders } from "./copilot-headers.js";
 
 // =============================================================================
@@ -30,7 +31,6 @@ import { buildCopilotRequestHeaders } from "./copilot-headers.js";
 
 const CACHE_FILENAME = "copilot-models.json";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 小时
-const HTTP_TIMEOUT_MS = 10_000;
 
 // =============================================================================
 // 类型

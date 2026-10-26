@@ -1,6 +1,6 @@
 /** 带超时的 OAuth HTTP 请求（JSON 与表单两种编码）。 */
 
-import { HTTP_TIMEOUT_MS } from "./endpoints.js";
+import { HTTP_TIMEOUT_MS } from "../../network/http-timeout.js";
 
 // =============================================================================
 // 常量

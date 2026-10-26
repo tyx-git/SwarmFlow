@@ -511,7 +511,7 @@
 | [tests/context/ask-flow.test.ts:331](tests/context/ask-flow.test.ts#L331) | 列表把 UTC 头字段格式化成本地时间 | P4 |
 | [tests/session/session-child-approval.test.ts](tests/session/session-child-approval.test.ts) | 子会话 `log.json` 路径 | P1.8 |
 
-## 9. 红线（照抄自 [REFACTOR_TASKS.md](REFACTOR_TASKS.md) §1.1，本清单同样适用）
+## 9. 红线（沿用结构重构 §1.1，本清单同样适用）
 
 - 路径深度：`src/config/*` 保持深度 2；不移动 `log-serialization.ts`/`archive.ts`/`session-meta.ts`（C1/C4/C5）。
 - 打包：`scripts/build-sea-exe.mjs` 的拷贝清单（C6）—— 新增 sidecar 目录属运行期数据，**不改打包**；但产物必须重建并冒烟。

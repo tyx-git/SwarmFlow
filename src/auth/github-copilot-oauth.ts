@@ -21,6 +21,7 @@ import {
   loadAuthStore,
   saveAuthStore,
 } from "./openai/token-store.js";
+import { HTTP_TIMEOUT_MS } from "../network/http-timeout.js";
 import type { OAuthProgress, HeadlessOAuthOptions } from "./openai/types.js";
 
 // =============================================================================
@@ -56,9 +57,6 @@ export const COPILOT_EDITOR_HEADERS: Readonly<Record<string, string>> = {
 
 /** 等待用户完成设备授权的最大时间。 */
 const AUTH_TIMEOUT_MS = 15 * 60 * 1000;
-
-/** 单次 HTTP 请求超时。 */
-const HTTP_TIMEOUT_MS = 15_000;
 
 // =============================================================================
 // 类型

@@ -19,6 +19,7 @@ import {
   getGitHubAccessToken,
   COPILOT_EDITOR_HEADERS,
 } from "./github-copilot-oauth.js";
+import { HTTP_TIMEOUT_MS } from "../network/http-timeout.js";
 
 // =============================================================================
 // 常量
@@ -28,8 +29,6 @@ const COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token";
 
 /** 在声明的过期时间前 60 秒刷新短生命周期 Copilot API 令牌。 */
 const REFRESH_SKEW_SECONDS = 60;
-
-const HTTP_TIMEOUT_MS = 15_000;
 
 // =============================================================================
 // 类型
