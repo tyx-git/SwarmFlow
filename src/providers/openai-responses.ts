@@ -500,9 +500,9 @@ export class OpenAIResponsesProvider extends BaseProvider {
 
     let effort: string;
     if (level) {
-      // Responses 的合法 effort 到 xhigh 为止（具体仍按模型，见 OpenAI reasoning 文档）；
-      // 内部最高档 max 收敛到该上限，不把非法值发给端点。
-      effort = level === "max" ? "xhigh" : level;
+      // 档位原样发出：合法集合按模型而定（none/minimal/low/medium/high/xhigh/max，
+      // max 仅 GPT-6/GPT-5.6 的 Responses 支持），客户端不替用户降级。
+      effort = level;
     } else {
       // 默认：从预算推导
       const budget = this._config.thinkingBudget;

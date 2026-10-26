@@ -1,10 +1,9 @@
 /**
- * OpenAI ä¸¤æ¡éè·¯ç reasoning effort æ¶æã
+ * OpenAI ä¸¤æ¡éè·¯ç reasoning effort éä¼ å¥çº¦ã
  *
- * ææå¼æ¥èª OpenAI reasoning ææ¡£çåå¼éåï¼Responsesï¼none/minimal/low/medium/
- * high/xhighï¼Chat Completions åªå° minimal/low/medium/highï¼ï¼ä¸æ¥èªå®ç°ï¼
- * æ¡£ä½è¡¨éç `xhigh`/`max`ï¼src/config/thinking.tsï¼æ¯åé¨æ ç­¾ï¼
- * è¶åºå¯¹åºä¼ è¾ä¸éæ¶å¿é¡»æ¶æå°è¯¥ä¼ è¾çæé«åæ³å¼ï¼èä¸æ¯åæ ·ååºã
+ * ææå¼æ¥èª"å®¢æ·ç«¯ä¸æ¹åç¨æ·éæ©"è¿ä¸çº¦å®ï¼åæ³éåææ¨¡åèå®ï¼OpenAI ææ¡£ååº
+ * none/minimal/low/medium/high/xhigh/maxï¼å¶ä¸­ max ä» GPT-6/GPT-5.6 ç Responses æ¯æï¼ï¼
+ * éä»ä¹åä»ä¹ï¼ç«¯ç¹ä¸è®¤å°±è®©å®æ¥éï¼å®¢æ·ç«¯ä¸éé»æ¢æ¡£ã
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +14,7 @@ import { OpenAIResponsesProvider } from "../../src/providers/openai-responses.js
 
 function modelConfig(overrides?: Partial<ModelConfig>): ModelConfig {
   return {
-    name: "effort-clamp-test",
+    name: "effort-verbatim-test",
     provider: "openai",
     model: "gpt-5.4",
     apiKey: "test-key",
@@ -50,16 +49,12 @@ async function responsesKwargs(thinkingLevel: string | undefined): Promise<Recor
 }
 
 describe("Chat Completions reasoning_effort", () => {
-  it.each([
-    ["minimal", "minimal"],
-    ["low", "low"],
-    ["medium", "medium"],
-    ["high", "high"],
-    ["xhigh", "high"],
-    ["max", "high"],
-  ])("sends %1 as %2", async (level, expected) => {
-    expect(await chatKwargs(level)).toMatchObject({ reasoning_effort: expected });
-  });
+  it.each([["minimal"], ["low"], ["medium"], ["high"], ["xhigh"], ["max"]])(
+    "sends %s unchanged",
+    async (level) => {
+      expect(await chatKwargs(level)).toMatchObject({ reasoning_effort: level });
+    },
+  );
 
   it.each([["off"], ["none"], [undefined]])("omits the field for %s", async (level) => {
     expect((await chatKwargs(level))["reasoning_effort"]).toBeUndefined();
@@ -67,14 +62,8 @@ describe("Chat Completions reasoning_effort", () => {
 });
 
 describe("Responses reasoning.effort", () => {
-  it.each([
-    ["low", "low"],
-    ["medium", "medium"],
-    ["high", "high"],
-    ["xhigh", "xhigh"],
-    ["max", "xhigh"],
-  ])("sends %1 as %2", async (level, expected) => {
-    expect(await responsesKwargs(level)).toMatchObject({ reasoning: { effort: expected } });
+  it.each([["low"], ["medium"], ["high"], ["xhigh"], ["max"]])("sends %s unchanged", async (level) => {
+    expect(await responsesKwargs(level)).toMatchObject({ reasoning: { effort: level } });
   });
 
   it.each([["off"], ["none"]])("keeps %s as an explicit effort=none", async (level) => {

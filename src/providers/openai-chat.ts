@@ -330,12 +330,12 @@ export class OpenAIChatProvider extends BaseProvider {
   /**
    * 把思考深度档位映射为 Chat Completions 的 `reasoning_effort`。
    *
-   * Chat Completions 不识别 `xhigh` / `max`，统一收敛到最高可用档 `high`；
-   * 关闭思维链时返回 undefined（不发送该字段）。
+   * 档位原样发出，不替用户降级：合法集合按模型而定，端点不认的值由它自己
+   * 报错（该报错比静默换成别的档位更可信）。关闭思维链时不发送该字段。
    */
   private _chatCompletionsEffort(level: string | undefined): string | undefined {
     if (!level || level === "off" || level === "none") return undefined;
-    return level === "xhigh" || level === "max" ? "high" : level;
+    return level;
   }
 
   // ------------------------------------------------------------------
