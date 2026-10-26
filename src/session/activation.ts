@@ -42,6 +42,7 @@ export interface ActivationHost {
   _activeAsk: AskRequest | null;
   _activeLogEntryId: string | null;
   _compactInProgress: boolean;
+  _compactTerminatedThisTurn: boolean;
   _thinkingLevel: string;
   _promptCacheKey: string;
   _lastInputTokens: number;
@@ -316,7 +317,13 @@ export async function runActivation(host: ActivationHost,
   // Token update callback: update _lastInputTokens after each provider call
   // so the TUI can display real-time context usage.
   const onTokenUpdate = (inputTokens: number, usage?: import("../providers/response.js").Usage) => {
-    if (!Number.isFinite(inputTokens) || inputTokens <= 0) return;
+    if (!Number.isFinite(inputTokens) || inputTokens <= 0) {
+      host._lastInputTokens = 0;
+      host._lastTotalTokens = 0;
+      host._lastCacheReadTokens = 0;
+      host._cacheSupported = false;
+      return;
+    }
     host._lastInputTokens = inputTokens;
     host._lastTotalTokens = usage?.totalTokens ?? inputTokens;
     host._lastCacheReadTokens = usage?.cacheReadTokens ?? 0;
@@ -761,6 +768,9 @@ export async function runTurnActivationLoop(host: ActivationHost,
           if (!compactCommitted) {
             host._truncateCompactAttemptEntries(logLenBefore);
           }
+          if (compactCommitted && (compactErr as { code?: unknown })?.code === "E_COMPACT_NO_REDUCTION") {
+            host._compactTerminatedThisTurn = true;
+          }
           if (activeSignal.aborted || host._isCompactAbortError(compactErr)) {
             host._appendInterruptionSystemMessage([], true);
             host._recordSessionEvent("interrupted by user");
@@ -875,7 +885,7 @@ export async function runTurnActivationLoop(host: ActivationHost,
     }
     // If the finally drain wrote messages to the log without the model
     // seeing them, schedule an auto-resume turn to process them.
-    if (!host._activeAsk && host._hasUnprocessedUserMessage()) {
+    if (!host._activeAsk && !host._compactTerminatedThisTurn && host._hasUnprocessedUserMessage()) {
       host._scheduleAutoResume();
     }
     host._lifecycleEndedEmitted = true;

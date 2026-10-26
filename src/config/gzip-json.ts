@@ -1,10 +1,11 @@
 /** 共享的 gzip JSON 读写（archive 与 sealed sidecar 共用）。 */
 
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { createGzip, gunzipSync, gzipSync } from "node:zlib";
+import { createGzip, createGunzip, gunzipSync, gzipSync } from "node:zlib";
 
 export function writeGzipJson(file: string, value: unknown): void {
   writeFileSync(file, gzipSync(Buffer.from(JSON.stringify(value))));
@@ -159,7 +160,93 @@ function parseEnvelope<TIndex>(file: string): ParsedEnvelope<TIndex> {
   };
 }
 
-export function readGzipJsonlEnvelopeIndex<TIndex>(file: string): {
+function parseStreamEnvelopeHeader(record: unknown): string {
+  if (typeof record !== "object" || record === null) {
+    throw new Error("Archive envelope header is invalid.");
+  }
+  const header = record as Partial<EnvelopeHeader>;
+  if (header.kind !== "header" || header.format !== "swarmflow-archive" || header.version !== 1) {
+    throw new Error("Archive envelope header is invalid.");
+  }
+  if (typeof header.checkpointId !== "string" || header.checkpointId.length === 0) {
+    throw new Error("Archive envelope checkpoint id is invalid.");
+  }
+  return header.checkpointId;
+}
+
+/**
+ * 流式扫描 envelope；不选中条目时只保留当前行和尾部 index。
+ * 运行时 archive 读取使用此路径，避免把整个解压正文物化为字符串。
+ */
+export async function readGzipJsonlEnvelopeSelectedAsync<TEntry, TIndex>(
+  file: string,
+  shouldSelect?: (entry: TEntry) => boolean,
+): Promise<GzipJsonlEnvelope<TEntry, TIndex>> {
+  const source = createReadStream(file);
+  const gunzip = createGunzip();
+  source.on("error", (error) => gunzip.destroy(error));
+  const input = source.pipe(gunzip);
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  let checkpointId: string | undefined;
+  let index: TIndex | undefined;
+  let sawTrailer = false;
+  const entries: TEntry[] = [];
+
+  try {
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      let record: unknown;
+      try {
+        record = JSON.parse(line);
+      } catch (error) {
+        throw new Error(
+          `Archive envelope record is invalid (${error instanceof Error ? error.message : String(error)}).`,
+        );
+      }
+
+      if (checkpointId === undefined) {
+        checkpointId = parseStreamEnvelopeHeader(record);
+        continue;
+      }
+      if (sawTrailer) throw new Error("Archive envelope has data after trailer.");
+      if (typeof record !== "object" || record === null) {
+        throw new Error("Archive envelope entry is invalid.");
+      }
+      const envelopeRecord = record as Partial<EnvelopeEntry> & Partial<EnvelopeTrailer<TIndex>>;
+      if (envelopeRecord.kind === "entry" && "value" in envelopeRecord) {
+        if (shouldSelect?.(envelopeRecord.value as TEntry) ?? true) {
+          entries.push(envelopeRecord.value as TEntry);
+        }
+        continue;
+      }
+      if (envelopeRecord.kind === "trailer" && "index" in envelopeRecord) {
+        index = envelopeRecord.index as TIndex;
+        sawTrailer = true;
+        continue;
+      }
+      throw new Error("Archive envelope entry is invalid.");
+    }
+  } finally {
+    lines.close();
+    input.destroy();
+  }
+
+  if (checkpointId === undefined || !sawTrailer) {
+    throw new Error("Archive envelope is incomplete.");
+  }
+  return { checkpointId, entries, index: index as TIndex };
+}
+
+export async function readGzipJsonlEnvelopeIndexAsync<TIndex>(file: string): Promise<{
+  checkpointId: string;
+  index: TIndex;
+}> {
+  const { checkpointId, index } = await readGzipJsonlEnvelopeSelectedAsync<never, TIndex>(file, () => false);
+  return { checkpointId, index };
+}
+
+/** 仅供迁移/prune等同步工具使用；运行时索引读取必须使用异步流式版本。 */
+export function readGzipJsonlEnvelopeIndexSync<TIndex>(file: string): {
   checkpointId: string;
   index: TIndex;
 } {

@@ -6,6 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   readGzipJsonlEnvelope,
+  readGzipJsonlEnvelopeIndexAsync,
+  readGzipJsonlEnvelopeSelectedAsync,
   writeGzipJsonlEnvelopeAtomic,
 } from "../../src/config/gzip-json.js";
 
@@ -48,6 +50,39 @@ describe("gzip JSONL archive envelope", () => {
       })),
       index: { entryIds: Array.from({ length: 128 }, (_, i) => `e-${i}`), turns: [], mutations: [] },
     });
+  });
+
+  it("streams an index without materializing entries", async () => {
+    const dir = makeDir();
+    const file = join(dir, "window-cp-index.jsonl.gz");
+    const entries = Array.from({ length: 256 }, (_, i) => ({
+      id: `e-${i}`,
+      content: "x".repeat(1024),
+      display: `display-${i}`,
+      meta: {},
+    }));
+    const index = { entryIds: entries.map((entry) => entry.id), turns: [], mutations: [] };
+
+    await writeGzipJsonlEnvelopeAtomic(file, "cp-index", entries, index);
+
+    await expect(readGzipJsonlEnvelopeIndexAsync<typeof index>(file)).resolves.toEqual({
+      checkpointId: "cp-index",
+      index,
+    });
+    await expect(readGzipJsonlEnvelopeSelectedAsync<typeof entries[number], typeof index>(
+      file,
+      (entry) => entry.id === "e-127",
+    )).resolves.toMatchObject({
+      checkpointId: "cp-index",
+      index,
+      entries: [entries[127]],
+    });
+  });
+
+  it("wraps a missing archive read as a rejected promise", async () => {
+    const dir = makeDir();
+    await expect(readGzipJsonlEnvelopeIndexAsync(join(dir, "missing.jsonl.gz")))
+      .rejects.toThrow(/ENOENT/);
   });
 
   it("removes its temporary file when serialization fails", async () => {

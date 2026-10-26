@@ -169,6 +169,8 @@ export interface Session extends SessionLike {
   hasEarlierHistory?(): boolean;
   /** R-3：加载一页更早的历史并合并到展示日志。 */
   loadEarlierHistoryPage?(maxEntries?: number): { loaded: number; hasMore: boolean; capped?: boolean };
+  /** R-3：异步读取归档display，不阻塞TUI事件循环。 */
+  loadEarlierHistoryPageAsync?(maxEntries?: number): Promise<{ loaded: number; hasMore: boolean; capped?: boolean }>;
   /** R-3：页缓存是否已达 8 MiB 上限。 */
   isHistoryCacheCapped?(): boolean;
   appendUserInputDisplay?(text: string): void;

@@ -365,6 +365,19 @@ export async function asyncRunToolLoop(
       parseError: pending.closedCall?.parseError ?? null,
     });
 
+    const releaseCompletedToolCallPayload = (pending: PendingToolCallState): void => {
+      pending.rawArguments = "";
+      pending.completeTopLevelArgs = {};
+      pending.canonicalArgs = null;
+      pending.closedCall = null;
+      pending.sections = [];
+      pending.executionPromise = null;
+      pending.cachedFileContent = undefined;
+      pending.cachedTotalLineCount = undefined;
+      pending.editProbes = undefined;
+      pending.appendStartLine = undefined;
+    };
+
     /**
      * 同步 tool_call 日志条目。
      * 若是新建则追加条目，若是更新则调用 updateEntry。
@@ -777,6 +790,7 @@ export async function asyncRunToolLoop(
 
         pending.execPhase = resolved.content.startsWith("ERROR:") ? "failed" : "completed";
         syncToolCallEntry(callId);
+        releaseCompletedToolCallPayload(pending);
         return null;
       };
 

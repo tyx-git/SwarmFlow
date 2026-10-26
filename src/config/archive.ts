@@ -14,7 +14,9 @@ import { join } from "node:path";
 import type { LogEntry } from "../context/entry/types.js";
 import {
   readGzipJsonlEnvelope,
-  readGzipJsonlEnvelopeIndex,
+  readGzipJsonlEnvelopeIndexAsync,
+  readGzipJsonlEnvelopeIndexSync,
+  readGzipJsonlEnvelopeSelectedAsync,
   writeGzipJsonlEnvelopeAtomic,
   writeGzipJsonlEnvelopeAtomicSync,
 } from "./gzip-json.js";
@@ -274,7 +276,7 @@ export function loadArchivedDisplaysForEntries(
   for (const archiveName of listArchiveNames(dir)) {
     let index: ArchivedWindowIndex;
     try {
-      index = readGzipJsonlEnvelopeIndex<ArchivedWindowIndex>(archivePath(dir, archiveName)).index;
+      index = readGzipJsonlEnvelopeIndexSync<ArchivedWindowIndex>(archivePath(dir, archiveName)).index;
     } catch (error) {
       throw archiveReadError(archiveName, error);
     }
@@ -302,6 +304,47 @@ export function loadArchivedDisplaysForEntries(
 }
 
 /** 收集所有带正文副本的归档条目 id（prune 的安全判据）。 */
+export async function loadArchivedDisplaysForEntriesAsync(
+  dir: string,
+  entries: readonly LogEntry[],
+): Promise<ArchivedDisplayLookup> {
+  const needed = new Map<string, LogEntry>();
+  for (const entry of entries) {
+    if (entry.archived && entry.display === "") needed.set(entry.id, entry);
+  }
+  const displays = new Map<string, string>();
+  const windowsRead = new Set<number | string>();
+  if (needed.size === 0) return { displays, windowsRead: [], unresolved: [] };
+
+  for (const archiveName of listArchiveNames(dir)) {
+    let matched = false;
+    let records: ArchivedEntryRecord[];
+    try {
+      records = (await readGzipJsonlEnvelopeSelectedAsync<ArchivedEntryRecord, ArchivedWindowIndex>(
+        archivePath(dir, archiveName),
+        (record) => {
+          if (!needed.has(record.id)) return false;
+          matched = true;
+          return true;
+        },
+      )).entries;
+    } catch (error) {
+      throw archiveReadError(archiveName, error);
+    }
+    if (!matched) continue;
+    windowsRead.add(displayWindowKey(archiveName));
+    for (const record of records) {
+      if (typeof record.display === "string") displays.set(record.id, record.display);
+    }
+  }
+
+  return {
+    displays,
+    windowsRead: [...windowsRead],
+    unresolved: [...needed.keys()].filter((id) => !displays.has(id)),
+  };
+}
+
 export function loadArchivedContentIds(dir: string): Set<string> {
   const ids = new Set<string>();
   for (const name of listArchiveNames(dir)) {
@@ -388,7 +431,7 @@ export function loadPresentationCapableEntryIds(dir: string): Set<string> {
   for (const name of listArchiveNames(dir)) {
     let index: ArchivedWindowIndex;
     try {
-      index = readGzipJsonlEnvelopeIndex<ArchivedWindowIndex>(archivePath(dir, name)).index;
+      index = readGzipJsonlEnvelopeIndexSync<ArchivedWindowIndex>(archivePath(dir, name)).index;
     } catch (error) {
       throw archiveReadError(name, error);
     }
@@ -413,11 +456,21 @@ export function loadArchiveFile(dir: string, fileName: string): ArchivedEntryRec
   }
 }
 
+export async function loadArchiveFileAsync(dir: string, fileName: string): Promise<ArchivedEntryRecord[] | null> {
+  const file = archivePath(dir, fileName);
+  if (!existsSync(file)) return null;
+  try {
+    return (await readGzipJsonlEnvelopeSelectedAsync<ArchivedEntryRecord, ArchivedWindowIndex>(file)).entries;
+  } catch (error) {
+    throw archiveReadError(fileName, error);
+  }
+}
+
 function readArchiveIndexes(dir: string): ArchivedWindowIndex[] {
   const result: ArchivedWindowIndex[] = [];
   for (const name of listArchiveNames(dir)) {
     try {
-      result.push(readGzipJsonlEnvelopeIndex<ArchivedWindowIndex>(archivePath(dir, name)).index);
+      result.push(readGzipJsonlEnvelopeIndexSync<ArchivedWindowIndex>(archivePath(dir, name)).index);
     } catch (error) {
       throw archiveReadError(name, error);
     }
@@ -443,6 +496,42 @@ export function loadArchiveMutationIndexes(dir: string): Map<string, ArchivedMut
   return result;
 }
 
+async function readArchiveIndexesAsync(dir: string): Promise<ArchivedWindowIndex[]> {
+  const result: ArchivedWindowIndex[] = [];
+  for (const name of listArchiveNames(dir)) {
+    try {
+      result.push((await readGzipJsonlEnvelopeIndexAsync<ArchivedWindowIndex>(archivePath(dir, name))).index);
+    } catch (error) {
+      throw archiveReadError(name, error);
+    }
+  }
+  return result;
+}
+
+export async function loadArchiveTurnIndexesAsync(dir: string): Promise<Map<string, ArchivedTurnInfo>> {
+  const result = new Map<string, ArchivedTurnInfo>();
+  for (const index of await readArchiveIndexesAsync(dir)) {
+    for (const info of index.turns) result.set(info.id, info);
+  }
+  return result;
+}
+
+export async function loadArchiveMutationIndexesAsync(dir: string): Promise<Map<string, ArchivedMutationInfo>> {
+  const result = new Map<string, ArchivedMutationInfo>();
+  for (const index of await readArchiveIndexesAsync(dir)) {
+    for (const info of index.mutations) result.set(info.id, info);
+  }
+  return result;
+}
+
+export async function loadPresentationCapableEntryIdsAsync(dir: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (const index of await readArchiveIndexesAsync(dir)) {
+    for (const id of index.entryIds) ids.add(id);
+  }
+  return ids;
+}
+
 /** 读取指定 turn 之后、已归档条目的 meta；筛选先用 envelope 尾索引完成。 */
 export function loadArchivedMetaForTurns(
   dir: string,
@@ -453,6 +542,31 @@ export function loadArchivedMetaForTurns(
     let envelope: ReturnType<typeof readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>>;
     try {
       envelope = readGzipJsonlEnvelope<ArchivedEntryRecord, ArchivedWindowIndex>(archivePath(dir, name));
+    } catch (error) {
+      throw archiveReadError(name, error);
+    }
+    const relevant = envelope.index.turns.length === 0
+      || envelope.index.turns.some((info) => info.turnIndex >= fromTurnIndex);
+    if (!relevant) continue;
+    for (const record of envelope.entries) {
+      if (record.meta?.["toolMetadata"]) result.set(record.id, record.meta);
+    }
+  }
+  return result;
+}
+
+export async function loadArchivedMetaForTurnsAsync(
+  dir: string,
+  fromTurnIndex: number,
+): Promise<Map<string, Record<string, unknown>>> {
+  const result = new Map<string, Record<string, unknown>>();
+  for (const name of listArchiveNames(dir)) {
+    let envelope: { entries: ArchivedEntryRecord[]; index: ArchivedWindowIndex };
+    try {
+      envelope = await readGzipJsonlEnvelopeSelectedAsync<ArchivedEntryRecord, ArchivedWindowIndex>(
+        archivePath(dir, name),
+        (record) => Boolean(record.meta?.["toolMetadata"]),
+      );
     } catch (error) {
       throw archiveReadError(name, error);
     }

@@ -18,18 +18,19 @@ import { nowTimestamps, isSameUtcMinute } from "./timestamps.js";
 export type { LoadLogResult } from "./log-codec.js";
 
 /** 更新项目元数据中的最后活跃时间（跨分钟才写，避免检查点反复重写） */
-function updateProjectLastActive(projectDir: string, lastActiveAt: string): void {
+function updateProjectLastActive(projectDir: string, lastActiveAt: string): boolean {
   const projectJson = join(projectDir, "project.json");
-  if (!existsSync(projectJson)) return;
+  if (!existsSync(projectJson)) return true;
   try {
     const raw = JSON.parse(readFileSync(projectJson, "utf-8"));
-    if (isSameUtcMinute(raw.last_active_at, lastActiveAt)) return;
+    if (isSameUtcMinute(raw.last_active_at, lastActiveAt)) return true;
     raw.last_active_at = lastActiveAt;
     const tmp = projectJson + ".tmp";
     writeFileSync(tmp, JSON.stringify(raw));
     renameSync(tmp, projectJson);
+    return true;
   } catch {
-    // 尽力更新
+    return false;
   }
 }
 
@@ -74,22 +75,20 @@ function writeLogFile(
 }
 
 /** 写 meta.json 与 project.json（JSONL 保存与 legacy 保存共用）。 */
-export function saveSessionSidecars(dir: string, meta: LogSessionMeta): void {
+export function saveSessionSidecars(dir: string, meta: LogSessionMeta): boolean {
   const now = nowTimestamps();
   meta.updatedAt = now.utcIso;
   if (!meta.createdAt) meta.createdAt = now.utcIso;
   if (!meta.sessionId) meta.sessionId = basename(dir);
 
+  let ok = true;
   try {
     saveSessionMeta(dir, meta);
   } catch {
-    // 尽力而为
+    ok = false;
   }
-  try {
-    updateProjectLastActive(dirname(dir), meta.updatedAt);
-  } catch {
-    // 尽力而为
-  }
+  if (!updateProjectLastActive(dirname(dir), meta.updatedAt)) ok = false;
+  return ok;
 }
 
 /** legacy 保存（仅迁移/测试夹具使用）。 */

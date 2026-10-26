@@ -412,7 +412,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
   });
 
   // ── 回退 ──
-  server.on("session.getRewindTargets", () => session.getRewindTargets());
+  server.on("session.getRewindTargets", async () => session.getRewindTargetsAsync?.() ?? session.getRewindTargets());
   server.on("session.rewind", (params) => {
     const p = expectObject(params, "session.rewind");
     const toTurnIndex = optNumber(p, "toTurnIndex");

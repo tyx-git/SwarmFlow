@@ -11,7 +11,7 @@ import type { SessionStore } from "../../src/config/session-store.js";
 import type { ChildSessionSnapshot } from "../../src/session/tree-types.js";
 import { shouldLoadEarlierHistory, shouldLoadOnPageUp } from "./transcript/history-autoload.js";
 import { buildHistoryBanner } from "./transcript/history-banner.js";
-import { persistSessionLog } from "./autosave.js";
+import { persistSessionLog, SessionSaveController } from "./autosave.js";
 import { TUI_HISTORY_PAGE_ENTRIES } from "../../src/config/log-history.js";
 import { resolveInheritedThinkingLevel } from "../../src/session/role-model-resolver.js";
 import { persistCurrentModelSelection } from "../../src/config/settings/io.js";
@@ -657,7 +657,8 @@ export function OpenTuiApp({
       lastConversationScrollTopRef.current = currentTop;
       const hasEarlier = Boolean(session.hasEarlierHistory?.());
       if (!shouldLoadEarlierHistory(previousTop, currentTop, hasEarlier)) return;
-      session.loadEarlierHistoryPage?.();
+      void Promise.resolve(session.loadEarlierHistoryPageAsync?.() ?? session.loadEarlierHistoryPage?.())
+        .catch((error) => setRetryStatus(`History load failed: ${error instanceof Error ? error.message : String(error)}`));
     }, 250);
     return () => clearInterval(timer);
   }, [session, getActiveScrollBox]);
@@ -726,55 +727,65 @@ export function OpenTuiApp({
     setAskInputValue("");
     setOptionNotes(new Map());
   }, [pendingAsk?.id]);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveControllerRef = useRef<SessionSaveController | null>(null);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const persistModelSelection = useCallback((): void => {
+    if (typeof session.getGlobalPreferences !== "function") return;
+    try {
+      const prefs = session.getGlobalPreferences();
+      if (prefs.modelProvider && prefs.modelId) {
+        persistCurrentModelSelection({
+          provider: prefs.modelProvider,
+          model: prefs.modelId,
+          configName: prefs.modelConfigName,
+          thinkingDepth: prefs.thinkingLevel && prefs.thinkingLevel !== "none"
+            ? prefs.thinkingLevel
+            : undefined,
+        }, getSwarmflowHomeDir());
+      }
+    } catch {
+      // 选择状态保存失败不应阻断会话日志保存。
+    }
+  }, [session]);
   // 立即落盘：turn 结束、退出、命令完成等明确需要持久化的时机调用。
   const autoSave = useCallback((): boolean => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    if (typeof session.getGlobalPreferences === "function") {
-      try {
-        const prefs = session.getGlobalPreferences();
-        if (prefs.modelProvider && prefs.modelId) {
-          persistCurrentModelSelection({
-            provider: prefs.modelProvider,
-            model: prefs.modelId,
-            configName: prefs.modelConfigName,
-            thinkingDepth: prefs.thinkingLevel && prefs.thinkingLevel !== "none"
-              ? prefs.thinkingLevel
-              : undefined,
-          }, getSwarmflowHomeDir());
-        }
-      } catch {
-        // 选择状态保存失败不应阻断会话日志保存。
-      }
-    }
+    const controller = saveControllerRef.current;
+    if (controller) return controller.flush();
+    persistModelSelection();
     return persistSessionLog(session, Boolean(store?.sessionDir));
-  }, [session, store]);
-  // 检查点落盘：会话在每个 tool_result 后会触发 onSaveRequest，合并为
-  // 2 秒一次；现在每次保存只追加增量，但仍避免每个工具结果都触发一次 IO。
-  // 异常退出最多丢 2 秒。返回 false 表示本次只排队、尚未同步落盘。
-  const scheduleSave = useCallback((): boolean => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      autoSave();
-    }, 2000);
-    return false;
-  }, [autoSave]);
+  }, [persistModelSelection, session, store]);
   useEffect(() => {
-    session.onSaveRequest = scheduleSave;
+    let active = true;
+    const controller = new SessionSaveController(
+      session,
+      () => Boolean(store?.sessionDir),
+      (status) => {
+        if (!active) return;
+        if (status.state === "retrying") {
+          const seconds = Math.ceil((status.retryInMs ?? 0) / 1000);
+          setSaveStatus(`Save failed; retrying in ${seconds}s`);
+        } else if (status.state === "failed") {
+          setSaveStatus(`Save failed: ${status.error ?? "unknown error"}`);
+        } else if (status.state === "saved") {
+          setSaveStatus(null);
+        }
+      },
+      persistModelSelection,
+    );
+    saveControllerRef.current = controller;
+    session.onSaveRequest = () => controller.schedule();
     return () => {
       session.onSaveRequest = undefined;
-      // 卸载/切换会话时把待写的检查点立刻补齐，别把它丢在定时器里。
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-        autoSave();
+      active = false;
+      let flushed = controller.flush();
+      if (!flushed) flushed = controller.flush();
+      if (!flushed) {
+        console.error("[SwarmFlow] Session save failed during exit; the session remains dirty.");
       }
+      controller.dispose();
+      if (saveControllerRef.current === controller) saveControllerRef.current = null;
     };
-  }, [session, scheduleSave, autoSave]);
+  }, [session, store, persistModelSelection]);
   useEffect(() => {
     session.onMcpStatus = (statuses) => {
       const failed = statuses
@@ -2721,7 +2732,8 @@ export function OpenTuiApp({
       const atTop = (sb?.scrollTop ?? Number.POSITIVE_INFINITY) <= 1;
       sb?.scrollBy(-(sb.height / 2));
       if (sb === mainScrollRef.current && shouldLoadOnPageUp(atTop, Boolean(session.hasEarlierHistory?.()))) {
-        session.loadEarlierHistoryPage?.();
+        void Promise.resolve(session.loadEarlierHistoryPageAsync?.() ?? session.loadEarlierHistoryPage?.())
+        .catch((error) => setRetryStatus(`History load failed: ${error instanceof Error ? error.message : String(error)}`));
       }
       event.preventDefault();
       event.stopPropagation();
@@ -3225,14 +3237,17 @@ export function OpenTuiApp({
       permissionMode={permissionModeState}
       presentationEntries={effectiveEntries}
       historyBanner={historyBanner}
-      onLoadEarlierHistory={() => session.loadEarlierHistoryPage?.()}
+      onLoadEarlierHistory={() => {
+        void Promise.resolve(session.loadEarlierHistoryPageAsync?.() ?? session.loadEarlierHistoryPage?.())
+        .catch((error) => setRetryStatus(`History load failed: ${error instanceof Error ? error.message : String(error)}`));
+      }}
       processing={effectiveProcessing}
       diffDisplayMode={diffDisplayMode}
       mainScrollRef={mainScrollRef}
       detailScrollRef={detailScrollRef}
       selectedChildId={selectedChildId}
       hasQueuedUserInput={queuedInputs.length > 0}
-      retryStatus={selectedChildId ? null : retryStatus}
+      retryStatus={saveStatus ?? (selectedChildId ? null : retryStatus)}
       onAgentClick={enterChildSession}
       pendingAsk={pendingAsk}
       askError={askError}

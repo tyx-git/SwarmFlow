@@ -111,6 +111,37 @@ describe("auto compact quota and post-compact recheck", () => {
     }
   });
 
+  it("rejects a checkpoint when entries need archiving but no session directory exists", async () => {
+    const h = makeScriptedSession({ rounds: [{ text: LONG }] });
+    try {
+      h.internals._store.sessionDir = undefined;
+      await expect(h.session._doAutoCompact("before_turn", undefined, undefined, false, "manual"))
+        .rejects.toMatchObject({ code: "E_COMPACT_ARCHIVE_REQUIRED", committed: false });
+      expect(h.session.log.some((entry) => entry.type === "compact_marker" && !entry.discarded)).toBe(false);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("counts ephemeral runtime state in the committed post-compact check", async () => {
+    const h = makeScriptedSession({ rounds: [{ text: LONG }] });
+    try {
+      let committed = false;
+      const appendCheckpoint = h.internals._appendCompactCheckpoint.bind(h.session);
+      h.internals._estimateContextTokens = () => 0;
+      h.internals._estimateEphemeralTailTokens = () => committed ? 7_000 : 0;
+      h.internals._appendCompactCheckpoint = (...args: any[]) => {
+        appendCheckpoint(...args);
+        committed = true;
+      };
+
+      await expect(h.session._doAutoCompact("before_turn", undefined, undefined, false, "manual"))
+        .rejects.toMatchObject({ code: "E_COMPACT_NO_REDUCTION", committed: true });
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("emits one committed compact_end for a successful attempt", async () => {
     const h = makeScriptedSession({ rounds: [{ text: LONG }] });
     try {

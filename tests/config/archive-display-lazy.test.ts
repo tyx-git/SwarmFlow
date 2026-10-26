@@ -11,6 +11,7 @@ import {
   archiveWindow,
   hydrateArchivedDisplay,
   loadArchivedDisplaysForEntries,
+  loadArchivedDisplaysForEntriesAsync,
 } from "../../src/config/archive.js";
 import { writeGzipJsonlAtomic } from "../../src/config/gzip-json.js";
 import { createAssistantText } from "../../src/context/entry/factories.js";
@@ -92,5 +93,19 @@ describe("归档 display 按窗口懒读", () => {
     expect(hydrateArchivedDisplay(dir, [a, b])).toBe(2);
     expect(a.display).toBe("display-0");
     expect(b.display).toBe("display-1");
+  });
+
+  it("异步按需读取每个归档只扫描一次并返回目标display", async () => {
+    const dir = makeDir();
+    const a = entry(0);
+    const b = entry(1);
+    seedWindow(dir, 0, a);
+    seedWindow(dir, 1, b);
+
+    await expect(loadArchivedDisplaysForEntriesAsync(dir, [a])).resolves.toMatchObject({
+      windowsRead: [0],
+      displays: new Map([["a-0", "display-0"]]),
+      unresolved: [],
+    });
   });
 });

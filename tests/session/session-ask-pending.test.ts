@@ -57,6 +57,44 @@ describe("ask-pending window", () => {
     }
   });
 
+  it("keeps approved activation pending when its context budget blocks resume", async () => {
+    const executed: string[] = [];
+    const h = makeGatedHarness(executed, SUSPEND_THEN_FINISH);
+    try {
+      const gate = stageApprovalGate(h, "gated_tool");
+
+      await h.session.turn("kick off");
+      h.session.resolveApprovalAsk(gate.ask!.id, 0);
+      h.internals.primaryAgent.modelConfig.contextLength = 128;
+
+      await expect(h.session.resumePendingTurn()).rejects.toThrow("effective context budget");
+      expect(h.session.hasPendingTurnToResume()).toBe(true);
+
+      h.internals.primaryAgent.modelConfig.contextLength = 8192;
+      await h.session.resumePendingTurn();
+      expect(executed).toEqual(["ran"]);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("keeps pre-input pending when its context budget blocks resume", async () => {
+    const h = makeScriptedSession({ rounds: [{ text: "answered" }] });
+    try {
+      h.internals._pendingTurnState = { stage: "pre_user_input", userInput: "saved input" };
+      h.internals.primaryAgent.modelConfig.contextLength = 128;
+
+      await expect(h.session.resumePendingTurn()).rejects.toThrow("effective context budget");
+      expect(h.session.hasPendingTurnToResume()).toBe(true);
+
+      h.internals.primaryAgent.modelConfig.contextLength = 8192;
+      await h.session.resumePendingTurn();
+      expect(h.provider.sawUserText("saved input")).toBe(true);
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("deny → error tool_result reaches the model and the turn continues (locked)", async () => {
     const executed: string[] = [];
     const h = makeGatedHarness(executed, [

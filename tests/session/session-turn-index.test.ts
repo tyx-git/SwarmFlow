@@ -466,11 +466,14 @@ describe("D20 回退菜单 turn 索引", () => {
       expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(true);
 
       h.internals._logStore.patchFlags(["ts-2"], { discarded: false });
-      expect(h.session.persistToDisk()).toBe(true);
+      expect(h.session.persistToDisk()).toBe(false);
+      expect(h.session.getPersistenceStatus()).toMatchObject({ dirty: true });
       expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(false);
 
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
       expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(true);
+      expect(h.session.persistToDisk()).toBe(true);
+      expect(h.session.getPersistenceStatus()).toMatchObject({ dirty: false });
     } finally {
       h.dispose();
     }

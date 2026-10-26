@@ -80,6 +80,7 @@ export interface SessionLike {
 
   /* Rewind */
   getRewindTargets(): RewindTargetTurn[];
+  getRewindTargetsAsync?(): Promise<RewindTargetTurn[]>;
   planRewind(fromTurnIndex: number): Promise<RewindPlan>;
   rewindConversation(toTurnIndex: number): { removed: number; error?: string };
   rewindFiles(plan: RewindPlan): Promise<RewindApplyResult>;

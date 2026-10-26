@@ -47,13 +47,25 @@ export async function cmdCompact(ctx: CommandContext, args: string): Promise<voi
 
 /** 载入一页更早的历史（R-3 有界恢复）；可带条数参数。 */
 export async function cmdHistory(ctx: CommandContext, args: string): Promise<void> {
-  const session = ctx.session as unknown as { loadEarlierHistoryPage?: (maxEntries?: number) => { loaded: number; hasMore: boolean } };
-  if (typeof session.loadEarlierHistoryPage !== "function") {
-    ctx.showMessage("History paging is unavailable in this session.");
+  const session = ctx.session as unknown as {
+    loadEarlierHistoryPageAsync?: (maxEntries?: number) => Promise<{ loaded: number; hasMore: boolean }>;
+    loadEarlierHistoryPage?: (maxEntries?: number) => { loaded: number; hasMore: boolean };
+  };
+  const parsed = Number.parseInt(args.trim(), 10);
+  let result: { loaded: number; hasMore: boolean };
+  try {
+    if (typeof session.loadEarlierHistoryPageAsync === "function") {
+      result = await session.loadEarlierHistoryPageAsync(Number.isFinite(parsed) ? parsed : undefined);
+    } else if (typeof session.loadEarlierHistoryPage === "function") {
+      result = session.loadEarlierHistoryPage(Number.isFinite(parsed) ? parsed : undefined);
+    } else {
+      ctx.showMessage("History paging is unavailable in this session.");
+      return;
+    }
+  } catch (error) {
+    ctx.showMessage(`Failed to load earlier history: ${error instanceof Error ? error.message : String(error)}`);
     return;
   }
-  const parsed = Number.parseInt(args.trim(), 10);
-  const result = session.loadEarlierHistoryPage(Number.isFinite(parsed) ? parsed : undefined);
   if (result.loaded === 0) {
     ctx.showMessage(result.hasMore ? "No earlier entries on this page." : "No earlier history.");
     return;

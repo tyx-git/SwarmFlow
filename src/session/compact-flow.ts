@@ -89,6 +89,15 @@ export class CompactInsufficientWorkspaceError extends Error {
   }
 }
 
+export class CompactArchiveRequiredError extends Error {
+  readonly code = "E_COMPACT_ARCHIVE_REQUIRED";
+  readonly committed = false;
+  constructor() {
+    super("Compaction cannot commit a window with entries to archive before session storage is ready.");
+    this.name = "CompactArchiveRequiredError";
+  }
+}
+
 /** 判断错误是否发生在 checkpoint 提交之后（禁止回滚历史）。 */
 export function isCommittedCompactError(error: unknown): boolean {
   return Boolean(
@@ -647,11 +656,14 @@ export async function doAutoCompact(host: CompactHost,
     const archiveStartIdx = previousMarkerIdx >= 0 ? previousMarkerIdx + 1 : 1;
     const archiveEndIdx = host._log.length - 1;
     const sessionDir = host._store?.sessionDir as string | undefined;
+    const hasArchivableEntries = archiveEndIdx >= archiveStartIdx
+      && host._log.slice(archiveStartIdx, archiveEndIdx + 1).some((entry) => !entry.archived && !entry.discarded);
+    if (hasArchivableEntries && !sessionDir) throw new CompactArchiveRequiredError();
     let archiveFile = "";
     let archiveIndexFile = "";
     let archivedIds: string[] = [];
     try {
-      if (sessionDir && archiveEndIdx >= archiveStartIdx) {
+      if (sessionDir && hasArchivableEntries) {
         archive = await archiveWindowById(
           sessionDir,
           checkpointId,
@@ -659,9 +671,15 @@ export async function doAutoCompact(host: CompactHost,
           archiveStartIdx,
           archiveEndIdx,
         );
+        if (archive.ids.length === 0) {
+          throw new Error("Archive window contained entries but produced no archive records.");
+        }
         archiveFile = archive.archiveFile;
         archiveIndexFile = archive.archiveIndexFile;
         archivedIds = archive.ids;
+      }
+      if (archivedIds.length > 0 && !archiveFile) {
+        throw new Error("Archive records must have a committed archive file.");
       }
 
       // 5: 唯一 commit point：marker + context 同条 checkpoint 记录。
@@ -698,7 +716,9 @@ export async function doAutoCompact(host: CompactHost,
     // 调用方不得截断本次区间。
     const { budget } = host._contextManager.budgetInfo();
     const threshold = host._contextManager.thresholds.compact_mid_turn / 100;
-    if (budget > 0 && host._estimateContextTokens() > threshold * budget) {
+    const postCompactTokens = host._estimateContextTokens()
+      + (host._estimateEphemeralTailTokens?.() ?? 0);
+    if (budget > 0 && postCompactTokens > threshold * budget) {
       throw new CompactDidNotReduceContextError();
     }
 

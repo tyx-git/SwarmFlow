@@ -424,7 +424,7 @@ describe("session storage lifecycle", () => {
     }
   });
 
-  it("ignores zero token updates from providers", async () => {
+  it("invalidates zero token snapshots from providers", async () => {
     const baseDir = makeTempDir("swarmflow-lifecycle-base-");
     const projectRoot = makeTempDir("swarmflow-lifecycle-project-");
     try {
@@ -453,8 +453,8 @@ describe("session storage lifecycle", () => {
 
       await (session as any)._runActivation();
 
-      expect(session.lastInputTokens).toBe(7171);
-      expect(session.lastTotalTokens).toBe(7510);
+      expect(session.lastInputTokens).toBe(0);
+      expect(session.lastTotalTokens).toBe(0);
       expect(session.log.some((entry) => entry.type === "token_update")).toBe(false);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
@@ -462,14 +462,13 @@ describe("session storage lifecycle", () => {
     }
   });
 
-  it("does not reset token counters when an activation finishes without usage", async () => {
+  it("resets token counters when an activation finishes without usage", async () => {
     const baseDir = makeTempDir("swarmflow-lifecycle-base-");
     const projectRoot = makeTempDir("swarmflow-lifecycle-project-");
     try {
       const store = new SessionStore({ baseDir, projectPath: projectRoot });
       const session = makeSession(projectRoot, store);
-      // 保持低于 before-turn 阈值：本用例只验证“无 usage 的 activation 不清空计数”，
-      // 不能顺带触发压缩（压缩成功后按新约定会主动清零 per-response 快照）。
+      // 保持低于 before-turn 阈值，隔离“无 usage 时清除瞬时快照”的行为。
       session.lastInputTokens = 1000;
       session.lastTotalTokens = 1100;
 
@@ -489,8 +488,8 @@ describe("session storage lifecycle", () => {
 
       await session.turn("hello");
 
-      expect(session.lastInputTokens).toBe(1000);
-      expect(session.lastTotalTokens).toBe(1100);
+      expect(session.lastInputTokens).toBe(0);
+      expect(session.lastTotalTokens).toBe(0);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });

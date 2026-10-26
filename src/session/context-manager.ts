@@ -26,6 +26,15 @@ export interface ContextManagerDeps {
   estimateContextTokens(): number;
 }
 
+export class ContextBudgetUnavailableError extends Error {
+  readonly code = "E_CONTEXT_BUDGET_INVALID";
+
+  constructor(budget: number) {
+    super(`Automatic compaction is unavailable because the effective context budget is ${budget}.`);
+    this.name = "ContextBudgetUnavailableError";
+  }
+}
+
 export class ContextManager {
   private _thresholds: ContextThresholds = { ...DEFAULT_THRESHOLDS };
   private _budgetPercent = 100;
@@ -61,6 +70,12 @@ export class ContextManager {
     const fullContext = this.deps.getBudgetCalcMode() === "full_context";
     const effective = this.effectiveContextLength(mc);
     return { budget: fullContext ? effective : effective - mc.maxTokens, fullContext };
+  }
+
+  assertBudgetAvailable(): void {
+    if (!this.deps.canAutoCompact() || this.deps.isCompactInProgress()) return;
+    const { budget } = this.budgetInfo();
+    if (budget <= 0) throw new ContextBudgetUnavailableError(budget);
   }
 
   /**

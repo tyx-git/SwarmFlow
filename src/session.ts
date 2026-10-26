@@ -95,9 +95,13 @@ import { createSystemPrompt, createStatus, createCommandEcho, createError as cre
 import {
   loadArchiveFile,
   loadArchiveMutationIndexes,
+  loadArchiveMutationIndexesAsync,
   loadArchiveTurnIndexes,
+  loadArchiveTurnIndexesAsync,
   loadArchivedDisplaysForEntries,
+  loadArchivedDisplaysForEntriesAsync,
   loadArchivedMetaForTurns,
+  loadArchivedMetaForTurnsAsync,
   loadPresentationCapableEntryIds,
   stripEntryForPersistence,
   type ArchivedMutationInfo,
@@ -154,6 +158,12 @@ interface TurnMutationAggregate {
 
 /** 无历史分页的短会话在 turn_end 时自建索引；长日志仍等首次菜单读取重建。 */
 const TURN_INDEX_AUTOCREATE_MAX_ENTRIES = 5000;
+const HISTORY_PAGE_DEFAULT_ENTRIES = 200;
+
+function normalizeHistoryPageSize(value: number): number {
+  if (!Number.isFinite(value)) return HISTORY_PAGE_DEFAULT_ENTRIES;
+  return Math.max(1, Math.floor(value));
+}
 import {
   CHILD_SESSION_CAPABILITIES,
   ROOT_SESSION_CAPABILITIES,
@@ -406,6 +416,9 @@ export class Session implements SessionLike {
   private _presentationArchiveIds: Set<string> | undefined;
   private _presentationArchiveCount = -1;
   private _needsPersistenceNormalization = false;
+  private _persistenceDirty = false;
+  private _persistenceFailure: string | null = null;
+  private _turnIndexDirty = false;
   /** M1：reasoningState 解压缓存（4 MiB LRU）。 */
   private _sealedStateCache = new Map<string, { value: unknown; bytes: number }>();
   private _sealedStateCacheBytes = 0;
@@ -461,6 +474,7 @@ export class Session implements SessionLike {
 
   // Compact phase
   _compactInProgress = false;
+  _compactTerminatedThisTurn = false;
 
   // Context-pressure state (thresholds and budget percent) lives in ContextManager.
   _contextManager!: ContextManager;
@@ -1568,6 +1582,7 @@ export class Session implements SessionLike {
     this._promptSectionEstimates = null;
     this._contextEstimateCache = null;
     this._compactInProgress = false;
+    this._compactTerminatedThisTurn = false;
     this._agentState = "idle";
     this._inbox = [];
     this._currentWorkId = null;
@@ -1620,6 +1635,7 @@ export class Session implements SessionLike {
   private _earlierEntriesBytes = 0;
   private _historyCacheCapped = false;
   private _archivedDisplays: Map<string, string> | null = null;
+  private _historyPageLoadInFlight: Promise<{ loaded: number; hasMore: boolean; capped?: boolean }> | null = null;
 
   /** Read-only snapshot of the log filtered by display cutoff, including loaded earlier history. */
   getDisplayLog(): readonly LogEntry[] {
@@ -1656,9 +1672,10 @@ export class Session implements SessionLike {
   }
 
   /** 取一页更早的历史并合并到展示日志；返回本次加载条数与是否还有更早页。 */
-  loadEarlierHistoryPage(maxEntries = 200): { loaded: number; hasMore: boolean; capped?: boolean } {
+  loadEarlierHistoryPage(maxEntries = HISTORY_PAGE_DEFAULT_ENTRIES): { loaded: number; hasMore: boolean; capped?: boolean } {
+    const pageSize = normalizeHistoryPageSize(maxEntries);
     if (this._historyStartOffset === null) {
-      return this._loadLiveHistoryPage(maxEntries);
+      return this._loadLiveHistoryPage(pageSize);
     }
     const dir = this._resolvePersistDir();
     if (!dir || this._historyExhausted) {
@@ -1667,62 +1684,137 @@ export class Session implements SessionLike {
     try {
       this._historyPager ??= openTuiHistoryPager(dir, {
         startOffset: this._historyStartOffset,
-        maxEntries,
+        maxEntries: pageSize,
       });
       const page = this._historyPager.nextPage();
-      let loaded = 0;
-      if (page.entries.length > 0) {
-        const missingDisplay = page.entries.filter((entry) =>
-          entry.archived && entry.display === "" && !this._archivedDisplays?.has(entry.id));
-        if (missingDisplay.length > 0) {
-          const lookup = loadArchivedDisplaysForEntries(dir, missingDisplay);
-          this._archivedDisplays ??= new Map();
-          for (const [id, display] of lookup.displays) this._archivedDisplays.set(id, display);
-        }
-        if (this._archivedDisplays) {
-          for (const entry of page.entries) {
-            if (!entry.archived || entry.display !== "") continue;
-            entry.display = this._archivedDisplays.get(entry.id) ?? "";
-          }
-        }
-        const known = new Set<string>([
-          ...this._earlierEntries.map((entry) => entry.id),
-          ...this._log.map((entry) => entry.id),
-        ]);
-        const fresh = page.entries.filter((entry) => !known.has(entry.id));
-        const freshBytes = estimateEntriesBytes(fresh);
-        if (this._earlierEntriesBytes + freshBytes > HISTORY_PAGE_CACHE_BYTES) {
-          // 不加入半页：分页游标已经越过本页，加入后也无法保证连续；直接停止并提示上限。
-          this._historyCacheCapped = true;
-          this._historyExhausted = true;
-          this._historyPager?.close();
-          this._historyPager = null;
-          this._bumpLogRevision();
-          this._notifyLogListeners();
-          return { loaded: 0, hasMore: false, capped: true };
-        }
-        this._earlierEntries = [...fresh, ...this._earlierEntries];
-        this._earlierEntriesBytes += freshBytes;
-        loaded = fresh.length;
-      }
-      if (!page.hasMore) {
-        this._historyExhausted = true;
-        this._historyPager.close();
-        this._historyPager = null;
-      }
-      this._bumpLogRevision();
-      this._notifyLogListeners();
-      return { loaded, hasMore: page.hasMore };
-    } catch {
-      this._historyExhausted = true;
+      this._hydrateArchivedDisplays(dir, page.entries);
+      return this._mergeHistoryPage(page.entries, page.hasMore);
+    } catch (error) {
       this._historyPager?.close();
       this._historyPager = null;
-      return { loaded: 0, hasMore: false };
+      this._historyExhausted = false;
+      throw error;
     }
   }
 
-  /** live 会话：从内存日志向更早页移动，不重新读盘。 */
-  private _loadLiveHistoryPage(maxEntries: number): { loaded: number; hasMore: boolean; capped?: boolean } {
+  private _hydrateArchivedDisplays(dir: string, entries: readonly LogEntry[]): void {
+    const missing = entries.filter((entry) =>
+      entry.archived && entry.display === "" && !this._archivedDisplays?.has(entry.id));
+    const displays = missing.length > 0
+      ? loadArchivedDisplaysForEntries(dir, missing).displays
+      : undefined;
+    this._applyArchivedDisplays(entries, displays);
+  }
+
+  private async _hydrateArchivedDisplaysAsync(dir: string, entries: readonly LogEntry[]): Promise<void> {
+    const missing = entries.filter((entry) =>
+      entry.archived && entry.display === "" && !this._archivedDisplays?.has(entry.id));
+    const displays = missing.length > 0
+      ? (await loadArchivedDisplaysForEntriesAsync(dir, missing)).displays
+      : undefined;
+    this._applyArchivedDisplays(entries, displays);
+  }
+
+  private _applyArchivedDisplays(
+    entries: readonly LogEntry[],
+    displays?: ReadonlyMap<string, string>,
+  ): void {
+    if (displays && displays.size > 0) {
+      this._archivedDisplays ??= new Map();
+      for (const [id, display] of displays) this._archivedDisplays.set(id, display);
+    }
+    if (!this._archivedDisplays) return;
+    for (const entry of entries) {
+      if (!entry.archived || entry.display !== "") continue;
+      entry.display = this._archivedDisplays.get(entry.id) ?? "";
+    }
+  }
+
+  private _mergeHistoryPage(
+    entries: readonly LogEntry[],
+    hasMore: boolean,
+  ): { loaded: number; hasMore: boolean; capped?: boolean } {
+    let loaded = 0;
+    if (entries.length > 0) {
+      const known = new Set<string>([
+        ...this._earlierEntries.map((entry) => entry.id),
+        ...this._log.map((entry) => entry.id),
+      ]);
+      const fresh = entries.filter((entry) => !known.has(entry.id));
+      const freshBytes = estimateEntriesBytes(fresh);
+      if (this._earlierEntriesBytes + freshBytes > HISTORY_PAGE_CACHE_BYTES) {
+        this._historyCacheCapped = true;
+        this._historyExhausted = true;
+        this._historyPager?.close();
+        this._historyPager = null;
+        this._bumpLogRevision();
+        this._notifyLogListeners();
+        return { loaded: 0, hasMore: false, capped: true };
+      }
+      this._earlierEntries = [...fresh, ...this._earlierEntries];
+      this._earlierEntriesBytes += freshBytes;
+      loaded = fresh.length;
+    }
+    if (!hasMore) {
+      this._historyExhausted = true;
+      this._historyPager?.close();
+      this._historyPager = null;
+    }
+    this._bumpLogRevision();
+    this._notifyLogListeners();
+    return { loaded, hasMore };
+  }
+
+  /** 异步历史页：archive display 读取使用异步流；JSONL 分页器仍复用同步窗口读取。 */
+  async loadEarlierHistoryPageAsync(maxEntries = HISTORY_PAGE_DEFAULT_ENTRIES): Promise<{ loaded: number; hasMore: boolean; capped?: boolean }> {
+    const pageSize = normalizeHistoryPageSize(maxEntries);
+    if (this._historyPageLoadInFlight) return this._historyPageLoadInFlight;
+    const pending = this._loadEarlierHistoryPageAsync(pageSize);
+    this._historyPageLoadInFlight = pending;
+    try {
+      return await pending;
+    } catch (error) {
+      this._historyPager?.close();
+      this._historyPager = null;
+      this._historyExhausted = false;
+      throw error;
+    } finally {
+      if (this._historyPageLoadInFlight === pending) this._historyPageLoadInFlight = null;
+    }
+  }
+
+  private async _loadEarlierHistoryPageAsync(
+    maxEntries: number,
+  ): Promise<{ loaded: number; hasMore: boolean; capped?: boolean }> {
+    if (this._historyStartOffset === null) return this._loadLiveHistoryPageAsync(maxEntries);
+    const dir = this._resolvePersistDir();
+    if (!dir || this._historyExhausted) return { loaded: 0, hasMore: false };
+
+    this._historyPager ??= openTuiHistoryPager(dir, {
+      startOffset: this._historyStartOffset,
+      maxEntries,
+    });
+    const page = this._historyPager.nextPage();
+    await this._hydrateArchivedDisplaysAsync(dir, page.entries);
+    return this._mergeHistoryPage(page.entries, page.hasMore);
+  }
+
+  private _appendLiveHistoryPage(
+    entries: readonly LogEntry[],
+    start: number,
+    freshBytes: number,
+  ): { loaded: number; hasMore: boolean; capped?: boolean } {
+    this._earlierEntries = [...entries, ...this._earlierEntries];
+    this._earlierEntriesBytes += freshBytes;
+    this._liveHistoryCursor = start;
+    this._bumpLogRevision();
+    this._notifyLogListeners();
+    return { loaded: entries.length, hasMore: start > 0 };
+  }
+
+  private async _loadLiveHistoryPageAsync(
+    maxEntries: number,
+  ): Promise<{ loaded: number; hasMore: boolean; capped?: boolean }> {
     const activeStart = this._logStore.activeWindowStartIdx();
     if (activeStart <= 0) {
       this._liveHistoryCursor = 0;
@@ -1730,7 +1822,7 @@ export class Session implements SessionLike {
     }
     const cursor = this._liveHistoryCursor ?? activeStart;
     if (cursor <= 0) return { loaded: 0, hasMore: false };
-    const start = Math.max(0, cursor - Math.max(1, maxEntries));
+    const start = Math.max(0, cursor - maxEntries);
     const page = this._log.slice(start, cursor);
     if (page.length === 0) return { loaded: 0, hasMore: false };
 
@@ -1742,26 +1834,33 @@ export class Session implements SessionLike {
     }
 
     const dir = this._resolvePersistDir();
-    const missingDisplay = dir
-      ? page.filter((entry) =>
-          entry.archived && entry.display === "" && !this._archivedDisplays?.has(entry.id))
-      : [];
-    if (dir && missingDisplay.length > 0) {
-      const lookup = loadArchivedDisplaysForEntries(dir, missingDisplay);
-      this._archivedDisplays ??= new Map();
-      for (const [id, display] of lookup.displays) this._archivedDisplays.set(id, display);
+    if (dir) await this._hydrateArchivedDisplaysAsync(dir, page);
+    return this._appendLiveHistoryPage(page, start, freshBytes);
+  }
+
+  /** live 会话：从内存日志向更早页移动，不重新读盘。 */
+  private _loadLiveHistoryPage(maxEntries: number): { loaded: number; hasMore: boolean; capped?: boolean } {
+    const activeStart = this._logStore.activeWindowStartIdx();
+    if (activeStart <= 0) {
+      this._liveHistoryCursor = 0;
+      return { loaded: 0, hasMore: false };
     }
-    for (const entry of page) {
-      if (!entry.archived || entry.display !== "") continue;
-      entry.display = this._archivedDisplays?.get(entry.id) ?? "";
+    const cursor = this._liveHistoryCursor ?? activeStart;
+    if (cursor <= 0) return { loaded: 0, hasMore: false };
+    const start = Math.max(0, cursor - maxEntries);
+    const page = this._log.slice(start, cursor);
+    if (page.length === 0) return { loaded: 0, hasMore: false };
+
+    const freshBytes = estimateEntriesBytes(page);
+    if (this._earlierEntriesBytes + freshBytes > HISTORY_PAGE_CACHE_BYTES) {
+      this._historyCacheCapped = true;
+      this._liveHistoryCursor = start;
+      return { loaded: 0, hasMore: false, capped: true };
     }
 
-    this._earlierEntries = [...page, ...this._earlierEntries];
-    this._earlierEntriesBytes += freshBytes;
-    this._liveHistoryCursor = start;
-    this._bumpLogRevision();
-    this._notifyLogListeners();
-    return { loaded: page.length, hasMore: start > 0 };
+    const dir = this._resolvePersistDir();
+    if (dir) this._hydrateArchivedDisplays(dir, page);
+    return this._appendLiveHistoryPage(page, start, freshBytes);
   }
 
   private _closeHistoryPaging(): void {
@@ -1822,11 +1921,14 @@ export class Session implements SessionLike {
     }
   }
 
-  private _listTurnsFrom(entries: LogEntry[]): TurnListing[] {
-    if (entries === this._log) return this._logStore.listTurns(this._loadArchivedTurnInfo());
+  private _listTurnsFrom(
+    entries: LogEntry[],
+    archivedTurnInfo: ReadonlyMap<string, ArchivedTurnInfo> | undefined = this._loadArchivedTurnInfo(),
+  ): TurnListing[] {
+    if (entries === this._log) return this._logStore.listTurns(archivedTurnInfo);
     const temp = new SessionLog();
     temp.replace(entries);
-    return temp.listTurns(this._loadArchivedTurnInfo());
+    return temp.listTurns(archivedTurnInfo);
   }
 
   /** Set display cutoff to current log length (used by /clear). */
@@ -1866,6 +1968,15 @@ export class Session implements SessionLike {
     return this._listTurnsFrom(this._loadFullHistoryEntries());
   }
 
+  async listTurnsAsync(): Promise<TurnListing[]> {
+    const entries = this._loadFullHistoryEntries();
+    const archivedTurnInfo = await this._loadArchivedTurnInfoAsync();
+    if (entries === this._log) return this._logStore.listTurns(archivedTurnInfo);
+    const temp = new SessionLog();
+    temp.replace(entries);
+    return temp.listTurns(archivedTurnInfo);
+  }
+
   /** 归档索引只在 listTurns/回退菜单这类低频路径读取，不常驻。 */
   private _loadArchivedTurnInfo(): Map<string, ArchivedTurnInfo> | undefined {
     const sessionDir = this._store?.sessionDir;
@@ -1873,11 +1984,23 @@ export class Session implements SessionLike {
     return loadArchiveTurnIndexes(sessionDir);
   }
 
+  private async _loadArchivedTurnInfoAsync(): Promise<Map<string, ArchivedTurnInfo> | undefined> {
+    const sessionDir = this._store?.sessionDir;
+    if (!sessionDir) return undefined;
+    return loadArchiveTurnIndexesAsync(sessionDir);
+  }
+
   /** 回退菜单的文件统计只读摘要索引，不加载 reversePatch。 */
   private _loadArchivedMutations(): Map<string, ArchivedMutationInfo> | undefined {
     const sessionDir = this._store?.sessionDir;
     if (!sessionDir) return undefined;
     return loadArchiveMutationIndexes(sessionDir);
+  }
+
+  private async _loadArchivedMutationsAsync(): Promise<Map<string, ArchivedMutationInfo> | undefined> {
+    const sessionDir = this._store?.sessionDir;
+    if (!sessionDir) return undefined;
+    return loadArchiveMutationIndexesAsync(sessionDir);
   }
 
   /**
@@ -1893,6 +2016,18 @@ export class Session implements SessionLike {
       for (const [id, meta] of loadArchivedMetaForTurns(sessionDir, fromTurnIndex)) {
         lookup.set(id, meta);
       }
+      this._archivedMetaLookup = lookup;
+    }
+    return () => {
+      this._archivedMetaLookup = previous;
+    };
+  }
+
+  private async _installArchivedMetaAsync(fromTurnIndex: number): Promise<() => void> {
+    const previous = this._archivedMetaLookup;
+    const sessionDir = this._store?.sessionDir;
+    if (sessionDir && this._log.some((entry) => entry.archived)) {
+      const lookup = await loadArchivedMetaForTurnsAsync(sessionDir, fromTurnIndex);
       this._archivedMetaLookup = lookup;
     }
     return () => {
@@ -1931,9 +2066,33 @@ export class Session implements SessionLike {
     }
   }
 
-  private _aggregateEntryMutations(entries: readonly LogEntry[]): Map<number, TurnMutationAggregate> {
+  private async _loadTurnIndexForRewindAsync(): Promise<TurnIndexData | null> {
+    if (this._historyStartOffset === null) return null;
+    const dir = this._resolvePersistDir();
+    if (!dir) return null;
+    try {
+      const seq = readLastSeq(dir);
+      const cached = readTurnIndex(dir, seq);
+      if (cached) return cached;
+      const entries = this._loadFullHistoryEntries();
+      if (entries === this._log) return null;
+      const [archivedTurns, archivedMutations] = await Promise.all([
+        this._loadArchivedTurnInfoAsync(),
+        this._loadArchivedMutationsAsync(),
+      ]);
+      const data = buildTurnIndex(entries, archivedTurns, archivedMutations);
+      writeTurnIndex(dir, data, seq);
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  private _aggregateEntryMutations(
+    entries: readonly LogEntry[],
+    archivedMutations: ReadonlyMap<string, ArchivedMutationInfo> | undefined = this._loadArchivedMutations(),
+  ): Map<number, TurnMutationAggregate> {
     const perTurn = new Map<number, TurnMutationAggregate>();
-    const archivedMutations = this._loadArchivedMutations();
     for (const entry of entries) {
       if (entry.type !== "tool_result" || entry.discarded) continue;
       const meta = entry.meta as Record<string, unknown>;
@@ -1977,9 +2136,12 @@ export class Session implements SessionLike {
     return perTurn;
   }
 
-  getRewindTargets(): RewindTargetTurn[] {
-    const index = this._loadTurnIndexForRewind();
-    const entries = index ? null : this._loadFullHistoryEntries();
+  private _buildRewindTargets(
+    index: TurnIndexData | null,
+    entries: LogEntry[] | null,
+    archivedTurns?: ReadonlyMap<string, ArchivedTurnInfo>,
+    archivedMutations?: ReadonlyMap<string, ArchivedMutationInfo>,
+  ): RewindTargetTurn[] {
     const userTurns = index
       ? index.turns
         .slice()
@@ -1991,7 +2153,7 @@ export class Session implements SessionLike {
           preview: turn.preview,
           timestamp: turn.timestamp,
         }))
-      : this._listTurnsFrom(entries!)
+      : this._listTurnsFrom(entries!, archivedTurns)
         .filter((turn) => turn.turnKind === "user")
         .map((turn) => ({
           turnIndex: turn.turnIndex,
@@ -2001,49 +2163,67 @@ export class Session implements SessionLike {
         }));
     const perTurn = index
       ? this._aggregateIndexMutations(index.mutations)
-      : this._aggregateEntryMutations(entries!);
+      : this._aggregateEntryMutations(entries!, archivedMutations);
 
-    // Suffix accumulation: cumulative from each turn to the end
-    const turnIndices = userTurns.map(t => t.turnIndex);
+    const turnIndices = userTurns.map((turn) => turn.turnIndex);
     const cumulative = new Map<number, { fileCount: number; additions: number; deletions: number; allReverted: boolean }>();
     const suffixLivePaths = new Set<string>();
     const suffixRevertedPaths = new Set<string>();
     let suffixAdd = 0;
     let suffixDel = 0;
-    for (let i = turnIndices.length - 1; i >= 0; i--) {
-      const ti = turnIndices[i];
-      const cur = perTurn.get(ti);
-      if (cur) {
-        for (const p of cur.livePaths) suffixLivePaths.add(p);
-        for (const p of cur.revertedPaths) suffixRevertedPaths.add(p);
-        suffixAdd += cur.additions;
-        suffixDel += cur.deletions;
+    for (let i = turnIndices.length - 1; i >= 0; i -= 1) {
+      const turnIndex = turnIndices[i];
+      const current = perTurn.get(turnIndex);
+      if (current) {
+        for (const path of current.livePaths) suffixLivePaths.add(path);
+        for (const path of current.revertedPaths) suffixRevertedPaths.add(path);
+        suffixAdd += current.additions;
+        suffixDel += current.deletions;
       }
-      const hasLive = suffixLivePaths.size > 0;
-      const allReverted = !hasLive && suffixRevertedPaths.size > 0;
-      cumulative.set(ti, {
+      cumulative.set(turnIndex, {
         fileCount: suffixLivePaths.size,
         additions: suffixAdd,
         deletions: suffixDel,
-        allReverted,
+        allReverted: suffixLivePaths.size === 0 && suffixRevertedPaths.size > 0,
       });
     }
 
     return userTurns
-      .map(t => {
-        const cum = cumulative.get(t.turnIndex) ?? { fileCount: 0, additions: 0, deletions: 0, allReverted: false };
+      .map((turn) => {
+        const current = cumulative.get(turn.turnIndex) ?? {
+          fileCount: 0,
+          additions: 0,
+          deletions: 0,
+          allReverted: false,
+        };
         return {
-          turnIndex: t.turnIndex,
-          entryIndex: t.entryIndex,
-          preview: t.preview,
-          timestamp: t.timestamp,
-          fileCount: cum.fileCount,
-          additions: cum.additions,
-          deletions: cum.deletions,
-          filesReverted: cum.allReverted,
+          turnIndex: turn.turnIndex,
+          entryIndex: turn.entryIndex,
+          preview: turn.preview,
+          timestamp: turn.timestamp,
+          fileCount: current.fileCount,
+          additions: current.additions,
+          deletions: current.deletions,
+          filesReverted: current.allReverted,
         };
       })
       .reverse();
+  }
+
+  getRewindTargets(): RewindTargetTurn[] {
+    const index = this._loadTurnIndexForRewind();
+    const entries = index ? null : this._loadFullHistoryEntries();
+    const archivedTurns = index ? undefined : this._loadArchivedTurnInfo();
+    const archivedMutations = index ? undefined : this._loadArchivedMutations();
+    return this._buildRewindTargets(index, entries, archivedTurns, archivedMutations);
+  }
+
+  async getRewindTargetsAsync(): Promise<RewindTargetTurn[]> {
+    const index = await this._loadTurnIndexForRewindAsync();
+    const entries = index ? null : this._loadFullHistoryEntries();
+    const archivedTurns = index ? undefined : await this._loadArchivedTurnInfoAsync();
+    const archivedMutations = index ? undefined : await this._loadArchivedMutationsAsync();
+    return this._buildRewindTargets(index, entries, archivedTurns, archivedMutations);
   }
 
   /**
@@ -2055,8 +2235,8 @@ export class Session implements SessionLike {
     dir: string,
     beforeSeq: number,
     records: readonly import("./config/log-jsonl.js").JsonlRecord[],
-  ): void {
-    if (records.length === 0) return;
+  ): boolean {
+    if (records.length === 0) return true;
     const current = readTurnIndex(dir, beforeSeq);
     const ops: TurnIndexOp[] = [];
     const completedTurns = new Set<number>();
@@ -2162,7 +2342,8 @@ export class Session implements SessionLike {
     }
     if (stale) {
       deleteTurnIndex(dir);
-      return;
+      this._turnIndexDirty = true;
+      return false;
     }
 
     // turn_end 是 turn 的定稿点：刷新该 turn 的完整记录与本地 mutation 摘要，
@@ -2197,31 +2378,46 @@ export class Session implements SessionLike {
     }
 
     const nextSeq = beforeSeq + records.length;
-    if (current && appendTurnIndex(dir, beforeSeq, ops, nextSeq)) return;
-    // 索引缺失/过期：短会话在 turn_end 时自建（长日志等首次菜单读取再重建）。
+    if (current && appendTurnIndex(dir, beforeSeq, ops, nextSeq)) {
+      this._turnIndexDirty = false;
+      return true;
+    }
+    // 索引缺失：短会话在增量提交后直接自建；未知语义导致的 stale 仍保持失败，
+    // 由下一次回退读取触发权威重建，避免把无法证明的 patch 当作已同步。
     if (
-      completedTurns.size > 0
+      !stale
       && this._historyStartOffset === null
       && this._log.length <= TURN_INDEX_AUTOCREATE_MAX_ENTRIES
     ) {
       try {
         const data = buildTurnIndex(this._log, this._loadArchivedTurnInfo(), this._loadArchivedMutations());
         writeTurnIndex(dir, data, nextSeq);
+        this._turnIndexDirty = false;
+        return true;
       } catch {
         // 索引是可选加速；失败不影响日志。
       }
     }
+    this._turnIndexDirty = true;
+    return false;
   }
 
   /** 快照后直接构建索引：快照已是 O(n)，避免下次回退菜单整读重建。 */
-  private _writeTurnIndexAfterSnapshot(dir: string, sourceSeq: number): void {
+  private _writeTurnIndexAfterSnapshot(dir: string, sourceSeq: number): boolean {
     try {
-      const entries = this._log.filter((entry) => shouldPersistEntry(entry));
+      const sourceEntries = this._historyStartOffset === null
+        ? this._log
+        : this._loadFullHistoryEntries();
+      const entries = sourceEntries.filter((entry) => shouldPersistEntry(entry));
       const data = buildTurnIndex(entries, this._loadArchivedTurnInfo(), this._loadArchivedMutations());
       writeTurnIndex(dir, data, sourceSeq);
+      this._turnIndexDirty = false;
+      return true;
     } catch {
       // 索引是可选加速；失败时删除旧索引，下次读取重建。
       deleteTurnIndex(dir);
+      this._turnIndexDirty = true;
+      return false;
     }
   }
 
@@ -2260,7 +2456,7 @@ export class Session implements SessionLike {
   async planRewind(fromTurnIndex: number): Promise<RewindPlan> {
     const materialized = this._materializeFullHistory();
     if (!materialized.ok) throw new Error(materialized.error);
-    const restoreArchivedMeta = this._installArchivedMeta(fromTurnIndex);
+    const restoreArchivedMeta = await this._installArchivedMetaAsync(fromTurnIndex);
     try {
       return await this._rewindEngine.planRewind(fromTurnIndex);
     } finally {
@@ -2374,7 +2570,7 @@ export class Session implements SessionLike {
       return { revertedPaths: [], conflictPaths: [], bashReverted: [], bashSkipped: [], error: "Cannot rewind while a turn is in progress." };
     }
 
-    const restoreArchivedMeta = this._installArchivedMeta(plan.fromTurnIndex);
+    const restoreArchivedMeta = await this._installArchivedMetaAsync(plan.fromTurnIndex);
     let result: RewindApplyResult;
     try {
       result = await this._rewindEngine.applyFiles(plan);
@@ -2676,50 +2872,95 @@ export class Session implements SessionLike {
     return resolved;
   }
 
+  getPersistenceStatus(): { dirty: boolean; failure: string | null } {
+    return { dirty: this._persistenceDirty, failure: this._persistenceFailure };
+  }
+
   /**
    * 运行期持久化：log.jsonl 追加增量；首次保存写快照；legacy 先迁移。
-   * 返回 false 表示还没有可绑定的会话目录。
+   * 返回 false 表示没有完成全部辅助持久化步骤。
    */
   persistToDisk(): boolean {
     const dir = this._resolvePersistDir();
-    if (!dir) return false;
+    if (!dir) {
+      this._persistenceDirty = true;
+      this._persistenceFailure = "session directory is unavailable";
+      return false;
+    }
 
-    const data = getLogForPersistence(this);
-    this._refreshPersistenceStripIds();
+    let data: ReturnType<typeof getLogForPersistence>;
+    try {
+      data = getLogForPersistence(this);
+      this._refreshPersistenceStripIds();
+    } catch (error) {
+      this._persistenceDirty = true;
+      this._persistenceFailure = error instanceof Error ? error.message : String(error);
+      return false;
+    }
     const jsonlPath = join(dir, LOG_JSONL_FILENAME);
     const writeSnapshot = (): boolean => {
-      const stats = this._computeUsageStats();
-      const snapshot = writeLogJsonlSnapshot(
-        dir,
-        data.meta,
-        data.entries,
-        (entry) => this._prepareEntryForPersistence(entry),
-        {
-          input: stats.cumulativeInput,
-          output: stats.cumulativeOutput,
-          cacheRead: stats.cumulativeCacheRead,
-        },
-      );
-      this._logStore.markPersisted(
-        data.entries.filter((entry) => shouldPersistEntry(entry)).map((entry) => entry.id),
-      );
-      this._logStore.commitPendingRecords();
-      this._writeTurnIndexAfterSnapshot(dir, snapshot.nextSeq - 1);
-      saveSessionSidecars(dir, data.meta);
-      this._pruneSealedSidecars(dir);
-      this._needsPersistenceNormalization = false;
-      return true;
+      try {
+        const stats = this._computeUsageStats();
+        const snapshot = writeLogJsonlSnapshot(
+          dir,
+          data.meta,
+          data.entries,
+          (entry) => this._prepareEntryForPersistence(entry),
+          {
+            input: stats.cumulativeInput,
+            output: stats.cumulativeOutput,
+            cacheRead: stats.cumulativeCacheRead,
+          },
+        );
+        this._logStore.markPersisted(
+          data.entries.filter((entry) => shouldPersistEntry(entry)).map((entry) => entry.id),
+        );
+        this._logStore.commitPendingRecords();
+        const indexOk = this._writeTurnIndexAfterSnapshot(dir, snapshot.nextSeq - 1);
+        const sidecarsOk = saveSessionSidecars(dir, data.meta);
+        let sealedOk = true;
+        try {
+          this._pruneSealedSidecars(dir);
+        } catch (error) {
+          sealedOk = false;
+          this._persistenceFailure = error instanceof Error ? error.message : String(error);
+        }
+        const ok = indexOk && sidecarsOk && sealedOk;
+        this._persistenceDirty = !ok;
+        this._persistenceFailure = ok
+          ? null
+          : this._persistenceFailure ?? `snapshot auxiliary persistence failed (index=${indexOk}, sidecars=${sidecarsOk}, sealed=${sealedOk})`;
+        this._needsPersistenceNormalization = false;
+        return ok;
+      } catch (error) {
+        this._persistenceDirty = true;
+        this._persistenceFailure = error instanceof Error ? error.message : String(error);
+        return false;
+      }
     };
 
-    if (!existsSync(jsonlPath)) {
-      // 新会话：一次写入 header + 全部条目；之后只追加。
-      if (!existsSync(join(dir, "log.json"))) return writeSnapshot();
-      migrateLogToJsonl(dir);
+    try {
+      if (!existsSync(jsonlPath)) {
+        // 新会话：一次写入 header + 全部条目；之后只追加。
+        if (!existsSync(join(dir, "log.json"))) return writeSnapshot();
+        migrateLogToJsonl(dir);
+      }
+      // 旧 JSONL/legacy 会话：首次保存重写一次，应用 M0/M1。
+      if (this._needsPersistenceNormalization) return writeSnapshot();
+    } catch (error) {
+      this._persistenceDirty = true;
+      this._persistenceFailure = error instanceof Error ? error.message : String(error);
+      return false;
     }
-    // 旧 JSONL/legacy 会话：首次保存重写一次，应用 M0/M1。
-    if (this._needsPersistenceNormalization) return writeSnapshot();
 
-    const lastSeq = readLastSeq(dir);
+    let lastSeq: number;
+    try {
+      lastSeq = readLastSeq(dir);
+    } catch (error) {
+      this._persistenceDirty = true;
+      this._persistenceFailure = error instanceof Error ? error.message : String(error);
+      return false;
+    }
     if (lastSeq === 0) throw new Error("log.jsonl has no session header");
     const records = this._logStore.peekPendingRecords(lastSeq + 1);
     const hasCompactMarker = records.some(recordHasCompactMarker);
@@ -2737,15 +2978,35 @@ export class Session implements SessionLike {
         },
       });
     }
+    let indexOk = !this._turnIndexDirty;
     if (records.length > 0) {
-      appendRecords(dir, records);
+      try {
+        appendRecords(dir, records);
+      } catch (error) {
+        this._persistenceDirty = true;
+        this._persistenceFailure = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
       this._logStore.commitPendingRecords();
-      this._updateTurnIndexAfterAppend(dir, lastSeq, records);
+      indexOk = this._updateTurnIndexAfterAppend(dir, lastSeq, records);
+    } else if (this._turnIndexDirty) {
+      indexOk = this._writeTurnIndexAfterSnapshot(dir, lastSeq);
     }
-    saveSessionSidecars(dir, data.meta);
-    this._pruneSealedSidecars(dir);
+    const sidecarsOk = saveSessionSidecars(dir, data.meta);
+    let sealedOk = true;
+    try {
+      this._pruneSealedSidecars(dir);
+    } catch (error) {
+      sealedOk = false;
+      this._persistenceFailure = error instanceof Error ? error.message : String(error);
+    }
+    const ok = indexOk && sidecarsOk && sealedOk;
+    this._persistenceDirty = !ok;
+    this._persistenceFailure = ok
+      ? null
+      : this._persistenceFailure ?? `incremental auxiliary persistence failed (index=${indexOk}, sidecars=${sidecarsOk}, sealed=${sealedOk})`;
     this._needsPersistenceNormalization = false;
-    return true;
+    return ok;
   }
 
   setStore(store: any): void {
@@ -3390,6 +3651,13 @@ export class Session implements SessionLike {
     setSubagentSettings(this, settings);
   }
 
+  private _invalidateProviderTokenSnapshot(): void {
+    this._lastInputTokens = 0;
+    this._lastTotalTokens = 0;
+    this._lastCacheReadTokens = 0;
+    this._cacheSupported = false;
+  }
+
   /** Input tokens from the most recent provider response. */
   get lastInputTokens(): number {
     return this._lastInputTokens;
@@ -3714,12 +3982,13 @@ export class Session implements SessionLike {
       const pending = this._pendingTurnState;
       if (!pending) return "";
 
+      await this._ensureSessionStartHooks();
+      this._contextManager?.assertBudgetAvailable();
       this._pendingTurnState = null;
       if (pending.stage === "pre_user_input") {
         // Already inside the lock —call the inner turn logic directly
         return this._turnInner(pending.userInput ?? "", options);
       }
-
       return this._resumeActivationStage(options);
     });
   }
@@ -3729,11 +3998,11 @@ export class Session implements SessionLike {
    * answered). Single canonical resume path —turn() and resumePendingTurn()
    * both land here, so pending approved tool_calls always execute and queued
    * messages are always delivered, whichever entry point the UI used.
-   * Caller must hold the turn lock and have cleared _pendingTurnState.
+   * Caller must hold the turn lock and have cleared _pendingTurnState after
+   * session-start hooks and the context-budget check succeed.
    */
   async _resumeActivationStage(options?: { signal?: AbortSignal }): Promise<string> {
-    // 恢复路径会绕过 _turnInner；同样保证 SessionStart 上下文只执行一次。
-    await this._ensureSessionStartHooks();
+    this._invalidateProviderTokenSnapshot();
     // The suspended turn never closed its work, so the previous turn's end
     // status is stale here; null it like every other turn entry point so the
     // error path below can tell whether work still needs closing.
@@ -3939,7 +4208,6 @@ export class Session implements SessionLike {
 
   /** Inner turn logic, called from within the turn lock. */
   async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
-    this._autoCompactCountThisTurn = 0;
     // A pending ask owns the conversation: the turn cannot run until the user
     // answers. New input is queued (Q5) and delivered when work resumes —    // never dropped, never run into the suspended round's bookkeeping.
     if (this._activeAsk) {
@@ -3954,8 +4222,15 @@ export class Session implements SessionLike {
       return "";
     }
 
+    const resumingActivation = this._pendingTurnState?.stage === "activation";
+    if (!resumingActivation) {
+      this._autoCompactCountThisTurn = 0;
+      this._compactTerminatedThisTurn = false;
+    }
+    this._invalidateProviderTokenSnapshot();
     this._ensureSessionStorageReady();
     await this._ensureSessionStartHooks();
+    this._contextManager?.assertBudgetAvailable();
 
     const signal = options?.signal;
     if (this._pendingTurnState) {

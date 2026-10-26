@@ -158,4 +158,53 @@ describe("compact token accounting", () => {
       restored.dispose();
     }
   });
+
+  it("invalidates the previous turn snapshot when the next provider response has no usage", async () => {
+    const h = makeScriptedSession({
+      rounds: [
+        { text: "first answer", usage: new Usage(7000, 5) },
+        { text: CONTINUATION, usage: new Usage(0, 0) },
+      ],
+    });
+    try {
+      await h.session.turn("first request");
+      expect(h.session.lastInputTokens).toBe(7000);
+      await h.session.turn("second request");
+      expect(h.session.lastInputTokens).toBe(0);
+      expect(h.session.lastTotalTokens).toBe(0);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("reports a non-positive automatic-compaction budget before provider work", async () => {
+    const h = makeScriptedSession({ rounds: [{ text: "should not run" }] });
+    try {
+      h.internals.primaryAgent.modelConfig.contextLength = 256;
+      h.internals.primaryAgent.modelConfig.maxTokens = 256;
+      await expect(h.session.turn("request")).rejects.toMatchObject({
+        code: "E_CONTEXT_BUDGET_INVALID",
+      });
+      expect(h.provider.callCount).toBe(0);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("preserves automatic compact quota while resuming an activation-stage turn", async () => {
+    const h = makeScriptedSession({ rounds: [] });
+    try {
+      h.internals._autoCompactCountThisTurn = 2;
+      h.internals._pendingTurnState = { stage: "activation" };
+      expect(h.internals._pendingTurnState.stage).toBe("activation");
+      h.internals._resumeActivationStage = async () => {
+        expect(h.internals._autoCompactCountThisTurn).toBe(2);
+        return "resumed";
+      };
+      await expect(h.session._turnInner("", { skipUserInput: true })).resolves.toBe("resumed");
+      expect(h.internals._autoCompactCountThisTurn).toBe(2);
+    } finally {
+      h.dispose();
+    }
+  });
 });

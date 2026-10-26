@@ -1,8 +1,8 @@
 # COMPACT_PLAN.md — 压缩提交、内存释放与续跑质量修复方案
 
-> 状态：已按用户授权实施；Phase 1/2/3a/4/5 的源码与自动化门禁已完成。Phase 3b 冷区 entry shell 驱逐仍保持单独授权边界；真实 TTY 目视验收与对用户目录的实际迁移未执行。
-> 基线（2026-10-25，当前工作树，HEAD `f153a52` 未提交改动）：
-> `npm run typecheck`、`npm run typecheck:tui`、`npm run test:node`、`npm run build`、`npm run build:exe` 通过；全量 `npm test` **1500 passed / 3 skipped**；列表回归定向测试 **8/8**。
+> 状态：已按用户授权实施；Phase 1/2/3a/4/5 的源码与自动化门禁已完成。2026-10-26 的 P1 增量修复已完成并通过全量回归：运行期主路径使用异步流式 archive 读取，usage/budget 边界显式失败，compact post-check 纳入 ephemeral tail，JSONL/turn index/sidecar/sealed 与 TUI 保存统一报告 dirty/retry，rewind recovery 只有完整辅助持久化后才清 journal。Phase 3b 冷区 entry shell 驱逐仍保持单独授权边界；同步 Session 兼容 API 与 `/rewind` picker 仍保留同步 archive helper，尚未扩展 command-picker 的异步契约；真实 TTY 目视验收与对用户目录的实际迁移未执行。
+> 基线（2026-10-26，当前工作树，HEAD `833ced9`，未提交改动）：
+> `npm run typecheck`、`npm run typecheck:tui`、`npm run test:node`、`npm run build`、`npm run build:exe` 通过；全量 `npm test -- --run` **1509 passed / 3 skipped**；列表回归定向测试 **8/8**。
 > 量测、已知脚本口径差异和未验证项见 §10；行号按当前工作树，以代码实际位置为准。
 > 纪律：不 commit / merge / push；红测先行，期望值来自本方案而非实现；每个新测试配定向变异与负向探针；数据丢弃或行为变更先量化再确认；打包改动必须重建 release 并冒烟。
 
@@ -496,10 +496,12 @@ preparing → archiving → committed → stripping → done
 
 - JSONL 版本升级到 v5；`compact_checkpoint` 成为唯一压缩提交点，运行时严格拒绝旧 marker/context/window-N 压缩格式。
 - archive 使用 checkpoint id 命名的单一 gzip JSONL envelope；失败写入采用临时文件与 rename，checkpoint 追加前不改变活动窗口。
+- 运行期 archive display、meta、turn-index、mutation-index 与 rewind/history async path 使用 gzip JSONL 流式读取；index-only reader 不保留正文，selected-record reader 单次扫描目标 archive。同步 helper 仍只在同步 Session 兼容 API、`/rewind` picker、迁移/prune/测试路径存在，尚未完成 command-picker 异步化。
 - repair、usage、summary、signals、outcomes、turns、mutations 等推导/修复 consumer 跳过 archived；usage 折入 meta/base；`FULL_LOG_CONSUMERS` 契约测试已加入。
 - TUI 默认活动窗口与历史分页、8 MiB 历史缓存上限、archive display/content 懒加载已接入；工具结果图片 append 时外置并在 API 投影恢复，路径穿越与 symlink escape 有负向测试。
 - continuation 最小 200 字符、逐字 tail 4k/4k/2k、默认 80% 阈值、自动压缩每 turn 上限 3、压缩后 workspace guard 与 v4 离线迁移命令已接入。
 - 冷会话归档在读取日志前取得 session 单写者锁，并在目录搬迁后的新路径释放锁；图片外置仅接受 png/jpeg/gif/webp/bmp MIME，恶意 MIME 路径有回归覆盖。
+- P1 增量：provider 缺失/非法 usage 会清除旧快照；非正 budget 抛出显式错误；compact post-check 计入 ephemeral runtime/hook tail；无 sessionDir 的非空 archive window 拒绝 checkpoint；committed no-reduction compact 终止当前 logical turn；tool-loop 完成/失败后释放 pending 参数、sections、edit-probe 与缓存正文；持久化 auxiliary 失败标 dirty 并由 TUI bounded retry 可见；rewind recovery 在迁移后缺失 turn index 时先重建再删除 journal。
 - Phase 3b 冷区 entry shell 驱逐未实施，保持单独授权边界。
 
 ### 10.2 自动化门禁
@@ -508,7 +510,7 @@ preparing → archiving → committed → stripping → done
 |---|---|
 | `npm run typecheck` | PASS |
 | `npm run typecheck:tui` | PASS |
-| `npm test` | PASS：172 test files，1500 passed，3 skipped |
+| `npm test -- --run` | PASS：172 test files，1509 passed，3 skipped |
 | `npm run test:node` | PASS：2/2 |
 | `npm run build` | PASS |
 | `npm run build:exe` | PASS：生成 `release/SwarmFlow-win32-x64/SwarmFlow.exe` |
@@ -524,10 +526,12 @@ preparing → archiving → committed → stripping → done
 - v5 分页 probe：5.64/53.94/217.54MB 文件首屏均返回 200 条，扫描 0.69/1.31/1.31MB，耗时 4.2/6.5/8.1ms，均继续提供更早历史。
 - 原 `.tmp/bench-history-pager.mjs` 直接作用于 v4 夹具时返回 0 条并扫描全文件；这是旧夹具被 v5-only parser 拒绝的预期表现，不作为新格式性能结果。迁移 probe 另发现该夹具引用缺失的 `window-0.json.gz`，因此未把它冒充迁移成功样本。
 - `.tmp/bench-resume.ts` 仍按旧 `log.json`/旧 loader 假设，直接作用于上述夹具会因 v5-only loader 报 `log.jsonl has no session record`；未将该失败归因于生产实现，待后续重写为 v5 fixture benchmark。
-- 已知中风险：`readGzipJsonlEnvelopeIndex` 当前仍通过同步 `gunzipSync` 物化完整 envelope，再取 trailer index；功能正确但超大 archive 的 index-only 路径会产生全量解压瞬时峰值。未采用私有 zlib API、子进程或大范围同步 API 异步化绕过，需单独设计可验证的流式/可寻址 index 方案。
+- P1 增量后：异步运行期 index-only reader 使用 `createReadStream → createGunzip → readline`，只保留 header/trailer index；display/meta selected reader 每个目标 archive 单次扫描，避免原先 index 扫描后再次全量解压。仍有明确边界：同步 `loadArchive*`/`loadArchived*` helper 被同步 Session 兼容 API 与 `/rewind` picker 调用，尚未完成 command-picker 异步化；因此不能宣称所有运行时入口已无同步 gzip 解压。
 
 ### 10.4 未验证与外部操作边界
 
-- 未进行真实 TTY 目视验收：多轮工具、`/compact`、`--resume`、历史展开与回退组合尚未人工操作验证。
+- 未进行真实 TTY 目视验收：多轮工具、`/compact`、`--resume`、历史展开与回退组合尚未人工操作验证；本轮没有真实 TTY，因此明确标记为“未验证”。
 - 未对 `~/.swarmflow` 现有用户会话执行 `sessions migrate-compact`；只验证迁移夹具、回滚、路径安全和运行时拒绝行为。实际迁移属于会修改用户数据的运维操作，应在发布窗口单独执行并抽样复核。
+- P2 未在本轮扩大范围：`_archivedDisplays` 独立 byte budget、Phase 3b entry-shell eviction、released child-session 读失败可见性、persistent child save failure、异步 cold archive、orphan archive/temp 诊断、`FULL_LOG_CONSUMERS` 静态未注册检测，以及工具 payload 的 byte-level peak measurement 仍待单独任务。
+- 同步 `/rewind` picker 与 Session 兼容 API 的 archive 读取仍是已知残留；要彻底消除需把 command-picker options 契约改为可异步并补 UI loading/error 状态，不在本轮无授权扩大。
 - 本次未执行 commit、merge 或 push。
