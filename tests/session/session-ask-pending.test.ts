@@ -2,8 +2,7 @@
  * Characterization tests for the ask-pending window (review B1/B3, rulings Q1/Q2/Q5/Q9).
  *
  * The ask-window regressions found in the 2026-06-11 review are locked green
- * here; each test names the Phase 1 step that fixed it
- * (P1.1-P1.4 in Docs/session-refactor-plan-2026-06-11.md).
+ * here; each test names the review finding it covers.
  */
 
 import { describe, expect, it } from "vitest";

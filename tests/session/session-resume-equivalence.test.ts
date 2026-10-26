@@ -4,7 +4,6 @@
  * After an ask is resolved the turn is in "waiting to continue" state. All
  * resume entry points must behave identically: execute the pending approved
  * tool, and never drop a new user input that arrives in the gap.
- * Flip the todo in P1.3 (Docs/session-refactor-plan-2026-06-11.md).
  */
 
 import { describe, expect, it } from "vitest";

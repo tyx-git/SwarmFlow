@@ -1,9 +1,8 @@
 /**
  * Characterization tests for parent→child message delivery (review B2).
  *
- * The idle/archived delivery paths currently bypass the standard delivery
- * entry point and crash the child turn on the drain invariant. Flip the
- * todos in P1.5 (Docs/session-refactor-plan-2026-06-11.md).
+ * The idle/archived delivery paths must go through the standard delivery
+ * entry point so the child turn keeps the drain invariant.
  */
 
 import { describe, expect, it } from "vitest";

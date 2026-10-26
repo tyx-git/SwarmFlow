@@ -2,7 +2,7 @@
  * Characterization tests for compact-period message semantics and bookkeeping
  * (review B4/B5, rulings Q4/Q6).
  *
- * Locked green by P1.6/P1.7 (Docs/session-refactor-plan-2026-06-11.md).
+ * Locked green by the compact-period semantics fixes.
  */
 
 import { describe, expect, it } from "vitest";

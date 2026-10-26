@@ -13,7 +13,7 @@
  * 而 Session 在自身的视图（_logSurgeryView）上驱动相同函数——
  * 一个实现，无恢复/live 漂移。
  *
- * 不变式（详见 Docs/session-refactor-plan-2026-06-11.md）：
+ * 不变式：
  *   1. Live session 的 log revision 绝不因恢复而重置——apply 只递增它，
  *      UI 订阅者始终检测到交换。
  *   2. Open asks 在中断 turn 正规化之前被拒绝解决（ESC-deny 模型）：
