@@ -4,7 +4,8 @@
   field #0f1613 / ring #e9e4d4 / lamp #e3a243
   六角环：宽 64%、高 74%，环厚＝内嵌 12%
   灯：圆心 (82%, 68.5%)、直径 20%，内部琥珀点 65%
-  ≤24px 时按 CSS 的容器查询把空芯收成实心
+  各尺寸统一保留空芯环：CSS 里 ≤24px 折叠成实心的规则只适用于网页排版，
+  图标进任务栏（24px）时实心会让内部变亮、与产品标识不一致。
 
 产物：icons/swarmflow.png（1024）与 icons/swarmflow.ico（多尺寸，PNG 载荷）。
 """
@@ -36,7 +37,6 @@ def hex_points(x: float, y: float, w: float, h: float):
 
 
 def render(size: int) -> Image.Image:
-    solid_core = size <= 24
     s = size * SS
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -54,10 +54,9 @@ def render(size: int) -> Image.Image:
     hw, hh = 0.64 * s, 0.74 * s
     hx, hy = (s - hw) / 2, (s - hh) / 2
     draw.polygon(hex_points(hx, hy, hw, hh), fill=RING)
-    if not solid_core:
-        iw, ih = hw * 0.76, hh * 0.76
-        ix, iy = hx + hw * 0.12, hy + hh * 0.12
-        draw.polygon(hex_points(ix, iy, iw, ih), fill=FIELD)
+    iw, ih = hw * 0.76, hh * 0.76
+    ix, iy = hx + hw * 0.12, hy + hh * 0.12
+    draw.polygon(hex_points(ix, iy, iw, ih), fill=FIELD)
 
     # 灯座（底色挖孔）＋琥珀灯芯
     cx, cy = 0.82 * s, 0.685 * s
