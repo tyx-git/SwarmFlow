@@ -1,9 +1,9 @@
 /**
- * æ¬å°æä¾åç«¯ç¹å¥å£çè§èåå¥çº¦ã
+ * 本地提供商端点入口的规范化契约。
  *
- * ææå¼æ¥èª SDK è¯·æ±è·¯å¾çº¦å®ï¼openai SDK æ¼ `<baseURL>/chat/completions`ï¼
- * æ¨¡ååç°èµ° `<base>/models`ï¼ï¼ä¸æ¥èªå®ç°ï¼ç¨æ·åªå¡«å°ä¸»æºåæ¶ï¼
- * ææåå¥å£é½å¿é¡»è½ `/v1`ï¼ä¸ `/provider custom` ä¸ init åå¯¼ä¿æä¸è´ã
+ * 期望值来自 SDK 请求路径约定（openai SDK 拼 `<baseURL>/chat/completions`，
+ * 模型发现走 `<base>/models`），不来自实现：用户只填到主机名时，
+ * 所有写入口都必须落 `/v1`，与 `/provider custom` 与 init 向导保持一致。
  */
 
 import { mkdtempSync, rmSync } from "node:fs";

@@ -1,12 +1,12 @@
 /**
- * Responses æµå¼ç»æ­¢å¤å®ä¸å¤±è´¥å¯è§æ§ã
+ * Responses 流式终止判定与失败可见性。
  *
- * ææå¼æ¥èª Responses SSE çº¿æ ¼å¼çº¦å®ï¼ç»æ­¢äºä»¶ä¸º response.completed /
- * response.incomplete / response.failedï¼å¤±è´¥æ¶ error æå¨ response.error ä¸ï¼ï¼
- * ä¸æ¥èªå®ç°ï¼
- * - è¿­ä»£å¨ä¸ä¸ªäºä»¶é½æ²¡äº§åºï¼ç½å³æ /responses å½ç½é¡µè¿åï¼å¿é¡»è¯´æ¸æ¯ 0 ä¸ªäºä»¶ï¼
- *   ä¸è½ä¸"æµå°ä¸åè¢«æªæ­"å±ç¨ä¸å¥"æ­æµ"ï¼
- * - response.failed æ¯ç¡®å®æ§å¤±è´¥ï¼ä¸è½ä¼ªè£æå¯éæ·çä¸æ¸¸æå¨ã
+ * 期望值来自 Responses SSE 线格式约定（终止事件为 response.completed /
+ * response.incomplete / response.failed，失败时 error 挂在 response.error 上），
+ * 不来自实现：
+ * - 迭代器一个事件都没产出（网关把 /responses 当网页返回）必须说清是 0 个事件，
+ *   不能与"流到一半被截断"共用一句"断流"；
+ * - response.failed 是确定性失败，不能伪装成可重掷的上游抖动。
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -57,12 +57,12 @@ describe("Responses stream termination diagnostics", () => {
   it("counts the events it did see when the stream stops before a terminal event", async () => {
     const resp = await runStream([
       { type: "response.created", response: {} },
-      { type: "response.output_text.delta", delta: "åå¥" },
+      { type: "response.output_text.delta", delta: "半句" },
     ]);
 
     expect(resp.stopReason).toBe("incomplete_stream");
     expect(resp.streamEventCount).toBe(2);
-    expect(resp.text).toBe("åå¥");
+    expect(resp.text).toBe("半句");
   });
 
   it("surfaces the upstream error carried by response.failed", async () => {
@@ -80,7 +80,7 @@ describe("Responses stream termination diagnostics", () => {
 
     expect(String((caught as Error).message)).toContain("data_inspection_failed");
     expect(String((caught as Error).message)).toContain("input refused");
-    // å³é®å¥çº¦ï¼ä¸æ¯ TurnIncompleteErrorï¼æä»¥ tool-loop ä¸ä¼ç§æ 3 æ¬¡éæ·é¢ç®ã
+    // 关键契约：不是 TurnIncompleteError，所以 tool-loop 不会烧掉 3 次重掷预算。
     expect(isTurnIncompleteError(caught)).toBe(false);
   });
 });

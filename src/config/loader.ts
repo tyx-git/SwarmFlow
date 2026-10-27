@@ -3,6 +3,7 @@
  */
 
 import { join } from "node:path";
+import { normalizeEndpointUrl } from "../commands/provider/endpoint.js";
 import { readOAuthAccessToken, hasOAuthTokens } from "../auth/openai/token-store.js";
 import { loadGitHubTokens, hasGitHubTokens } from "../auth/github-copilot-oauth.js";
 import { getProviderDefaultBaseUrl } from "../providers/defaults.js";
@@ -275,7 +276,7 @@ export class Config {
     const provider = requireConfigStringField(name, cfg, "provider");
     const modelName = requireConfigStringField(name, cfg, "model");
     const apiKeyRaw = requireConfigStringField(name, cfg, "api_key");
-    const baseUrl = optionalConfigStringField(name, cfg, "base_url") || getProviderDefaultBaseUrl(provider);
+    const configuredBaseUrl = optionalConfigStringField(name, cfg, "base_url");
     const apiKeyEnv = parseEnvRef(apiKeyRaw);
     const resolvedApiKey = (() => {
       // OAuth 令牌解析
@@ -341,6 +342,11 @@ export class Config {
       "transport_protocol",
       ["responses", "anthropic", "chat", "gemini"] as const,
     ) ?? resolveTransportProtocol(provider, modelName);
+    // 端点只在这里归一化：provider 拿到的永远是所选协议需要的 base URL，
+    // 不论配置来自 settings、初始化选择器还是运行时注册。
+    const baseUrl = configuredBaseUrl
+      ? normalizeEndpointUrl(configuredBaseUrl, transportProtocol).baseUrl
+      : getProviderDefaultBaseUrl(provider);
     const thinkingEncryption = optionalConfigEnumField(
       name,
       cfg,

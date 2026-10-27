@@ -236,7 +236,7 @@ export async function cmdManageCustomProvider(ctx: CommandContext, providerId: s
     const newUrl = (await ctx.promptSecret!({
       message: t.get(["Commands", "/provider", "manage", "newEndpoint"], {
         label,
-        current: entry.base_url ?? "",
+        current: normalizeEndpointUrl(entry.base_url ?? "", protocol).baseUrl,
         protocol: t.get(["Commands", "/provider", "protocol", protocolChoice.key]),
       }),
       allowEmpty: true,
@@ -269,13 +269,14 @@ export async function cmdManageCustomProvider(ctx: CommandContext, providerId: s
 
   if (action === "add") {
     const existingIds = new Set(models.map((m) => m.id));
+    const baseUrl = normalizeEndpointUrl(entry.base_url ?? "", protocol).baseUrl;
     const newModels = await addModelsInteractive(ctx, {
-      label, baseUrl: entry.base_url ?? "", protocol, apiKey: apiKeyForDiscover, existingIds,
+      label, baseUrl, protocol, apiKey: apiKeyForDiscover, existingIds,
     });
     if (!newModels || newModels.length === 0) return;
     const merged = [...models, ...newModels];
     saveProviders({ ...settings.providers, [providerId]: { ...entry, models: merged } });
-    for (const m of newModels) registerCustomModel(config, providerId, entry.base_url ?? "", protocol, apiKeyRef, m);
+    for (const m of newModels) registerCustomModel(config, providerId, baseUrl, protocol, apiKeyRef, m);
     ctx.showMessage(t.get(["Commands", "/provider", "manage", "addResult"], { count: newModels.length, label }));
     return;
   }

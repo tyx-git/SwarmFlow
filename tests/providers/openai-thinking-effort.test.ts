@@ -1,9 +1,9 @@
 /**
- * OpenAI ä¸¤æ¡éè·¯ç reasoning effort éä¼ å¥çº¦ã
+ * OpenAI 两条通路的 reasoning effort 透传契约。
  *
- * ææå¼æ¥èª"å®¢æ·ç«¯ä¸æ¹åç¨æ·éæ©"è¿ä¸çº¦å®ï¼åæ³éåææ¨¡åèå®ï¼OpenAI ææ¡£ååº
- * none/minimal/low/medium/high/xhigh/maxï¼å¶ä¸­ max ä» GPT-6/GPT-5.6 ç Responses æ¯æï¼ï¼
- * éä»ä¹åä»ä¹ï¼ç«¯ç¹ä¸è®¤å°±è®©å®æ¥éï¼å®¢æ·ç«¯ä¸éé»æ¢æ¡£ã
+ * 期望值来自"客户端不改写用户选择"这一约定（合法集合按模型而定：OpenAI 文档列出
+ * none/minimal/low/medium/high/xhigh/max，其中 max 仅 GPT-6/GPT-5.6 的 Responses 支持）：
+ * 选什么发什么，端点不认就让它报错，客户端不静默换档。
  */
 
 import { describe, expect, it, vi } from "vitest";
