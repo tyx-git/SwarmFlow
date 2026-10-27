@@ -66,11 +66,11 @@ function seedBigHistory(): string {
 }
 
 describe("历史页缓存上限", () => {
-  it("加载到 8 MiB 后停止，并暴露 capped 状态", () => {
+  it("加载到 8 MiB 后停止，并暴露 capped 状态", async () => {
     const dir = seedBigHistory();
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.hasEarlierHistory()).toBe(true);
 
       let guard = 0;

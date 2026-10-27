@@ -370,7 +370,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
       const workDir = command.parent?.opts<{ workDir?: string }>().workDir;
       const projectPath = workDir ? resolve(workDir) : process.cwd();
       const store = new SessionStore({ projectPath, baseDir: homeDir });
-      const result = store.archiveSession(id);
+      const result = await store.archiveSession(id);
       if (!result.ok) {
         console.log(`归档失败：${result.error}`);
         return;
@@ -415,7 +415,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
         console.log("不能迁移当前活动会话；先退出该会话。");
         return;
       }
-      const lock = store.acquireSessionLock(sessionDir);
+      const lock = await store.acquireSessionLock(sessionDir);
       if (!lock.ok) {
         console.log("会话正在使用中，迁移已取消。");
         return;
@@ -464,7 +464,7 @@ export async function main(argv: string[] = process.argv, deps: MainDeps = {}): 
         console.log("--max-log-bytes 必须是正整数。");
         return;
       }
-      const lock = store.acquireSessionLock(sessionDir);
+      const lock = await store.acquireSessionLock(sessionDir);
       if (!lock.ok) {
         console.log(createUiText(getUiLanguage(homeDir)).get(["Error", "sessionBusy"]));
         return;

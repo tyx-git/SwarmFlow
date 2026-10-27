@@ -1,0 +1,80 @@
+/* SwarmFlow 标记：1024 画布，S 盒 600×600，轨宽 132，信号灯 Ø55。
+   所有坐标按画布百分比换算，缩放不重画。 */
+.sf-icon {
+  --sf-amber: #f2a71b;
+  --sf-ink: #171c1f;
+  --sf-paper: #f5eedd;
+  --sf-field: var(--sf-amber);
+  --sf-mark: var(--sf-ink);
+  --sf-lamp: var(--sf-paper);
+  --sf-size: 1024px;
+  position: relative;
+  width: var(--sf-size);
+  aspect-ratio: 1;
+  flex: none;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 22.5%;
+  background: var(--sf-field);
+  container-type: inline-size;
+}
+
+.sf-icon > .sf-part {
+  position: absolute;
+  display: block;
+  background: var(--sf-mark);
+}
+
+/* 主轨：上横、左折、中横、右折、下横；下横从端帽中心起，左端收圆 */
+.sf-top { left: 20.703%; top: 20.703%; width: 22.266%; height: 12.891%; }
+.sf-left { left: 20.703%; top: 20.703%; width: 12.891%; height: 35.742%; }
+.sf-mid { left: 20.703%; top: 43.555%; width: 58.594%; height: 12.891%; }
+.sf-right { left: 66.406%; top: 43.555%; width: 12.891%; height: 35.742%; }
+.sf-bottom { left: 27.148%; top: 66.406%; width: 52.148%; height: 12.891%; }
+
+/* 三条工位线：26 高、27 缝、错位收口 */
+.sf-tine { left: 42.969%; height: 2.539%; }
+.sf-tine-1 { top: 20.703%; width: 36.328%; }
+.sf-tine-2 { top: 25.879%; width: 32.813%; }
+.sf-tine-3 { top: 31.055%; width: 29.297%; }
+
+/* 信号灯：下横末端圆帽，灯芯是唯一亮色 */
+.sf-icon > .sf-lamp {
+  left: 20.703%;
+  top: 66.406%;
+  width: 12.891%;
+  height: 12.891%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.sf-lamp-dot {
+  display: block;
+  width: 41.667%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--sf-lamp);
+}
+
+.sf-icon--night {
+  --sf-field: var(--sf-ink);
+  --sf-mark: var(--sf-paper);
+  --sf-lamp: var(--sf-amber);
+}
+
+/* 小尺寸自适应：三线合流为实心 S，随后熄灭灯芯 */
+@container (max-width: 48px) {
+  .sf-tine-2,
+  .sf-tine-3 { display: none; }
+
+  .sf-tine-1 {
+    top: 20.703%;
+    height: 12.891%;
+    width: 36.328%;
+  }
+}
+
+@container (max-width: 28px) {
+  .sf-lamp-dot { display: none; }
+}

@@ -78,7 +78,7 @@ function writeArchivedFlag(dir: string, archived: boolean): void {
  * 归档一个会话目录。先整体搬迁（同卷 rename），再压缩活动日志并置 archived 标志。
  * 压缩顺序是“写 .gz → rename → 删明文”，中途崩溃最多留下明文与 .gz 并存，restore 可处理。
  */
-export function archiveSessionDir(sessionDir: string): ColdArchiveMove {
+export async function archiveSessionDir(sessionDir: string): Promise<ColdArchiveMove> {
   if (!isDirectory(sessionDir)) throw new Error(`不是会话目录：${sessionDir}`);
 
   const projectDir = dirname(sessionDir);
@@ -89,10 +89,9 @@ export function archiveSessionDir(sessionDir: string): ColdArchiveMove {
   const baseDir = dirname(projectsRoot);
   const archiveDir = join(baseDir, COLD_ARCHIVE_DIR, basename(projectDir), basename(sessionDir));
   const lockToken = `cold-archive-${randomUUID()}`;
-  const lock = acquireSessionLock(sessionDir, lockToken);
+  const lock = await acquireSessionLock(sessionDir, lockToken);
   if (!lock.ok) throw new Error(`会话正在被其他写者使用：${sessionDir}`);
 
-  let lockDir = sessionDir;
   try {
     if (existsSync(archiveDir)) throw new Error(`已存在归档：${archiveDir}`);
 
@@ -105,7 +104,6 @@ export function archiveSessionDir(sessionDir: string): ColdArchiveMove {
 
     mkdirSync(dirname(archiveDir), { recursive: true });
     renameSync(sessionDir, archiveDir);
-    lockDir = archiveDir;
 
     const logPath = join(archiveDir, logFile);
     try {
@@ -120,7 +118,6 @@ export function archiveSessionDir(sessionDir: string): ColdArchiveMove {
       if (existsSync(logPath)) {
         try {
           renameSync(archiveDir, sessionDir);
-          lockDir = sessionDir;
         } catch {
           // 回滚失败：至少保留归档目录（明文仍在），restore 仍可还原。
         }
@@ -136,7 +133,8 @@ export function archiveSessionDir(sessionDir: string): ColdArchiveMove {
       compressedBytes: compressed.length,
     };
   } finally {
-    releaseSessionLock(lockDir, lockToken);
+    // 锁身份是原路径的内核对象，目录改名不影响释放。
+    releaseSessionLock(sessionDir, lockToken);
   }
 }
 

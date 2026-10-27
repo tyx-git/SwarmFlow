@@ -294,28 +294,36 @@ function Invoke-Task([string]$Name) {
     }
 }
 
-$tasks = @()
-foreach ($item in $Task) {
-    if ($item -eq "all") {
-        $tasks += @("typecheck", "tui", "dist", "exe")
-        if (-not $SkipTests) { $tasks += "test" }
+# 任务参数都用相对仓库根的路径（tsconfig、vitest 的 root 解析都看 cwd）：
+# 先切到仓库根，结束后恢复调用者位置——脚本可能被 dot-source，不能把别人的 cwd 留改。
+Push-Location -LiteralPath $Root
+try {
+    $tasks = @()
+    foreach ($item in $Task) {
+        if ($item -eq "all") {
+            $tasks += @("typecheck", "tui", "dist", "exe")
+            if (-not $SkipTests) { $tasks += "test" }
+        }
+        else {
+            $tasks += $item
+        }
     }
-    else {
-        $tasks += $item
+    $tasks = $tasks | Select-Object -Unique
+
+    $started = Get-Date
+    Write-Host ""
+    Write-Host "SwarmFlow build" -ForegroundColor $UiColors.title
+    Write-Host ("  root  : " + $Root)
+    Write-Host ("  tasks : " + ($tasks -join ", "))
+
+    foreach ($name in $tasks) {
+        Invoke-Task $name
     }
+
+    $elapsed = [Math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+    Write-Host ""
+    Write-Host ("全部完成（" + $elapsed + "s）：" + ($tasks -join ", ")) -ForegroundColor $UiColors.success
 }
-$tasks = $tasks | Select-Object -Unique
-
-$started = Get-Date
-Write-Host ""
-Write-Host "SwarmFlow build" -ForegroundColor $UiColors.title
-Write-Host ("  root  : " + $Root)
-Write-Host ("  tasks : " + ($tasks -join ", "))
-
-foreach ($name in $tasks) {
-    Invoke-Task $name
+finally {
+    Pop-Location
 }
-
-$elapsed = [Math]::Round(((Get-Date) - $started).TotalSeconds, 1)
-Write-Host ""
-Write-Host ("全部完成（" + $elapsed + "s）：" + ($tasks -join ", ")) -ForegroundColor $UiColors.success

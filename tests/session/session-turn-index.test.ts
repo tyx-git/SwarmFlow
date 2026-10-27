@@ -169,7 +169,7 @@ function entriesWithLeadingMarker(): LogEntry[] {
 }
 
 describe("D20 回退菜单 turn 索引", () => {
-  it("有界会话首开重建索引，结果与整读路径一致", () => {
+  it("有界会话首开重建索引，结果与整读路径一致", async () => {
     const boundedDir = makeDir();
     const entries = makeEntries();
     // 为有界加载插入 marker：放到 turn 2 之前会隐藏 turn1，改用末尾 marker 不改变回退列表。
@@ -196,8 +196,8 @@ describe("D20 回退菜单 turn 索引", () => {
     const bounded = makeScriptedSession();
     const full = makeScriptedSession();
     try {
-      expect(applySessionRestore(bounded.session, bounded.internals._store, boundedDir).ok).toBe(true);
-      expect(applySessionRestore(full.session, full.internals._store, fullDir).ok).toBe(true);
+      expect((await applySessionRestore(bounded.session, bounded.internals._store, boundedDir)).ok).toBe(true);
+      expect((await applySessionRestore(full.session, full.internals._store, fullDir)).ok).toBe(true);
 
       const boundedTargets = bounded.session.getRewindTargets();
       expect(boundedTargets).toEqual(full.session.getRewindTargets());
@@ -211,7 +211,7 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("保存新 turn 时增量更新索引", () => {
+  it("保存新 turn 时增量更新索引", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), [...makeEntries(), {
       id: "cm-1",
@@ -228,7 +228,7 @@ describe("D20 回退菜单 turn 索引", () => {
     } as unknown as LogEntry]);
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
 
       h.internals._appendEntry(createTurnStart("ts-3", 3), false);
@@ -250,7 +250,7 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("turn_end 批次补全该 turn 的完整记录与 mutation", () => {
+  it("turn_end 批次补全该 turn 的完整记录与 mutation", async () => {
     const dir = makeDir();
     const marker = {
       id: "cm-1", type: "compact_marker", timestamp: 1, turnIndex: 2,
@@ -260,7 +260,7 @@ describe("D20 回退菜单 turn 索引", () => {
     seed(dir, makeMeta(true), [...makeEntries(), marker]);
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
 
       // 新 turn 的边界先落盘，但暂时不在索引里。
@@ -313,7 +313,7 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("截断定向更新索引并得到正确结果", () => {
+  it("截断定向更新索引并得到正确结果", async () => {
     const dir = makeDir();
     const marker = {
       id: "cm-1", type: "compact_marker", timestamp: 1, turnIndex: 2,
@@ -323,7 +323,7 @@ describe("D20 回退菜单 turn 索引", () => {
     seed(dir, makeMeta(true), [...makeEntries(), marker]);
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
       expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(true);
 
@@ -338,7 +338,7 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("索引进度落后于日志时整读重建", () => {
+  it("索引进度落后于日志时整读重建", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), [...makeEntries(), {
       id: "cm-1", type: "compact_marker", timestamp: 1, turnIndex: 2,
@@ -347,7 +347,7 @@ describe("D20 回退菜单 turn 索引", () => {
     } as unknown as LogEntry]);
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       // 故意写一份落后一个 seq 的索引。
       writeTurnIndex(dir, { turns: [], mutations: [] }, readLastSeq(dir) - 1);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
@@ -357,12 +357,12 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("归档/presentation patch 不删除索引，旧 mutation 摘要保留", () => {
+  it("归档/presentation patch 不删除索引，旧 mutation 摘要保留", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), entriesWithLeadingMarker());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
 
       h.internals._logStore.patchFlags(["tr-1"], { archived: true }, { dropPresentation: true });
@@ -384,12 +384,12 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("文件回退标记通过 set-revert 双向更新索引", () => {
+  it("文件回退标记通过 set-revert 双向更新索引", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), entriesWithLeadingMarker());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
 
       h.internals._logStore.patchFlags(["tr-1"], { fileMutationReverted: true });
@@ -413,12 +413,12 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("丢弃 turn 边界只移除该 turn，不删除索引", () => {
+  it("丢弃 turn 边界只移除该 turn，不删除索引", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), entriesWithLeadingMarker());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
 
       h.internals._logStore.patchFlags(["ts-2"], { discarded: true });
@@ -433,12 +433,12 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("丢弃 tool_result 只移除该 mutation，不删除索引", () => {
+  it("丢弃 tool_result 只移除该 mutation，不删除索引", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), entriesWithLeadingMarker());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
 
       h.internals._logStore.patchFlags(["tr-1"], { discarded: true });
@@ -456,12 +456,12 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("未知 patch（discarded:false）回退为删除索引并重建", () => {
+  it("未知 patch（discarded:false）回退为删除索引并重建", async () => {
     const dir = makeDir();
     seed(dir, makeMeta(true), entriesWithLeadingMarker());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
       expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(true);
 
@@ -479,13 +479,13 @@ describe("D20 回退菜单 turn 索引", () => {
     }
   });
 
-  it("回退截断用 drop-turns-from 定向更新索引", () => {
+  it("回退截断用 drop-turns-from 定向更新索引", async () => {
     const dir = makeDir();
     // marker 放在 turn 1 之前：截断 turn 2 后仍保持有界恢复，可验证索引路径。
     seed(dir, makeMeta(true), entriesWithLeadingMarker());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([2, 1]);
       expect(existsSync(join(dir, TURN_INDEX_FILENAME))).toBe(true);
 
@@ -501,7 +501,7 @@ describe("D20 回退菜单 turn 索引", () => {
       h.internals._store.releaseSessionLock(dir);
       const reopened = makeScriptedSession();
       try {
-        expect(applySessionRestore(reopened.session, reopened.internals._store, dir).ok).toBe(true);
+        expect((await applySessionRestore(reopened.session, reopened.internals._store, dir)).ok).toBe(true);
         expect(reopened.session.getRewindTargets().map((target) => target.turnIndex)).toEqual([1]);
       } finally {
         reopened.dispose();

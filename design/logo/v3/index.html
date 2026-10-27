@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="night">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwarmFlow — Mark 03 / Node Live</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="icon.css">
+  <link rel="stylesheet" href="sheet.css">
+</head>
+<body>
+  <template id="sf3-tpl">
+    <div class="sf3-tile">
+      <span class="sf3-hex"></span>
+      <span class="sf3-lamp"></span>
+    </div>
+  </template>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="mark-slot brand-mark" data-mark aria-hidden="true"></span>
+        <span class="brand-name">SwarmFlow</span>
+        <span class="brand-rule" aria-hidden="true"></span>
+        <span class="crumb eyebrow">IDENTITY / V3</span>
+      </div>
+      <div class="top-status">
+        <span class="eyebrow">MARK 03</span>
+        <div class="theme-switch" role="group" aria-label="主题">
+          <button type="button" data-set-theme="night" aria-pressed="true">NIGHT</button>
+          <button type="button" data-set-theme="day" aria-pressed="false">DAY</button>
+        </div>
+        <span class="eyebrow">2026-10-27</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="poster">
+    <section class="stage" aria-labelledby="mark-title">
+      <div class="stage-bar">
+        <span>RUN 03 / NODE</span>
+        <span>1024 GRID</span>
+      </div>
+      <div class="stage-canvas">
+        <div class="mark-slot hero-mark" data-mark role="img"
+             aria-label="SwarmFlow Mark 03：骨白六角节点轮廓，右下角一枚琥珀色 live 灯"></div>
+      </div>
+      <div class="stage-foot">
+        <span class="stage-live"><i class="live-dot" aria-hidden="true"></i>Q / LIVE</span>
+        <span>ONE NODE / ONE LAMP</span>
+      </div>
+    </section>
+
+    <section class="statement">
+      <div class="statement-copy">
+        <p class="eyebrow statement-eyebrow">MARK 03 / NODE LIVE</p>
+        <h1 id="mark-title">ONE NODE.<br>ONE LAMP<span class="hl-lamp" aria-hidden="true"></span></h1>
+        <p class="lede">一枚节点，一盏 live 灯。</p>
+      </div>
+
+      <div class="statement-text">
+        <p class="intro">v2 画了六个角色；v3 只取 rail 里的一枚节点和它的状态灯。六角来自 console 的 Agent 单元，琥珀灯是 Queen 的 live 信号——其余全部删掉。</p>
+        <ul class="legend">
+          <li><span class="tag" aria-hidden="true">A</span><div><strong>HEX</strong><p>与 rail 节点同形；六角轮廓只留一圈。</p></div></li>
+          <li><span class="tag" aria-hidden="true">B</span><div><strong>HOLLOW</strong><p>内部让给底色；≤ 24px 收成实心。</p></div></li>
+          <li><span class="tag" aria-hidden="true">C</span><div><strong>LAMP</strong><p>唯一的琥珀，唯一的 live 信号。</p></div></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="spec" aria-label="图标规格">
+      <div class="spec-col spec-sizes">
+        <p class="spec-head">SIZES / PX</p>
+        <div class="sizes">
+          <div class="specimen" style="--px:128px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>128</span></div>
+          <div class="specimen" style="--px:64px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>64</span></div>
+          <div class="specimen" style="--px:32px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>32</span></div>
+          <div class="specimen" style="--px:16px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>16</span></div>
+        </div>
+        <p class="spec-note">≤ 24px 空芯收成实心；灯不灭。</p>
+      </div>
+
+      <div class="spec-col spec-themes">
+        <p class="spec-head">THEMES</p>
+        <div class="theme-pair">
+          <div class="theme-sample">
+            <span class="mark-slot" data-mark data-mark-theme="night" aria-hidden="true"></span>
+            <span>NIGHT</span>
+          </div>
+          <div class="theme-sample">
+            <span class="mark-slot" data-mark data-mark-theme="day" aria-hidden="true"></span>
+            <span>DAY</span>
+          </div>
+        </div>
+        <p class="spec-note">同一几何；交换 field 与 ring，琥珀灯随主题加深。</p>
+      </div>
+
+      <div class="spec-col spec-data">
+        <p class="spec-head">GEOMETRY</p>
+        <dl class="geometry">
+          <div><dt>TILE</dt><dd>18% radius</dd></div>
+          <div><dt>HEX</dt><dd>64 × 74%</dd></div>
+          <div><dt>RING</dt><dd>12% inset</dd></div>
+          <div><dt>LAMP</dt><dd>13% dot</dd></div>
+        </dl>
+        <p class="spec-note">全部落在 1024 网格。</p>
+      </div>
+    </section>
+
+    <footer class="sheet-foot">
+      <span>SWARMFLOW / MARK 03 · NODE LIVE / NIGHT + DAY</span>
+      <span>HTML + CSS · design/v3/icon.css</span>
+      <span>2026-10-27 · SHEET 1 / 1</span>
+    </footer>
+  </main>
+
+  <script>
+    const tpl = document.getElementById('sf3-tpl');
+    const themeButtons = [...document.querySelectorAll('[data-set-theme]')];
+
+    function currentTheme() {
+      return document.documentElement.dataset.theme === 'day' ? 'day' : 'night';
+    }
+
+    function renderMarks() {
+      document.querySelectorAll('.mark-slot[data-mark]').forEach((slot) => {
+        slot.textContent = '';
+        const tile = tpl.content.firstElementChild.cloneNode(true);
+        const theme = slot.dataset.markTheme || currentTheme();
+        if (theme === 'day') tile.classList.add('sf3-tile--day');
+        tile.setAttribute('aria-hidden', 'true');
+        slot.appendChild(tile);
+      });
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      themeButtons.forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.setTheme === theme));
+      });
+      renderMarks();
+    }
+
+    themeButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        applyTheme(button.dataset.setTheme === 'day' ? 'day' : 'night');
+      });
+    });
+
+    applyTheme(currentTheme());
+  </script>
+</body>
+</html>

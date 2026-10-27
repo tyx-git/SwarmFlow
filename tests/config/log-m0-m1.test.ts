@@ -230,7 +230,7 @@ describe("M1：reasoningState 外置", () => {
     }
   });
 
-  it("旧 JSONL（无 persistence_policy）在下一次保存时归一化", () => {
+  it("旧 JSONL（无 persistence_policy）在下一次保存时归一化", async () => {
     const h = makeScriptedSession();
     try {
       const dir = h.internals._store.sessionDir as string;
@@ -284,7 +284,7 @@ describe("M1：reasoningState 外置", () => {
       h.internals._store.releaseSessionLock(dir);
       const fresh = makeScriptedSession();
       try {
-        const restored = applySessionRestore(fresh.session, fresh.internals._store, dir);
+        const restored = await applySessionRestore(fresh.session, fresh.internals._store, dir);
         expect(restored.ok).toBe(true);
         expect(fresh.session.persistToDisk()).toBe(true);
       } finally {

@@ -114,7 +114,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     return store.listSessions();
   });
 
-  server.on("session.restoreSession", (params) => {
+  server.on("session.restoreSession", async (params) => {
     if (session.currentTurnRunning) {
       throw new Error("session.restoreSession: cannot restore while a turn is running");
     }
@@ -130,7 +130,7 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
       throw new Error(`session.restoreSession: session not found in this workspace: ${requestedSessionId}`);
     }
 
-    const result = applySessionRestore(session, store, target.path);
+    const result = await applySessionRestore(session, store, target.path);
     if (!result.ok) {
       throw new Error(result.error ?? "session.restoreSession: restore failed");
     }

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwarmFlow — Mark 01 / 项目图标</title>
+  <link rel="stylesheet" href="icon.css">
+  <link rel="stylesheet" href="sheet.css">
+</head>
+<body>
+  <template id="sf-mark-tpl">
+    <div class="sf-icon">
+      <span class="sf-part sf-top"></span>
+      <span class="sf-part sf-tine sf-tine-1"></span>
+      <span class="sf-part sf-tine sf-tine-2"></span>
+      <span class="sf-part sf-tine sf-tine-3"></span>
+      <span class="sf-part sf-left"></span>
+      <span class="sf-part sf-mid"></span>
+      <span class="sf-part sf-right"></span>
+      <span class="sf-part sf-bottom"></span>
+      <span class="sf-part sf-lamp"><span class="sf-lamp-dot"></span></span>
+    </div>
+  </template>
+
+  <main class="sheet">
+    <header class="masthead">
+      <div class="mh-left">
+        <span class="mark-slot mh-mark" data-mark aria-hidden="true"></span>
+        <span class="mh-name">SWARMFLOW</span>
+        <span class="mh-sep" aria-hidden="true"></span>
+        <span class="mh-label">IDENTITY / MARK 01</span>
+      </div>
+      <span class="mh-meta">PROJECT ICON · 2026-10-27</span>
+    </header>
+
+    <section class="hero">
+      <div class="plate">
+        <div class="plate-head">
+          <span>COMPOSITE / 1024²</span>
+          <span>DAY FIELD</span>
+        </div>
+
+        <div class="drawing">
+          <div class="icon-shell">
+            <div class="mark-slot hero-mark" data-mark data-enter role="img"
+                 aria-label="SwarmFlow 图标：三条工位线汇入一条 S 形主轨，止于一盏信号灯"></div>
+            <div class="dims" id="dims" aria-hidden="true">
+              <span class="dim dim-x"><em>600</em></span>
+              <span class="dim dim-y"><em>600</em></span>
+              <span class="tag tag-a">A</span>
+              <span class="tag tag-b">B</span>
+              <span class="tag tag-c">C</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="plate-foot">
+          <span>S-BOX 600² · STROKE 132 · SIGNAL Ø55</span>
+          <button type="button" class="ghost-btn" id="dimToggle" aria-pressed="false" aria-controls="dims">
+            <span class="ghost-box" aria-hidden="true"></span>
+            <span class="ghost-label">尺寸标注</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="hero-copy">
+        <p class="eyebrow"><span>THE MARK</span><span>设计说明</span></p>
+        <h1>THREE IN.<br>ONE OUT<span class="sig-dot" aria-hidden="true"></span></h1>
+        <p class="lede">三路进场，单线汇流。</p>
+        <p class="intro">S 是 SwarmFlow 的首字母，也是编排逻辑的剖面：三条支路从右上进入，折成一条主轨，终点是一盏<span class="nw">信号灯</span>。并行的是角色，串行的是规则。</p>
+        <ul class="legend">
+          <li>
+            <span class="tag">A</span>
+            <div><strong>三股输入</strong><p>Scout、Worker、Merger 的并行工作线，在右上进入。</p></div>
+          </li>
+          <li>
+            <span class="tag">B</span>
+            <div><strong>单线主轨</strong><p>Queen 决定路线；六个角色走同一条流程。</p></div>
+          </li>
+          <li>
+            <span class="tag">C</span>
+            <div><strong>信号灯</strong><p>审查、合并与最终把关，S 的终点。</p></div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="proof" aria-labelledby="proof-title">
+      <div class="section-head">
+        <h2 id="proof-title"><span>02</span> SIZE PROOF</h2>
+        <p class="section-note">同一份几何 · 1024 → 16</p>
+      </div>
+
+      <div class="proof-grid">
+        <div class="panel panel--day">
+          <div class="panel-head"><span>DAYLIGHT / CONCRETE</span><span>CSS PX</span></div>
+          <div class="sizes">
+            <figure class="specimen" style="--px:128px">
+              <span class="mark-slot" data-mark aria-hidden="true"></span>
+              <figcaption>128</figcaption>
+            </figure>
+            <figure class="specimen" style="--px:64px">
+              <span class="mark-slot" data-mark aria-hidden="true"></span>
+              <figcaption>64</figcaption>
+            </figure>
+            <figure class="specimen" style="--px:32px">
+              <span class="mark-slot" data-mark aria-hidden="true"></span>
+              <figcaption>32</figcaption>
+            </figure>
+            <figure class="specimen" style="--px:16px">
+              <span class="mark-slot" data-mark aria-hidden="true"></span>
+              <figcaption>16</figcaption>
+            </figure>
+          </div>
+          <p class="panel-note">琥珀底在浅色壳层里先被看见。≤ 48px 三线合流，≤ 28px 熄灭<span class="nw">灯芯</span>，轮廓优先。</p>
+        </div>
+
+        <div class="panel panel--night">
+          <div class="panel-head"><span>NIGHT / DARK SHELL</span><span>ADAPTIVE</span></div>
+          <div class="mockbar">
+            <span class="tab">
+              <span class="mark-slot" data-mark data-variant="night" aria-hidden="true"></span>
+              <span>SwarmFlow</span>
+              <span class="tab-x" aria-hidden="true">×</span>
+            </span>
+            <span class="tab-ghost" aria-hidden="true"></span>
+          </div>
+          <div class="dockmock" aria-hidden="true">
+            <span class="app app--a"></span>
+            <span class="app app--b"></span>
+            <span class="mark-slot dock-mark" data-mark data-variant="night"></span>
+            <span class="app app--c"></span>
+            <span class="app app--d"></span>
+          </div>
+          <p class="panel-note">深色壳层切到 night 变体：纸白轨、琥珀灯芯，不靠底块抢注意力。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="system" aria-label="图标规范">
+      <div class="col">
+        <h2><span>03</span> PALETTE</h2>
+        <ul class="swatches">
+          <li><span class="chip" style="--c:#f2a71b"></span><span class="sw-name">AMBER <em>场</em></span><span class="sw-hex">#F2A71B</span></li>
+          <li><span class="chip" style="--c:#171c1f"></span><span class="sw-name">INK <em>轨</em></span><span class="sw-hex">#171C1F</span></li>
+          <li><span class="chip" style="--c:#f5eedd"></span><span class="sw-name">SIGNAL <em>灯芯</em></span><span class="sw-hex">#F5EEDD</span></li>
+          <li><span class="chip" style="--c:#c7cac3"></span><span class="sw-name">CONCRETE <em>图底</em></span><span class="sw-hex">#C7CAC3</span></li>
+        </ul>
+      </div>
+
+      <div class="col">
+        <h2><span>04</span> RULES</h2>
+        <ol class="rules-list">
+          <li><b>01</b><span>保留 600² 的 S 盒与 132 轨宽；缩放只改整体比例。</span></li>
+          <li><b>02</b><span>小尺寸自动合流、熄灯，不为 16px 另画一版。</span></li>
+          <li><b>03</b><span>不旋转、不描边、不加渐变、阴影或第二强调色。</span></li>
+          <li><b>04</b><span>深色界面用 night 变体：纸白轨，灯芯保持琥珀色。</span></li>
+        </ol>
+      </div>
+
+      <div class="col lockup-col">
+        <h2><span>05</span> LOCKUP</h2>
+        <div class="lockup">
+          <div class="lockup-row">
+            <span class="mark-slot lockup-mark" data-mark data-variant="night" aria-hidden="true"></span>
+            <div>
+              <div class="wordmark">SWARMFLOW</div>
+              <div class="wordmark-sub">MULTI-AGENT CODING ORCHESTRATOR</div>
+            </div>
+          </div>
+          <div class="lockup-foot"><span>HORIZONTAL / ON INK</span><span>CLEAR SPACE = ½ TILE</span></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="sheet-foot">
+      <span>SWARMFLOW / MARK 01 · 2026-10-27</span>
+      <span>HTML + CSS · design/v1/icon.css</span>
+      <span>SHEET 1 / 1</span>
+    </footer>
+  </main>
+
+  <script>
+    const tpl = document.getElementById('sf-mark-tpl');
+    document.querySelectorAll('.mark-slot').forEach((slot) => {
+      const mark = tpl.content.firstElementChild.cloneNode(true);
+      if (slot.dataset.variant) mark.classList.add(`sf-icon--${slot.dataset.variant}`);
+      mark.setAttribute('aria-hidden', 'true');
+      slot.appendChild(mark);
+    });
+
+    const plate = document.querySelector('.plate');
+    const toggle = document.getElementById('dimToggle');
+    const label = toggle.querySelector('.ghost-label');
+
+    toggle.addEventListener('click', () => {
+      const on = plate.classList.toggle('is-construct');
+      toggle.setAttribute('aria-pressed', String(on));
+      label.textContent = on ? '隐藏标注' : '尺寸标注';
+    });
+  </script>
+</body>
+</html>

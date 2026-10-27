@@ -260,7 +260,7 @@ describe("migrate compact format", () => {
     }
   });
 
-  it("resume rejects a legacy marker even when its archive window is already missing", () => {
+  it("resume rejects a legacy marker even when its archive window is already missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "swarmflow-compact-marker-only-"));
     const h = makeScriptedSession();
     try {
@@ -287,7 +287,7 @@ describe("migrate compact format", () => {
       ]);
       saveSessionMeta(dir, meta);
 
-      const result = applySessionRestore(h.session, h.internals._store, dir);
+      const result = await applySessionRestore(h.session, h.internals._store, dir);
       expect(result.ok).toBe(false);
       expect(result.error).toContain("E_COMPACT_FORMAT_LEGACY");
     } finally {

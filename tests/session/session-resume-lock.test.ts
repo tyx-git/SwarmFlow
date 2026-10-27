@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("resume 写锁冲突", () => {
-  it("同一会话被另一个 store 持有时返回占用警告", () => {
+  it("同一会话被另一个 store 持有时返回占用警告", async () => {
     const baseDir = makeDir();
     const projectRoot = makeDir();
     const sessionDir = makeDir();
@@ -44,10 +44,10 @@ describe("resume 写锁冲突", () => {
     }), []);
 
     const holder = new SessionStore({ baseDir, projectPath: projectRoot });
-    expect(holder.acquireSessionLock(sessionDir).ok).toBe(true);
+    expect((await holder.acquireSessionLock(sessionDir)).ok).toBe(true);
     const h = makeScriptedSession();
     try {
-      const result = applySessionRestore(h.session, h.internals._store, sessionDir);
+      const result = await applySessionRestore(h.session, h.internals._store, sessionDir);
       expect(result.ok).toBe(false);
       expect([
         createUiText("zh").get(["Error", "sessionBusy"]),

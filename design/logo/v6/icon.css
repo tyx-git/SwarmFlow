@@ -1,0 +1,78 @@
+/* SwarmFlow v6 / Rail S — S 是首字母，也是六个角色共用的 rail。
+   黄铜节点是唯一 live 的 Queen；五枚其余站点留在系统里，不画进图标。
+   日版：porcelain field + pine S；夜版：pine field + porcelain S。 */
+.sf6-tile {
+  --sf6-field: #f4efe4;
+  --sf6-mark: #15211b;
+  --sf6-live: #b98a3e;
+  --sf6-edge: rgba(21, 33, 27, .10);
+  --sf6-size: 1024px;
+  position: relative;
+  width: var(--sf6-size);
+  aspect-ratio: 1;
+  flex: none;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 22.5%;
+  background: var(--sf6-field);
+  box-shadow: inset 0 0 0 1px var(--sf6-edge);
+  container-type: inline-size;
+}
+
+.sf6-tile--night {
+  --sf6-field: #15211b;
+  --sf6-mark: #f4efe4;
+  --sf6-live: #cfa65c;
+  --sf6-edge: rgba(244, 239, 228, .10);
+}
+
+.sf6-bar,
+.sf6-turn {
+  position: absolute;
+  background: var(--sf6-mark);
+}
+
+.sf6-bar {
+  left: 35.156%;
+  width: 29.688%;
+  height: 10.938%;
+}
+.sf6-bar--top {
+  top: 27.734%;
+  border-radius: 0 999px 999px 0;
+}
+.sf6-bar--mid { top: 44.531%; }
+.sf6-bar--bot {
+  top: 61.328%;
+  border-radius: 999px 0 0 999px;
+}
+
+.sf6-turn {
+  box-sizing: border-box;
+  width: 27.734%;
+  aspect-ratio: 1;
+  border: 10.938cqw solid var(--sf6-mark);
+  border-radius: 50%;
+}
+.sf6-turn--left {
+  left: 21.289%;
+  top: 27.734%;
+  clip-path: inset(0 50% 0 0);
+}
+.sf6-turn--right {
+  left: 50.977%;
+  top: 44.531%;
+  clip-path: inset(0 0 0 50%);
+}
+
+.sf6-live {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  width: 13.5%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--sf6-live);
+}

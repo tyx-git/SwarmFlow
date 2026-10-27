@@ -15,7 +15,6 @@ import { randomSessionId } from "../config/storage-layout.js";
 import { buildLogHead, sessionMetaFromSnake } from "../config/log-codec.js";
 import { parseRecordLine, readLogHeader, serializeRecord } from "../config/log-jsonl.js";
 import { discardRewindArtifacts } from "../session/rewind/artifacts.js";
-import { forceReleaseSessionLock } from "../config/session-lock.js";
 
 import type { ForkSessionPayload } from "./session-status-payloads.js";
 
@@ -46,9 +45,8 @@ export function forkSessionDirectory(
     throw new Error(`session.fork: copy failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // fork 不应继承父会话的崩溃恢复事务与写锁。
+  // fork 不应继承父会话的崩溃恢复事务；写锁是进程级内核对象，新目录路径本就无锁。
   discardRewindArtifacts(join(newDir, "artifacts"));
-  forceReleaseSessionLock(newDir);
 
   try {
     const nowIso = new Date().toISOString();

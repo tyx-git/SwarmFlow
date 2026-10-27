@@ -84,7 +84,7 @@ describe("真实 turn 的 JSONL 持久化", () => {
       // 模拟原会话已关闭：释放写锁后由新 store 接管。
       h.internals._store.releaseSessionLock(dir);
 
-      const result = applySessionRestore(target.session, target.internals._store, dir);
+      const result = await applySessionRestore(target.session, target.internals._store, dir);
       expect(result.ok).toBe(true);
       expect(target.session.log).toEqual(expectedPersisted(h.session.log));
       expect((target.session as any)._turnCount).toBe(1);

@@ -130,7 +130,7 @@ afterEach(() => {
 });
 
 describe("fork 与 rewind journal（探针）", () => {
-  it("阳性对照：journal 在原路径会被回放，说明夹具确可执行", () => {
+  it("阳性对照：journal 在原路径会被回放，说明夹具确可执行", async () => {
     const seeded = seedSession();
     homeDir = seeded.homeDir;
     const targetPath = resolve(seeded.projectRoot, "notes.txt");
@@ -143,7 +143,7 @@ describe("fork 与 rewind journal（探针）", () => {
     });
 
     const session = makeSession(seeded.projectRoot, seeded.store);
-    const result = applySessionRestore(session, seeded.store, seeded.sessionDir);
+    const result = await applySessionRestore(session, seeded.store, seeded.sessionDir);
 
     expect(result.ok).toBe(true);
     expect(readFileSync(targetPath, "utf-8")).toBe("pre-rewind\n");
@@ -151,7 +151,7 @@ describe("fork 与 rewind journal（探针）", () => {
     expect(existsSync(backupDir)).toBe(false);
   });
 
-  it("fork 丢弃继承的 journal 与 .data-*，父会话两者保留且恢复不回放", () => {
+  it("fork 丢弃继承的 journal 与 .data-*，父会话两者保留且恢复不回放", async () => {
     const seeded = seedSession();
     homeDir = seeded.homeDir;
     const targetPath = resolve(seeded.projectRoot, "notes.txt");
@@ -173,7 +173,7 @@ describe("fork 与 rewind journal（探针）", () => {
 
     const forkStore = new SessionStore({ baseDir: seeded.homeDir, projectPath: seeded.projectRoot });
     const forkSession = makeSession(seeded.projectRoot, forkStore);
-    const result = applySessionRestore(forkSession, forkStore, forked.sessionDir, { fork: true });
+    const result = await applySessionRestore(forkSession, forkStore, forked.sessionDir, { fork: true });
 
     expect(result.ok).toBe(true);
     expect(readFileSync(targetPath, "utf-8")).toBe("post-rewind\n");
@@ -181,7 +181,7 @@ describe("fork 与 rewind journal（探针）", () => {
     expect(existsSync(journalPath)).toBe(true);
   });
 
-  it("机制隔离：手工放回副本 journal 并改成本地路径后即会回放（拦截点＝绝对路径绑定）", () => {
+  it("机制隔离：手工放回副本 journal 并改成本地路径后即会回放（拦截点＝绝对路径绑定）", async () => {
     const seeded = seedSession();
     homeDir = seeded.homeDir;
     const targetPath = resolve(seeded.projectRoot, "notes.txt");
@@ -213,13 +213,13 @@ describe("fork 与 rewind journal（探针）", () => {
 
     const forkStore = new SessionStore({ baseDir: seeded.homeDir, projectPath: seeded.projectRoot });
     const forkSession = makeSession(seeded.projectRoot, forkStore);
-    const result = applySessionRestore(forkSession, forkStore, forked.sessionDir, { fork: true });
+    const result = await applySessionRestore(forkSession, forkStore, forked.sessionDir, { fork: true });
 
     expect(result.ok).toBe(true);
     expect(readFileSync(targetPath, "utf-8")).toBe("pre-rewind\n");
   });
 
-  it("父会话恢复完成后，fork 的陈旧 journal 仍不会覆盖后续编辑", () => {
+  it("父会话恢复完成后，fork 的陈旧 journal 仍不会覆盖后续编辑", async () => {
     const seeded = seedSession();
     homeDir = seeded.homeDir;
     const targetPath = resolve(seeded.projectRoot, "notes.txt");
@@ -234,14 +234,14 @@ describe("fork 与 rewind journal（探针）", () => {
     const forked = forkSessionDirectory(seeded.sessionDir);
 
     const parentSession = makeSession(seeded.projectRoot, seeded.store);
-    expect(applySessionRestore(parentSession, seeded.store, seeded.sessionDir).ok).toBe(true);
+    expect((await applySessionRestore(parentSession, seeded.store, seeded.sessionDir)).ok).toBe(true);
     expect(readFileSync(targetPath, "utf-8")).toBe("pre-rewind\n");
 
     writeFileSync(targetPath, "later edit\n", "utf-8");
 
     const forkStore = new SessionStore({ baseDir: seeded.homeDir, projectPath: seeded.projectRoot });
     const forkSession = makeSession(seeded.projectRoot, forkStore);
-    const result = applySessionRestore(forkSession, forkStore, forked.sessionDir, { fork: true });
+    const result = await applySessionRestore(forkSession, forkStore, forked.sessionDir, { fork: true });
 
     expect(result.ok).toBe(true);
     expect(readFileSync(targetPath, "utf-8")).toBe("later edit\n");

@@ -86,7 +86,7 @@ describe("resume 走有界模型上下文", () => {
     const dir = seedSession(makeMeta());
     const h = makeScriptedSession();
     try {
-      const result = applySessionRestore(h.session, h.internals._store, dir);
+      const result = await applySessionRestore(h.session, h.internals._store, dir);
       expect(result.ok).toBe(true);
       expect(result.warnings).toEqual([]);
 
@@ -129,14 +129,14 @@ describe("resume 走有界模型上下文", () => {
     }
   });
 
-  it("缺计数器/基线的旧 JSONL：回退整读并给出 warning", () => {
+  it("缺计数器/基线的旧 JSONL：回退整读并给出 warning", async () => {
     const meta = makeMeta();
     delete meta.idCounters;
     delete meta.workCount;
     const dir = seedSession(meta);
     const h = makeScriptedSession();
     try {
-      const result = applySessionRestore(h.session, h.internals._store, dir);
+      const result = await applySessionRestore(h.session, h.internals._store, dir);
       expect(result.ok).toBe(true);
       expect(result.warnings.some((warning) => warning.includes("unbounded"))).toBe(true);
       expect(h.session.log).toHaveLength(makeEntries().length);
@@ -149,7 +149,7 @@ describe("resume 走有界模型上下文", () => {
     }
   });
 
-  it("旧 persistence_policy：禁用有界，整读以免归一化快照丢掉标记前历史", () => {
+  it("旧 persistence_policy：禁用有界，整读以免归一化快照丢掉标记前历史", async () => {
     const dir = seedSession(makeMeta());
     // saveSessionMeta 总会写 3；手工降回 2 模拟旧会话。
     const metaFile = join(dir, "meta.json");
@@ -159,7 +159,7 @@ describe("resume 走有界模型上下文", () => {
 
     const h = makeScriptedSession();
     try {
-      const result = applySessionRestore(h.session, h.internals._store, dir);
+      const result = await applySessionRestore(h.session, h.internals._store, dir);
       expect(result.ok).toBe(true);
       expect(result.warnings.some((warning) => warning.includes("persistence policy"))).toBe(true);
       expect(h.session.log).toHaveLength(makeEntries().length);
@@ -169,13 +169,13 @@ describe("resume 走有界模型上下文", () => {
     }
   });
 
-  it("缺少 tokens：不启用有界（用量口径无法保证），整读", () => {
+  it("缺少 tokens：不启用有界（用量口径无法保证），整读", async () => {
     const meta = makeMeta();
     delete meta.tokens;
     const dir = seedSession(meta);
     const h = makeScriptedSession();
     try {
-      const result = applySessionRestore(h.session, h.internals._store, dir);
+      const result = await applySessionRestore(h.session, h.internals._store, dir);
       expect(result.ok).toBe(true);
       expect(result.warnings.some((warning) => warning.includes("unbounded"))).toBe(true);
       expect(h.session.log).toHaveLength(makeEntries().length);
@@ -185,7 +185,7 @@ describe("resume 走有界模型上下文", () => {
     }
   });
 
-  it("历史页的已归档条目按需从 archive 取回 display", () => {
+  it("历史页的已归档条目按需从 archive 取回 display", async () => {
     const dir = makeDir();
     const meta = makeMeta();
     const entries = makeEntries();
@@ -211,7 +211,7 @@ describe("resume 走有界模型上下文", () => {
 
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       h.session.loadEarlierHistoryPage(3);
       const found = h.session.getDisplayLog().find((entry) => entry.id === "asst-1");
       expect(found?.display).toBe("old answer");
@@ -225,7 +225,7 @@ describe("resume 走有界模型上下文", () => {
     const dir = seedSession(makeMeta());
     const h = makeScriptedSession();
     try {
-      expect(applySessionRestore(h.session, h.internals._store, dir).ok).toBe(true);
+      expect((await applySessionRestore(h.session, h.internals._store, dir)).ok).toBe(true);
       expect(h.session.log).toHaveLength(6);
 
       await h.session.planRewind(1);

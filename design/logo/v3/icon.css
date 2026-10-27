@@ -1,0 +1,72 @@
+/* SwarmFlow v3 / Node Live — 一枚 rail 节点，一盏 live 灯。
+   1024 网格；≤24px 空芯收成实心，灯保留。
+   夜版：ink field + bone ring；日版：bone field + ink ring。 */
+.sf3-tile {
+  --sf3-field: #0f1613;
+  --sf3-ring: #e9e4d4;
+  --sf3-lamp: #e3a243;
+  --sf3-edge: rgba(233, 228, 212, .055);
+  --sf3-size: 1024px;
+  position: relative;
+  width: var(--sf3-size);
+  aspect-ratio: 1;
+  flex: none;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 18%;
+  background: var(--sf3-field);
+  box-shadow: inset 0 0 0 1px var(--sf3-edge);
+  container-type: inline-size;
+}
+
+.sf3-tile--day {
+  --sf3-field: #e9e4d4;
+  --sf3-ring: #15221b;
+  --sf3-lamp: #a45e18;
+  --sf3-edge: rgba(21, 34, 27, .16);
+}
+
+.sf3-hex {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64%;
+  height: 74%;
+  transform: translate(-50%, -50%);
+  background: var(--sf3-ring);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.sf3-hex::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  background: var(--sf3-field);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.sf3-lamp {
+  position: absolute;
+  left: 82%;
+  top: 68.5%;
+  z-index: 2;
+  width: 20%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--sf3-field);
+  display: grid;
+  place-items: center;
+}
+
+.sf3-lamp::after {
+  content: "";
+  width: 65%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--sf3-lamp);
+}
+
+@container (max-width: 24px) {
+  .sf3-hex::after { display: none; }
+}

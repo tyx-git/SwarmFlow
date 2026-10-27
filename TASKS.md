@@ -32,6 +32,10 @@
 
 当前 `reasoning.effort` 原样透传（选什么发什么，端点不认就让它报错）。剩下的选择是：picker 按传输/模型只列合法档位（`max` 仅 GPT-6/GPT-5.6 的 Responses，`xhigh` 限部分模型），而不是在发送前静默换档。涉及 [src/config/model-capabilities.ts:69](src/config/model-capabilities.ts#L69) 的 `getThinkingLevels` 与模型选择树。
 
+## T-5 未验证：会话锁的 POSIX 分支
+
+`src/config/session-lock.ts` 的 unix socket 分支（tmpdir 下 socket 文件、崩溃残留清理）只做了代码审查，未在 Linux 实跑；Windows 命名管道分支有跨进程用例覆盖（另一进程持锁判占用、强杀后自动可获取）。
+
 ## 已定案不做（别再提）
 
 resume 期修复不落盘（每次加载重新推导，确定性）、迁移 + 归一化双快照（一次性开销）、`readLogHeader` 64 KiB 上限（超限 legacy 会回退整读）、未使用导出（`nextSeq`/`collectSealedRefs`/`prepareEntryForPersistence`）。

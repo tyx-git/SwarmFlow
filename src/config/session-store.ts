@@ -128,8 +128,8 @@ export class SessionStore {
         }
         mkdirSync(sessionDir, { recursive: true });
         mkdirSync(join(sessionDir, "artifacts"), { recursive: true });
-        const lock = this.acquireSessionLock(sessionDir);
-        if (!lock.ok) throw new Error("session directory is locked by another writer");
+        // 新目录是刚分配的唯一 id，不存在并发写者；单写者锁由第一次 turn
+        // 之前的异步 claim 获取（见 Session._claimSessionWriter）。
 
         this._activeBaseDir = baseDir;
         this._projectDir = projectDir;
@@ -160,9 +160,9 @@ export class SessionStore {
   }
 
   /** 尝试获取单写者锁；同一 store 对同一目录幂等。 */
-  acquireSessionLock(dir: string): AcquireSessionLockResult {
+  async acquireSessionLock(dir: string): Promise<AcquireSessionLockResult> {
     if (this._lockedDirs.has(dir)) return { ok: true };
-    const result = acquireSessionLock(dir, this._lockToken);
+    const result = await acquireSessionLock(dir, this._lockToken);
     if (result.ok) this._lockedDirs.add(dir);
     return result;
   }
@@ -233,7 +233,7 @@ export class SessionStore {
   }
 
   /** 冷归档：把当前项目的会话搬到 archived_sessions/ 并压缩活动日志。 */
-  archiveSession(sessionId: string): ArchiveSessionResult {
+  async archiveSession(sessionId: string): Promise<ArchiveSessionResult> {
     if (!looksLikeSessionId(sessionId)) {
       return { ok: false, error: `无效的会话 id：${sessionId}` };
     }
@@ -243,7 +243,7 @@ export class SessionStore {
       return { ok: false, error: "不能归档当前活动会话" };
     }
     try {
-      const moved = archiveSessionDir(source);
+      const moved = await archiveSessionDir(source);
       return {
         ok: true,
         sessionId,

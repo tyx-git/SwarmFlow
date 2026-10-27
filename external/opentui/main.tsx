@@ -116,7 +116,7 @@ export async function launchTui(): Promise<void> {
   if (resumeDir) {
     delete process.env["SWARMFLOW_RESUME_SESSION_DIR"];
     const { applySessionRestore } = await import("../../src/session/resume.js");
-    const result = applySessionRestore(runtime.session, runtime.store, resumeDir);
+    const result = await applySessionRestore(runtime.session, runtime.store, resumeDir);
 
     // 恢复完成，停止动画并清屏
     resumeAnimCleanup?.();

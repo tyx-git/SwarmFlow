@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwarmFlow — Mark 06 / Rail S</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="icon.css">
+  <link rel="stylesheet" href="sheet.css">
+</head>
+<body>
+  <template id="sf6-tpl">
+    <div class="sf6-tile">
+      <span class="sf6-bar sf6-bar--top"></span>
+      <span class="sf6-bar sf6-bar--mid"></span>
+      <span class="sf6-bar sf6-bar--bot"></span>
+      <span class="sf6-turn sf6-turn--left"></span>
+      <span class="sf6-turn sf6-turn--right"></span>
+      <span class="sf6-live"></span>
+    </div>
+  </template>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="mark-slot brand-mark" data-mark aria-hidden="true"></span>
+        <span class="brand-name">SwarmFlow</span>
+        <span class="brand-rule" aria-hidden="true"></span>
+        <span class="crumb eyebrow">IDENTITY / V6</span>
+      </div>
+      <div class="top-status">
+        <span class="eyebrow">MARK 06 / RAIL S</span>
+        <span class="duo-chip"><i aria-hidden="true"></i>DAY + NIGHT</span>
+        <span class="eyebrow">2026-10-27</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="sheet">
+    <section class="hero" aria-labelledby="mark-title">
+      <div class="hero-copy">
+        <p class="eyebrow hero-eyebrow">MARK 06 / RAIL S</p>
+        <h1 id="mark-title">ONE LETTER.<br>SIX ROLES<span class="period" aria-hidden="true"></span></h1>
+        <p class="lede">一个字母，六个角色。</p>
+        <p class="intro">S 是 SwarmFlow 的首字母，也是 rail 的路径。六个角色共用这条 rail；黄铜点是唯一 live 的 Queen。图标只留一个字母和一个节点，其余五个站藏在系统里。</p>
+      </div>
+
+      <div class="themes" aria-label="日夜双主题">
+        <figure class="theme">
+          <div class="mark-slot theme-mark" data-mark role="img"
+               aria-label="SwarmFlow Mark 06 日间版：松绿 S rail，中心黄铜 Queen 节点"></div>
+          <figcaption><span>DAY / PORCELAIN</span><span>NODE / BRASS</span></figcaption>
+        </figure>
+        <figure class="theme">
+          <div class="mark-slot theme-mark" data-mark data-mark-theme="night" role="img"
+               aria-label="SwarmFlow Mark 06 夜间版：瓷白 S rail，中心黄铜 Queen 节点"></div>
+          <figcaption><span>NIGHT / PINE</span><span>NODE / BRASS</span></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="spec" aria-label="图标规范">
+      <div class="spec-col spec-letter">
+        <p class="spec-head">THE LETTER</p>
+        <ul class="legend">
+          <li><span class="tag" aria-hidden="true">A</span><div><strong>RAIL</strong><p>一个字母，一条路径；六个角色共用。</p></div></li>
+          <li><span class="tag" aria-hidden="true">B</span><div><strong>NODE</strong><p>黄铜点是 Queen 的 live 状态；唯一的实心点。</p></div></li>
+          <li><span class="tag" aria-hidden="true">C</span><div><strong>SYSTEM</strong><p>其余五个站留在 console 里，不画进图标。</p></div></li>
+        </ul>
+      </div>
+
+      <div class="spec-col">
+        <p class="spec-head">SIX ROLES</p>
+        <ul class="roles">
+          <li class="is-live"><i aria-hidden="true"></i><span>QUEEN</span><em>LIVE</em></li>
+          <li><i aria-hidden="true"></i><span>SCOUT</span><em>READY</em></li>
+          <li><i aria-hidden="true"></i><span>WORKER</span><em>READY</em></li>
+          <li><i aria-hidden="true"></i><span>REVIEWER</span><em>READY</em></li>
+          <li><i aria-hidden="true"></i><span>GUARD</span><em>READY</em></li>
+          <li><i aria-hidden="true"></i><span>MERGER</span><em>READY</em></li>
+        </ul>
+      </div>
+
+      <div class="spec-col">
+        <p class="spec-head">COLOR</p>
+        <ul class="swatches">
+          <li><span class="chip" style="--c:#f4efe4"></span><span>PORCELAIN</span><code>#F4EFE4</code></li>
+          <li><span class="chip" style="--c:#15211b"></span><span>PINE</span><code>#15211B</code></li>
+          <li><span class="chip" style="--c:#b98a3e"></span><span>BRASS</span><code>#B98A3E</code></li>
+          <li><span class="chip" style="--c:#d9d4c9"></span><span>STONE</span><code>#D9D4C9</code></li>
+        </ul>
+        <p class="spec-note">前三色进标志；stone 是纸张。</p>
+      </div>
+    </section>
+
+    <section class="scale" aria-label="尺寸与主题">
+      <div class="scale-row">
+        <span class="scale-label">DAY</span>
+        <div class="sizes">
+          <div class="specimen" style="--px:64px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>64</span></div>
+          <div class="specimen" style="--px:32px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>32</span></div>
+          <div class="specimen" style="--px:16px"><span class="mark-slot" data-mark aria-hidden="true"></span><span>16</span></div>
+        </div>
+        <span class="scale-meta">PORCELAIN / PINE</span>
+      </div>
+      <div class="scale-row scale-row--night">
+        <span class="scale-label">NIGHT</span>
+        <div class="sizes">
+          <div class="specimen" style="--px:64px"><span class="mark-slot" data-mark data-mark-theme="night" aria-hidden="true"></span><span>64</span></div>
+          <div class="specimen" style="--px:32px"><span class="mark-slot" data-mark data-mark-theme="night" aria-hidden="true"></span><span>32</span></div>
+          <div class="specimen" style="--px:16px"><span class="mark-slot" data-mark data-mark-theme="night" aria-hidden="true"></span><span>16</span></div>
+        </div>
+        <span class="scale-meta">PINE / PORCELAIN</span>
+      </div>
+    </section>
+
+    <section class="terminal" aria-label="使用场景">
+      <div class="terminal-tab">
+        <span class="mark-slot terminal-mark" data-mark data-mark-theme="night" aria-hidden="true"></span>
+        <span>swarmflow</span>
+        <span class="terminal-x" aria-hidden="true">×</span>
+      </div>
+      <p class="terminal-line"><span aria-hidden="true">›</span> 06 roles · 01 live · one rail</p>
+      <span class="terminal-meta">SESSION 06 / TTY</span>
+    </section>
+
+    <footer class="sheet-foot">
+      <span>SWARMFLOW / MARK 06 · RAIL S / DAY + NIGHT</span>
+      <span>HTML + CSS · design/v6/icon.css</span>
+      <span>2026-10-27 · SHEET 1 / 1</span>
+    </footer>
+  </main>
+
+  <script>
+    const tpl = document.getElementById('sf6-tpl');
+    document.querySelectorAll('.mark-slot[data-mark]').forEach((slot) => {
+      const tile = tpl.content.firstElementChild.cloneNode(true);
+      if (slot.dataset.markTheme === 'night') tile.classList.add('sf6-tile--night');
+      tile.setAttribute('aria-hidden', 'true');
+      slot.appendChild(tile);
+    });
+  </script>
+</body>
+</html>

@@ -3906,6 +3906,7 @@ export class Session implements SessionLike {
       // catch would run —double-writing or suppressing the entry.
       try {
         this._ensureSessionStorageReady();
+        await this._claimSessionWriter();
         await this._ensureMcp();
         return await this._runInjectedTurn(displayText, content, { signal: options?.signal });
       } catch (err) {
@@ -3976,6 +3977,7 @@ export class Session implements SessionLike {
 
   async resumePendingTurn(options?: { signal?: AbortSignal }): Promise<string> {
     return this._withTurnLock(async () => {
+      await this._claimSessionWriter();
       if (this._activeAsk) {
         throw new Error("Cannot resume while an ask is still pending approval.");
       }
@@ -4170,11 +4172,26 @@ export class Session implements SessionLike {
     return runTurnActivationLoop(this, signal, textAccumulator, reasoningAccumulator);
   }
 
+  /**
+   * 首次写入前拿到单写者锁：锁是内核对象（命名管道 / unix socket），进程退出
+   * 自动释放，所以不需要陈旧锁判定。另一个进程正在写同一会话时直接失败，
+   * 不带着半份状态继续写日志。
+   */
+  async _claimSessionWriter(): Promise<void> {
+    const dir = this._store?.sessionDir;
+    if (!dir) return;
+    const lock = await this._store.acquireSessionLock(dir);
+    if (!lock.ok) {
+      throw new Error(`Session is being written by another SwarmFlow process: ${dir}`);
+    }
+  }
+
   async turn(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
     const turnLog = getLogger("session.turn");
     turnLog.info("turn:enter", { len: userInput.length, hasSignal: Boolean(options?.signal) });
     return this._withTurnLock(async () => {
       try {
+        await this._claimSessionWriter();
         const result = await this._turnInner(userInput, options);
         turnLog.info("turn:exit:ok");
         return result;
@@ -4229,6 +4246,7 @@ export class Session implements SessionLike {
     }
     this._invalidateProviderTokenSnapshot();
     this._ensureSessionStorageReady();
+    await this._claimSessionWriter();
     await this._ensureSessionStartHooks();
     this._contextManager?.assertBudgetAvailable();
 

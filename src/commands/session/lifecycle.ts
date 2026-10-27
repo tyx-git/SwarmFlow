@@ -239,7 +239,7 @@ export async function cmdFork(ctx: CommandContext): Promise<void> {
   // 分叉：任务清单随会话目录被复制，但必须消毒（清执行体关联、in_progress 降级）
   // applySessionRestore 需要完整 Session（恢复/rewind/任务对账等深层操作），
   // 而命令层只声明 SessionLike；TUI 与服务端在这里传入的始终是真实 Session。
-  const result = applySessionRestore(session as Session, store, newDir, { fork: true });
+  const result = await applySessionRestore(session as Session, store, newDir, { fork: true });
   for (const w of result.warnings) ctx.showMessage(w);
   if (!result.ok && result.error) {
     ctx.showMessage(result.error);

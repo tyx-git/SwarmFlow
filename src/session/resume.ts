@@ -126,12 +126,12 @@ function legacyLogJsonlVersion(sessionDir: string): number | undefined {
  *
  * 用于 `swarmflow --resume <id>` CLI 标志（通过 bootstrap 后的 main.tsx）。
  */
-export function applySessionRestore(
+export async function applySessionRestore(
   session: Session,
   store: SessionStore,
   sessionDir: string,
   opts: { fork?: boolean } = {},
-): RestoreResult {
+): Promise<RestoreResult> {
   const logJsonPath = join(sessionDir, "log.json");
   const logJsonlPath = join(sessionDir, "log.jsonl");
   if (!existsSync(logJsonPath) && !existsSync(logJsonlPath)) {
@@ -139,7 +139,7 @@ export function applySessionRestore(
   }
 
   const alreadyHeld = store.holdsSessionLock(sessionDir);
-  const lock = store.acquireSessionLock(sessionDir);
+  const lock = await store.acquireSessionLock(sessionDir);
   if (!lock.ok) {
     return {
       ok: false,

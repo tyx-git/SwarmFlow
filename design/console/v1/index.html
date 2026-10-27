@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="night">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SwarmFlow Console — Dispatch</title>
+  <meta name="description" content="SwarmFlow 六角色调度台：一条运行，一盏 live 灯。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../logo/v3/icon.css">
+  <link rel="stylesheet" href="console.css">
+  <script>
+    try {
+      const saved = localStorage.getItem("sf.console.theme");
+      if (saved === "day" || saved === "night") {
+        document.documentElement.dataset.theme = saved;
+      } else if (matchMedia("(prefers-color-scheme: light)").matches) {
+        document.documentElement.dataset.theme = "day";
+      }
+    } catch {}
+  </script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark-slot brand-mark" aria-hidden="true">
+          <span class="sf3-tile"><span class="sf3-hex"></span><span class="sf3-lamp"></span></span>
+        </span>
+        <span class="brand-name">SwarmFlow</span>
+        <span class="brand-rule" aria-hidden="true"></span>
+        <span class="mono crumb">CONSOLE / V1</span>
+      </div>
+
+      <div class="topbar-state mono" aria-live="polite">
+        <span class="live-dot" id="statusDot" aria-hidden="true"></span>
+        <span id="statusText">READY</span>
+        <span class="topbar-sep" aria-hidden="true"></span>
+        <span class="topbar-run">RUN 0142</span>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="theme-switch" role="group" aria-label="主题">
+          <button type="button" data-theme-set="night" aria-pressed="true">NIGHT</button>
+          <button type="button" data-theme-set="day" aria-pressed="false">DAY</button>
+        </div>
+        <span class="perm mono"><span class="perm-dot" aria-hidden="true"></span>REVERSIBLE</span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="rail" aria-label="Swarm 角色与编排模式">
+        <div class="rail-block">
+          <div class="rail-head">
+            <span class="eyebrow">SWARM</span>
+            <span class="mono count">06 ROLES</span>
+          </div>
+          <div class="roles" id="roleRail"></div>
+        </div>
+
+        <div class="rail-block rail-patterns">
+          <div class="rail-head">
+            <span class="eyebrow">PATTERN</span>
+            <span class="mono count">05</span>
+          </div>
+          <div class="patterns" id="patternList"></div>
+        </div>
+
+        <div class="rail-foot">
+          <span class="mark-slot rail-mark" aria-hidden="true">
+            <span class="sf3-tile"><span class="sf3-hex"></span><span class="sf3-lamp"></span></span>
+          </span>
+          <span class="rail-foot-copy">
+            <span>SwarmFlow</span>
+            <span class="mono">v0.4.0 · MIT</span>
+          </span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section class="order" aria-labelledby="orderTitle">
+          <div class="order-top">
+            <span class="eyebrow">WORK ORDER / 0142</span>
+            <span class="mono order-meta">SWARMFLOW · FEAT/TAURI-BRIDGE</span>
+          </div>
+          <div class="order-title-row">
+            <h1 id="orderTitle">把会话状态接到 Tauri 桥</h1>
+            <div class="order-clock">
+              <span class="mono">ELAPSED</span>
+              <strong id="elapsed">00:00</strong>
+              <span class="mono order-state" id="orderState">READY</span>
+            </div>
+          </div>
+          <div class="order-bottom">
+            <p>接通 NDJSON 状态流，替换 Electron 桥；rewind、fork 与权限语义保持不变。</p>
+            <div class="order-facts mono">
+              <span>OWNER <b>QUEEN</b></span>
+              <span>ROLES <b>06</b></span>
+              <span>PROTOCOL <b>V1</b></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="yard" aria-labelledby="yardTitle">
+          <div class="section-bar">
+            <div class="bar-left">
+              <span class="eyebrow" id="yardTitle">SWITCHYARD</span>
+              <span class="mono bar-pattern" id="yardPattern">FAN-OUT-FAN-IN</span>
+            </div>
+            <div class="bar-right">
+              <label class="pattern-mobile">
+                <span class="mono">PATTERN</span>
+                <select id="patternSelect" aria-label="编排模式"></select>
+              </label>
+              <div class="run-controls">
+                <button type="button" class="btn btn-primary" id="runBtn">
+                  <span class="btn-lamp" aria-hidden="true"></span><span id="runBtnText">RUN</span>
+                </button>
+                <button type="button" class="btn" id="speedBtn" aria-label="播放速度 1 倍">1×</button>
+                <button type="button" class="btn" id="resetBtn">RESET</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="yard-body">
+            <div class="yard-scroll" id="yardScroll">
+              <div class="yard-inner" id="yardInner">
+                <svg class="edges" id="edges" aria-hidden="true"></svg>
+                <div class="yard-grid" id="yardGrid"></div>
+              </div>
+            </div>
+            <div class="yard-foot mono">
+              <span>HEX = ROLE</span>
+              <span>LAMP = LIVE</span>
+              <span>CLICK = INSPECT</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="ledger" aria-labelledby="ledgerTitle">
+          <div class="section-bar ledger-bar">
+            <div class="bar-left">
+              <span class="eyebrow" id="ledgerTitle">LEDGER</span>
+              <span class="mono bar-count" id="ledgerCount">00</span>
+            </div>
+            <div class="filters" role="group" aria-label="日志筛选">
+              <button type="button" data-filter="all" aria-pressed="true" aria-controls="log">ALL</button>
+              <button type="button" data-filter="tool" aria-pressed="false" aria-controls="log">TOOL</button>
+              <button type="button" data-filter="handoff" aria-pressed="false" aria-controls="log">HANDOFF</button>
+              <button type="button" data-filter="check" aria-pressed="false" aria-controls="log">CHECK</button>
+            </div>
+          </div>
+          <ol class="log" id="log" role="region" aria-label="运行日志" tabindex="0"></ol>
+        </section>
+
+        <footer class="composer-wrap">
+          <div class="approval" id="approval" hidden>
+            <div class="approval-copy">
+              <span class="approval-lamp" aria-hidden="true"></span>
+              <div>
+                <span class="eyebrow">QUEEN / FINAL</span>
+                <p>4 / 4 验收项通过。接受这次运行？</p>
+              </div>
+            </div>
+            <div class="approval-actions">
+              <button type="button" class="btn" id="rejectBtn">REJECT</button>
+              <button type="button" class="btn btn-primary" id="acceptBtn">ACCEPT</button>
+            </div>
+          </div>
+
+          <div class="composer-shell">
+            <div class="command-menu" id="commandMenu" role="listbox" aria-label="命令" hidden></div>
+            <form class="composer" id="composerForm">
+              <span class="prompt" aria-hidden="true">›</span>
+              <input id="cmd" type="text" autocomplete="off" spellcheck="false"
+                     placeholder="向 Queen 下指令，或输入 / 唤起命令" aria-label="向 Queen 发送指令"
+                     role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
+                     aria-controls="commandMenu" aria-expanded="false">
+              <div class="quick" aria-label="快捷命令">
+                <button type="button" data-command="/status">/status</button>
+                <button type="button" data-command="/compact">/compact</button>
+                <button type="button" data-command="/rewind">/rewind</button>
+              </div>
+              <button type="submit" class="send">SEND <span aria-hidden="true">↵</span></button>
+            </form>
+          </div>
+          <div class="composer-meta mono">
+            <span>ENTER 发送 · / 命令 · ↑↓ 选择</span>
+            <span id="composerHint">NDJSON · RPC v1</span>
+          </div>
+        </footer>
+      </main>
+
+      <aside class="inspector" id="inspector" aria-label="角色检查器">
+        <div class="inspector-bar">
+          <span class="eyebrow">INSPECTOR</span>
+          <span class="mono inspector-index" id="inspectorIndex">01 / 06</span>
+          <button type="button" class="sheet-close" id="sheetClose" aria-label="关闭检查器">×</button>
+        </div>
+
+        <div class="inspector-scroll">
+          <div class="role-head">
+            <span class="hex-mark hex-mark--lg" id="inspectorHex" aria-hidden="true"><i class="hex-lamp"></i></span>
+            <div class="role-id">
+              <h2 id="inspectorName">Queen</h2>
+              <p class="mono" id="inspectorDesc">PRIMARY COORDINATOR</p>
+              <p class="role-cn" id="inspectorCn">规划、分派与最终验收</p>
+            </div>
+            <span class="role-state mono" id="inspectorState">READY</span>
+          </div>
+
+          <div class="now">
+            <span class="eyebrow">NOW</span>
+            <p id="inspectorNow">待命，等待运行开始。</p>
+          </div>
+
+          <dl class="id-grid">
+            <div><dt>TIER</dt><dd id="inspTier">STRONG</dd></div>
+            <div><dt>THINKING</dt><dd id="inspThinking">HIGH</dd></div>
+            <div><dt>TOOLS</dt><dd id="inspTools">02</dd></div>
+            <div><dt>NODES</dt><dd id="inspNodes">00 / 02</dd></div>
+          </dl>
+
+          <div class="insp-block">
+            <div class="block-head"><span class="eyebrow">TOOLS</span></div>
+            <ul class="tool-list" id="inspToolList"></ul>
+          </div>
+
+          <div class="insp-block">
+            <div class="block-head"><span class="eyebrow">CONTEXT</span><span class="mono block-value" id="ctxValue">48%</span></div>
+            <div class="meter" role="img" aria-label="上下文占用">
+              <span id="ctxFill"></span>
+              <i class="meter-mark" style="left:80%" aria-hidden="true"></i>
+            </div>
+            <div class="meter-meta mono">
+              <span id="ctxTokens">61.4k / 128k</span>
+              <span>CACHE <b id="ctxCache">12.4k</b></span>
+            </div>
+          </div>
+
+          <div class="insp-block">
+            <div class="block-head"><span class="eyebrow">ACCEPTANCE</span><span class="mono block-value" id="acceptValue">0 / 4</span></div>
+            <ul class="checks" id="checks"></ul>
+          </div>
+
+          <div class="insp-block">
+            <div class="block-head"><span class="eyebrow">SESSION</span></div>
+            <dl class="session-grid mono">
+              <div><dt>ID</dt><dd>0142-7C</dd></div>
+              <div><dt>PROTOCOL</dt><dd>v1</dd></div>
+              <div><dt>PERMISSION</dt><dd>REVERSIBLE</dd></div>
+              <div><dt>LOOP</dt><dd>NDJSON</dd></div>
+            </dl>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <noscript><p class="noscript">此页面需要 JavaScript 才能运行调度模拟。</p></noscript>
+  <script src="console.js"></script>
+</body>
+</html>
