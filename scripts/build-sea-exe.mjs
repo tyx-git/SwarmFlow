@@ -235,7 +235,8 @@ if (existsSync(iconPath) && existsSync(iconScript)) {
   console.warn(
     "icon assets not found (icons/swarmflow.ico + scripts/set-exe-icon.ps1) — " +
       "SwarmFlow.exe keeps the default Node.js icon. " +
-      "Provide an ICO at icons/swarmflow.ico (generated externally, e.g. Photoshop).",
+      "Provide an ICO at icons/swarmflow.ico " +
+      "(rendered from design/logo/v3/icon.css by scripts/render-icon.py).",
   );
 }
 

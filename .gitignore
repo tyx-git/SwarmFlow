@@ -66,8 +66,9 @@ docs/*
 # SwarmFlow diagnostic logs (enabled via SWARMFLOW_LOG=1)
 release/
 .*/
-# 图标源码是构建输入（scripts/make-icon.py 的输入，-Task icon 依赖它），需要入库；
+# 图标源码是构建输入（视觉稿在 design/logo/v3/icon.css，scripts/render-icon.py 负责渲染），
+# PNG 入库、ICO 由脚本生成后保持忽略；-Task exe 前若 ICO 不存在会告警。
 # 注意必须写成 icons/* 而不是 icons/：目录被整体排除后，
-# git 不会再用 ! 规则放行里面的文件。生成的 ICO 仍保持忽略。
+# git 不会再用 ! 规则放行里面的文件。
 icons/*
 !icons/swarmflow.png

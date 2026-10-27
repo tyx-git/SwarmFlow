@@ -14,7 +14,7 @@
       tui        tsc -p tsconfig.tui.json --noEmit（external/opentui 的 JSX 代码）
       dist       tsc -p tsconfig.build.json + 拷贝 assets/prompts/skills → dist\
       exe        构建单文件可执行：release\SwarmFlow-win32-x64\SwarmFlow.exe（含图标）
-      icon       把 icons\swarmflow.ico 注入到已构建的 exe（ICO 由外部提供，不再由 PNG 生成）
+      icon       把 icons\swarmflow.ico 注入到已构建的 exe（ICO 由 scripts\render-icon.py 渲染）
       test       vitest run（可用 -TestPath 指定文件）
       all        typecheck → tui → dist → exe → test → 冒烟（默认）
 
@@ -29,7 +29,7 @@
 .PARAMETER SkipSmoke
     跳过 exe 构建后的 --version 冒烟
 .PARAMETER IcoPath
-    icon 任务使用的 ICO 路径；默认 icons\swarmflow.ico。ICO 由外部生成，本脚本不负责制作
+    icon 任务使用的 ICO 路径；默认 icons\swarmflow.ico。ICO 由 scripts\render-icon.py 生成，本脚本不负责制作
 
 .NOTES
     宿主：PowerShell 7（pwsh）与 Windows PowerShell 5.1 均可运行。两处宿主差异已在本脚本内处理：
