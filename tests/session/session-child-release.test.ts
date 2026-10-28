@@ -10,6 +10,8 @@ import { describe, expect, it } from "vitest";
 import type { LogEntry } from "../../src/context/entry/types.js";
 import { loadLog } from "../../src/config/log-serialization.js";
 import { validateAndRepairLog } from "../../src/config/log-repair.js";
+import { Usage } from "../../src/providers/response.js";
+import type { ChildSessionSnapshot } from "../../src/session/tree-types.js";
 import {
   ScriptedProvider,
   makeScriptedAgentObject,
@@ -27,7 +29,73 @@ function makeChild(h: SessionHarness, mode: "oneshot" | "persistent", replyText:
   return { handle, childProvider };
 }
 
+const cacheCases = [
+  { label: "cache hit", cached: 800, supported: true },
+  { label: "reported zero", cached: 0, supported: true },
+  { label: "unreported metric", cached: 0, supported: false },
+];
+
+describe.each(["oneshot", "persistent"] as const)("%s child cache snapshots", (mode) => {
+  it.each(cacheCases)("preserves input-only tokens and $label", async ({ cached, supported }) => {
+    const h = makeScriptedSession({ rounds: [] });
+    try {
+      const { handle, childProvider } = makeChild(h, mode, "cache result");
+      childProvider.rounds = [{ text: "cache result", usage: new Usage(1000, 250, 0, cached, supported) }];
+      const manager = h.internals._childSessionManagerInstance;
+      let runningSnapshot: ChildSessionSnapshot | undefined;
+      const unsubscribe = handle.session.subscribeLog(() => {
+        const snapshot = h.session.getChildSessionSnapshots()[0];
+        if (snapshot?.running && snapshot.inputTokens > 0) runningSnapshot = snapshot;
+      });
+      try {
+        manager._startChildTurn(handle, "go", {});
+        await handle.turnPromise;
+        await waitFor(() => handle.lifecycle === (mode === "oneshot" ? "archived" : "idle"));
+      } finally {
+        unsubscribe();
+      }
+
+      const expected = { inputTokens: 1000, lastTotalTokens: 1250, cacheReadTokens: cached, cacheSupported: supported };
+      expect(runningSnapshot).toMatchObject({ ...expected, running: true });
+      expect(h.session.getChildSessionSnapshots()[0]).toMatchObject(expected);
+      if (mode === "oneshot") {
+        expect(handle.session).toBeNull();
+        expect(handle.frozenSnapshot).toMatchObject(expected);
+      } else {
+        expect(handle.session).not.toBeNull();
+      }
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("starts without a reported cache metric", () => {
+    const h = makeScriptedSession({ rounds: [] });
+    try {
+      makeChild(h, mode, "pending result");
+      expect(h.session.getChildSessionSnapshots()[0]).toMatchObject({
+        inputTokens: 0, lastTotalTokens: 0, cacheReadTokens: 0, cacheSupported: false,
+      });
+    } finally {
+      h.dispose();
+    }
+  });
+});
+
 describe("one-shot child release", () => {
+  it("reports unavailable usage when neither the Session nor a frozen snapshot exists", () => {
+    const h = makeScriptedSession({ rounds: [] });
+    try {
+      const { handle } = makeChild(h, "oneshot", "pending result");
+      handle.session = null;
+      expect(h.session.getChildSessionSnapshots()[0]).toMatchObject({
+        inputTokens: 0, lastTotalTokens: 0, cacheReadTokens: 0, cacheSupported: false,
+      });
+    } finally {
+      h.dispose();
+    }
+  });
+
   it("settling releases the Session, freezes the snapshot, and serves the log from disk", async () => {
     const h = makeScriptedSession({ rounds: [] });
     try {
@@ -146,11 +214,12 @@ describe("one-shot child release", () => {
     }
   });
 
-  it("restore brings settled one-shot children back released", async () => {
+  it.each(cacheCases)("restore preserves $label in a released one-shot snapshot", async ({ cached, supported }) => {
     const h = makeScriptedSession({ rounds: [] });
     try {
       // Produce a settled child with a persisted log...
-      const { handle } = makeChild(h, "oneshot", "restored child words");
+      const { handle, childProvider } = makeChild(h, "oneshot", "restored child words");
+      childProvider.rounds = [{ text: "restored child words", usage: new Usage(1000, 250, 0, cached, supported) }];
       const manager = h.internals._childSessionManagerInstance;
       manager._startChildTurn(handle, "go", {});
       await waitFor(() => handle.lifecycle === "archived");
@@ -181,6 +250,9 @@ describe("one-shot child release", () => {
       expect(restored).toBeTruthy();
       expect(restored.session).toBeNull();
       expect(restored.frozenSnapshot).toBeTruthy();
+      expect(h.session.getChildSessionSnapshots()[0]).toMatchObject({
+        inputTokens: 1000, lastTotalTokens: 1250, cacheReadTokens: cached, cacheSupported: supported,
+      });
       const log = h.session.getChildSessionLog("worker-1");
       expect(log!.some((e) => e.type === "assistant_text" && String(e.display).includes("restored child words"))).toBe(true);
     } finally {

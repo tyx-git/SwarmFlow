@@ -235,6 +235,9 @@ function sameChildSessionList(
       left?.logRevision !== right?.logRevision ||
       left?.lifetimeToolCallCount !== right?.lifetimeToolCallCount ||
       left?.lastTotalTokens !== right?.lastTotalTokens ||
+      left?.inputTokens !== right?.inputTokens ||
+      left?.cacheReadTokens !== right?.cacheReadTokens ||
+      left?.cacheSupported !== right?.cacheSupported ||
       left?.lastToolCallSummary !== right?.lastToolCallSummary ||
       left?.thinkingLevel !== right?.thinkingLevel ||
       left?.pendingInboxCount !== right?.pendingInboxCount
@@ -3119,7 +3122,7 @@ export function OpenTuiApp({
   const effectiveModelColor = childSnapshot
     ? (theme.presentation.modelProviderColors[childSnapshot.modelProvider] ?? modelNameColor)
     : modelNameColor;
-  const effectiveContextTokens = childSnapshot ? childSnapshot.inputTokens : contextTokens;
+  const effectiveContextTokens = childSnapshot ? childSnapshot.lastTotalTokens : contextTokens;
   const effectiveContextLimit = childSnapshot ? childSnapshot.contextBudget : session.contextBudget;
   const statusData = useMemo<SessionStatusData>(() => {
     const taskState = session.getTaskState?.() ?? [];
@@ -3211,7 +3214,7 @@ export function OpenTuiApp({
     };
   }, [usagePanel, usagePage, session]);
   const effectiveCacheReadTokens = childSnapshot ? childSnapshot.cacheReadTokens : cacheReadTokens;
-  const effectiveCacheSupported = childSnapshot ? false : Boolean(session.cacheSupported);
+  const effectiveCacheSupported = childSnapshot ? childSnapshot.cacheSupported : Boolean(session.cacheSupported);
   const sessionName = (typeof session.getDisplayName === "function" ? session.getDisplayName() : "").trim()
     || uiText.get(["Views", "statusBar", "untitled"]);
   const effectiveProcessing = childSnapshot ? childSnapshot.running : processing;

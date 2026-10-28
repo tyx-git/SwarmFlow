@@ -39,6 +39,7 @@ describe("task status panel layout and presentation", () => {
     activeLogEntryId: null,
     turnElapsed: 0,
     cacheReadTokens: 0,
+    cacheSupported: false,
     ...overrides,
   }) as any;
 

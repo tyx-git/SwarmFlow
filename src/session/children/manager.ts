@@ -179,6 +179,7 @@ export class ChildSessionManager {
         activeLogEntryId: null,
         turnElapsed: handle.elapsed,
         cacheReadTokens: 0,
+        cacheSupported: false,
       };
     }
     const currentTurnRunning = session.currentTurnRunning;
@@ -227,7 +228,7 @@ export class ChildSessionManager {
       recentEvents: [...session.recentSessionEvents],
       pendingInboxCount: session.pendingInboxCount,
       lastActivityAt: handle.lastActivityAt,
-      inputTokens: session.lastTotalTokens,
+      inputTokens: session.lastInputTokens,
       contextBudget: session.contextBudget,
       modelConfigName: modelConfig?.name ?? "",
       modelProvider: modelConfig?.provider ?? "",
@@ -240,6 +241,7 @@ export class ChildSessionManager {
         ? (performance.now() - handle.startTime) / 1000
         : handle.elapsed,
       cacheReadTokens: session.lastCacheReadTokens,
+      cacheSupported: session.cacheSupported,
     };
   }
 

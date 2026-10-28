@@ -54,6 +54,7 @@ export interface ChildSessionSnapshot {
   activeLogEntryId: string | null;
   turnElapsed: number;
   cacheReadTokens: number;
+  cacheSupported: boolean;
   /**
    * 子会话自己的任务清单摘要（内存态，随子会话消亡；释放时随 frozenSnapshot 冻结）。
    * 由父会话的 Agents 面板/子视图只读展示。
