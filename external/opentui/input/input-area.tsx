@@ -213,7 +213,7 @@ function InputAreaInner(props: InputAreaProps): React.ReactNode {
     ? `${formatCompactTokensShort(contextTokens)}/${formatCompactTokensShort(contextLimit)}`
     : formatCompactTokensShort(contextTokens);
   const cwdText = cwd;
-  const sessionText = sessionName.slice(0, 8);
+  const sessionText = sessionName.slice(0, 16);
 
   return (
     <box flexDirection="column" gap={0} flexShrink={0}>
