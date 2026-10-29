@@ -307,7 +307,7 @@ export const GLOB: ToolDef = {
     "Find files by name/path pattern. Returns matching absolute paths sorted by modification time " +
     "(most recently modified first). Patterns without `/` are auto-prefixed with `**/` so " +
     "`*.ts` matches every `.ts` file in the tree. " +
-    "Respects .gitignore rules and skips common build / cache directories (node_modules, .git, dist, target, .venv, etc.) " +
+    "Respects .gitignore/.ignore rules (including the global gitignore) and skips common build / cache directories (node_modules, .git, dist, target, .venv, etc.) " +
     "unless `no_ignore` is true. Supports `**`, `*`, `?`, `[abc]`, and `{a,b}` brace expansion.",
   parameters: {
     type: "object",
@@ -329,10 +329,10 @@ export const GLOB: ToolDef = {
       },
       max_results: {
         type: "integer",
-        description: "Alias for limit, matching fd --max-results.",
+        description: "Alias for limit.",
       },
       type: {
-        description: "fd-compatible entry type: file (default), directory, symlink, executable, or empty. May be an array.",
+        description: "Entry type: file (default), directory, symlink, executable, or empty. May be an array.",
         oneOf: [
           { type: "string", enum: ["file", "directory", "dir", "symlink", "executable", "empty"] },
           { type: "array", items: { type: "string" } },
@@ -345,7 +345,7 @@ export const GLOB: ToolDef = {
       and: {
         type: "array",
         items: { type: "string" },
-        description: "Additional fd patterns that must also match the same entry.",
+        description: "Additional glob patterns that must also match the same entry.",
       },
       exclude: {
         description: "Entry glob(s) to exclude, such as node_modules or *.map.",
@@ -353,11 +353,11 @@ export const GLOB: ToolDef = {
       },
       regex: {
         type: "boolean",
-        description: "Treat pattern as a regular expression instead of a glob pattern (fd --regex).",
+        description: "Treat pattern as a regular expression instead of a glob pattern.",
       },
       fixed_strings: {
         type: "boolean",
-        description: "Treat pattern as a literal substring (fd -F).",
+        description: "Treat pattern as a literal substring.",
       },
       case_insensitive: {
         type: "boolean",
@@ -377,7 +377,7 @@ export const GLOB: ToolDef = {
       },
       no_ignore: {
         type: "boolean",
-        description: "Do not skip .gitignore rules or standard build/cache directories. Default false.",
+        description: "Do not skip .gitignore/.ignore rules or standard build/cache directories. Default false.",
       },
       follow: {
         type: "boolean",
@@ -415,7 +415,7 @@ export const GREP: ToolDef = {
     "case-insensitive matching for mixed-case patterns. " +
     "Defaults: returns up to 100 results overall and 15 matching lines per file in content mode; " +
     "individual lines longer than 2000 chars are truncated. " +
-    "Respects .gitignore rules and skips common build/cache directories unless `no_ignore` is true.",
+    "Respects .gitignore rules (including the global gitignore) and skips common build/cache directories unless `no_ignore` is true.",
   parameters: {
     type: "object",
     properties: {

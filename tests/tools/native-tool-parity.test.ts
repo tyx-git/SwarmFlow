@@ -1,5 +1,5 @@
 /**
- * native rg/fd 与 JS 回退的逐项对比测试。
+ * native rg 与 JS 回退的逐项对比测试。
  *
  * 目标不是“两条路径都能跑”，而是同一次调用必须返回完全相同的文本：
  * 格式、排序、忽略规则、每文件上限、长行截断、multiline、敏感文件边界。
@@ -7,16 +7,15 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { bundledRgArgs, toolGrep, type GrepOptions } from "../../src/tools/grep.js";
-import { toolGlob } from "../../src/tools/glob.js";
 import { resolveBundledSearchExecutable } from "../../src/tools/native-search.js";
 
-const hasRg = resolveBundledSearchExecutable("rg") !== null;
-const hasFd = resolveBundledSearchExecutable("fd") !== null;
+const hasRg = resolveBundledSearchExecutable() !== null;
 
 function makeTemp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -277,88 +276,5 @@ describe.skipIf(!hasRg)("grep native/JS parity", () => {
     }));
     expect(contentArgs).toContain("--json");
     expect(contentArgs[contentArgs.indexOf("--max-count") + 1]).toBe("6");
-  });
-});
-
-describe.skipIf(!hasFd)("glob native/JS parity", () => {
-  it("matches sorting, limit, ignore rules and path format", async () => {
-    const root = makeTemp("swarmflow-parity-glob-");
-    try {
-      mkdirSync(join(root, "sub"));
-      const oldFile = join(root, "a-old.ts");
-      const newFile = join(root, "z-new.ts");
-      const midFile = join(root, "sub", "mid.ts");
-      writeFileSync(oldFile, "", "utf8");
-      writeFileSync(newFile, "", "utf8");
-      writeFileSync(midFile, "", "utf8");
-      utimesSync(oldFile, new Date("2020-01-01T00:00:00Z"), new Date("2020-01-01T00:00:00Z"));
-      utimesSync(midFile, new Date("2024-01-01T00:00:00Z"), new Date("2024-01-01T00:00:00Z"));
-      utimesSync(newFile, new Date("2025-01-01T00:00:00Z"), new Date("2025-01-01T00:00:00Z"));
-      writeFileSync(join(root, ".gitignore"), "z-new.ts\n", "utf8");
-
-      for (const options of [
-        { limit: 100 },
-        { limit: 2 },
-        { limit: 100, noIgnore: true },
-        { limit: 100, noIgnore: true, absolutePath: false },
-      ]) {
-        const native = await toolGlob("*.ts", root, { ...options, ignoreRoot: root, useNative: true });
-        const js = await toolGlob("*.ts", root, { ...options, ignoreRoot: root, useNative: false });
-        expect(js, JSON.stringify(options)).toBe(native);
-      }
-
-      const enforced = await toolGlob("*.ts", root, { limit: 100, ignoreRoot: root, useNative: true });
-      expect(enforced).not.toContain("z-new.ts");
-      const bypassed = await toolGlob("*.ts", root, {
-        limit: 100,
-        noIgnore: true,
-        ignoreRoot: root,
-        useNative: true,
-      });
-      expect(bypassed.indexOf("z-new.ts")).toBeLessThan(bypassed.indexOf("a-old.ts"));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("matches path patterns instead of returning zero like fd --glob", async () => {
-    const root = makeTemp("swarmflow-parity-glob-path-");
-    try {
-      mkdirSync(join(root, "sub", "deep"), { recursive: true });
-      writeFileSync(join(root, "sub", "deep", "x.txt"), "", "utf8");
-      writeFileSync(join(root, "sub", "y.txt"), "", "utf8");
-
-      for (const pattern of ["sub/**/*.txt", "sub/deep/*.txt", "**/deep/*"]) {
-        const native = await toolGlob(pattern, root, { limit: 10, ignoreRoot: root, useNative: true });
-        const js = await toolGlob(pattern, root, { limit: 10, ignoreRoot: root, useNative: false });
-        expect(native, pattern).toBe(js);
-        expect(native, pattern).toContain("x.txt");
-      }
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("matches full_path, path and-patterns and path regex through the JS fallback", async () => {
-    const root = makeTemp("swarmflow-parity-glob-mode-");
-    try {
-      mkdirSync(join(root, "sub", "deep"), { recursive: true });
-      writeFileSync(join(root, "sub", "deep", "x.txt"), "", "utf8");
-      writeFileSync(join(root, "sub", "y.txt"), "", "utf8");
-
-      const cases = [
-        { pattern: "sub/deep/x.txt", fullPath: true },
-        { pattern: "*.txt", andPatterns: ["**/deep/**"] },
-        { pattern: "sub/deep/.*\\.txt$", regex: true },
-      ];
-      for (const options of cases) {
-        const native = await toolGlob(options.pattern, root, { limit: 10, ignoreRoot: root, useNative: true, ...options });
-        const js = await toolGlob(options.pattern, root, { limit: 10, ignoreRoot: root, useNative: false, ...options });
-        expect(native, JSON.stringify(options)).toBe(js);
-        expect(native, JSON.stringify(options)).toContain("x.txt");
-      }
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 });

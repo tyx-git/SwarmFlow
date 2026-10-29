@@ -1,4 +1,4 @@
-/** Windows intools 搜索二进制的安全调用层。 */
+/** Windows intools rg 二进制的安全调用层。 */
 
 import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -15,7 +15,7 @@ export interface NativeSearchResult {
 }
 
 /**
- * 定位随包分发的搜索二进制。
+ * 定位随包分发的 rg 二进制。
  *
  * 两条路径：源码/dist 运行按模块目录解析；SEA 单文件运行时 import.meta.url
  * 指向可执行文件本身，模块目录推导会落空，因此再按 process.execPath 的同级
@@ -25,17 +25,14 @@ export interface NativeSearchResult {
  * 的同名文件。找不到时返回 null，调用方回退到内置 JS 实现。
  */
 export function resolveBundledSearchExecutable(
-  name: "fd" | "rg",
   moduleDir: string = path.dirname(fileURLToPath(import.meta.url)),
   execPath: string = process.execPath,
 ): string | null {
   if (process.platform !== "win32") return null;
-  const directory = name === "rg" ? "ripgrep" : name;
-  const executable = name === "rg" ? "rg.exe" : `${name}.exe`;
   const candidates = [
-    path.join(moduleDir, "intools", directory, executable),
+    path.join(moduleDir, "intools", "ripgrep", "rg.exe"),
     // SEA 单文件：import.meta.url 指向 exe，改按 exe 同级查找
-    path.join(path.dirname(execPath), "intools", directory, executable),
+    path.join(path.dirname(execPath), "intools", "ripgrep", "rg.exe"),
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
@@ -115,29 +112,7 @@ function runSearch(
   });
 }
 
-/**
- * options.args 由 glob.ts 的 bundledFdArgs 生成，不是模型直传；
- * 因此这里不再维护一套永远不会触发的选项白名单/黑名单。
- */
-export async function runBundledFd(options: {
-  pattern: string;
-  root: string;
-  args: string[];
-  absolutePath?: boolean;
-  signal?: AbortSignal;
-}): Promise<NativeSearchResult> {
-  const executable = resolveBundledSearchExecutable("fd");
-  if (!executable) return { available: false, content: "" };
-  const pathMode = options.absolutePath === false ? "--relative-path" : "--absolute-path";
-  const searchRoot = options.absolutePath === false ? "." : options.root;
-  const args = [pathMode, ...options.args, "--color", "never", "--", options.pattern, searchRoot];
-  return {
-    available: true,
-    content: await runSearch(executable, args, options.root, options.signal, { FD_OPTIONS: "" }),
-  };
-}
-
-/** options.args 同样由 bundledRgArgs 生成，不接受模型直传参数。 */
+/** options.args 由 grep.ts 的 bundledRgArgs 生成，不接受模型直传参数。 */
 export async function runBundledRg(options: {
   patterns: string[];
   root: string;
@@ -146,7 +121,7 @@ export async function runBundledRg(options: {
   /** JSON 事件流需要比最终文本更大的原始预算；最终输出仍由调用方截断。 */
   outputCap?: number;
 }): Promise<NativeSearchResult> {
-  const executable = resolveBundledSearchExecutable("rg");
+  const executable = resolveBundledSearchExecutable();
   if (!executable) return { available: false, content: "" };
   const rootIsDirectory = statSync(options.root).isDirectory();
   const cwd = rootIsDirectory ? options.root : path.dirname(options.root);

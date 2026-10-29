@@ -8,25 +8,89 @@
  */
 
 import fs from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 import path from "node:path";
 
 import { isExcludedDirName, isHiddenName } from "./scan-exclusions.js";
 
-import { runBundledFd } from "./native-search.js";
 import { GitIgnoreStack } from "./gitignore.js";
 
-import { GLOB_MAX_LIMIT, GLOB_MAX_FILES_SCANNED, GLOB_MAX_DEPTH } from "./limits.js";
+import { GLOB_MAX_LIMIT, GLOB_MAX_FILES_SCANNED, GLOB_MAX_DEPTH, SEARCH_BUDGET_MS } from "./limits.js";
 
 // ------------------------------------------------------------------
 // 文件变更追踪（用于回滚文件还原）
 // ------------------------------------------------------------------
 
+/** 正则字面量转义（用于 glob 的字面量片段）。 */
+function escapeRegexChar(ch: string): string {
+  return /[.*+?^${}()|[\]\\]/.test(ch) ? `\\${ch}` : ch;
+}
+
+/** 找到与 `open` 处 `{` 配对的 `}`（支持嵌套）；未闭合返回 -1。 */
+function findClosingBrace(pattern: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < pattern.length; i += 1) {
+    if (pattern[i] === "{") depth += 1;
+    else if (pattern[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** 按顶层逗号切分花括号内容；`[...]` 内的逗号不切分。 */
+function splitBraceAlternatives(body: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inClass = false;
+  let start = 0;
+  for (let i = 0; i < body.length; i += 1) {
+    const ch = body[i];
+    if (ch === "[") inClass = true;
+    else if (ch === "]") inClass = false;
+    else if (!inClass && ch === "{") depth += 1;
+    else if (!inClass && ch === "}") depth -= 1;
+    else if (!inClass && depth === 0 && ch === ",") {
+      parts.push(body.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(body.slice(start));
+  return parts;
+}
+
+/** 把 `[...]` 转成 JS 正则字符类；未闭合返回 null（按字面量处理）。 */
+function convertCharClass(pattern: string, open: number): { source: string; next: number } | null {
+  let i = open + 1;
+  let negated = false;
+  if (pattern[i] === "!" || pattern[i] === "^") {
+    negated = true;
+    i += 1;
+  }
+  const start = i;
+  while (i < pattern.length && pattern[i] !== "]") i += 1;
+  if (i >= pattern.length) return null;
+  const body = pattern.slice(start, i);
+  if (!body) return null;
+  let cls = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const ch = body[index];
+    if (ch === "\\" || ch === "]" || ch === "[" || ch === "^") cls += `\\${ch}`;
+    // 首尾的 `-` 是字面量；取反时注入的 `/` 会把它变成区间起点。
+    else if (ch === "-" && (index === 0 || index === body.length - 1)) cls += "\\-";
+    else cls += ch;
+  }
+  // glob 的字符类不跨路径段：取反时显式排除 `/`。
+  return { source: `[${negated ? "^/" : ""}${cls}]`, next: i + 1 };
+}
+
 /**
  * Convert a simple glob pattern to a RegExp.
  * Supports: `*` (any non-slash), `**` (any including slash), `?` (single char),
- * `{a,b}` (alternatives), and literal characters.
+ * `[abc]` / `[a-z]` / `[!a]` (character classes), `{a,b}` (alternatives，可嵌套、
+ * 内部可含通配符), and literal characters.
  */
 export function globToRegex(pattern: string): RegExp {
   let re = "^";
@@ -35,9 +99,8 @@ export function globToRegex(pattern: string): RegExp {
     const ch = pattern[i];
     if (ch === "*") {
       if (pattern[i + 1] === "*") {
-        // ** matches anything including slashes
         if (pattern[i + 2] === "/") {
-          re += "(?:.*/)?"; // **/ matches zero or more directories
+          re += "(?:.*/)?";
           i += 3;
         } else {
           re += ".*";
@@ -45,27 +108,36 @@ export function globToRegex(pattern: string): RegExp {
         }
       } else {
         re += "[^/]*";
-        i++;
+        i += 1;
       }
     } else if (ch === "?") {
       re += "[^/]";
-      i++;
+      i += 1;
+    } else if (ch === "[") {
+      const cls = convertCharClass(pattern, i);
+      if (cls) {
+        re += cls.source;
+        i = cls.next;
+      } else {
+        re += "\\[";
+        i += 1;
+      }
     } else if (ch === "{") {
-      const close = pattern.indexOf("}", i);
+      const close = findClosingBrace(pattern, i);
       if (close > i) {
-        const alts = pattern.slice(i + 1, close).split(",").map(a => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-        re += `(?:${alts})`;
+        const alternatives = splitBraceAlternatives(pattern.slice(i + 1, close));
+        const converted = alternatives
+          .map((alt) => globToRegex(alt).source.slice(1, -1))
+          .join("|");
+        re += `(?:${converted})`;
         i = close + 1;
       } else {
         re += "\\{";
-        i++;
+        i += 1;
       }
-    } else if (".+^$|()[]\\".includes(ch)) {
-      re += "\\" + ch;
-      i++;
     } else {
-      re += ch;
-      i++;
+      re += escapeRegexChar(ch);
+      i += 1;
     }
   }
   re += "$";
@@ -86,9 +158,11 @@ export function normalizeGlobPattern(pattern: string): string {
 
 export interface GlobOptions {
   limit: number;
-  /** 测试注入：false 时强制 JS 回退；生产默认走随包二进制。 */
-  useNative?: boolean;
-  /** .gitignore 规则的根目录（通常是 projectRoot）。 */
+  /** 测试注入：覆盖 15s 搜索预算（0 可确定性触发超时分支）。 */
+  timeBudgetMs?: number;
+  /** 测试注入：覆盖全局 gitignore 文件列表。 */
+  globalIgnoreFiles?: readonly string[];
+  /** .gitignore/.ignore 规则的根目录（通常是 projectRoot）。 */
   ignoreRoot?: string;
   andPatterns?: string[];
   excludes?: string[];
@@ -105,7 +179,6 @@ export interface GlobOptions {
   maxDepth?: number;
   minDepth?: number;
   exactDepth?: number;
-  signal?: AbortSignal;
 }
 
 export function matchesGlobEntry(
@@ -134,8 +207,13 @@ export function matchesGlobEntry(
   }
   if (!matched) return false;
   if (options.extensions && options.extensions.length > 0) {
-    const ext = path.extname(entryName).slice(1).toLocaleLowerCase();
-    if (!options.extensions.some((item) => item.replace(/^\./, "").toLocaleLowerCase() === ext)) return false;
+    // 后缀匹配而不是 path.extname：支持 d.ts / tar.gz 这类多段扩展名。
+    const lowered = entryName.toLocaleLowerCase();
+    const matchedExtension = options.extensions.some((item) => {
+      const ext = item.replace(/^\./, "").toLocaleLowerCase();
+      return ext.length > 0 && lowered.endsWith(`.${ext}`);
+    });
+    if (!matchedExtension) return false;
   }
   return true;
 }
@@ -153,9 +231,23 @@ export function matchesGlobExclusion(
   });
 }
 
+/**
+ * Windows 上按扩展名判定：exe/bat/cmd/com 与无扩展名视为 executable，
+ * 且大小写敏感；其他平台用权限位。
+ */
+function isExecutableEntry(entryName: string, stat: import("node:fs").Stats): boolean {
+  if (!stat.isFile()) return false;
+  if (process.platform === "win32") {
+    const ext = path.extname(entryName).slice(1);
+    return ext === "" || ext === "exe" || ext === "bat" || ext === "cmd" || ext === "com";
+  }
+  return (stat.mode & 0o111) !== 0;
+}
+
 export function matchesGlobType(
   stat: import("node:fs").Stats,
   types: string[] | undefined,
+  entryName: string,
   emptyDirectory = false,
 ): boolean {
   if (!types || types.length === 0) return stat.isFile();
@@ -165,96 +257,9 @@ export function matchesGlobType(
     if (type === "directory" || type === "dir" || type === "d") return stat.isDirectory();
     if (type === "symlink" || type === "l") return stat.isSymbolicLink();
     if (type === "empty") return stat.isFile() ? stat.size === 0 : stat.isDirectory() && emptyDirectory;
-    if (type === "executable" || type === "x") return stat.isFile() && (stat.mode & 0o111) !== 0;
+    if (type === "executable" || type === "x") return isExecutableEntry(entryName, stat);
     return false;
   });
-}
-
-export function bundledFdArgs(options: GlobOptions): string[] {
-  const args: string[] = [];
-  if (!options.regex) args.push("--glob");
-  if (options.fixedStrings) args.push("--fixed-strings");
-  if (options.caseInsensitive === true) args.push("--ignore-case");
-  if (options.caseInsensitive === false) args.push("--case-sensitive");
-  if (options.includeHidden) args.push("--hidden");
-  if (options.noIgnore) args.push("--no-ignore");
-  // 没有 .git 目录时也要读取 .gitignore；与 JS 回退语义保持一致。
-  else args.push("--no-require-git");
-  if (options.follow) args.push("--follow");
-  if (options.fullPath) args.push("--full-path");
-  if (options.type && options.type.length > 0) {
-    for (const type of options.type) args.push("--type", type);
-  } else {
-    args.push("--type", "file");
-  }
-  for (const extension of options.extensions ?? []) args.push("--extension", extension.replace(/^\./, ""));
-  for (const extra of options.andPatterns ?? []) args.push("--and", extra);
-  for (const exclude of options.excludes ?? []) args.push("--exclude", exclude);
-  if (options.maxDepth !== undefined) args.push("--max-depth", String(options.maxDepth));
-  if (options.minDepth !== undefined) args.push("--min-depth", String(options.minDepth));
-  if (options.exactDepth !== undefined) args.push("--exact-depth", String(options.exactDepth));
-  return args;
-}
-
-export function normalizeNativeFdOutput(
-  content: string,
-  searchPath: string,
-  options: GlobOptions,
-): string {
-  if (!content || content.startsWith("ERROR:")) return content;
-  // fd 在 Windows 输出反斜杠路径；契约要求 glob 输出统一正斜杠，
-  // 与 JS 回退（absolute 分支的 full.replace）保持输出等价。
-  const rawLines = content
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => line.replace(/\\/g, "/"));
-  // runSearch 的超时/截断/取消提示不是文件路径；单独保留，避免被当成匹配项。
-  const notices = rawLines.filter((line) => /^\[(?:Output truncated|Search stopped|Search cancelled)/.test(line));
-  const lines = rawLines.filter((line) => !notices.includes(line));
-  const filtered = options.noIgnore
-    ? lines
-    : lines.filter((entry) => {
-      const absolute = path.isAbsolute(entry) ? entry : path.resolve(searchPath, entry);
-      const relative = path.relative(searchPath, absolute);
-      const parts = relative.split(/[\\/]+/).filter(Boolean);
-      return !parts.slice(0, -1).some((part) => isExcludedDirName(part));
-    });
-  // 与工具描述和 JS 回退一致：按 mtime 新到旧；fd 本身不排序。
-  const sorted = filtered
-    .map((entry) => {
-      const absolute = path.isAbsolute(entry) ? entry : path.resolve(searchPath, entry);
-      let mtime = 0;
-      try {
-        mtime = statSync(absolute).mtimeMs;
-      } catch {
-        mtime = 0;
-      }
-      return { entry, mtime };
-    })
-    .sort((a, b) => b.mtime - a.mtime || a.entry.localeCompare(b.entry));
-  const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
-  const shown = sorted.slice(0, cap).map((item) => item.entry);
-  let result = shown.join("\n");
-  if (sorted.length > cap) {
-    result += `\n\n[Showing ${cap} of ${sorted.length} matches. Pass limit=${Math.min(cap * 4, GLOB_MAX_LIMIT)} or narrow the pattern to see more.]`;
-  }
-  if (notices.length > 0) result += `\n\n${notices.join("\n")}`;
-  return result || "No files found matching the pattern.";
-}
-
-// fd 的 --glob 在 Windows 上只按 basename 匹配：`**/` 之后一旦还有路径段
-//（如 `src/**/*.ts`、`**/deep/*`）就恒为 0 命中；`--full-path` 对含字面量
-// 后缀的模式同样失效。这类模式必须交给 JS 回退，才能与工具描述一致。
-function canUseNativeFd(pattern: string, options: GlobOptions): boolean {
-  if (options.fullPath) return false;
-  const basenameOnly = (value: string): boolean => {
-    if (options.regex || options.fixedStrings) return !value.includes("/");
-    let rest = value;
-    while (rest.startsWith("**/")) rest = rest.slice(3);
-    return !rest.includes("/");
-  };
-  if (!basenameOnly(pattern)) return false;
-  return (options.andPatterns ?? []).every(basenameOnly);
 }
 
 export async function toolGlob(pattern: string, searchPath: string, options: GlobOptions): Promise<string> {
@@ -263,24 +268,15 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
   }
   const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
 
-  const native = options.useNative !== false && canUseNativeFd(pattern, options)
-    ? await runBundledFd({
-        pattern,
-        root: searchPath,
-        args: bundledFdArgs(options),
-        absolutePath: options.absolutePath,
-        signal: options.signal,
-      })
-    : { available: false, content: "" };
-  if (native.available) {
-    return normalizeNativeFdOutput(native.content, searchPath, options);
-  }
-
   const results: Array<{ path: string; mtime: number }> = [];
   let filesScanned = 0;
+  const budgetMs = options.timeBudgetMs ?? SEARCH_BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
+  let timedOut = false;
 
-  // JS 回退与二进制一致地尊重 .gitignore（含嵌套）；no_ignore 时禁用。
-  const ignores = new GitIgnoreStack(!options.noIgnore);
+  // 与 rg 一致：全局 gitignore（最低优先级）→ .gitignore/.ignore（含嵌套）；no_ignore 时禁用。
+  const ignores = new GitIgnoreStack(!options.noIgnore, [".gitignore", ".ignore"], options.globalIgnoreFiles);
+  ignores.seedGlobal(searchPath);
   ignores.seedAncestors(options.ignoreRoot, searchPath);
 
   async function walk(dir: string, depth: number, relPrefix: string): Promise<void> {
@@ -294,6 +290,11 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
 
   async function walkDirectory(dir: string, depth: number, relPrefix: string): Promise<void> {
     if (filesScanned >= GLOB_MAX_FILES_SCANNED) return;
+    // 与 native 的 SEARCH_BUDGET_MS 对齐：超时后返回已收集的部分结果。
+    if (Date.now() >= deadline) {
+      timedOut = true;
+      return;
+    }
     // Bounded recursion guard: protects against pathological / circular
     // symlink trees that would otherwise keep recursing on directory loops
     // without ever incrementing filesScanned.
@@ -308,6 +309,10 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
 
     for (const name of entries) {
       if (filesScanned >= GLOB_MAX_FILES_SCANNED) return;
+      if (Date.now() >= deadline) {
+        timedOut = true;
+        return;
+      }
       // Hidden names skip universally (files + dirs). Directory-only
       // exclusions (node_modules, dist, target, — are checked AFTER stat
       // so a regular file with the same name is not silently hidden.
@@ -315,6 +320,9 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
 
       const full = path.join(dir, name);
       const rel = relPrefix ? relPrefix + "/" + name : name;
+      // exclude 对目录/文件都生效，且目录会直接剪枝；
+      // 必须在 stat/递归之前判断，否则被排除目录下的文件仍会返回。
+      if (matchesGlobExclusion(rel, name, options.excludes)) continue;
 
       let stat;
       try {
@@ -344,8 +352,10 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
           : entryDepth >= (options.minDepth ?? 0) && entryDepth <= Math.min(options.maxDepth ?? GLOB_MAX_DEPTH, GLOB_MAX_DEPTH);
         const matchesPattern = matchesGlobEntry(pattern, rel, name, options)
           && (options.andPatterns ?? []).every((extra) => matchesGlobEntry(extra, rel, name, options));
-        if (wantsDirectories && withinDepth && !matchesGlobExclusion(rel, name, options.excludes) && matchesGlobType(stat, options.type, emptyDirectory) && matchesPattern) {
-          results.push({ path: options.absolutePath === false ? (rel.startsWith(".") ? rel : `./${rel}`) : full.replace(/\\/g, "/"), mtime: stat.mtimeMs });
+        if (wantsDirectories && withinDepth && matchesGlobType(stat, options.type, name, emptyDirectory) && matchesPattern) {
+          const shownPath = options.absolutePath === false ? (rel.startsWith(".") ? rel : `./${rel}`) : full.replace(/\\/g, "/");
+          // 目录结果带尾斜杠，保持与历史输出一致。
+          results.push({ path: `${shownPath}/`, mtime: stat.mtimeMs });
         }
         if (options.exactDepth === undefined || entryDepth <= options.exactDepth) {
           await walk(full, depth + 1, rel);
@@ -361,7 +371,7 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
           : entryDepth >= (options.minDepth ?? 0) && entryDepth <= Math.min(options.maxDepth ?? GLOB_MAX_DEPTH, GLOB_MAX_DEPTH);
         const matchesPattern = matchesGlobEntry(pattern, rel, name, options)
           && (options.andPatterns ?? []).every((extra) => matchesGlobEntry(extra, rel, name, options));
-        if (withinDepth && !matchesGlobExclusion(rel, name, options.excludes) && matchesGlobType(stat, options.type) && matchesPattern) {
+        if (withinDepth && matchesGlobType(stat, options.type, name) && matchesPattern) {
           results.push({ path: options.absolutePath === false ? (rel.startsWith(".") ? rel : `./${rel}`) : full.replace(/\\/g, "/"), mtime: stat.mtimeMs });
         }
       }
@@ -370,23 +380,25 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
 
   await walk(searchPath, 0, "");
 
-  if (results.length === 0) {
-    return "No files found matching the pattern.";
-  }
-
   // Sort by mtime descending (most recently modified first); tie-break by path.
   results.sort((a, b) => b.mtime - a.mtime || a.path.localeCompare(b.path));
   const truncated = results.length > cap;
   const shown = truncated ? results.slice(0, cap) : results;
 
-  let output = shown.map((r) => r.path).join("\n");
+  // 提示与 native 对齐：即使没有匹配也要保留“停止/超时”说明。
+  const notices: string[] = [];
   if (truncated) {
-    output += `\n\n[Showing ${cap} of ${results.length} matches. Pass limit=${Math.min(cap * 4, GLOB_MAX_LIMIT)} or narrow the pattern to see more.]`;
+    notices.push(`[Showing ${cap} of ${results.length} matches. Pass limit=${Math.min(cap * 4, GLOB_MAX_LIMIT)} or narrow the pattern to see more.]`);
   }
   if (filesScanned >= GLOB_MAX_FILES_SCANNED) {
-    output += `\n\n[Stopped after scanning ${GLOB_MAX_FILES_SCANNED.toLocaleString()} files; results may be incomplete.]`;
+    notices.push(`[Stopped after scanning ${GLOB_MAX_FILES_SCANNED.toLocaleString()} files; results may be incomplete.]`);
   }
-  return output;
+  if (timedOut) {
+    notices.push(`[Search stopped after ${budgetMs}ms.]`);
+  }
+  let output = shown.map((r) => r.path).join("\n");
+  if (notices.length > 0) output += (output ? "\n\n" : "") + notices.join("\n");
+  return output || "No files found matching the pattern.";
 }
 
 // ------------------------------------------------------------------

@@ -321,7 +321,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         return formatToolError("time", e);
       }
     },
-    glob: async (args, rtCtx) => {
+    glob: async (args) => {
       try {
         const a = expectArgsObject("glob", args);
         const pattern = requiredStringArg("glob", a, "pattern", { nonEmpty: true });
@@ -359,7 +359,6 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         );
         return await toolGlob(pattern, globPath, {
           limit,
-          // 默认优先随包 fd；useNative:false 仅用于测试强制 JS 回退。
           ignoreRoot: ctx?.projectRoot,
           andPatterns: andPatterns.length > 0 ? andPatterns : undefined,
           excludes: excludes.length > 0 ? excludes : undefined,
@@ -376,7 +375,6 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
           maxDepth,
           minDepth,
           exactDepth,
-          signal: rtCtx?.signal,
         });
       } catch (e) {
         return formatToolError("glob", e);

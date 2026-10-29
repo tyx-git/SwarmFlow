@@ -1,14 +1,13 @@
 /**
- * grep / glob 的二进制优先行为测试。
+ * grep 的 rg 二进制优先行为测试。
  *
- * 背景：这两个工具此前只在模型传入 rg/fd 特有参数时才启用二进制，
- * 普通调用完全走 JS 实现。改为恒启用后，必须确认 native 路径仍然遵守
- * head_limit 与 limit_per_file —— rg 的 --max-count 是每文件上限，
- * 漏传会让模型一次拿到远超预期的匹配量。
+ * 背景：grep 此前只在模型传入 rg 特有参数时才启用二进制，普通调用完全走 JS。
+ * 改为恒启用后，必须确认 native 路径仍然遵守 head_limit 与 limit_per_file ——
+ * rg 的 --max-count 是每文件上限，漏传会让模型一次拿到远超预期的匹配量。
+ * glob 已全部走 JS 回退，不再依赖随包二进制。
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -16,8 +15,7 @@ import { executeTool } from "../../src/tools/dispatch.js";
 import { resolveBundledSearchExecutable } from "../../src/tools/native-search.js";
 import type { ToolResult } from "../../src/providers/response.js";
 
-const hasRg = resolveBundledSearchExecutable("rg") !== null;
-const hasFd = resolveBundledSearchExecutable("fd") !== null;
+const hasRg = resolveBundledSearchExecutable() !== null;
 
 function text(result: string | ToolResult): string {
   return typeof result === "string" ? result : result.content;
@@ -81,45 +79,14 @@ describe("grep with the bundled binary", () => {
   }, 20_000);
 });
 
-describe("glob with the bundled binary", () => {
-  let root: string;
-
-  beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "swarmflow-native-glob-"));
-    mkdirSync(join(root, "nested"), { recursive: true });
-    for (let i = 0; i < 12; i += 1) {
-      writeFileSync(join(root, `file-${i}.ts`), "", "utf8");
-      writeFileSync(join(root, "nested", `deep-${i}.ts`), "", "utf8");
-    }
-  });
-
-  afterAll(() => {
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  it("honours limit", async () => {
-    const out = text(await executeTool("glob", { pattern: "*.ts", path: root, limit: 4 }, { projectRoot: root } as never));
-    const files = out.split("\n").filter((line) => line.trim() && !line.startsWith("["));
-    expect(files.length).toBeLessThanOrEqual(4);
-  }, 20_000);
-
-  it("finds nested matches with a bare pattern", async () => {
-    const out = text(await executeTool("glob", { pattern: "*.ts", path: root }, { projectRoot: root } as never));
-    expect(out).toContain("file-0.ts");
-    expect(out).toContain("deep-0.ts");
-  }, 20_000);
-});
-
 describe("binary availability guards", () => {
   it("matches the Windows-only intools layout", () => {
-    // 当前发布包只在 Windows 提供 intools；非 Windows 必须走 JS 回退。
+    // 当前发布包只在 Windows 提供 rg；非 Windows 必须走 JS 回退。
     // 这是平台规格，不是“typeof 是 boolean”的空断言。
     if (process.platform === "win32") {
       expect(hasRg).toBe(true);
-      expect(hasFd).toBe(true);
     } else {
       expect(hasRg).toBe(false);
-      expect(hasFd).toBe(false);
     }
   });
 });

@@ -171,8 +171,8 @@ patchNodeRuntimePackages();
 // SEA 单文件运行时 import.meta.url 指向可执行文件，按模块目录推导会落空。
 // 把原生工具同时放到 exe 同级，供 bundledJqPath / resolveBundledSearchExecutable
 // 的 execPath 兜底命中。runtime/ 里那份保留给源码布局的解析路径。
-// 只复制实际引用的 jq/fd/ripgrep；curl 等未引用资产不进入发布包。
-const NATIVE_TOOL_DIRS = ["jq", "fd", "ripgrep"];
+// 只复制实际引用的 jq/ripgrep；curl/upx 等未引用资产不进入发布包。
+const NATIVE_TOOL_DIRS = ["jq", "ripgrep"];
 const intoolsSource = join(root, "src", "tools", "intools");
 mkdirSync(join(outputRoot, "intools"), { recursive: true });
 for (const name of NATIVE_TOOL_DIRS) {

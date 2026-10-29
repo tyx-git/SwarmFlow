@@ -726,6 +726,7 @@ export async function toolGrep(
 
   // JS 回退与二进制一致地尊重 .gitignore（含嵌套）；no_ignore 时禁用。
   const ignores = new GitIgnoreStack(!options.noIgnore);
+  ignores.seedGlobal(searchPath);
   ignores.seedAncestors(options.ignoreRoot, searchPath);
 
   async function walkForGrep(dir: string, depth: number): Promise<void> {

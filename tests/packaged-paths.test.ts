@@ -5,7 +5,7 @@
  * 而是用临时目录模拟源码、dist、SEA 三种布局，验证：
  *   - OpenTUI 入口路由
  *   - 内置资源根目录（assets/prompts/skills）
- *   - 原生工具（jq/rg/fd）定位
+ *   - 原生工具（jq/rg）定位
  *   - 项目 slug 与相对路径归一化
  *   - /hooks 命令从配置的 home 读取钩子
  */
@@ -192,34 +192,28 @@ describe("bundled native tools", () => {
     }
   });
 
-  it.skipIf(process.platform !== "win32")("resolves ripgrep and fd next to the compiled tool module", () => {
+  it.skipIf(process.platform !== "win32")("resolves ripgrep next to the compiled tool module", () => {
     const root = makeTempRoot("tools-search");
     try {
       const moduleDir = join(root, "dist", "src", "tools");
       const rg = join(moduleDir, "intools", "ripgrep", "rg.exe");
-      const fd = join(moduleDir, "intools", "fd", "fd.exe");
       touch(rg);
-      touch(fd);
-      expect(resolveBundledSearchExecutable("rg", moduleDir, join(root, "node.exe"))).toBe(rg);
-      expect(resolveBundledSearchExecutable("fd", moduleDir, join(root, "node.exe"))).toBe(fd);
+      expect(resolveBundledSearchExecutable(moduleDir, join(root, "node.exe"))).toBe(rg);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it.skipIf(process.platform !== "win32")("falls back to the executable directory for ripgrep and fd", () => {
+  it.skipIf(process.platform !== "win32")("falls back to the executable directory for ripgrep", () => {
     // 与 jq 同源的 SEA 缺陷：import.meta.url 指向 exe，模块目录推导落空。
     const root = makeTempRoot("tools-search-exe");
     try {
       const moduleDir = join(root, "nowhere", "dist", "src", "tools");
       const exeDir = join(root, "release", "SwarmFlow-win32-x64");
       const rg = join(exeDir, "intools", "ripgrep", "rg.exe");
-      const fd = join(exeDir, "intools", "fd", "fd.exe");
       touch(rg);
-      touch(fd);
       const exe = join(exeDir, "SwarmFlow.exe");
-      expect(resolveBundledSearchExecutable("rg", moduleDir, exe)).toBe(rg);
-      expect(resolveBundledSearchExecutable("fd", moduleDir, exe)).toBe(fd);
+      expect(resolveBundledSearchExecutable(moduleDir, exe)).toBe(rg);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -234,7 +228,7 @@ describe("bundled native tools", () => {
       // 必须返回 null，而不是悄悄执行 cwd 里的同名文件。
       expect(bundledJqPath(moduleDir, join(root, "node.exe"))).toBeNull();
       if (process.platform === "win32") {
-        expect(resolveBundledSearchExecutable("rg", moduleDir, join(root, "node.exe"))).toBeNull();
+        expect(resolveBundledSearchExecutable(moduleDir, join(root, "node.exe"))).toBeNull();
       }
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -18,7 +18,7 @@ for (const directory of ["assets", "prompts", "skills"]) {
 }
 
 // 随包分发的原生工具。curl/upx 等未引用资产不进入产物，避免 release 白白变大。
-const NATIVE_TOOL_DIRS = ["jq", "fd", "ripgrep"];
+const NATIVE_TOOL_DIRS = ["jq", "ripgrep"];
 const intoolsSource = join(root, "src", "tools", "intools");
 const intoolsTarget = join(output, "src", "tools", "intools");
 rmSync(intoolsTarget, { recursive: true, force: true });

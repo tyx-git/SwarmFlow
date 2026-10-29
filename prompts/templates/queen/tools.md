@@ -11,10 +11,10 @@ Read a text file (max 50 MB) or an image (max 20 MB); PDF/DOCX/XLSX-like files a
 List a directory tree with bounded depth and entries (defaults: depth 2, 200 entries; caps 6 and 2,000). Common build/cache directories are skipped unless passed explicitly as `path`; a cap hit is marked `(truncated)`. Use it to confirm layout and scope, not to inventory the repository.
 
 ### `glob`
-Find files by name/path pattern, newest modified first. Patterns without `/` match anywhere, and `.gitignore` plus standard build/cache directories are respected unless `no_ignore` is true. Default limit 200 (cap 1,000). Use it to confirm which files a child's change actually touched.
+Find files by name/path pattern, newest modified first. Patterns without `/` match anywhere, and `.gitignore`/`.ignore` rules (including the global gitignore) plus standard build/cache directories are respected unless `no_ignore` is true. Default limit 200 (cap 1,000). Use it to confirm which files a child's change actually touched.
 
 ### `grep`
-Search file contents by regex; `pattern` may be an array of alternatives (OR). The default `output_mode` is `files_with_matches` — start there to map the surface, then rerun with `content` for file:line evidence or `count` for totals. Content mode returns up to 100 results overall and 15 matching lines per file, truncating lines over 2000 chars. Smart case: an all-lowercase pattern matches case-insensitively. `.gitignore` and build/cache skips apply unless `no_ignore` is true. Use it to spot-check a child's claims, not to redo their investigation.
+Search file contents by regex; `pattern` may be an array of alternatives (OR). The default `output_mode` is `files_with_matches` — start there to map the surface, then rerun with `content` for file:line evidence or `count` for totals. Content mode returns up to 100 results overall and 15 matching lines per file, truncating lines over 2000 chars. Smart case: an all-lowercase pattern matches case-insensitively. `.gitignore` rules (including the global gitignore) and build/cache skips apply unless `no_ignore` is true. Use it to spot-check a child's claims, not to redo their investigation.
 
 ### `find_symbol`
 Find an exact declaration (function by default; `kind` selects method/class/interface/type/variable/struct/trait/enum; `*` lists declarations). Returns absolute path, line/column, kind, and signature. Use it to jump straight to the implementation behind a child's summary.

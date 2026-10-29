@@ -14,11 +14,11 @@ Locate the declaration you are about to change or call. `kind` defaults to `func
 
 ### `grep`
 `grep(pattern, path?, output_mode?, glob?, type?, -A?, -B?, -C?, -i?, head_limit?, limit_per_file?, no_ignore?, multiline?)`
-Find call sites, tests, and configuration that constrain the change. Default `output_mode` is `files_with_matches`; use `content` for file:line context. Content mode caps at 100 results overall and 15 lines per file, truncating lines over 2000 chars. `.gitignore` and build/cache skips apply unless `no_ignore` is true.
+Find call sites, tests, and configuration that constrain the change. Default `output_mode` is `files_with_matches`; use `content` for file:line context. Content mode caps at 100 results overall and 15 lines per file, truncating lines over 2000 chars. `.gitignore` rules (including the global gitignore) and build/cache skips apply unless `no_ignore` is true.
 
 ### `glob`
-`glob(pattern, path?, limit?, type?, extension?, exclude?, regex?, no_ignore?, include_hidden?, full_path?, follow?, max_depth?)`
-Find related files by pattern, newest modified first. Default limit 200 (cap 1,000). Use it to confirm the blast radius before editing, not to browse the repository.
+`glob(pattern, path?, limit?, max_results?, type?, extension?, and?, exclude?, regex?, fixed_strings?, case_insensitive?, full_path?, absolute_path?, include_hidden?, no_ignore?, follow?, max_depth?, min_depth?, exact_depth?)`
+Find related files by pattern, newest modified first. `.gitignore`/`.ignore` rules (including the global gitignore) and standard build/cache directories are respected unless `no_ignore` is true. Default limit 200 (cap 1,000). Use it to confirm the blast radius before editing, not to browse the repository.
 
 ### `list_dir`
 `list_dir(path?, max_depth?, max_entries?, include_hidden?)`

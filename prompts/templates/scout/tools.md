@@ -5,12 +5,12 @@ Scout is a read-only investigator. Work breadth-first, then narrow: locate the r
 ## Locating evidence
 
 ### `glob`
-`glob(pattern, path?, limit?, type?, extension?, exclude?, regex?, no_ignore?, include_hidden?, full_path?, follow?, max_depth?)`
-Map files by name or path pattern. Results are absolute paths sorted newest first; `.gitignore` and standard build/cache directories are skipped unless `no_ignore` is true. Default limit 200 (cap 1,000).
+`glob(pattern, path?, limit?, max_results?, type?, extension?, and?, exclude?, regex?, fixed_strings?, case_insensitive?, full_path?, absolute_path?, include_hidden?, no_ignore?, follow?, max_depth?, min_depth?, exact_depth?)`
+Map files by name or path pattern. Results are absolute paths sorted newest first; `.gitignore`/`.ignore` rules (including the global gitignore) and standard build/cache directories are skipped unless `no_ignore` is true. Default limit 200 (cap 1,000).
 
 ### `grep`
 `grep(pattern, path?, output_mode?, glob?, type?, -A?, -B?, -C?, -i?, head_limit?, limit_per_file?, no_ignore?, multiline?)`
-Start with the default `files_with_matches` to see which files contain the pattern, then rerun with `output_mode=content` for file:line evidence or `count` for totals. `pattern` may be an array of alternatives (OR). Content mode caps at 100 results overall and 15 lines per file, and truncates lines over 2000 chars. Smart case: an all-lowercase pattern matches case-insensitively; pass `-i` to force it for mixed-case patterns. `.gitignore` and build/cache skips apply unless `no_ignore` is true.
+Start with the default `files_with_matches` to see which files contain the pattern, then rerun with `output_mode=content` for file:line evidence or `count` for totals. `pattern` may be an array of alternatives (OR). Content mode caps at 100 results overall and 15 lines per file, and truncates lines over 2000 chars. Smart case: an all-lowercase pattern matches case-insensitively; pass `-i` to force it for mixed-case patterns. `.gitignore` rules (including the global gitignore) and build/cache skips apply unless `no_ignore` is true.
 
 ### `find_symbol`
 `find_symbol(query, path?, language?, kind?, include?, max_results?)`

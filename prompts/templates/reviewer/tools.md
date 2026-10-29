@@ -10,15 +10,15 @@ Read the exact changed range and the callers or tests that determine its behavio
 
 ### `grep`
 `grep(pattern, path?, output_mode?, glob?, type?, -A?, -B?, -C?, -i?, head_limit?, limit_per_file?, no_ignore?, multiline?)`
-Check call sites, tests, and sibling implementations that the change must remain compatible with. Default `output_mode` is `files_with_matches`; switch to `content` for file:line evidence or `count` for totals. Content mode caps at 100 results overall and 15 lines per file, truncating lines over 2000 chars. Normalize case deliberately: an all-lowercase pattern is smart-cased; use `-i` when the finding must cover mixed-case variants. `.gitignore` and build/cache skips apply unless `no_ignore` is true.
+Check call sites, tests, and sibling implementations that the change must remain compatible with. Default `output_mode` is `files_with_matches`; switch to `content` for file:line evidence or `count` for totals. Content mode caps at 100 results overall and 15 lines per file, truncating lines over 2000 chars. Normalize case deliberately: an all-lowercase pattern is smart-cased; use `-i` when the finding must cover mixed-case variants. `.gitignore` rules (including the global gitignore) and build/cache skips apply unless `no_ignore` is true.
 
 ### `find_symbol`
 `find_symbol(query, path?, language?, kind?, include?, max_results?)`
 Locate the declaration behind a reported change or the caller behind a reported risk. `kind` defaults to `function`; `*` lists declarations. Returns absolute path, line/column, kind, and signature (max 200).
 
 ### `glob`
-`glob(pattern, path?, limit?, type?, extension?, exclude?, regex?, no_ignore?, include_hidden?, full_path?, follow?, max_depth?)`
-Confirm the actual files in scope, newest first. `.gitignore` and build/cache skips apply unless `no_ignore` is true. Use it to detect omitted siblings or out-of-scope edits, not to survey the repository.
+`glob(pattern, path?, limit?, max_results?, type?, extension?, and?, exclude?, regex?, fixed_strings?, case_insensitive?, full_path?, absolute_path?, include_hidden?, no_ignore?, follow?, max_depth?, min_depth?, exact_depth?)`
+Confirm the actual files in scope, newest first. `.gitignore`/`.ignore` rules (including the global gitignore) and build/cache skips apply unless `no_ignore` is true. Use it to detect omitted siblings or out-of-scope edits, not to survey the repository.
 
 ### `list_dir`
 `list_dir(path?, max_depth?, max_entries?, include_hidden?)`
