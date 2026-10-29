@@ -13,7 +13,6 @@ import { type HookRuntime } from "../hooks/index.js";
 import {
   createAskRequest,
   createAssistantText,
-  createError as createErrorEntry,
   createReasoning,
   createStatus,
   createTokenUpdate,
@@ -407,18 +406,8 @@ export async function runActivation(host: ActivationHost,
     errMsg: string,
     kind: "network" | "incomplete" = "network",
   ) => {
-    const label = kind === "incomplete" ? "Response retry exhausted" : "Network retry exhausted";
-    if (!host._compactInProgress) {
-      host._appendEntry(
-        createErrorEntry(
-          host._nextLogId("error"),
-          activationTurnIndex,
-          `[${label} after ${max} attempts] ${errMsg}`,
-          "retry_exhausted",
-        ),
-        false,
-      );
-    }
+    // 耗尽后回合必然失败：错误条目由回合入口层统一写一次，
+    // 这里只更新实时进度，避免同一文案在日志里出现两份。
     host._progress?.onRetryExhausted(agentName, max, errMsg, kind);
   };
 

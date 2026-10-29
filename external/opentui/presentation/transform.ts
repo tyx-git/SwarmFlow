@@ -130,7 +130,17 @@ function isTurnEndEntry(entry: ReconciledConversationEntry): boolean {
   return entry.entry.meta?.turnEndStatus !== undefined;
 }
 
-function transformTurnEnd(entry: ReconciledConversationEntry): PresentationEntry {
+function isFailedTurnEnd(entry: ReconciledConversationEntry): boolean {
+  if (!isTurnEndEntry(entry)) return false;
+  const status = getMeta(entry).turnEndStatus;
+  return status !== "completed" && status !== "interrupted";
+}
+
+function isTurnErrorEntry(entry: ReconciledConversationEntry): boolean {
+  return entry.entry.kind === "error" && getMeta(entry).errorType === "turn";
+}
+
+function transformTurnEnd(entry: ReconciledConversationEntry, errorText?: string): PresentationEntry {
   const meta = getMeta(entry);
   const status = meta.turnEndStatus as string;
   const elapsedMs = typeof entry.entry.elapsedMs === "number" ? entry.entry.elapsedMs : 0;
@@ -140,11 +150,13 @@ function transformTurnEnd(entry: ReconciledConversationEntry): PresentationEntry
   // Unknown/missing terminal statuses are failures too. A malformed or
   // partially persisted status must never fall through to Worked.
   const failed = !interrupted && status !== "completed";
+  // 错误正文并进摘要行，避免“Failed · …”与错误正文分两行重复报同一件事。
+  const detail = failed && errorText ? errorText.replace(/\s+/g, " ").trim() : "";
 
   const text = interrupted
     ? `Interrupted · ${elapsedStr}`
     : failed
-      ? `Failed · ${elapsedStr}`
+      ? `Failed · ${elapsedStr}${detail ? ` — ${detail}` : ""}`
       : `Worked for ${elapsedStr}`;
 
   return {
@@ -492,11 +504,33 @@ export function presentationTransform(
     }
   }
 
+  // 失败回合的摘要与错误条目合并成一行：日志仍保留两条，这里按
+  // turnIndex 配对（预循环失败的顺序是 error → work_end，循环内相反）。
+  const failedTurns = new Set<number>();
+  for (const e of entries) {
+    if (!isFailedTurnEnd(e)) continue;
+    const turnIndex = getMeta(e).turnIndex;
+    if (typeof turnIndex === "number") failedTurns.add(turnIndex);
+  }
+  const mergedErrorByTurn = new Map<number, { id: string; text: string }>();
+  for (const e of entries) {
+    if (!isTurnErrorEntry(e)) continue;
+    const turnIndex = getMeta(e).turnIndex;
+    if (typeof turnIndex !== "number" || !failedTurns.has(turnIndex) || mergedErrorByTurn.has(turnIndex)) continue;
+    mergedErrorByTurn.set(turnIndex, { id: e.id, text: e.entry.text });
+  }
+  const mergedErrorIds = new Set([...mergedErrorByTurn.values()].map((merged) => merged.id));
+
   let i = 0;
 
   while (i < entries.length) {
     const entry = entries[i];
     const kind = entry.entry.kind;
+
+    if (mergedErrorIds.has(entry.id)) {
+      i++;
+      continue;
+    }
 
     // 1. Skip hidden tools
     if (kind === "tool_call") {
@@ -580,7 +614,9 @@ export function presentationTransform(
 
       default: {
         if (isTurnEndEntry(entry)) {
-          result.push(transformTurnEnd(entry));
+          const turnIndex = getMeta(entry).turnIndex;
+          const merged = typeof turnIndex === "number" ? mergedErrorByTurn.get(turnIndex) : undefined;
+          result.push(transformTurnEnd(entry, merged?.text));
         } else {
           result.push(transformSystem(entry));
         }
@@ -597,7 +633,9 @@ export function presentationTransform(
   for (let j = 0; j < result.length; j++) {
     const pe = result[j];
     const prev = prevById.get(pe.id);
-    if (prev && prev.contentVersion === pe.contentVersion && prev.state === pe.state) {
+    // 摘要文本会随合并进来的错误条目变化，而 work_end 自身不变，必须一起比较。
+    if (prev && prev.contentVersion === pe.contentVersion && prev.state === pe.state
+      && prev.turnSummaryText === pe.turnSummaryText) {
       result[j] = prev;
     }
   }

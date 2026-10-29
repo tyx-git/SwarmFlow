@@ -7,10 +7,13 @@
  * out-of-process UIs (GUI over RPC) see exactly what the TUI sees.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { TurnLifecycleEvent } from "../../src/session.js";
-import { MAX_INCOMPLETE_TURN_RETRIES } from "../../src/network/retry.js";
+import { loadLog } from "../../src/config/log-serialization.js";
+import { projectToApiMessages } from "../../src/context/projection/api.js";
+import { projectToTuiEntries } from "../../src/context/projection/tui.js";
+import { MAX_INCOMPLETE_TURN_RETRIES, MAX_NETWORK_RETRIES } from "../../src/network/retry.js";
 import {
   ScriptedProvider,
   makeScriptedAgentObject,
@@ -20,6 +23,13 @@ import {
   waitFor,
   type SessionHarness,
 } from "../helpers/session-harness.js";
+
+// 网络重试的真实退避是 5/10/20/40/80 秒；本文件的断言只关心日志条目，
+// 不关心等待时长，因此把睡眠替换为空实现，避免一条用例阻塞两分半。
+vi.mock("../../src/network/retry.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/network/retry.js")>();
+  return { ...actual, retrySleep: async () => {} };
+});
 
 function visibleErrors(h: SessionHarness): Array<{ display: string; errorType: unknown }> {
   return h.session.log
@@ -119,6 +129,41 @@ describe("runtime-owned error entries", () => {
       h.provider.rounds.push({ onCall: () => { throw new Error("second failure"); } });
       await expect(h.session.turn("again")).rejects.toThrow("second failure");
       expect(visibleErrors(h).length).toBe(2);
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("writes a single error entry when network retries are exhausted", async () => {
+    const h = makeScriptedSession({
+      rounds: Array.from(
+        { length: MAX_NETWORK_RETRIES + 1 },
+        () => ({ onCall: () => { throw new Error("Connection error."); } }),
+      ),
+    });
+    try {
+      await expect(h.session.turn("hello")).rejects.toThrow("Connection error.");
+      expect(h.provider.callCount).toBe(MAX_NETWORK_RETRIES + 1);
+      // 重试层只更新实时进度；错误条目由回合入口写唯一一次。
+      expect(visibleErrors(h)).toEqual([{
+        display: "Connection error.",
+        errorType: "turn",
+      }]);
+      expect(h.session.lastTurnEndStatus).toBe("error");
+      const workEnds = h.session.log.filter((e) => e.type === "work_end" && !e.discarded);
+      expect(workEnds).toHaveLength(1);
+      expect((workEnds[0]!.meta as Record<string, unknown>).status).toBe("error");
+
+      // 呈现层合并只影响 TUI：持久化、API 上下文与 RPC 投影保持原有契约。
+      expect(h.session.persistToDisk()).toBe(true);
+      const persisted = loadLog(h.internals._store.sessionDir as string);
+      expect(persisted.entries.filter((e) => e.type === "error" && !e.discarded)).toHaveLength(1);
+      expect(persisted.entries.filter((e) => e.type === "work_end" && !e.discarded)).toHaveLength(1);
+      expect(JSON.stringify(projectToApiMessages(h.session.log))).not.toContain("Connection error.");
+      const projected = projectToTuiEntries(h.session.log);
+      expect(projected.filter((e) => e.kind === "error")).toHaveLength(1);
+      expect(projected.filter((e) => e.kind === "status" && e.meta?.["turnEndStatus"] === "error"))
+        .toHaveLength(1);
     } finally {
       h.dispose();
     }

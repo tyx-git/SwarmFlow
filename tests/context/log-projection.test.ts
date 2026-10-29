@@ -257,7 +257,13 @@ describe("projectToTuiEntries", () => {
     const tui = projectToTuiEntries(entries);
     expect(tui).toHaveLength(4);
     expect(tui[2]).toEqual({ kind: "status", text: "Retrying...", id: "st-001", meta: { statusType: "retry" } });
-    expect(tui[3]).toEqual({ kind: "error", text: "Network error", id: "err-001" });
+    // 错误条目携带回合与错误类别，供呈现层把“回合终止错误”并入失败摘要。
+    expect(tui[3]).toEqual({
+      kind: "error",
+      text: "Network error",
+      id: "err-001",
+      meta: { turnIndex: 1, errorType: "network" },
+    });
   });
 
   it("ask_request and ask_resolution are invisible", () => {

@@ -169,7 +169,7 @@ function toConversationEntry(
       text: "",
       id: entry.id,
       elapsedMs,
-      meta: { turnEndStatus: status, interruptHints },
+      meta: { turnEndStatus: status, interruptHints, turnIndex: entry.turnIndex },
     };
   }
 
@@ -232,6 +232,12 @@ function toConversationEntry(
   if (entry.type === "status" && entry.meta["statusType"]) {
     ce.meta ??= {};
     ce.meta.statusType = entry.meta["statusType"];
+  }
+  if (entry.type === "error") {
+    // 呈现层靠 turnIndex + errorType 把“回合终止错误”并入失败摘要。
+    ce.meta ??= {};
+    ce.meta.turnIndex = entry.turnIndex;
+    if (typeof entry.meta["errorType"] === "string") ce.meta.errorType = entry.meta["errorType"];
   }
 
   // Attach timing info and meta for tool_call entries
