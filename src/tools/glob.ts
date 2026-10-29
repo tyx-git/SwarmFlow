@@ -242,19 +242,36 @@ export function normalizeNativeFdOutput(
   return result || "No files found matching the pattern.";
 }
 
+// fd 的 --glob 在 Windows 上只按 basename 匹配：`**/` 之后一旦还有路径段
+//（如 `src/**/*.ts`、`**/deep/*`）就恒为 0 命中；`--full-path` 对含字面量
+// 后缀的模式同样失效。这类模式必须交给 JS 回退，才能与工具描述一致。
+function canUseNativeFd(pattern: string, options: GlobOptions): boolean {
+  if (options.fullPath) return false;
+  const basenameOnly = (value: string): boolean => {
+    if (options.regex || options.fixedStrings) return !value.includes("/");
+    let rest = value;
+    while (rest.startsWith("**/")) rest = rest.slice(3);
+    return !rest.includes("/");
+  };
+  if (!basenameOnly(pattern)) return false;
+  return (options.andPatterns ?? []).every(basenameOnly);
+}
+
 export async function toolGlob(pattern: string, searchPath: string, options: GlobOptions): Promise<string> {
   if (!existsSync(searchPath)) {
     return `ERROR: Path not found: ${searchPath}`;
   }
   const cap = Math.min(Math.max(1, options.limit), GLOB_MAX_LIMIT);
 
-  const native = options.useNative !== false ? await runBundledFd({
-    pattern,
-    root: searchPath,
-    args: bundledFdArgs(options),
-    absolutePath: options.absolutePath,
-    signal: options.signal,
-  }) : { available: false, content: "" };
+  const native = options.useNative !== false && canUseNativeFd(pattern, options)
+    ? await runBundledFd({
+        pattern,
+        root: searchPath,
+        args: bundledFdArgs(options),
+        absolutePath: options.absolutePath,
+        signal: options.signal,
+      })
+    : { available: false, content: "" };
   if (native.available) {
     return normalizeNativeFdOutput(native.content, searchPath, options);
   }

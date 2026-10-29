@@ -320,4 +320,45 @@ describe.skipIf(!hasFd)("glob native/JS parity", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("matches path patterns instead of returning zero like fd --glob", async () => {
+    const root = makeTemp("swarmflow-parity-glob-path-");
+    try {
+      mkdirSync(join(root, "sub", "deep"), { recursive: true });
+      writeFileSync(join(root, "sub", "deep", "x.txt"), "", "utf8");
+      writeFileSync(join(root, "sub", "y.txt"), "", "utf8");
+
+      for (const pattern of ["sub/**/*.txt", "sub/deep/*.txt", "**/deep/*"]) {
+        const native = await toolGlob(pattern, root, { limit: 10, ignoreRoot: root, useNative: true });
+        const js = await toolGlob(pattern, root, { limit: 10, ignoreRoot: root, useNative: false });
+        expect(native, pattern).toBe(js);
+        expect(native, pattern).toContain("x.txt");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("matches full_path, path and-patterns and path regex through the JS fallback", async () => {
+    const root = makeTemp("swarmflow-parity-glob-mode-");
+    try {
+      mkdirSync(join(root, "sub", "deep"), { recursive: true });
+      writeFileSync(join(root, "sub", "deep", "x.txt"), "", "utf8");
+      writeFileSync(join(root, "sub", "y.txt"), "", "utf8");
+
+      const cases = [
+        { pattern: "sub/deep/x.txt", fullPath: true },
+        { pattern: "*.txt", andPatterns: ["**/deep/**"] },
+        { pattern: "sub/deep/.*\\.txt$", regex: true },
+      ];
+      for (const options of cases) {
+        const native = await toolGlob(options.pattern, root, { limit: 10, ignoreRoot: root, useNative: true, ...options });
+        const js = await toolGlob(options.pattern, root, { limit: 10, ignoreRoot: root, useNative: false, ...options });
+        expect(native, JSON.stringify(options)).toBe(js);
+        expect(native, JSON.stringify(options)).toContain("x.txt");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
