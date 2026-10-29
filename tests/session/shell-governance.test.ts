@@ -1,4 +1,5 @@
 import { rmSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -82,6 +83,56 @@ describe("shell governance", () => {
       expect(preflight?.kind).toBe("ask");
       expect(preflight?.ask.summary).toContain("bash in external directory");
       expect(preflight?.ask.options).toEqual(["Allow once", "Deny"]);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+      rmSync(externalRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("auto-approves ordinary commands and workspace deletion", async () => {
+    const projectRoot = makeTempDir("swarmflow-auto-approve-");
+    try {
+      const session = makeSession(projectRoot);
+      const isPS = shell.kind === "pwsh" || shell.kind === "powershell";
+      const preflight = await (session as any)._beforeToolExecute({
+        agentName: "Primary",
+        toolName: "bash",
+        toolArgs: {
+          command: isPS
+            ? "npm test; Remove-Item -Recurse -Force ./build"
+            : "npm test; rm -rf build",
+          cwd: projectRoot,
+        },
+        toolCallId: "tc-auto",
+        summary: "",
+      });
+      expect(preflight).toBeUndefined();
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("asks before writing or deleting outside the workspace", async () => {
+    const projectRoot = makeTempDir("swarmflow-boundary-proj-");
+    const externalRoot = makeTempDir("swarmflow-boundary-ext-");
+    const outsideFile = join(externalRoot, "outside.txt").replace(/\\/g, "/");
+    try {
+      const session = makeSession(projectRoot);
+      const isPS = shell.kind === "pwsh" || shell.kind === "powershell";
+      for (const command of [
+        isPS ? `Set-Content -Path ${outsideFile} -Value hi` : `echo hi > ${outsideFile}`,
+        isPS ? `Remove-Item ${outsideFile}` : `rm ${outsideFile}`,
+      ]) {
+        const preflight = await (session as any)._beforeToolExecute({
+          agentName: "Primary",
+          toolName: "bash",
+          toolArgs: { command, cwd: projectRoot },
+          toolCallId: `tc-${command}`,
+          summary: "",
+        });
+        expect(preflight?.kind, command).toBe("ask");
+        expect(preflight?.ask.summary, command).toContain("outside the workspace");
+      }
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
       rmSync(externalRoot, { recursive: true, force: true });

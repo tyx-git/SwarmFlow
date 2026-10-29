@@ -32,5 +32,6 @@ export function makeSession(projectRoot: string): Session {
     primaryAgent,
     config,
     store,
+    projectRoot,
   });
 }

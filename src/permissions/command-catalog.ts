@@ -54,7 +54,7 @@ export const BASH_SAFE_COMMANDS = new Set([
   "date", "env", "printenv", "uptime", "ps", "df", "du", "free",
   "lsof", "pgrep", "tput",
   "md5sum", "sha256sum", "shasum", "base64",
-  "sleep", "tee",
+  "sleep",
   "cd",
 ]);
 
@@ -101,7 +101,7 @@ export function isDangerCommand(name: string): boolean {
 
 /** Bash 强能力命令集合 */
 export const BASH_POTENT_COMMANDS = new Set([
-  "touch", "ln",
+  "touch", "ln", "tee",
   "npm", "npx", "pnpm", "yarn",
   "pip", "pip3", "uv",
   "cargo", "go",

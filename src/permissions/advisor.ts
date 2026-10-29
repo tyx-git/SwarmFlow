@@ -4,9 +4,10 @@
  * 流程：
  *   1. 对工具调用进行分类 → InvocationAssessment
  *   2. 外部路径门控（项目根目录外的文件工具）
- *   3. 检查持久化规则 → 如果匹配 allow，快速短路为 allow
- *   4. 应用决策矩阵（mode × class → allow/ask）
- *   5. 为 ask 决策构建审批选项
+ *   3. bash 外部 cwd / 外部写入目标门控
+ *   4. 检查持久化规则 → 如果匹配 allow，快速短路为 allow
+ *   5. 应用决策矩阵（mode × class → allow/ask）
+ *   6. 为 ask 决策构建审批选项
  */
 
 import { existsSync, statSync } from "node:fs";
@@ -108,6 +109,12 @@ export class PermissionAdvisor implements GateAdvisor {
         offers,
         assessment,
       };
+    }
+
+    // 3b. bash 的外部写入目标（重定向/路径参数）
+    if (mode !== "yolo" && assessment.permissionClass !== "catastrophic" && assessment.externalWrites?.length) {
+      const externalWriteDecision = this._checkExternalWrites(ctx, assessment);
+      if (externalWriteDecision) return externalWriteDecision;
     }
 
     // 4. 检查持久化规则（在 read_only 中跳过 — 模式是硬上限）
@@ -232,6 +239,58 @@ export class PermissionAdvisor implements GateAdvisor {
     };
   }
 
+  /**
+   * bash 的写入目标在工作区外时询问。
+   * 已被 external_path 规则覆盖的目标不重复询问；其余目标提供规则化选项。
+   */
+  private _checkExternalWrites(
+    ctx: ToolPreflightContext,
+    assessment: InvocationAssessment,
+  ): GateDecision | null {
+    const uncovered = (assessment.externalWrites ?? []).filter(
+      (target) => !this._ruleStore.findMatchingExternalPathRule(target, "write_reversible"),
+    );
+    if (uncovered.length === 0) return null;
+
+    const offers: ApprovalOffer[] = [{ type: "tool_once", label: "Allow once" }];
+    const firstAbsolute = uncovered.find((target) => path.isAbsolute(target));
+    if (firstAbsolute) {
+      const dirPrefix = toPosixPath(path.dirname(firstAbsolute)) + "/";
+      const filesystemRoot = toPosixPath(path.parse(firstAbsolute).root) + "/";
+      assessment.externalPathPrefix = dirPrefix;
+      // 不提供从文件系统根/盘符根持久放行的选项。
+      if (dirPrefix !== filesystemRoot) {
+        const shortDir = dirPrefix.length > 50 ? "..." + dirPrefix.slice(-47) : dirPrefix;
+        for (const scope of ["session", "project"] as const) {
+          const scopeLabel = scope === "session" ? "in this session" : "in this project";
+          const rule: Omit<ExternalPathRule, "id" | "createdAt"> = {
+            type: "external_path",
+            action: "allow",
+            accessKind: "write_reversible",
+            pathPrefix: dirPrefix,
+            scope,
+          };
+          offers.push({
+            type: "external_path",
+            label: `Allow read/write from ${shortDir} ${scopeLabel}`,
+            scope,
+            rule: rule as PermissionRule,
+          });
+        }
+      }
+    }
+
+    const shown = uncovered.slice(0, 3).join(", ");
+    const suffix = uncovered.length > 3 ? ", ..." : "";
+    return {
+      kind: "ask",
+      question: `bash writes outside the workspace: ${shown}${suffix}`,
+      toolCallId: ctx.toolCallId,
+      offers,
+      assessment,
+    };
+  }
+
   // -- 决策矩阵 -------------------------------------------------
 
   /**
@@ -256,6 +315,10 @@ export class PermissionAdvisor implements GateAdvisor {
 
       case "reversible":
         if (cls === "write_reversible") return "allow";
+        // 普通 shell 命令自动允许；MCP/未知工具仍按强能力询问。
+        if (cls === "write_potent" && (assessment.toolName === "bash" || assessment.toolName === "bash_background")) {
+          return "allow";
+        }
         return "ask";
 
       case "read_only":

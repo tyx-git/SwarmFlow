@@ -10,9 +10,10 @@
  */
 
 import { statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
+import type { BashToken, ParsedBashCommand, ParsedBashSegment } from "./bash/types.js";
 import type { InvocationAssessment, PermissionClass } from "./types.js";
-import type { ParsedBashCommand, ParsedBashSegment } from "./bash/types.js";
 import { parseTrackableBashMutation } from "../tools/mutations.js";
 import { osCapabilities } from "../platform/index.js";
 import type { ShellKind } from "../platform/index.js";
@@ -59,6 +60,98 @@ const CLASS_ORDER: Record<PermissionClass, number> = {
   write_danger: 4,
   catastrophic: 5,
 };
+
+/** 会执行内联脚本的 shell 解释器 — 其 -c/-Command 内容无法做路径分析。 */
+const SHELL_INTERPRETERS = new Set([
+  "bash", "sh", "zsh", "fish", "dash", "ksh",
+  "powershell", "powershell.exe", "pwsh", "pwsh.exe",
+]);
+
+/** 默认会修改文件路径、但可限定在项目内的危险命令。 */
+const PATH_SCOPED_FILE_COMMANDS = new Set(["rm", "rmdir", "chmod", "chown", "chgrp"]);
+
+interface PathScopeContext {
+  projectRoot?: string;
+  cwd: string;
+}
+
+function isWithinProject(projectRoot: string, target: string): boolean {
+  const rel = path.relative(path.resolve(projectRoot), path.resolve(target));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function isProjectRoot(projectRoot: string, target: string): boolean {
+  return path.resolve(projectRoot) === path.resolve(target);
+}
+
+/** PowerShell provider 路径（HKLM:\、Env:\、Registry:: 等）不是文件系统路径。 */
+function isPSProviderPath(value: string): boolean {
+  return value.includes("::")
+    || /^(?:HKLM|HKCU|HKCR|HKU|HKCC|Env|Cert|WSMan|Alias|Function|Variable|Registry|Microsoft\.PowerShell\.[^:]+):/i.test(value);
+}
+
+function expandHomePath(value: string): string {
+  if (value === "~") return homedir();
+  if (value.startsWith("~/") || value.startsWith("~\\")) return path.join(homedir(), value.slice(2));
+  return value.replace(/^\$(?:HOME|\{HOME\})(?=[\\/]|$)/, homedir());
+}
+
+/** 解析路径参数；含变量/通配符/URL/provider 时返回 null（无法静态判定）。 */
+function resolvePathValue(value: string, cwd: string): string | null {
+  if (!value || value.startsWith("-")) return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return null;
+  if (isPSProviderPath(value)) return null;
+  const expanded = expandHomePath(value);
+  if (/[$%`]/.test(expanded)) return null;
+  return path.isAbsolute(expanded) ? path.resolve(expanded) : path.resolve(cwd, expanded);
+}
+
+/** 只把明确的绝对路径、家目录引用、`../` 父级路径当作写入目标候选。 */
+function looksLikeExplicitPath(value: string): boolean {
+  if (!value || value.startsWith("-")) return false;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return false;
+  if (isPSProviderPath(value)) return true;
+  if (value === "~" || value.startsWith("~/") || value.startsWith("~\\")) return true;
+  if (path.isAbsolute(value)) return true;
+  return /^\.\.([\\/]|$)/.test(value);
+}
+
+/** `bash -c` / `sh -c` / PowerShell -Command 会把脚本藏进参数里。 */
+function hasInlineCommandFlag(name: string, argv: readonly BashToken[]): boolean {
+  const isPS = name === "powershell" || name === "powershell.exe" || name === "pwsh" || name === "pwsh.exe";
+  return argv.some((token) => {
+    if (token.kind !== "literal") return false;
+    if (isPS) {
+      return token.value.toLowerCase() === "-c" || isPSParamPrefix(token.value, "-command");
+    }
+    return token.value === "--command" || /^-[A-Za-z]*c[A-Za-z]*$/.test(token.value);
+  });
+}
+
+/**
+ * 文件删除/权限命令按目标路径分档：
+ * 目标可判定且不在项目根 → 强能力（工作区内由 bash 自动审批放行，
+ * 项目外由 externalWrites 门控询问）；无法判定（变量、无参数、项目根）→ 危险。
+ */
+function classifyPathScopedFileCommand(
+  cmd: ParsedBashCommand,
+  ctx: PathScopeContext | undefined,
+  skipFirst: boolean,
+): PermissionClass {
+  if (!ctx?.projectRoot) return "write_danger";
+  const targets = cmd.argv.filter((token) => !token.value.startsWith("-"));
+  if (skipFirst) targets.shift();
+  if (targets.length === 0) return "write_danger";
+  for (const token of targets) {
+    if (token.kind === "unresolved_expression") return "write_danger";
+    const resolved = resolvePathValue(token.value, ctx.cwd);
+    if (!resolved) return "write_danger";
+    // 删除/改权限到项目根本身不属于“工作区内的普通文件操作”。
+    if (isProjectRoot(ctx.projectRoot, resolved)) return "write_danger";
+  }
+  // 项目外目标由 externalWrites 门控询问，可被外部路径规则放行。
+  return "write_potent";
+}
 
 // ------------------------------------------------------------------
 // classifyTool — 同步入口点（非 bash 专用）
@@ -123,7 +216,8 @@ export async function classifyToolAsync(
     if (parserReady) await parserReady;
   }
   if (!parserModule) {
-    return { permissionClass: "write_potent", toolName, canMemoize: false };
+    // 解析器不可用 = 无法审计命令内容；自动审批下必须询问。
+    return { permissionClass: "write_danger", toolName, canMemoize: false };
   }
 
   const usePS = isPowerShellKind(shellKind);
@@ -131,7 +225,8 @@ export async function classifyToolAsync(
     ? await parserModule.parsePowerShellCommand(command)
     : await parserModule.parseBashCommand(command);
   if (result.kind === "unsupported") {
-    return { permissionClass: "write_potent", toolName, canMemoize: false };
+    // 不支持的语法（子 shell、命令替换、heredoc 等）无法做路径分析。
+    return { permissionClass: "write_danger", toolName, canMemoize: false };
   }
 
   const bashCwd = typeof toolArgs["cwd"] === "string" ? toolArgs["cwd"] : undefined;
@@ -154,7 +249,7 @@ export async function classifyToolAsync(
     // cd 上下文剥离 cd 段并跟踪 cwd 更改。
     // 仅限 bash — PowerShell 的 cd（Set-Location）可以导航到
     // bash 解析器不理解的提供程序路径（HKLM:\、Env:\ 等）。
-    // PS cd 命令通过 PS_CWD_COMMANDS 分类为 write_potent。
+    // PS cd 命令通过 PS_CWD_COMMANDS 保持为危险类别（必须询问）。
     if (!usePS && segments.length > 1) {
       const cdCtx = resolveCdContextParsed(segments, projectRoot, effectiveCwd);
       segments = cdCtx.segments as ParsedBashSegment[];
@@ -164,6 +259,7 @@ export async function classifyToolAsync(
   }
 
   // 阶段 2：对每个段进行分类，收集命令名称和最大类别
+  const pathCtx: PathScopeContext = { projectRoot, cwd: cdEffectiveCwd };
   let maxClass: PermissionClass = "read";
   const allCommandNames: string[] = [];
   const segmentClasses: PermissionClass[] = [];
@@ -172,7 +268,7 @@ export async function classifyToolAsync(
     let segClass: PermissionClass = "read";
     for (const cmd of segment.commands) {
       const stripped = usePS ? cmd : stripWrappersFromParsed(cmd);
-      const cls = usePS ? classifyPSCommand(stripped) : classifyParsedCommand(stripped);
+      const cls = usePS ? classifyPSCommand(stripped, pathCtx) : classifyParsedCommand(stripped, pathCtx);
       // 大写折叠，使 cp/mv 升级（第 5 阶段）和记忆化规则查找
       // 在不区分大小写的文件系统上匹配 `CP`/`MV` 如 `cp`/`mv`。
       allCommandNames.push(usePS ? stripped.name : normalizedCommandName(stripped.name));
@@ -183,6 +279,50 @@ export async function classifyToolAsync(
     }
     segmentClasses.push(segClass);
     if (CLASS_ORDER[segClass] > CLASS_ORDER[maxClass]) maxClass = segClass;
+  }
+
+  // 阶段 2.5：定位工作区外的写入目标（重定向与命令路径参数）。
+  // 普通命令改为自动审批后，外部写入不能随 write_potent 一起放行。
+  const externalWrites: string[] = [];
+  if (projectRoot) {
+    const seen = new Set<string>();
+    const addExternalWrite = (value: string): void => {
+      if (seen.has(value)) return;
+      seen.add(value);
+      externalWrites.push(value);
+    };
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index]!;
+      const redirectTargets = segment.redirectTargets ?? [];
+      if (segmentClasses[index] === "read" && redirectTargets.length === 0 && !segment.hasFileWriteRedirect) {
+        continue;
+      }
+      for (const target of redirectTargets) {
+        if (target === "<unknown redirect>") {
+          addExternalWrite(target);
+          continue;
+        }
+        const resolved = resolvePathValue(target, cdEffectiveCwd);
+        // 无法展开的重定向目标（$HOME/x 等）可能写到家目录/外部，按外部处理。
+        if (!resolved) addExternalWrite(target);
+        else if (!isWithinProject(projectRoot, resolved)) addExternalWrite(resolved);
+      }
+      for (const command of segment.commands) {
+        for (const token of command.argv) {
+          if (token.kind === "unresolved_expression") continue;
+          let value = token.value;
+          const assignment = /^--?[^=]+=(.*)$/.exec(value);
+          if (assignment) value = assignment[1]!;
+          if (!looksLikeExplicitPath(value)) continue;
+          const resolved = resolvePathValue(value, cdEffectiveCwd);
+          if (resolved) {
+            if (!isWithinProject(projectRoot, resolved)) addExternalWrite(resolved);
+          } else if (isPSProviderPath(value)) {
+            addExternalWrite(value);
+          }
+        }
+      }
+    }
   }
 
   // 阶段 3：安全段剥离 — 如果只有一个非只读段，保留它
@@ -216,6 +356,12 @@ export async function classifyToolAsync(
 
   if (isExternal) {
     assessment.externalCwd = cdEffectiveCwd;
+    assessment.canMemoize = false;
+    assessment.canonicalPattern = undefined;
+  }
+
+  if (externalWrites.length > 0) {
+    assessment.externalWrites = externalWrites;
     assessment.canMemoize = false;
     assessment.canonicalPattern = undefined;
   }
@@ -260,7 +406,7 @@ export async function classifyToolAsync(
  * 对解析后的 bash 命令进行分类。
  * 在不区分大小写的文件系统上大小写折叠 — 参见 normalizedCommandName。
  */
-function classifyParsedCommand(cmd: ParsedBashCommand): PermissionClass {
+function classifyParsedCommand(cmd: ParsedBashCommand, ctx?: PathScopeContext): PermissionClass {
   const name = normalizedCommandName(cmd.name);
 
   // 灾难性：磁盘工具
@@ -305,14 +451,34 @@ function classifyParsedCommand(cmd: ParsedBashCommand): PermissionClass {
 
   if (name === "find") {
     const hasDangerous = cmd.argv.some(
-      (t) => t.kind === "literal" && /^-(exec|execdir|delete|ok)$/.test(t.value),
+      (t) => t.kind === "literal" && /^-(exec|execdir|delete|ok|fprint|fprint0|fprintf|fls)$/.test(t.value),
     );
     return hasDangerous ? "write_potent" : "read";
   }
 
+  // 文件删除/权限命令只在工作区内自动允许；外部目标或无法判定时保持危险。
+  if (PATH_SCOPED_FILE_COMMANDS.has(name)) {
+    const skipFirst = name === "chmod" || name === "chown" || name === "chgrp";
+    return classifyPathScopedFileCommand(cmd, ctx, skipFirst);
+  }
+
+  // 内联脚本内容不参与路径分析，必须询问。
+  if (SHELL_INTERPRETERS.has(name) && hasInlineCommandFlag(name, cmd.argv)) return "write_danger";
+  if (name === "eval" || name === "source" || name === ".") return "write_danger";
+
   if (isDangerCommand(name)) return "write_danger";
   if (BASH_REVERSIBLE_COMMANDS.has(name)) return "write_reversible";
   if (BASH_DYNAMIC_REVERSIBLE.has(name)) return "write_reversible";
+  if (name === "sort" && cmd.argv.some((t) => t.value === "-o" || t.value.startsWith("--output"))) {
+    return "write_potent";
+  }
+  // 带输出文件的只读命令：升级到强能力，让外部路径扫描能看到目标。
+  if (name === "uniq" && cmd.argv.filter((t) => !t.value.startsWith("-")).length >= 2) {
+    return "write_potent";
+  }
+  if (name === "tree" && cmd.argv.some((t) => t.value === "-o" || t.value.startsWith("--output"))) {
+    return "write_potent";
+  }
   if (BASH_SAFE_COMMANDS.has(name)) return "read";
   if (BASH_POTENT_COMMANDS.has(name)) return "write_potent";
 
@@ -448,7 +614,7 @@ function hasExecutableExpression(cmd: ParsedBashCommand): boolean {
 /**
  * 对 PowerShell 命令进行分类。
  */
-function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
+function classifyPSCommand(cmd: ParsedBashCommand, ctx?: PathScopeContext): PermissionClass {
   const name = resolvePSCommandName(cmd.name);
 
   // Eval 等价命令始终危险
@@ -462,6 +628,7 @@ function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
       (t) => t.kind === "literal" && isEncodedCommandFlag(t.value),
     );
     if (hasEncoded) return "write_danger";
+    if (hasInlineCommandFlag(name, cmd.argv)) return "write_danger";
     return "write_potent";
   }
 
@@ -493,7 +660,12 @@ function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
       });
       if (targetsDangerousPath) return "catastrophic";
     }
-    return "write_danger";
+    return classifyPathScopedFileCommand(cmd, ctx, false);
+  }
+
+  // 清空文件内容同样按路径分档：工作区内自动允许，外部/provider 目标询问。
+  if (name === "clear-content" || name === "clear-item") {
+    return classifyPathScopedFileCommand(cmd, ctx, false);
   }
 
   // 灾难性：PowerShell 磁盘擦除 cmdlet，加上从 PowerShell
@@ -511,7 +683,8 @@ function classifyPSCommand(cmd: ParsedBashCommand): PermissionClass {
   // invoke-item / ii 是 ShellExecute — 可以运行任意可执行文件
   if (name === "invoke-item") return "write_danger";
 
-  if (PS_CWD_COMMANDS.has(name)) return "write_potent";
+  // PowerShell 的 cd 不参与 cd-context 追踪；保持询问，避免外部 cwd 被绕过。
+  if (PS_CWD_COMMANDS.has(name)) return "write_danger";
   if (PS_POTENT_COMMANDS.has(name)) return "write_potent";
   if (PS_REVERSIBLE_COMMANDS.has(name)) return "write_reversible";
 

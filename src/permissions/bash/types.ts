@@ -54,6 +54,8 @@ export interface ParsedBashSegment {
   readonly commands: readonly ParsedBashCommand[];
   /** 此段是否将输出重定向到真实文件（不是 /dev/null） */
   readonly hasFileWriteRedirect?: boolean;
+  /** 写入真实文件的重定向目标（已排除 /dev/null 与 fd 复制）。 */
+  readonly redirectTargets?: readonly string[];
 }
 
 export interface ParsedBashScript {

@@ -3,7 +3,8 @@
  *
  * 三种权限模式控制会话级策略：
  *   read_only    — 仅读工具自动允许
- *   reversible   — 读 + 可逆写自动允许
+ *   reversible   — 读、工作区内普通命令与文件修改自动允许；
+ *                  工作区外路径和系统级/破坏性命令需要确认
  *   yolo         — 除灾难性操作外全部自动允许
  *
  * 五种权限类别对每个工具调用进行分类：
@@ -65,6 +66,8 @@ export interface InvocationAssessment {
   canMemoize?: boolean;
   /** 对于 bash：在项目根目录外时的有效 cwd，完成 cd 解析后设置 */
   externalCwd?: string;
+  /** 对于 bash：位于项目根目录外的写入目标（重定向或命令路径参数） */
+  externalWrites?: string[];
   /** 对于文件工具：位于项目根目录外的解析路径 */
   externalPathPrefix?: string;
 }

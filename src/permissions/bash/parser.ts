@@ -240,6 +240,7 @@ function handleRedirectedStatement(
 ): void | UnsupportedBashScript {
   let innerNode: TreeNode | null = null;
   let hasFileWrite = false;
+  const redirectTargets: string[] = [];
 
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
@@ -251,10 +252,17 @@ function handleRedirectedStatement(
       if (child.type === "heredoc_redirect") {
         return unsupported("heredoc", "Shell heredoc syntax requires manual approval.", child);
       }
-      // 确定此重定向是否写入真实文件
-      const redirectTarget = getRedirectTarget(child);
-      if (redirectTarget && redirectTarget !== "/dev/null") {
-        hasFileWrite = true;
+      // 只有输出重定向才算写入；输入重定向与 fd 复制不算。
+      const redirect = getRedirectInfo(child);
+      if (redirect.isWrite) {
+        if (redirect.target && redirect.target !== "/dev/null") {
+          hasFileWrite = true;
+          redirectTargets.push(redirect.target);
+        } else if (!redirect.target) {
+          // 目标无法解析也按写入处理，让上层保守询问。
+          hasFileWrite = true;
+          redirectTargets.push("<unknown redirect>");
+        }
       }
     }
   }
@@ -271,7 +279,11 @@ function handleRedirectedStatement(
     if (result) return result;
     if (hasFileWrite && segments.length > startIdx) {
       const last = segments[segments.length - 1]!;
-      segments[segments.length - 1] = { ...last, hasFileWriteRedirect: true };
+      segments[segments.length - 1] = {
+        ...last,
+        hasFileWriteRedirect: true,
+        redirectTargets: [...(last.redirectTargets ?? []), ...redirectTargets],
+      };
     }
     return;
   }
@@ -297,23 +309,39 @@ function handleRedirectedStatement(
     connectorBefore: state.connectorBefore,
     commands,
     hasFileWriteRedirect: hasFileWrite || undefined,
+    redirectTargets: redirectTargets.length > 0 ? redirectTargets : undefined,
   });
   state.connectorBefore = null;
 }
 
 /**
- * 获取重定向目标路径。
+ * 解析 file_redirect 的写入方向与目标。
+ * 输入重定向（<）和 fd 复制（2>&1）不是文件写入；目标可能是
+ * word/string，也可能是变量拼接（> $HOME/x），后者用操作符后的原文兜底。
  */
-function getRedirectTarget(fileRedirectNode: TreeNode): string | null {
+function getRedirectInfo(fileRedirectNode: TreeNode): { isWrite: boolean; target: string | null } {
+  let isWrite = false;
+  let target: string | null = null;
+  let operatorEnd = 0;
+
   for (let i = 0; i < fileRedirectNode.childCount; i++) {
     const child = fileRedirectNode.child(i);
     if (!child) continue;
-    // 目标通常是操作符（>, >>, 2>）后的 "word" 节点
     if (child.type === "word" || child.type === "string" || child.type === "raw_string") {
-      return child.text.replace(/^["']|["']$/g, "");
+      target = child.text.replace(/^["']|["']$/g, "");
+      continue;
+    }
+    if (child.type === ">" || child.type === ">>" || child.type === ">|" || child.type === "&>" || child.type === "&>>") {
+      isWrite = true;
+      operatorEnd = Math.max(operatorEnd, child.endIndex - fileRedirectNode.startIndex);
     }
   }
-  return null;
+
+  if (isWrite && target === null) {
+    const raw = fileRedirectNode.text.slice(operatorEnd).trim().replace(/^["']|["']$/g, "");
+    target = raw || null;
+  }
+  return { isWrite, target };
 }
 
 // ------------------------------------------------------------------
@@ -576,12 +604,14 @@ function walkPSNode(
       // 收集此链中的所有命令（可能有管道：cmd | cmd）
       const commands: ParsedBashCommand[] = [];
       let hasFileWrite = false;
+      const redirectTargets: string[] = [];
       for (const child of namedChildren(node)) {
         if (child.type === "command" || child.type === "command_expression") {
           const result = tokenizePSCommand(child);
           if (result) {
             commands.push(result.cmd);
             if (result.hasRedirect) hasFileWrite = true;
+            redirectTargets.push(...result.redirectTargets);
           }
         }
       }
@@ -593,6 +623,7 @@ function walkPSNode(
           connectorBefore: null,
           commands,
           hasFileWriteRedirect: hasFileWrite || undefined,
+          redirectTargets: redirectTargets.length > 0 ? redirectTargets : undefined,
         });
       }
       return;
@@ -609,6 +640,7 @@ function walkPSNode(
           connectorBefore: null,
           commands: [result.cmd],
           hasFileWriteRedirect: result.hasRedirect || undefined,
+          redirectTargets: result.redirectTargets.length > 0 ? result.redirectTargets : undefined,
         });
       }
       return;
@@ -633,6 +665,17 @@ function walkPSNode(
 interface PSTokenizeResult {
   cmd: ParsedBashCommand;
   hasRedirect: boolean;
+  redirectTargets: string[];
+}
+
+/** 从 PowerShell redirection 节点文本提取目标；fd 复制与 null 目标返回 null。 */
+function parsePSRedirectTarget(text: string): string | null {
+  const match = /^(?:\d*|\*)?>>?\s*(.+)$/.exec(text.trim());
+  if (!match) return null;
+  const target = match[1]!.trim().replace(/^["']|["']$/g, "");
+  if (!target || target.startsWith("&")) return null;
+  if (/^\/dev\/null$/i.test(target) || /^nul$/i.test(target) || /^\$null$/i.test(target)) return null;
+  return target;
 }
 
 /**
@@ -642,6 +685,7 @@ function tokenizePSCommand(node: TreeNode): PSTokenizeResult | null {
   let nameToken: BashToken | null = null;
   const argv: BashToken[] = [];
   let hasRedirect = false;
+  const redirectTargets: string[] = [];
 
   for (const child of namedChildren(node)) {
     switch (child.type) {
@@ -656,6 +700,8 @@ function tokenizePSCommand(node: TreeNode): PSTokenizeResult | null {
         for (const elem of namedChildren(child)) {
           if (elem.type === "redirection") {
             hasRedirect = true;
+            const target = parsePSRedirectTarget(elem.text);
+            if (target) redirectTargets.push(target);
           } else {
             tokenizePSElement(elem, argv);
           }
@@ -679,6 +725,7 @@ function tokenizePSCommand(node: TreeNode): PSTokenizeResult | null {
   return {
     cmd: { text: node.text, name: nameToken.value, nameToken, argv },
     hasRedirect,
+    redirectTargets,
   };
 }
 

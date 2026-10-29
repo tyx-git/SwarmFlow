@@ -61,7 +61,7 @@
         "autoApprove": "自动审批",
         "fullAccess": "完全访问",
         "readOnlyDescription": "仅自动审批读取操作，所有写入都需要确认。",
-        "autoApproveDescription": "自动审批读取和可逆写入，其他修改需要确认。",
+        "autoApproveDescription": "自动审批工作区内的普通命令和文件修改；工作区外路径、系统级或破坏性操作需要确认。",
         "fullAccessDescription": "自动审批所有操作，但灾难性操作仍需确认。",
         "current": "当前权限模式：{mode}",
         "invalid": "未知权限模式“{mode}”。可选：{modes}"
@@ -478,7 +478,7 @@
         "autoApprove": "Auto-approve",
         "fullAccess": "Full access",
         "readOnlyDescription": "Only read operations are auto-approved; all writes require confirmation.",
-        "autoApproveDescription": "Read and reversible writes are auto-approved; other mutations require confirmation.",
+        "autoApproveDescription": "Ordinary commands and workspace file changes are auto-approved; external paths, system-level or destructive operations require confirmation.",
         "fullAccessDescription": "All operations are auto-approved, except catastrophic commands.",
         "current": "Current permission mode: {mode}",
         "invalid": "Unknown permission mode \"{mode}\". Valid: {modes}"
