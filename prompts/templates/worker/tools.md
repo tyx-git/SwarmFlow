@@ -28,6 +28,18 @@ Confirm the directory layout around the assigned paths. Defaults are depth 2 and
 `jq(query, path?, content?, raw?, compact?, slurp?, max_chars?)`
 Read or verify structured configuration, manifests, and persisted data without loading whole files. Full jq syntax; either `path` or `content`, not both. Output is capped at 80,000 characters and queries are aborted after 8 seconds.
 
+## External research
+
+### `web_search`
+`web_search(query, num_results?)`
+Search the web when local evidence does not settle an API contract, parameter name, version behavior, or upstream bug. Returns titles, URLs, and highlights for the top results (default 5, capped at 20). Treat results as discovery: fetch the primary source before relying on a snippet.
+
+### `web_fetch`
+`web_fetch(url, prompt?)`
+Fetch an http/https URL and return readable text; HTML is flattened and boilerplate is dropped, with remote extraction first and local parsing as fallback. Large pages are truncated. Use it for official documentation, API references, issues, and changelogs. `prompt` is a recorded hint, not a content filter. Pages that require authentication or private cookies are out of scope; never attach credentials or bypass access controls.
+
+Cite the URL and version/date when external documentation drives the change. Keep excerpts short and out of the handoff; never send credentials, private code, or user data to external services.
+
 ## Editing
 
 ### `write_file`

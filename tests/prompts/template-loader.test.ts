@@ -56,6 +56,7 @@ describe("template type validation", () => {
 
     expect(toolsPrompt).not.toContain("`show_context`");
     expect(toolsPrompt).not.toContain("`summarize_context`");
+    expect(toolsPrompt).toContain("Never reply that you cannot search");
   });
 
   it("keeps role tool boundaries aligned with the six built-in templates", () => {
@@ -71,8 +72,11 @@ describe("template type validation", () => {
     const names = (role: string) => new Set((templates[role]?.tools ?? []).map((tool) => tool.name));
     expect(names("queen")).not.toContain("write_file");
     expect(names("queen")).not.toContain("bash");
+    expect(names("queen")).not.toContain("web_search");
     for (const role of ["scout", "worker", "reviewer", "guard", "merger"]) {
       expect(names(role), role).toContain("bash");
+      expect(names(role), role).toContain("web_search");
+      expect(names(role), role).toContain("web_fetch");
     }
     expect(names("worker")).toContain("write_file");
     expect(names("worker")).toContain("edit_file");
@@ -104,7 +108,12 @@ describe("template type validation", () => {
     // Queen 无 shell，必须把命令式验证派给 Scout，而不是直接停下。
     expect(templates.queen?.systemPrompt).toContain("A missing tool is a delegation trigger");
     expect(templates.queen?.systemPrompt).toContain("dispatch Scout with the exact command");
+    expect(templates.queen?.systemPrompt).toContain("external or web research");
+    expect(templates.queen?.systemPrompt).toContain("Never answer that you cannot search");
+    expect(templates.queen?.systemPrompt).toContain("Scout has `web_search` and `web_fetch`");
     expect(templates.scout?.systemPrompt).toContain("Run read-only inspection, reproduction, test, and verification commands");
+    expect(templates.scout?.systemPrompt).toContain("For web research");
+    expect(templates.worker?.systemPrompt).toContain("`web_search` / `web_fetch`");
     expect(templates.merger?.systemPrompt).toContain("focused, non-destructive verification command");
 
     for (const role of ["queen", "scout", "reviewer", "guard", "merger"]) {

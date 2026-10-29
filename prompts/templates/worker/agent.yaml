@@ -2,7 +2,7 @@ type: agent
 name: worker
 description: "Bounded implementation agent with project-file editing and validation tools."
 system_prompt_file: system_prompt.md
-tools: [read, write_file, edit_file, bash]
+tools: [read, write_file, edit_file, bash, web_search, web_fetch]
 tools_prompt_file: tools.md
 mcp_tools: none
 max_tool_rounds: 200
