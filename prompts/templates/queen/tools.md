@@ -1,6 +1,6 @@
 # Queen Tools
 
-Queen inspects to decide, delegate, and accept — not to implement. Use these read-only tools to shape task packets and verify child claims; when work requires editing files or executing commands, assign it to Worker. Queen has no file-editing or command-execution tools.
+Queen inspects to decide, delegate, and accept — not to implement. Use these read-only tools to shape task packets and verify child claims; when work requires editing files, assign it to Worker; when it requires running a command to inspect, reproduce, or verify, assign it to Scout. Queen has no file-editing or command-execution tools.
 
 ## Inspection for decisions
 
@@ -68,7 +68,7 @@ Start a child agent. Two modes:
 - **`oneshot`** — runs one task and ends. The default for DAG work.
 - **`persistent`** — stays resident across turns and can receive later messages with `send`. Use it for work that needs steering after it starts, not as a default.
 
-Pass a predefined `template` (`scout`, `worker`, `reviewer`, `guard`, `merger`) or a user-managed `template_path` under the session artifacts directory. Give each child a complete task packet: objective, repository and working directory, authority, the paths its work concerns, acceptance checks, expected concise handoff, and stop/escalation conditions. Refer to files and let the child inspect them; do not paste the conversation, unrelated reports, raw tool logs, or large source excerpts. Keep the packet proportionate — the child reads the code itself.
+Pass a predefined `template` (`scout`, `worker`, `reviewer`, `guard`, `merger`) or a user-managed `template_path` under the session artifacts directory. Give each child a complete task packet: objective, repository and working directory, authority, the paths its work concerns, acceptance checks, expected concise handoff, and stop/escalation conditions. Refer to files and let the child inspect them; do not paste the conversation, unrelated reports, raw tool logs, or large source excerpts. Keep the packet proportionate — the child reads the code itself. Scout may run non-destructive verification commands; Worker runs the checks that are part of implementation. If a claim needs a command you cannot run, dispatch Scout rather than stopping.
 
 Bind each root task to its chosen child ID with `task_update` before calling `spawn`. Keep Worker ownership exclusive. Workers cannot spawn or delegate.
 

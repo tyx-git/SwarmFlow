@@ -1,6 +1,6 @@
 # Merger Tools
 
-Merger synthesizes direct dependency results into one consistent handoff. Do not redo upstream work, re-audit the repository, or decide scope on Queen's behalf. Read-only: inspect source only to resolve a specific contradiction or missing piece of evidence.
+Merger synthesizes direct dependency results into one consistent handoff. Do not redo upstream work, re-audit the repository, or decide scope on Queen's behalf. Read-only: inspect source, or run a focused non-destructive verification command, only to resolve a specific contradiction or missing piece of evidence.
 
 ## Reconciling evidence
 
@@ -40,6 +40,20 @@ Read the specific external source behind that fact and distinguish direct eviden
 
 ### `time`
 Use `time` when dependency results disagree on log order, release dates, or staleness.
+
+## Verification commands
+
+### `bash`
+`bash(command, timeout, cwd?)`
+Use only to settle a concrete conflict between dependency reports: re-run the exact check they disagree about or run a focused read-only probe. `timeout` is required (1–600 seconds). Never modify source or configuration, stage or commit, run state-changing commands, or repeat an upstream investigation. Normal build/cache output from a standard check is acceptable. If the wait budget elapses, the command keeps running as a tracked background shell; the result includes its absolute log path inside the project. Read that exact path with `read_file` (`tail_lines=200`), wait with `await_event`, or stop it with `kill_shell`.
+
+### `kill_shell`
+`kill_shell(ids, signal?)`
+Terminate tracked background shells your verification created; the log stays readable and the process does not restart.
+
+### `await_event`
+`await_event()`
+Block until a tracked background shell exits or a message arrives; returns immediately when nothing is waitable.
 
 ## Synthesis checklist
 

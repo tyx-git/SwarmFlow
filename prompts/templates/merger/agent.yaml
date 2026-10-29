@@ -1,8 +1,8 @@
 type: agent
 name: merger
-description: "Result synthesizer — combines independent findings, resolves conflicts, and prepares a structured handoff."
+description: "Result synthesizer — combines independent findings, resolves conflicts with read-only verification when needed, and prepares a structured handoff."
 system_prompt_file: system_prompt.md
-tool_tier: read_only
+tools: [read, bash, util]
 tools_prompt_file: tools.md
 mcp_tools: none
 max_tool_rounds: 200

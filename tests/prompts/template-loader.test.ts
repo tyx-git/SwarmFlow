@@ -71,18 +71,14 @@ describe("template type validation", () => {
     const names = (role: string) => new Set((templates[role]?.tools ?? []).map((tool) => tool.name));
     expect(names("queen")).not.toContain("write_file");
     expect(names("queen")).not.toContain("bash");
+    for (const role of ["scout", "worker", "reviewer", "guard", "merger"]) {
+      expect(names(role), role).toContain("bash");
+    }
     expect(names("worker")).toContain("write_file");
     expect(names("worker")).toContain("edit_file");
-    expect(names("worker")).toContain("bash");
-    for (const role of ["scout", "merger"]) {
-      expect(names(role)).not.toContain("write_file");
-      expect(names(role)).not.toContain("edit_file");
-      expect(names(role)).not.toContain("bash");
-    }
-    for (const role of ["reviewer", "guard"]) {
-      expect(names(role)).toContain("bash");
-      expect(names(role)).not.toContain("write_file");
-      expect(names(role)).not.toContain("edit_file");
+    for (const role of ["scout", "merger", "reviewer", "guard"]) {
+      expect(names(role), role).not.toContain("write_file");
+      expect(names(role), role).not.toContain("edit_file");
     }
   });
 
@@ -104,6 +100,12 @@ describe("template type validation", () => {
     expect(templates.reviewer?.systemPrompt).toContain("independent quality reviewer");
     expect(templates.guard?.systemPrompt).toContain("independent safety and recovery reviewer");
     expect(templates.merger?.systemPrompt).toContain("read-only synthesizer");
+
+    // Queen 无 shell，必须把命令式验证派给 Scout，而不是直接停下。
+    expect(templates.queen?.systemPrompt).toContain("A missing tool is a delegation trigger");
+    expect(templates.queen?.systemPrompt).toContain("dispatch Scout with the exact command");
+    expect(templates.scout?.systemPrompt).toContain("Run read-only inspection, reproduction, test, and verification commands");
+    expect(templates.merger?.systemPrompt).toContain("focused, non-destructive verification command");
 
     for (const role of ["queen", "scout", "reviewer", "guard", "merger"]) {
       expect(templates[role]?.systemPrompt).toContain("Context Boundary");
