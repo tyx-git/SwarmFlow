@@ -15,11 +15,11 @@ import {
   AgentLifecycle,
   SwarmTopology,
 } from "./types.js";
-import type { SwarmPattern, TaskNode, TaskDAG, ExecutionPlan, SwarmMessage } from "./types.js";
+import type { SwarmPattern, TaskNode, TaskDAG, SwarmMessage } from "./types.js";
 import { AgentPool, type AgentPoolConfig } from "./pool.js";
 import { BUILTIN_PATTERNS } from "./patterns.js";
 import { formatDirectDependencyResults, parseTaskHandoff } from "./task-handoff.js";
-import { validateDAG } from "./task-dag.js";
+import { buildExecutionPlan, validateDAG } from "./task-dag.js";
 
 /** 协调器发出的事件。*/
 export interface SwarmCoordinatorEvents {
@@ -171,7 +171,7 @@ export class SwarmCoordinator {
     }
 
     const results = new Map<string, TaskResult>();
-    const plan = this._buildPlan(dag);
+    const plan = buildExecutionPlan(dag);
 
     try {
       for (const level of plan.levels) {
@@ -320,55 +320,6 @@ export class SwarmCoordinator {
       entryPoints: [...nodes.values()]
         .filter((n) => n.dependencies.length === 0)
         .map((n) => n.id),
-    };
-  }
-
-  /**
-   * 从 DAG 构建执行计划（拓扑排序）。
-   */
-  private _buildPlan(dag: TaskDAG): ExecutionPlan {
-    const levels: Array<{ index: number; taskIds: string[] }> = [];
-
-    // 记录每个任务所属的层级
-    const taskLevels = new Map<string, number>();
-    const nodeArray = [...dag.nodes.values()];
-
-    // 简单的层级分配：依赖的最大层级 + 1
-    function assignLevel(taskId: string): number {
-      if (taskLevels.has(taskId)) return taskLevels.get(taskId)!;
-      const node = dag.nodes.get(taskId);
-      if (!node || node.dependencies.length === 0) {
-        taskLevels.set(taskId, 0);
-        return 0;
-      }
-      let maxDepLevel = 0;
-      for (const depId of node.dependencies) {
-        const depLevel = assignLevel(depId);
-        maxDepLevel = Math.max(maxDepLevel, depLevel);
-      }
-      const level = maxDepLevel + 1;
-      taskLevels.set(taskId, level);
-      return level;
-    }
-
-    for (const node of nodeArray) {
-      assignLevel(node.id);
-    }
-
-    // 按层级分组
-    const levelGroups = new Map<number, string[]>();
-    for (const [taskId, level] of taskLevels) {
-      if (!levelGroups.has(level)) levelGroups.set(level, []);
-      levelGroups.get(level)!.push(taskId);
-    }
-
-    for (const [index, taskIds] of [...levelGroups.entries()].sort(([a], [b]) => a - b)) {
-      levels.push({ index, taskIds });
-    }
-
-    return {
-      levels,
-      complexity: Math.min(10, dag.nodes.size),
     };
   }
 

@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createDAG, validateDAG, hasCycle, getLevels, topologicalSort, addNode, removeNode, serializeDAG } from "../../src/swarm/task-dag.js";
+import { createDAG, validateDAG, hasCycle, getLevels, buildExecutionPlan, topologicalSort, addNode, removeNode, serializeDAG } from "../../src/swarm/task-dag.js";
 import { AgentRole } from "../../src/swarm/types.js";
 
 describe("TaskDAG", () => {
@@ -57,6 +57,29 @@ describe("TaskDAG", () => {
     expect(levels[0]!.taskIds.sort()).toEqual(["a", "b"]);
     expect(levels[1]!.taskIds).toEqual(["c"]);
     expect(levels[2]!.taskIds).toEqual(["d"]);
+  });
+
+  it("builds execution plans from the canonical level algorithm", () => {
+    const dag = createDAG([
+      { id: "a", role: AgentRole.Scout, description: "A", dependencies: [], priority: 1 },
+      { id: "b", role: AgentRole.Scout, description: "B", dependencies: [], priority: 1 },
+      { id: "c", role: AgentRole.Worker, description: "C", dependencies: ["a", "b"], priority: 1 },
+    ]);
+
+    expect(buildExecutionPlan(dag).levels).toEqual(getLevels(dag));
+    expect(buildExecutionPlan(dag).complexity).toBe(3);
+  });
+
+  it("caps plan complexity at 10", () => {
+    const nodes = Array.from({ length: 12 }, (_, index) => ({
+      id: `n${index}`,
+      role: AgentRole.Worker,
+      description: `Task ${index}`,
+      dependencies: index === 0 ? [] : [`n${index - 1}`],
+      priority: 1,
+    }));
+
+    expect(buildExecutionPlan(createDAG(nodes)).complexity).toBe(10);
   });
 
   it("topologically sorts correctly", () => {

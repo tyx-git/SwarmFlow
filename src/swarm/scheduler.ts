@@ -9,7 +9,7 @@
 
 import type { TaskDAG, ExecutionPlan } from "./types.js";
 import { AgentRole } from "./types.js";
-import { getLevels, validateDAG } from "./task-dag.js";
+import { buildExecutionPlan, validateDAG } from "./task-dag.js";
 
 /** 任务的计时估算。 */
 export interface TaskEstimate {
@@ -102,17 +102,9 @@ export class SwarmScheduler {
       throw new Error(`无法调度无效的 DAG：${validation.errors.join("; ")}`);
     }
 
-    // 获取执行层级
-    const levels = getLevels(dag);
-
-    // 构建执行计划
-    const plan: ExecutionPlan = {
-      levels: levels.map((l) => ({
-        index: l.index,
-        taskIds: l.taskIds,
-      })),
-      complexity: Math.min(10, dag.nodes.size),
-    };
+    // 层级与复杂度由 task-dag 的唯一实现给出
+    const plan = buildExecutionPlan(dag);
+    const levels = plan.levels;
 
     // 生成估算
     const estimates = this._estimateTasks(dag);
@@ -136,11 +128,7 @@ export class SwarmScheduler {
    * 无需完整验证的快速计划（用于热路径）。
    */
   scheduleFast(dag: TaskDAG): ExecutionPlan {
-    const levels = getLevels(dag);
-    return {
-      levels: levels.map((l) => ({ index: l.index, taskIds: l.taskIds })),
-      complexity: Math.min(10, dag.nodes.size),
-    };
+    return buildExecutionPlan(dag);
   }
 
   // ------------------------------------------------------------------

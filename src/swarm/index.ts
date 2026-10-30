@@ -64,6 +64,7 @@ export {
   hasCycle,
   topologicalSort,
   getLevels,
+  buildExecutionPlan,
   addNode,
   removeNode,
   serializeDAG,

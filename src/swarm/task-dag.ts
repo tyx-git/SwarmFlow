@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-import type { TaskNode, TaskDAG } from "./types.js";
+import type { ExecutionPlan, TaskNode, TaskDAG } from "./types.js";
 
 // ------------------------------------------------------------------
 // DAG 创建
@@ -197,6 +197,18 @@ export function getLevels(dag: TaskDAG): Array<{ index: number; taskIds: string[
   return [...levelGroups.entries()]
     .sort(([a], [b]) => a - b)
     .map(([index, taskIds]) => ({ index, taskIds }));
+}
+
+/**
+ * 从 DAG 构建执行计划：层级由 getLevels 统一计算，复杂度按节点数封顶。
+ *
+ * coordinator 与 scheduler 共用这一入口，避免各自维护层级算法后漂移。
+ */
+export function buildExecutionPlan(dag: TaskDAG): ExecutionPlan {
+  return {
+    levels: getLevels(dag),
+    complexity: Math.min(10, dag.nodes.size),
+  };
 }
 
 // ------------------------------------------------------------------
