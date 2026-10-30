@@ -21,7 +21,7 @@ export const KNOWN_MULTIMODAL_MODELS: Set<string> = new Set();
 /** 保留兼容的网络搜索黑名单；模型能力来自用户配置。 */
 export const KNOWN_NO_WEB_SEARCH_MODELS: Set<string> = new Set();
 
-/** Convert the user-facing settings protocol alias to the runtime enum. */
+/** 把设置里面向用户的 protocol 别名转换为运行时枚举。 */
 export function runtimeTransportProtocol(protocol: string | undefined): TransportProtocol | undefined {
   switch (protocol) {
     case "anthropic":

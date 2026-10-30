@@ -1,6 +1,4 @@
-/**
- * 上下文压缩标记与上下文 ID 标签——由基于日志的运行时共享。
- */
+/** 上下文 ID 的分配、`§{id}§` 标签注入与流式剥离。 */
 
 import { randomBytes } from "node:crypto";
 
@@ -19,7 +17,7 @@ export function allocateContextId(usedIds: Set<string>): string {
       return id;
     }
   }
-  // Fallback to 6 hex chars
+  // 回退到 6 个十六进制字符
   const id = randomBytes(3).toString("hex");
   usedIds.add(id);
   return id;
@@ -53,7 +51,7 @@ export class ContextTagStripBuffer {
   private _downstream: (chunk: string) => void;
   private _buffer = "";
   private _buffering = false;
-  private _swallowNewline = false;  // eat one \n after a matched tag
+  private _swallowNewline = false;  // 匹配到标签后吞掉一个 \n
 
   constructor(downstream: (chunk: string) => void) {
     this._downstream = downstream;
@@ -63,27 +61,27 @@ export class ContextTagStripBuffer {
     for (const ch of chunk) {
       if (this._swallowNewline) {
         this._swallowNewline = false;
-        if (ch === "\n") continue;  // consumed
-        // Not a newline —fall through to normal processing
+        if (ch === "\n") continue;  // 已吞掉
+        // 不是换行——继续走正常流程
       }
       if (this._buffering) {
         this._buffer += ch;
         if (ch === CONTEXT_TAG_DELIMITER && this._buffer.length >= 4) {
-          // Check if we completed a §{...}§ pattern
+          // 检查是否凑齐了一个 §{...}§ 模式
           if (
             this._buffer.startsWith(`${CONTEXT_TAG_DELIMITER}{`) &&
             this._buffer.endsWith(`}${CONTEXT_TAG_DELIMITER}`)
           ) {
-            // Discard the matched tag, and swallow the next \n if present
+            // 丢弃匹配到的标签，并吞掉紧随其后的 \n（如有）
             this._buffer = "";
             this._buffering = false;
             this._swallowNewline = true;
           } else {
-            // Not a valid tag —flush buffer
+            // 不是合法标签——冲出缓冲区
             this._flush();
           }
         } else if (this._buffer.length > 50) {
-          // Safety: if buffer gets too long without closing, flush
+          // 兜底：缓冲区过长仍未闭合就冲出
           this._flush();
         }
       } else if (ch === CONTEXT_TAG_DELIMITER) {

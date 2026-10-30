@@ -24,9 +24,9 @@ export interface AttachmentContext {
 }
 
 /**
- * Extract image blocks from multimodal content, save them to
- * <sessionDir>/images/, and replace them with image_ref blocks for the log.
- * Returns the original content if no images, or if session dir is unavailable.
+ * 从多模态内容中取出图片块，落盘到 <sessionDir>/images/，
+ * 并在日志里替换为 image_ref 块。
+ * 无图片或会话目录不可用时原样返回。
  */
 export function extractAndSaveImages(
   ctx: AttachmentContext,
@@ -45,13 +45,13 @@ export function extractAndSaveImages(
   if (!hasImage) return content;
 
   const sessionDir = ctx.sessionDir();
-  if (!sessionDir) return content; // Can't save without session dir
+  if (!sessionDir) return content; // 没有会话目录，无法落盘
 
   const imagesDir = join(sessionDir, "images");
   try {
     mkdirSync(imagesDir, { recursive: true });
   } catch {
-    return content; // Can't create images dir, keep inline
+    return content; // 无法创建 images 目录，保持内联
   }
 
   return content.map((block) => {
@@ -78,7 +78,7 @@ export function extractAndSaveImages(
     try {
       writeFileSync(filePath, Buffer.from(block["data"] as string, "base64"));
     } catch {
-      return block; // Write failed, keep inline
+      return block; // 写入失败，保持内联
     }
 
     return {
@@ -90,8 +90,8 @@ export function extractAndSaveImages(
 }
 
 /**
- * Resolve an image_ref path to base64 data for API consumption.
- * Used by projectToApiMessages to restore image data from files.
+ * 把 image_ref 路径解析为 base64 数据，供 API 使用。
+ * projectToApiMessages 借此从文件还原图片数据。
  */
 export function resolveImageRef(
   sessionDir: string | undefined,

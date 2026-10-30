@@ -1,10 +1,7 @@
 ﻿/**
- * 内置工具定义和执行器。
+ * 工具执行分派：按工具名选择执行器，统一参数校验错误与结果格式。
  *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
+ * `ExecuteToolContext` 携带工作区根、审批与运行时依赖，按调用注入。
  */
 
 import fs from "node:fs/promises";
@@ -54,10 +51,6 @@ import {
   recordBashPostExec,
 } from "./mutations.js";
 import { toolBash, toolTime } from "./bash.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export interface ExecuteToolContext {
   projectRoot?: string;
@@ -115,7 +108,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         const limit = optionalPositiveIntegerArg("read_file", a, "limit");
         const maxLineChars = optionalPositiveIntegerArg("read_file", a, "max_line_chars");
         const tailLines = optionalPositiveIntegerArg("read_file", a, "tail_lines");
-        // offset is an alias for start_line; limit converts to end_line.
+        // offset 是 start_line 的别名；limit 折算成 end_line。
         if (startLine == null && offset != null) startLine = offset;
         if (endLine == null && limit != null) {
           const effectiveStart = startLine ?? 1;
@@ -166,7 +159,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         const appendStr = optionalStringArg("edit_file", a, "append_str", "");
         const editsRaw = a.edits;
 
-        // Validate edits array
+        // 校验 edits 数组
         const edits: Array<{ old_str: string; new_str: string; replace_all?: boolean }> = [];
         if (Array.isArray(editsRaw)) {
           for (const item of editsRaw) {
@@ -202,12 +195,12 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
           { mustExist: true, expectFile: true },
         );
 
-        // Append-only (no replacements)
+        // 仅追加（无替换）
         if (edits.length === 0) {
           return toolEditFileAppend(filePath, appendStr, expectedMtimeMs);
         }
 
-        // Edits (possibly combined with append)
+        // 编辑（可与追加组合）
         return toolEditFileMulti(filePath, edits, expectedMtimeMs, appendStr || undefined);
       } catch (e) {
         return formatToolError("edit_file", e);
@@ -249,9 +242,9 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         const effectiveCwd = cwd || toolRoot(ctx);
         const backupsDir = path.join(ctx?.sessionArtifactsDir ?? effectiveCwd, "rewind-backups");
 
-        // Pre-exec: detect tracked commands and snapshot state.
-        // cd-aware: track effectiveCwd through cd segments so mutation
-        // paths resolve correctly. External paths skip tracking.
+        // 执行前：识别可追踪的命令并快照状态。
+        // 跟随 cd：跨 cd 段追踪 effectiveCwd，变更路径才能解析正确。
+        // 外部路径不做追踪。
         const segments = splitCompoundBash(command);
         const preExecStates: Array<{ segmentIndex: number; state: BashPreExecState }> = [];
         const projectRoot = ctx?.projectRoot ?? effectiveCwd;
@@ -265,7 +258,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
                 : path.resolve(segmentCwd, cdTarget);
               continue;
             }
-            // Skip mutation tracking for external paths
+            // 外部路径不做变更追踪
             const rel = path.relative(projectRoot, segmentCwd);
             if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
             const state = prepareBashPreExec(segments[i]!, backupsDir, segmentCwd);
@@ -280,9 +273,8 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
           hasTools: ctx?.hasTools,
         });
 
-        // Post-exec: only record mutations if command succeeded (exit code 0).
-        // A timeout hand-off counts as not-finished: the command is still
-        // running, so its mutations cannot be snapshotted for rewind.
+        // 执行后：只有命令成功（退出码 0）才记录变更。
+        // 超时移交算作未完成：命令还在跑，变更无法快照供回滚使用。
         const isError = output.startsWith("ERROR:") || output.startsWith("MOVED TO BACKGROUND:");
         if (!isError && preExecStates.length > 0) {
           const entries: BashMutationEntry[] = [];
@@ -299,7 +291,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
           }
         }
 
-        // Clean up backups if command failed
+        // 命令失败时清理备份
         if (isError) {
           for (const { state } of preExecStates) {
             if (state.backupPath) {
@@ -384,7 +376,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
       try {
         const a = expectArgsObject("grep", args);
 
-        // pattern: accept string | string[]
+        // pattern：接受 string | string[]
         const patternRaw = a["pattern"];
         let patterns: string[];
         if (typeof patternRaw === "string") {
@@ -420,8 +412,8 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
           throw new ToolArgValidationError("grep", "output_mode", "'output_mode' must be content, files_with_matches, or count.");
         }
 
-        // Context-line aliases: prefer hyphen forms (Cursor convention) but
-        // accept word forms because some LLMs translate them automatically.
+        // 上下文行参数的别名：优先连字符写法（Cursor 约定），
+        // 也接受单词写法，因为有些 LLM 会自动改写。
         const afterCtx =
           optionalIntegerArg("grep", a, "-A") ??
           optionalIntegerArg("grep", a, "after_lines") ?? 0;
@@ -432,7 +424,7 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
           optionalIntegerArg("grep", a, "-C") ??
           optionalIntegerArg("grep", a, "context_lines") ?? 0;
 
-        // Smart case: undefined when neither flag is passed (auto), explicit otherwise.
+        // Smart case：两个开关都没传时为 undefined（自动），否则取显式值。
         let caseInsensitive: boolean | undefined;
         if (a["-i"] !== undefined) caseInsensitive = a["-i"] === true;
         else if (a["case_insensitive"] !== undefined) caseInsensitive = a["case_insensitive"] === true;

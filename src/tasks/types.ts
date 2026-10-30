@@ -1,6 +1,4 @@
-/**
- * 任务清单领域：内存为权威，`tasks.json` 为 write-through 持久副本。
- */
+/** 任务清单的数据结构、落盘格式与续跑阈值。 */
 
 /** 任务文件名（位于会话工件目录下）。 */
 export const TASK_STORE_FILENAME = "tasks.json";

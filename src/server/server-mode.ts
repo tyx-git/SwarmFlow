@@ -104,7 +104,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   // 这影响工具和 bash 中的相对路径解析。
   process.chdir(projectPath);
 
-  // Keep the protected workflow skills available even during first-run init.
+  // 首次运行初始化期间也要保证受保护的工作流 skills 可用。
   ensureBuiltinSkills(join(homeDir, "skills"));
   // 全局记忆初始化为空文件；用户之后手动维护。
   ensureGlobalMemoryFile(homeDir);
@@ -140,7 +140,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     });
 
     process.stdin.on("end", () => { process.exit(0); });
-    await new Promise<void>(() => { /* never resolves */ });
+    await new Promise<void>(() => { /* 永不 resolve */ });
     return;
   }
 
@@ -222,7 +222,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
   try {
     const { loadHooksMulti } = await import("../hooks/index.js");
     hooksLoaded = loadHooksMulti(paths.hookRoots);
-  } catch { /* optional */ }
+  } catch { /* 可选 */ }
 
   // Session
   const contextBudgetPercent = settings.context_budget_percent ?? 100;
@@ -269,7 +269,7 @@ export async function runServerMode(opts: ServerModeOptions): Promise<void> {
     thinkingLevel: startupSelection.thinkingLevel,
   });
 
-  // ── Start RPC server ──
+  // ── 启动 RPC 服务器 ──
   const rpc = createRpcServer(process.stdin, process.stdout);
 
   let shutdownRequested = false;

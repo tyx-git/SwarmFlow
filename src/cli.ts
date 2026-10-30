@@ -32,12 +32,12 @@ import { findSessionById } from "./session/resume.js";
 import { interactiveGlobalSessionManager, maybeHandleResumeFlag } from "./cli/session-picker.js";
 
 /**
- * OpenTUI's native renderer writes UTF-8 bytes directly to the Windows
- * console. Node's normal console methods handle Unicode themselves, but the
- * native path is decoded by the active Windows console code page. Legacy
- * consoles commonly start in CP936, which turns every non-ASCII glyph into
- * mojibake. Switch only interactive consoles; redirected output is already a
- * byte stream and must remain UTF-8 for callers to decode.
+ * OpenTUI 的原生渲染器把 UTF-8 字节直接写入 Windows 控制台。
+ * Node 常规的 console 方法会自行处理 Unicode，但原生路径的字节
+ * 由当前 Windows 控制台代码页解码。旧版控制台通常以 CP936 启动，
+ * 会把所有非 ASCII 字形变成乱码。
+ * 只切换交互式控制台；重定向输出本身就是字节流，
+ * 必须保持 UTF-8 供调用方解码。
  */
 export function ensureWindowsUtf8Console(): void {
   if (process.platform !== "win32" || !process.stdout.isTTY) return;
@@ -62,7 +62,7 @@ export function ensureWindowsUtf8Console(): void {
     process.stdout.setDefaultEncoding("utf8");
     process.stderr.setDefaultEncoding("utf8");
   } catch {
-    // The CLI remains usable when launched without a shell-backed console.
+    // 没有 shell 支撑的控制台时，CLI 仍可正常使用。
   }
 }
 
@@ -177,10 +177,10 @@ async function warnIfCopilotCredentialsMissing(
  * 使用动态路径避免 external/opentui 进入 src/ 的 rootDir 类型检查范围。
  */
 export function resolveOpenTuiEntry(modulePath = fileURLToPath(import.meta.url)): string | null {
-  // Development runs the TypeScript entry directly; compiled distributions
-  // contain the JavaScript entry. A compiled CLI lives under `dist/src`,
-  // while the source UI remains under the repository root, so check both
-  // layouts before reporting that the UI distribution is missing.
+  // 开发时直接运行 TypeScript 入口；编译分发里则是 JavaScript 入口。
+  // 编译后的 CLI 位于 `dist/src`，
+  // 而源码 UI 仍在仓库根目录，因此两种布局都要检查，
+  // 再报告 UI 分发缺失。
   const moduleDir = dirname(modulePath);
   const projectRoots = [resolve(moduleDir, ".."), resolve(moduleDir, "../..")];
   const candidates = projectRoots.flatMap((projectRoot) => [

@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** 文件与 bash 变更追踪：记录可回滚的文件 mutation，解析 mkdir/cp/mv/cd 供文件还原使用。 */
 
 import fs from "node:fs/promises";
 import {
@@ -109,7 +102,7 @@ export function parseTrackableBashMutation(segment: string): TrackableBashParsed
   const trimmed = segment.trim();
   if (!trimmed) return null;
 
-  // Quote-aware tokenization
+  // 引号感知的分词
   const tokens: string[] = [];
   let current = "";
   let inSingle = false;
@@ -126,7 +119,7 @@ export function parseTrackableBashMutation(segment: string): TrackableBashParsed
     current += ch;
   }
   if (current) tokens.push(current);
-  // Unclosed quotes →can't parse reliably
+  // 引号未闭合 → 无法可靠解析
   if (inSingle || inDouble) return null;
 
   if (tokens.length < 2) return null;
@@ -141,13 +134,13 @@ export function parseTrackableBashMutation(segment: string): TrackableBashParsed
     else args.push(t);
   }
 
-  // Reject unsupported cp/mv syntax
+  // 拒绝不支持的 cp/mv 语法
   if (cmd === "cp" || cmd === "mv") {
-    // -t / --target-directory not supported (including grouped flags like -rt)
+    // 不支持 -t / --target-directory（包括 -rt 这类合并写法）
     if (flags.some(f => f.startsWith("--target-directory") || (!f.startsWith("--") && f.includes("t")))) return null;
-    // --parents not supported
+    // 不支持 --parents
     if (flags.some(f => f === "--parents")) return null;
-    // Need exactly 2 positional args (single source + single target)
+    // 必须正好 2 个位置参数（单源 + 单目标）
     if (args.length !== 2) return null;
   }
 
@@ -194,7 +187,7 @@ export function prepareBashPreExec(
   }
 
   if (parsed.cmd === "cp" || parsed.cmd === "mv") {
-    // parseTrackableBashMutation already enforces args.length === 2
+    // parseTrackableBashMutation 已保证 args.length === 2
     const sourcePath = resolve(parsed.args[0]!);
     if (existsSync(sourcePath)) {
       const sourceStat = lstatSync(sourcePath);
@@ -206,13 +199,13 @@ export function prepareBashPreExec(
     const recursive = parsed.flags.some(f => f === "-r" || f === "-R" || f === "--recursive" ||
       (f.startsWith("-") && !f.startsWith("--") && f.includes("r")));
 
-    // When target is an existing directory, shell writes to dir/basename(source)
+    // 目标是已存在的目录时，shell 会写到 dir/basename(source)
     if (existsSync(targetPath)) {
       try {
         if (statSync(targetPath).isDirectory()) {
           targetPath = path.join(targetPath, path.basename(sourcePath));
         }
-      } catch { /* ignore stat errors */ }
+      } catch { /* 忽略 stat 错误 */ }
     }
 
     let targetExisted = false;
@@ -255,7 +248,7 @@ export function recordBashPostExec(
     for (const dir of preExec.args) {
       if (!existsSync(dir)) continue;
       if (preExec.existingAncestors) {
-        // mkdir -p: walk from target up, collect all dirs that are new
+        // mkdir -p：从目标向上走，收集所有新建的目录
         let current = dir;
         const newDirs: string[] = [];
         while (current !== path.dirname(current)) {
@@ -279,7 +272,7 @@ export function recordBashPostExec(
     let postImageSha: string | undefined;
     try {
       postImageSha = hashFilesystemPath(preExec.targetPath);
-    } catch { /* mark as untracked below */ }
+    } catch { /* 下面标记为 untracked */ }
 
     return {
       kind: preExec.kind,

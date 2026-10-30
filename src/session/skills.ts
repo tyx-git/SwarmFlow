@@ -20,18 +20,18 @@ export interface SkillsHost {
   _skillsDirty: boolean;
 }
 
-/** Read-only access to loaded skills (for command registration). */
+/** 已加载技能的只读视图（供命令注册使用）。 */
 export function getSkills(host: SkillsHost): ReadonlyMap<string, SkillMeta> {
   return host._skills;
 }
 
-/** Read-only access to disabled skill names. */
+/** 已禁用技能名的只读视图。 */
 export function getDisabledSkills(host: SkillsHost): ReadonlySet<string> {
   return host._disabledSkills;
 }
 
 /**
- * Return all skills from disk (both enabled and disabled) for UI display.
+ * 返回磁盘上的全部技能（含启用与禁用），供 UI 展示。
  */
 export function getAllSkillNames(host: SkillsHost): { name: string; description: string; enabled: boolean }[] {
   const allOnDisk = loadSkillsMulti(host._skillRoots);
@@ -47,7 +47,7 @@ export function skillsDirty(host: SkillsHost): boolean {
   return host._skillsDirty;
 }
 
-/** Enable or disable a skill by name. Call applySkillsFromCommand() to apply. */
+/** 按名称启用或禁用技能。调用 applySkillsFromCommand() 才会生效。 */
 export function setSkillEnabled(host: SkillsHost, name: string, enabled: boolean): void {
   if (enabled) {
     host._disabledSkills.delete(name);
@@ -58,10 +58,9 @@ export function setSkillEnabled(host: SkillsHost, name: string, enabled: boolean
 }
 
 /**
- * Rescan skill directories, apply disabled filter, and rebuild
- * the skill tool definition. /skills calls this immediately;
- * /reload also calls it as part of a full configuration reload.
- * Returns change report for callers that need it.
+ * 重扫技能目录，应用禁用过滤，并重建 skill 工具定义。
+ * /skills 会立即调用；/reload 作为完整配置重载的一部分也会调用。
+ * 返回变更报告，供需要的调用方使用。
  */
 export function reloadSkills(host: SkillsHost): { added: string[]; removed: string[]; total: number } {
   const oldNames = new Set(host._skills.keys());
@@ -75,7 +74,7 @@ export function reloadSkills(host: SkillsHost): { added: string[]; removed: stri
 }
 
 /**
- * Build the fixed `skill` tool definition.
+ * 构建固定的 `skill` 工具定义。
  *
  * skills 列表位于 system prompt；工具的 description 不随 skills 集合变化，
  * 从而保持 tools 段字节稳定。
@@ -88,8 +87,8 @@ export function ensureSkillToolForSession(host: SkillsHost): void {
 }
 
 /**
- * Refresh skills from disk. Called during prompt/tool reload so installed,
- * removed, or modified skills update the dynamic skill tool definition.
+ * 从磁盘刷新技能。prompt/tool 重载时调用，
+ * 使新增、删除或修改的技能同步到动态的 skill 工具定义。
  */
 export function refreshSkills(host: SkillsHost): void {
   if (host._skillRoots.length === 0) {
@@ -108,7 +107,7 @@ export function refreshSkills(host: SkillsHost): void {
   ensureSkillToolForSession(host, );
 }
 
-/** Execute the `skill` tool —load and return skill instructions. */
+/** 执行 `skill` 工具：加载并返回技能说明。 */
 export function execSkill(host: SkillsHost, 
   args: Record<string, unknown>,
 ): ToolResult {

@@ -61,7 +61,7 @@ export class InitService {
     this.configuredProviders = this.detectConfiguredProviders();
   }
 
-  // ── Config detection ──
+  // ── 配置检测 ──
 
   checkConfigStatus(): ConfigStatus {
     const existingSettings = loadGlobalSettings(this.homeDir);
@@ -76,7 +76,7 @@ export class InitService {
     };
   }
 
-  // ── Provider presets ──
+  // ── 提供商预设 ──
 
   listProviderPresets(): ProviderPresetInfo[] {
     return PROVIDER_PRESETS.map((preset) => ({
@@ -95,7 +95,7 @@ export class InitService {
     }));
   }
 
-  // ── Provider configuration ──
+  // ── 提供商配置 ──
 
   configureApiKeyProvider(providerId: string, apiKey: string): { ok: boolean; envVar: string } {
     const preset = PROVIDER_PRESETS.find((p) => p.id === providerId);
@@ -161,7 +161,7 @@ export class InitService {
     return { ok: true, envVar };
   }
 
-  // ── Model picker tree ──
+  // ── 模型选择树 ──
 
   buildModelPickerTree(currentSelection?: ModelSelection): ModelPickerNode[] {
     const session = this.createPickerSession(currentSelection);
@@ -195,7 +195,7 @@ export class InitService {
     return description.scopedDetailedLabel || selection.configName;
   }
 
-  // ── Thinking levels ──
+  // ── 思考深度 ──
 
   getThinkingLevels(modelId: string): string[] {
     return getThinkingLevels(modelId);
@@ -205,7 +205,7 @@ export class InitService {
     return getSubAgentThinkingLevels(modelId);
   }
 
-  // ── Web search ──
+  // ── 网络搜索 ──
 
   getSearchApiOptions(): SearchApiOption[] {
     return SEARCH_API_OPTIONS.map((opt) => ({
@@ -220,7 +220,7 @@ export class InitService {
     }
   }
 
-  // ── Save final configuration ──
+  // ── 保存最终配置 ──
 
   saveConfiguration(opts: {
     modelSelection?: ModelSelection;
@@ -263,11 +263,11 @@ export class InitService {
     mkdirSync(join(this.homeDir, "prompts", "templates"), { recursive: true });
     mkdirSync(join(this.homeDir, "skills"), { recursive: true });
 
-    // Create workspace .swarmflow directory placeholder for session artifacts.
+    // 为会话产物创建 workspace 的 .swarmflow 目录占位。
     mkdirSync(join(process.cwd(), ".swarmflow"), { recursive: true });
   }
 
-  // ── Internal helpers ──
+  // ── 内部辅助函数 ──
 
   private detectConfiguredProviders(): Map<string, ProviderEntry> {
     const providers = new Map<string, ProviderEntry>();

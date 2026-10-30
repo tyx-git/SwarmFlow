@@ -1,9 +1,8 @@
 /**
- * SwarmExecutor — high-level 并行执行 engine.
+ * SwarmExecutor — 高层并行执行引擎。
  *
- * Integrates TaskDAG, SwarmCoordinator, MessageBus, ContextBridge,
- * and recovery strategies into a single execution pipeline.
- * Provides lifecycle events, progress tracking, and comprehensive error handling.
+ * 把任务 DAG、协调器、消息总线、上下文桥和恢复策略整合成一条执行管线，
+ * 并提供生命周期事件、进度追踪与完整的错误处理。
  *
  * @packageDocumentation
  */
@@ -48,7 +47,7 @@ export interface SwarmExecutionOptions {
 }
 
 /**
- * SwarmExecutor — the single 入口点 for swarm execution.
+ * SwarmExecutor — swarm 执行的唯一入口。
  *
  * 用法:
  * ```typescript
@@ -149,7 +148,7 @@ export class SwarmExecutor {
   }
 
   /**
-   * Cancel the current execution.
+   * 取消当前执行。
    */
   cancel(): void {
     this.coordinator.cancel();
@@ -193,13 +192,13 @@ export class SwarmExecutor {
   // ------------------------------------------------------------------
 
   /**
-   * Build a DAG from options (pattern, task, or direct DAG).
+   * 根据选项构建 DAG（模式、任务描述或现成 DAG）。
    */
   private async _buildDag(opts: SwarmExecutionOptions): Promise<TaskDAG | null> {
-    // Direct DAG was provided
+    // 已提供现成 DAG
     if (opts.dag) return opts.dag;
 
-    // Pattern was specified
+    // 指定了模式
     if (opts.pattern) {
       const dag = this.coordinator.buildPatternDag(opts.pattern, opts.task);
       if (!dag) {
@@ -208,7 +207,7 @@ export class SwarmExecutor {
       return dag;
     }
 
-    // Default: decompose the task
+    // 默认：分解任务
     return this.decomposer.decompose(opts.task);
   }
 }

@@ -90,8 +90,7 @@ export class AnthropicProvider extends BaseAnthropicProvider {
       } else if (!level) {
         budget = this._config.thinkingBudget || 10_000;
       } else {
-        // Preserve unknown configured values so Anthropic can reject them and
-        // return its native error to the user.
+        // 未知的配置值原样保留，让 Anthropic 自行拒绝并把原生错误返回给用户。
         budget = level;
       }
       if (typeof budget === "number") budget = Math.max(budget, 1024);

@@ -1,6 +1,4 @@
-/**
- * @file 附件领域：引用解析、扫描、读取摘要与上下文块渲染。
- */
+/** @ 引用补全候选扫描：按前缀递归匹配文件，跳过隐藏与排除目录。 */
 
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -13,12 +11,10 @@ import { SCAN_EXCLUDE_DIRS } from "./file-kinds.js";
 // ------------------------------------------------------------------
 
 /**
- * 扫描‘ cwd ’查找匹配‘ prefix ’的文件，
- * 返回相对路径字符串。
- * —空前缀：只列出顶层文件（不递归）。
- * -非空前缀：递归扫描到‘ maxDepth ’，
- * 匹配以前缀开头的路径。—跳过‘ SCAN_EXCLUDE_DIRS ’中的目录。
- * -结果排序的路径长度（最短的第一），上限为‘ maxResults ’。
+ * 扫描 `cwd` 下以 `prefix` 开头的文件，返回相对路径。
+ *
+ * 空前缀只列顶层条目；非空前缀递归到 `maxDepth`，跳过
+ * `SCAN_EXCLUDE_DIRS` 中的目录。结果按路径长度升序，最多 `maxResults` 条。
  */
 export function scanCandidates(
   prefix: string,
@@ -30,7 +26,7 @@ export function scanCandidates(
   const matches: string[] = [];
 
   if (!prefix) {
-    // Top-level entries only
+    // 只列顶层条目
     try {
       const entries = readdirSync(base).sort();
       for (const name of entries) {
@@ -40,13 +36,13 @@ export function scanCandidates(
         try {
           isDir = statSync(full).isDirectory();
         } catch {
-          // skip
+          // 跳过
         }
         matches.push(name + (isDir ? "/" : ""));
         if (matches.length >= maxResults) break;
       }
     } catch {
-      // ignore
+      // 忽略
     }
     return matches;
   }
@@ -65,10 +61,9 @@ export function scanCandidates(
     for (const name of entries) {
       if (SCAN_EXCLUDE_DIRS.has(name) || name.startsWith(".")) continue;
       const full = path.join(directory, name);
-      // 路径。相对返回操作系统本地分隔符（反斜杠）
-      //  Windows);用户的@-query和下面使用的目录后缀
-      // 正斜杠，因此规范化或嵌套路径完成中断
-      // 在Windows上（候选人从不以键入的前缀开始）。
+      // path.relative 在 Windows 上返回反斜杠，而 @ 查询和目录补全
+      // 使用正斜杠；不规范化会让 Windows 上的嵌套路径补全
+      // 永远匹配不到用户输入的前缀。
       const rel = toPosixPath(path.relative(base, full));
       const relLower = rel.toLowerCase();
 

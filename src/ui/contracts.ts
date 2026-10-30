@@ -154,7 +154,7 @@ export interface Session extends SessionLike {
   deliverMessage?(source: "user" | "system", content: string): DeliverMessageResult | void;
   restoreQueuedUserInput?(): string | null;
   log?: readonly LogEntry[];
-  /** Log filtered by display cutoff — hides entries before /clear. */
+  /** 按展示截断点过滤后的日志——隐藏 /clear 之前的条目。 */
   getDisplayLog?(): readonly LogEntry[];
   subscribeLog?(listener: () => void): () => void;
   getLogRevision?(): number;

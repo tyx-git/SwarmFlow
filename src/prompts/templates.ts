@@ -279,7 +279,7 @@ export function loadTemplate(
  * @param mcpManager   可选的 MCP 客户端管理器。
  * @param promptsDirs  有序的 prompts 目录（用户优先，捆绑次之）。
  * @param userRoot     可选的用户覆盖模板根目录（~/.swarmflow/prompts/templates/）。
- * @param projectRoot  可选的項目本地模板根目录（{project}/.swarmflow/prompts/templates/）。
+ * @param projectRoot  可选的项目本地模板根目录（{project}/.swarmflow/prompts/templates/）。
  * @returns `{ name: agent }` 记录。
  */
 export function loadTemplates(

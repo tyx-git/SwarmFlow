@@ -1,10 +1,4 @@
-﻿/**
- * 后台 shell 生命周期管理器。
- *
- * 拥有生成、跟踪、读取输出和终止
- * 后台 shell 进程。从 Session 中提取以保持
- * 主文件更小且责任边界清晰。
- */
+﻿/** 后台 shell 的条目、只读快照、详情与管理器依赖类型；生命周期由 manager.ts 负责。 */
 
 import { type ChildProcess } from "node:child_process";
 

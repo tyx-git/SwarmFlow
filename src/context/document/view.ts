@@ -61,7 +61,7 @@ export function projectedDocumentLabel(filePath: string): string {
   return path.extname(filePath).toLowerCase().slice(1).toUpperCase() || "document";
 }
 
-// ══ shared markdown helpers ═════════════════════════════════════════════════
+// ══ 共享 Markdown 辅助函数 ═════════════════════════════════════════════════
 
 async function convertDocument(filePath: string, ext: string): Promise<string> {
   switch (ext) {

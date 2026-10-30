@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** glob 执行器：glob→regex 匹配、native/JS 回退，以及 .gitignore/.ignore 过滤。 */
 
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -17,10 +10,6 @@ import { isExcludedDirName, isHiddenName } from "./scan-exclusions.js";
 import { GitIgnoreStack } from "./gitignore.js";
 
 import { GLOB_MAX_LIMIT, GLOB_MAX_FILES_SCANNED, GLOB_MAX_DEPTH, SEARCH_BUDGET_MS } from "./limits.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 /** 正则字面量转义（用于 glob 的字面量片段）。 */
 function escapeRegexChar(ch: string): string {
@@ -87,10 +76,10 @@ function convertCharClass(pattern: string, open: number): { source: string; next
 }
 
 /**
- * Convert a simple glob pattern to a RegExp.
- * Supports: `*` (any non-slash), `**` (any including slash), `?` (single char),
- * `[abc]` / `[a-z]` / `[!a]` (character classes), `{a,b}` (alternatives，可嵌套、
- * 内部可含通配符), and literal characters.
+ * 把简单 glob 模式转换成 RegExp。
+ * 支持：`*`（非斜杠任意）、`**`（含斜杠任意）、`?`（单字符）、
+ * `[abc]` / `[a-z]` / `[!a]`（字符类）、`{a,b}`（多选，可嵌套、
+ * 内部可含通配符）以及字面量字符。
  */
 export function globToRegex(pattern: string): RegExp {
   let re = "^";
@@ -151,7 +140,7 @@ export function globToRegex(pattern: string): RegExp {
  */
 export function normalizeGlobPattern(pattern: string): string {
   if (pattern.includes("/")) return pattern;
-  // Already covers anywhere via `**` prefix? Leave alone.
+  // 已用 `**` 前缀覆盖任意层级，不必再动。
   if (pattern.startsWith("**")) return pattern;
   return "**/" + pattern;
 }
@@ -295,9 +284,8 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
       timedOut = true;
       return;
     }
-    // Bounded recursion guard: protects against pathological / circular
-    // symlink trees that would otherwise keep recursing on directory loops
-    // without ever incrementing filesScanned.
+    // 有界的递归护栏：防止病态 / 环状的符号链接树在目录环上无尽递归，
+    // 那种情况下 filesScanned 永远不增长。
     if (depth > Math.min(options.maxDepth ?? GLOB_MAX_DEPTH, GLOB_MAX_DEPTH)) return;
 
     let entries: string[];
@@ -313,9 +301,9 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
         timedOut = true;
         return;
       }
-      // Hidden names skip universally (files + dirs). Directory-only
-      // exclusions (node_modules, dist, target, — are checked AFTER stat
-      // so a regular file with the same name is not silently hidden.
+      // 点开头的隐藏名一律跳过（文件与目录）。仅目录的排除项
+      //（node_modules、dist、target 等）在 stat 之后才判断，
+      // 免得同名的普通文件被悄悄藏起来。
       if (!options.includeHidden && isHiddenName(name)) continue;
 
       const full = path.join(dir, name);
@@ -380,7 +368,7 @@ export async function toolGlob(pattern: string, searchPath: string, options: Glo
 
   await walk(searchPath, 0, "");
 
-  // Sort by mtime descending (most recently modified first); tie-break by path.
+  // 按 mtime 降序（最近修改在前），相同时按路径排序。
   results.sort((a, b) => b.mtime - a.mtime || a.path.localeCompare(b.path));
   const truncated = results.length > cap;
   const shown = truncated ? results.slice(0, cap) : results;

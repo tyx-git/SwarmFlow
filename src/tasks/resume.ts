@@ -1,6 +1,4 @@
-/**
- * 任务清单领域：内存为权威，`tasks.json` 为 write-through 持久副本。
- */
+/** 续跑提示的读取与解析，以及“是否值得续跑”的阈值判定。 */
 
 import type { Task, TaskResumeHint } from "./types.js";
 import { RESUME_MIN_TOKENS_IN, RESUME_MIN_TOOL_CALLS } from "./types.js";

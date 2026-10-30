@@ -67,7 +67,7 @@ export async function toolWebSearch(
   try {
     const signal = controller.signal;
 
-    // 1. API key backends
+    // 1. API key 后端
     if (backend.key) {
       switch (backend.kind) {
         case "serper": return formatResults(await searchSerper(query, max, backend.key, signal), query);
@@ -77,7 +77,7 @@ export async function toolWebSearch(
       }
     }
 
-    // 2. Exa free MCP
+    // 2. Exa 免费 MCP
     try {
       const results = await searchExaFreeMcp(query, max, signal);
       return formatResults(results, query);
@@ -85,7 +85,7 @@ export async function toolWebSearch(
       if (signal.aborted) throw new Error("aborted");
     }
 
-    // 3. Parallel Web Search MCP
+    // 3. Parallel 免费 Web Search MCP
     try {
       const results = await searchParallelFreeMcp(query, max, signal);
       return formatResults(results, query);

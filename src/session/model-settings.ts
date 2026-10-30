@@ -36,8 +36,8 @@ export interface ModelSettingsHost {
 }
 
 /**
- * Switch the primary agent to a different model config.
- * Only callable between turns (not while a turn is in progress).
+ * 把主 agent 切换到另一个模型配置。
+ * 只能在轮次之间调用（轮次进行中不可用）。
  */
 export function switchModel(host: ModelSettingsHost, modelConfigName: string): void {
   const newModelConfig = host.config.getModel(modelConfigName);
@@ -71,13 +71,13 @@ export function applyGlobalPreferences(host: ModelSettingsHost, preferences: Glo
   host._preferredAccentColor = prefs.accentColor;
   host._thinkingLevel = prefs.thinkingLevel || "off";
 
-  // Restore disabled skills
+  // 恢复已禁用的 skills
   if (prefs.disabledSkills && prefs.disabledSkills.length > 0) {
     host._disabledSkills = new Set(prefs.disabledSkills);
     host.reloadSkills();
   }
 
-  // Restore permission mode
+  // 恢复权限模式
   if (prefs.permissionMode && ["read_only", "reversible", "yolo"].includes(prefs.permissionMode)) {
     host._permissionAdvisor.sessionMode = prefs.permissionMode as PermissionMode;
   }
@@ -98,7 +98,7 @@ export function applySettings(host: ModelSettingsHost, settings: SwarmflowSettin
     host._contextManager.setBudgetPercent(settings.context_budget_percent);
   }
 
-  // Restore disabled skills
+  // 恢复已禁用的 skills
   if (settings.disabled_skills && settings.disabled_skills.length > 0) {
     host._disabledSkills = new Set(settings.disabled_skills);
     host.reloadSkills();
@@ -107,7 +107,7 @@ export function applySettings(host: ModelSettingsHost, settings: SwarmflowSettin
     host._rebuildSystemPrompt();
   }
 
-  // Restore permission mode
+  // 恢复权限模式
   if (settings.permission_mode && ["read_only", "reversible", "yolo"].includes(settings.permission_mode)) {
     host._permissionAdvisor.sessionMode = settings.permission_mode as PermissionMode;
   }

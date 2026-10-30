@@ -1,6 +1,4 @@
-/**
- * 上下文压缩标记与上下文 ID 标签——由基于日志的运行时共享。
- */
+/** 合并连续同角色消息，满足严格角色交替的 provider 要求。 */
 
 export function mergeConsecutiveSameRole(
   messages: Array<Record<string, unknown>>,

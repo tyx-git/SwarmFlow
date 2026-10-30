@@ -67,14 +67,13 @@ export interface InboxHost {
 }
 
 /**
- * Unified message delivery entry point.
- * All states push to inbox. Idle state also schedules auto-resume.
- * Working/waiting: the activation boundary or await_event poll drains.
+ * 统一的投递入口。
+ * 所有状态都先入 inbox；idle 状态还会安排 auto-resume。
+ * working/waiting 状态由激活边界或 await_event 轮询来排空。
  */
 export function deliverInboxMessage(host: InboxHost, msg: MessageEnvelope): DeliverMessageResult {
-  // Compacting rewrites the conversation; user input arriving mid-compact
-  // would be folded behind the marker and effectively vanish. Reject it
-  // (Q6) —automatic messages still queue and are delivered after compact.
+  // 压缩会重写对话；压缩中途到达的用户输入会被折到 marker 之后、等于消失。
+  // 因此直接拒绝（Q6）——自动消息仍会排队，压缩结束后投递。
   if (msg.type === "user_input" && host._compactInProgress) {
     return { accepted: false, reason: "compact_in_progress" };
   }
@@ -96,9 +95,8 @@ export function deliverInboxMessage(host: InboxHost, msg: MessageEnvelope): Deli
     host.onSaveRequest?.();
   }
   host._inbox.push(msg);
-  // Ride-along messages (wake === false) never start a turn from idle;
-  // they wait in the inbox and are drained when something else wakes the
-  // agent (user input or a waking message).
+  // 搭车消息（wake === false）不会从 idle 启动回合；它们留在 inbox 里，
+  // 等别的消息（用户输入或唤醒消息）把 agent 叫醒时一起排空。
   if (host._agentState === "idle" && msg.wake !== false) {
     host._scheduleAutoResume();
   }
@@ -106,8 +104,8 @@ export function deliverInboxMessage(host: InboxHost, msg: MessageEnvelope): Deli
 }
 
 /**
- * Public wrapper for TUI / GUI to deliver messages.
- * Preserves the original (source, content) signature for external callers.
+ * 供 TUI / GUI 投递消息的公开包装。
+ * 保留原有的 (source, content) 签名，方便外部调用方。
  */
 export function deliverMessage(host: InboxHost, source: "user" | "system", content: string): DeliverMessageResult {
   return host._deliverMessage({
@@ -180,10 +178,9 @@ export function restoreQueuedUserInput(host: InboxHost): string | null {
 }
 
 /**
- * Schedule an auto-resume turn for the idle state. Used when messages arrive
- * (sub-agent completion, shell exit, etc.) while the parent agent has no
- * active turn. Without this, the queued messages would sit in the log
- * unprocessed until the user manually starts a new turn.
+ * 在 idle 状态安排一个 auto-resume 回合。当父 agent 没有活跃回合时，
+ * 消息到达（子代理完成、shell 退出等）会用到它。否则排队的消息只会
+ * 堆在日志里没人处理，直到用户手动开启新回合。
  */
 export function scheduleAutoResume(host: InboxHost): void {
   if (host._autoResumeScheduled) return;
@@ -192,30 +189,30 @@ export function scheduleAutoResume(host: InboxHost): void {
   host._autoResumeScheduled = true;
   queueMicrotask(() => {
     host._autoResumeScheduled = false;
-    // The rejection itself is intentionally dropped (no caller awaits), but
-    // the failure is NOT silent: _turnInner's catch already wrote the error
-    // log entry and the turn-lifecycle "ended" event carried the error.
-    void host._autoResumeFromIdle().catch(() => { /* rejection consumed; error already surfaced via log + lifecycle */ });
+    // 这里刻意丢弃 rejection（没有调用方 await），但失败并不静默：
+    // _turnInner 的 catch 已写好错误日志条目，轮次生命周期的 "ended"
+    // 事件也带上了该错误。
+    void host._autoResumeFromIdle().catch(() => { /* 拒绝已消费；错误已通过日志和生命周期暴露 */ });
   });
 }
 
 /**
- * Run a turn that drains queued messages without taking new user input.
- * Acquires the turn lock to serialize with normal turn() calls.
+ * 跑一个只排空排队消息、不接受新用户输入的回合。
+ * 会取轮次锁，与正常的 turn() 调用串行。
  */
 export async function autoResumeFromIdle(host: InboxHost): Promise<void> {
   await host._withTurnLock(async () => {
     if (host._agentState !== "idle") return;
     if (host._activeAsk) return;
     if (host._pendingTurnState) return;
-    // Skip if there's nothing to process: no inbox messages AND no recent
-    // user_message entry awaiting a response.
+    // 没有可处理的内容就跳过：inbox 为空，且没有待回复的
+    // user_message 条目。
     if (host._inbox.length === 0 && !host._hasUnprocessedUserMessage()) return;
     try {
       await host._turnInner("", { skipUserInput: true });
     } catch (err) {
-      // Same catch-all as turn(): without it, pre-loop failures in an
-      // auto-resume turn would be fully invisible (no caller awaits this).
+      // 与 turn() 相同的兜底：否则 auto-resume 回合里循环前的失败
+      // 会完全不可见（没有调用方 await 它）。
       host._recordTurnFailure(err);
       throw err;
     }
@@ -223,11 +220,9 @@ export async function autoResumeFromIdle(host: InboxHost): Promise<void> {
 }
 
 /**
- * Scan the log backward to find whether the most recent turn-relevant entry
- * is a user_message that hasn't been responded to (no assistant_text/tool_call/
- * reasoning after it). Used by auto-resume to decide whether to fire a new
- * turn after a finally-block drain wrote messages without the model seeing
- * them.
+ * 从后往前扫日志，判断最近的轮次相关条目是否是尚未回复的 user_message
+ *（其后没有 assistant_text/tool_call/reasoning）。auto-resume 用它决定：
+ * finally 里的排空写了消息但模型没看到时，是否要再起一个回合。
  */
 export function hasUnprocessedUserMessage(host: InboxHost): boolean {
   const delivered = new Set<string>();
@@ -242,11 +237,9 @@ export function hasUnprocessedUserMessage(host: InboxHost): boolean {
     if (entry.discarded) continue;
     if (entry.type !== "input_received") continue;
     const inputKind = entry.meta["inputKind"];
-    // "compact" inputs are consumed by the compact phase itself and never
-    // await a model reply —counting them here would schedule ghost
-    // auto-resume turns after every /compact.
-    // Keep the old "summarize" input kind readable so interrupted legacy
-    // sessions can still resume an undelivered turn.
+    // "compact" 输入由压缩阶段自己消费，从不等待模型回复——把它算进来
+    // 会让每次 /compact 之后都凭空多出 auto-resume 回合。
+    // 保留旧的 "summarize" 输入类型可读，好让被中断的旧会话还能续跑未投递的回合。
     if (inputKind !== "user" && inputKind !== "summarize") continue;
     const inputId = entry.meta["inputId"];
     return typeof inputId === "string" && !delivered.has(inputId);
@@ -255,22 +248,22 @@ export function hasUnprocessedUserMessage(host: InboxHost): boolean {
 }
 
 /**
- * Check whether the inbox has pending messages.
+ * 检查 inbox 里是否有待处理消息。
  */
 export function hasInboxMessages(host: InboxHost): boolean {
   return host._inbox.length > 0;
 }
 
 /**
- * Check whether the inbox has pending WAKING messages. Ride-along messages
- * (wake === false) don't block manual context commands —they are passive
- * records (e.g. user-initiated kill notices) that wait for the next turn.
+ * 检查 inbox 里是否有待处理的“唤醒型”消息。搭车消息（wake === false）
+ * 不阻塞手动上下文命令——它们是等待下个回合的被动记录
+ *（例如用户发起的 kill 通知）。
  */
 export function hasWakingInboxMessages(host: InboxHost): boolean {
   return host._inbox.some((msg) => msg.wake !== false);
 }
 
-/** Remove the previous completed task list when a real user input is delivered. */
+/** 真正投递用户输入前，清掉上一批已完成的任务列表。 */
 export function clearCompletedTasksBeforeUserInput(host: InboxHost): void {
   const taskStore = host._ensureTaskStore();
   const tasks = taskStore.list();
@@ -284,19 +277,16 @@ export function clearCompletedTasksBeforeUserInput(host: InboxHost): void {
 }
 
 /**
- * Pre-activation prelude shared by every entry that records a NEW active
- * input (user message or /compact). The single choke point that
- * enforces wake:false ordering and the "conversation has started" boundary:
+ * 激活前的前置步骤，所有记录“新活跃输入”（用户消息或 /compact）的入口共用。
+ * 这里是统一卡点，保证 wake:false 的先后顺序和“对话已开始”的边界：
  *
- *   1. Earlier-arrived ride-along (wake:false) inbox messages land in the log
- *      first, in arrival order. `wake:false` means "do not start a turn by
- *      itself", not "jump behind the next active input".
- *   2. The new active input is recorded.
+ *   1. 先到的搭车（wake:false）inbox 消息按到达顺序先落日志。
+ *      `wake:false` 的意思是“别自己起回合”，而不是“插到下一个活跃输入后面”。
+ *   2. 记录新的活跃输入。
  *
- * Delivery to the model-facing log (user_message vs status entry) stays with
- * the caller —it legitimately differs per activation kind. The
- * "conversation started" flag is flipped at that delivery point
- * (_appendDeliveredUserMessage), so every user-message path sets it.
+ * 写入面向模型的日志（user_message 还是 status 条目）仍由调用方负责——
+ * 不同激活类型本就不同。“对话已开始”标志在那个投递点
+ *（_appendDeliveredUserMessage）翻转，因此每条用户消息路径都会设上它。
  */
 export function beginActiveInput(host: InboxHost, 
   inputKind: "user" | "compact",
@@ -311,12 +301,11 @@ export function beginActiveInput(host: InboxHost,
 }
 
 /**
- * Deliver queued messages to the model-facing log.
+ * 把排队的消息投递到面向模型的日志。
  *
- * User messages are displayed when received, then delivered here only after
- * the current provider round has finished. This preserves the API ordering:
- * user A →assistant A →user B, even when user B was typed while assistant A
- * was still streaming.
+ * 用户消息收到时就显示，但要等当前 provider 轮次结束后才在这里投递。
+ * 这样才能保住 API 中的顺序：user A →assistant A →user B，
+ * 即使 user B 是在 assistant A 还在流式输出时输入的。
  */
 export function drainInboxAsEntries(host: InboxHost): number {
   if (host._inbox.length === 0) return 0;
@@ -326,8 +315,8 @@ export function drainInboxAsEntries(host: InboxHost): number {
   for (const msg of messages) {
     switch (msg.type) {
       case "user_input": {
-        // Invariant: _deliverMessage populates these fields synchronously
-        // when user_input arrives. Drain should never see an unprepared one.
+        // 不变量：user_input 到达时 _deliverMessage 会同步填好这些字段，
+        // 排空时不应遇到未准备好的消息。
         if (msg.inputIndex === undefined || !msg.inputId || !msg.contextId) {
           throw new Error(
             "user_input must have inputId/inputIndex/contextId by drain time " +

@@ -62,7 +62,7 @@ export function createEphemeralLogState(
   // 如果提供了外部条目且已有内容，跳过导入
   // （持久子代理的重新激活路径）。
   if (opts?.externalEntries && opts.externalEntries.length > 0) {
-    // Rebuild usedContextIds from existing entries
+    // 从已有条目重建 usedContextIds
     for (const entry of entries) {
       const ctxId = (entry.meta as Record<string, unknown>)["contextId"];
       if (ctxId !== undefined && ctxId !== null) usedContextIds.add(String(ctxId));
@@ -207,7 +207,7 @@ export function createEphemeralLogState(
       ));
     }
   }
-  } // end of else (import phase)
+  } // else 分支（导入阶段）结束
 
   return {
     entries,

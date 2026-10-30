@@ -82,7 +82,7 @@ export interface RestoreHost {
   commitPreparedRestore(prepared: PreparedSessionRestore): string[];
 }
 /**
- * Restore session from a loaded log.
+ * 从已加载的日志恢复会话。
  */
 export function prepareRestoreFromLog(host: RestoreHost, 
   meta: LogSessionMeta,
@@ -96,9 +96,9 @@ export function prepareRestoreFromLog(host: RestoreHost,
     );
   }
 
-  // Parse on cloned data —everything that can fail (model resolution, log
-  // surgery) happens here, so a failed restore never pollutes the live
-  // session (see session/log-surgery.ts).
+  // 在克隆数据上解析——所有可能失败的环节（模型解析、log surgery）
+  // 都在这里完成，因此恢复失败不会污染活会话
+  // （见 session/log-surgery.ts）。
   const clonedEntries = structuredClone(entries) as LogEntry[];
   const clonedAllocator = new LogIdAllocator();
   // 有界恢复只带窗口条目；已截断/标记前的前缀计数从 meta.json 补。
@@ -125,12 +125,12 @@ export function prepareRestoreFromLog(host: RestoreHost,
 
   const warnings: string[] = [];
   const allChildMeta = meta.childSessions ?? [];
-  // Restore ALL children as full Session instances (including archived) so
-  // TUI can display them and read their logs. _archivedChildren is only
-  // populated on close/reset, not on restore.
+  // 所有子会话（含已归档）都恢复为完整的 Session 实例，
+  // 以便 TUI 展示它们并读取其日志。_archivedChildren 只在
+  // 关闭/重置时填充，恢复时不会写入。
   const children = host._childSessionManagerInstance.prepareChildRestores(allChildMeta, warnings);
 
-  // Root inbox from meta
+  // 从 meta 恢复根收件箱
   const rootInbox = (meta.inbox ?? []).map((raw) => migrateMessageEnvelope(raw as unknown as Record<string, unknown>));
 
   return { rootState, children, rootInbox, warnings };
@@ -151,7 +151,7 @@ export function commitPreparedRestore(host: RestoreHost, prepared: PreparedSessi
   host._subAgentCounter = 0;
   warnings.push(...host._childSessionManagerInstance.commitPreparedChildren(prepared.children));
 
-  // Restore root inbox from meta
+  // 从 meta 恢复根收件箱
   if (prepared.rootInbox && prepared.rootInbox.length > 0) {
     host._inbox = [...prepared.rootInbox];
   }
@@ -171,11 +171,11 @@ export function restoreFromLog(host: RestoreHost,
 }
 
 /**
- * Get log data for persistence (v2).
- * Returns meta + entries suitable for persistToDisk().
+ * 取用于持久化的日志数据（v2）。
+ * 返回可直接交给 persistToDisk() 的 meta + entries。
  */
 export function getLogForPersistence(host: RestoreHost): { meta: LogSessionMeta; entries: readonly LogEntry[] } {
-  // Include both active and archived children in persistence meta
+  // 持久化 meta 同时包含活跃与已归档的子会话
   const childSessionsMeta: ChildSessionMetaRecord[] = [
     ...[...host._childSessions.values()].map((handle) => ({
       id: handle.id,
@@ -187,9 +187,9 @@ export function getLogForPersistence(host: RestoreHost): { meta: LogSessionMeta;
       outcome: handle.lastOutcome,
       terminationCause: handle.terminationCause,
       order: handle.order,
-      // Released one-shots have no Session (and by definition no live
-      // inbox) —this read must tolerate null or every root save after
-      // the first settled one-shot would throw.
+      // 已释放的 one-shot 没有 Session（自然也没有活跃收件箱），
+      // 这里必须容忍 null，否则第一个 one-shot 结束后
+      // 每次根会话保存都会抛错。
       inbox: handle.session && handle.session._inbox.length > 0
         ? [...handle.session._inbox]
         : undefined,

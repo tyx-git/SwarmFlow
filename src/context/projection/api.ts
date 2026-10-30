@@ -15,8 +15,8 @@ import { inferThinkingArtifact, normalizeThinkingArtifact } from "../../thinking
 // ------------------------------------------------------------------
 
 /**
- * Internal message format consumed by provider adapters.
- * This is the output of the API projection layer.
+ * 提供商适配器消费的内部消息格式。
+ * 即 API 投影层的输出。
  */
 export type InternalMessage = Record<string, unknown>;
 
@@ -66,7 +66,7 @@ export function projectToApiMessages(
   entries: LogEntry[],
   options?: ApiProjectionOptions,
 ): InternalMessage[] {
-  // Step 1: Find system prompt
+  // 步骤 1：查找系统提示词
   let systemPromptContent: unknown = "";
   for (const e of entries) {
     if (e.type === "system_prompt" && !e.discarded) {
@@ -75,15 +75,15 @@ export function projectToApiMessages(
     }
   }
 
-  // Build messages
+  // 构建消息列表
   const messages: InternalMessage[] = [];
 
-  // System prompt
+  // 系统提示词
   if (systemPromptContent) {
     messages.push({ role: "system", content: systemPromptContent });
   }
 
-  // Step 2-5: assemble active context, then collect API-visible entries.
+  // 步骤 2-5：先组装活动上下文，再收集 API 可见的条目。
   const activeView = buildActiveContextView(entries, {
     includeCompactContext: true,
     includeEntriesWithoutContext: true,
@@ -91,20 +91,19 @@ export function projectToApiMessages(
   const windowEntries = flattenActiveContextEntries(activeView).filter((e) => {
     if (e.discarded) return false;
     if (e.archived && e.content === null) return false;
-    if (e.type === "system_prompt") return false; // already handled
-    // reasoning has apiRole=null but is grouped with assistant entries
+    if (e.type === "system_prompt") return false; // 已在上面处理
+    // reasoning 的 apiRole 为 null，但要与 assistant 条目一起归组
     if (e.type === "reasoning") return true;
     if (e.apiRole === null) return false;
     return true;
   });
 
-  // Group entries by (turnIndex, roundIndex) into well-formed rounds:
-  //   1. One assistant message (reasoning + assistant_text + tool_call entries)
-  //   2. All corresponding tool_result messages (ordered by tool_call order)
+  // 按 (turnIndex, roundIndex) 把条目归组成完整的轮次：
+  //   1. 一条 assistant 消息（reasoning + assistant_text + tool_call 条目）
+  //   2. 全部对应的 tool_result 消息（按 tool_call 顺序排列）
   //
-  // In the log, tool_call and tool_result entries may be interleaved within
-  // the same round because tool execution starts immediately during streaming.
-  // This loop collects ALL entries of the same round before emitting them.
+  // 日志中同一轮次的 tool_call 与 tool_result 可能交错，因为流式输出期间
+  // 工具就开始执行了。因此这里先收集整轮的所有条目，再统一发出。
 
   const emitToolResult = (entry: LogEntry): void => {
     const resultContent = entry.content as {
@@ -307,7 +306,7 @@ function resolveImageRefs(
   return (content as Array<Record<string, unknown>>).map((block) => {
     if (block["type"] !== "image_ref") return block;
     const resolved = resolver(block["path"] as string);
-    if (!resolved) return block; // fallback: pass through
+    if (!resolved) return block; // 回退：原样透传
     return {
       type: "image",
       data: resolved.data,

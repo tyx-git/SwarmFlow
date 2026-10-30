@@ -32,9 +32,8 @@ export class QwenResponsesProvider extends OpenAIResponsesProvider {
   }
 
   protected override _forceStream(options?: SendMessageOptions): boolean {
-    // Qwen Responses requires streaming for reasoning/tool events. Keep the
-    // historical behavior for the default call path while allowing explicit
-    // `off` to use the normal non-streaming response.
+    // Qwen Responses 的 reasoning/工具事件必须走流式。默认调用路径保持
+    // 原有行为，仅在显式 `off` 时允许走普通非流式响应。
     const level = options?.thinkingLevel;
     return level === undefined || (level !== "off" && level !== "none");
   }

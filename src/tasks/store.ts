@@ -1,5 +1,7 @@
 /**
- * 任务清单领域：内存为权威，`tasks.json` 为 write-through 持久副本。
+ * 任务清单的权威内存状态与 `tasks.json` write-through 持久化。
+ *
+ * 文件属于别的会话时只读拒写，避免两个进程互相覆盖。
  */
 
 import {

@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** write_file 执行器：按路径串行化进程内写入并原子落盘，避免并发覆盖。 */
 
 import fs from "node:fs/promises";
 import { statSync, readFileSync, realpathSync } from "node:fs";
@@ -29,10 +22,6 @@ import {
 import { reencodeEol, detectFileEol } from "./file-edit.js";
 import { buildUnifiedDiffPreview, simpleUnifiedDiff } from "./bash.js";
 import { buildFileMutation } from "./mutations.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export const FILE_WRITE_LOCKS = new Map<string, Promise<void>>();
 
@@ -94,12 +83,11 @@ export async function toolWriteFile(
         ? readFileSync(filePath, { encoding: "utf-8" })
         : "";
 
-      // Preserve the existing file's line-ending convention. The model
-      // composes content with LF (read_file only ever shows LF), so
-      // writing it verbatim would silently rewrite a CRLF file to LF —      // spurious git churn, broken CRLF-expecting toolchains, and a diff
-      // that shows every line as changed (before's lines keep `\r`,
-      // after's don't, so nothing aligns). Re-encode to the file's
-      // native EOL; new files keep the content exactly as authored.
+      // 保留文件既有的换行约定。模型组织内容用 LF（read_file 只显示 LF），
+      // 原样写入会把 CRLF 文件悄悄改成 LF——无谓的 git 噪音、破坏依赖
+      // CRLF 的工具链，diff 里每行都算改动（before 的行带 `\r`，
+      // after 的不带，完全对不上）。因此重编码成文件原生 EOL；
+      // 新建文件则原样保留内容。
       const finalContent = initialVersion.exists
         ? reencodeEol(content, detectFileEol(before))
         : content;
@@ -165,7 +153,7 @@ export async function atomicWriteTextFile(
       try {
         await fs.chmod(tmpPath, mode);
       } catch {
-        // Best-effort permission preservation
+        // 尽力保留权限
       }
     }
 
@@ -185,7 +173,7 @@ export async function atomicWriteTextFile(
       try {
         await fs.unlink(tmpPath);
       } catch {
-        // ignore cleanup failure
+        // 忽略清理失败
       }
     }
   }

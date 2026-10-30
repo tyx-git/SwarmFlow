@@ -360,4 +360,4 @@ export function parseSearchResultsText(text: string): SearchResult[] {
   return results;
 }
 
-// 鈹€鈹€ Backend detection (cached) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── 后端检测（带缓存）──

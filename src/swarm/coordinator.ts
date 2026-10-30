@@ -122,7 +122,7 @@ export class SwarmCoordinator {
     return BUILTIN_PATTERNS[name];
   }
 
-  /** Build a task DAG from a named pattern without starting execution. */
+  /** 按指定模式构建任务 DAG，不启动执行。 */
   buildPatternDag(patternName: string, task: string): TaskDAG | null {
     const pattern = BUILTIN_PATTERNS[patternName];
     if (!pattern) return null;
@@ -135,10 +135,10 @@ export class SwarmCoordinator {
   // ------------------------------------------------------------------
 
   /**
-   * Run a pre-defined orchestration pattern.
+   * 运行预定义的编排模式。
    *
-   * @param patternName - 模式名称 (e.g., "fan-out-fan-in", "pipeline")
-   * @param task - 要执行的任务描述 to execute
+   * @param patternName - 模式名称（如 "fan-out-fan-in"、"pipeline"）
+   * @param task - 要执行的任务描述
    * @returns 聚合的执行结果
    */
   async runPattern(patternName: string, task: string): Promise<ExecutionResult> {
@@ -147,12 +147,12 @@ export class SwarmCoordinator {
       return this._errorResult(`Unknown pattern: ${patternName}`);
     }
 
-    // 转换 pattern stages to a flat task DAG
+    // 把 pattern 的各阶段转换成扁平的任务 DAG
     return this.executeDag(dag);
   }
 
   /**
-   * Execute a TaskDAG — the core execution engine.
+   * 执行 TaskDAG——核心执行引擎。
    *
    * 逐级别处理 DAG: 同一级别的任务并行运行,
    * 有依赖的级别顺序运行. 结果被聚合并返回.
@@ -180,8 +180,8 @@ export class SwarmCoordinator {
           break;
         }
 
-        // A failed direct dependency blocks the downstream node. Preserve a
-        // concrete failed result so later levels cannot run accidentally.
+        // 直接依赖失败会阻塞下游节点。保留一条具体的失败结果，
+        // 避免后续层级误运行。
         const levelPromises = level.taskIds.map((taskId) => {
           const node = dag.nodes.get(taskId);
           const failedDependencies = node?.dependencies.filter((dependencyId) => {
@@ -324,16 +324,16 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Build an execution plan from a DAG (topological sort).
+   * 从 DAG 构建执行计划（拓扑排序）。
    */
   private _buildPlan(dag: TaskDAG): ExecutionPlan {
     const levels: Array<{ index: number; taskIds: string[] }> = [];
 
-    // Track which level each task belongs to
+    // 记录每个任务所属的层级
     const taskLevels = new Map<string, number>();
     const nodeArray = [...dag.nodes.values()];
 
-    // Simple level assignment: max(dependency levels) + 1
+    // 简单的层级分配：依赖的最大层级 + 1
     function assignLevel(taskId: string): number {
       if (taskLevels.has(taskId)) return taskLevels.get(taskId)!;
       const node = dag.nodes.get(taskId);
@@ -355,7 +355,7 @@ export class SwarmCoordinator {
       assignLevel(node.id);
     }
 
-    // Group by level
+    // 按层级分组
     const levelGroups = new Map<number, string[]>();
     for (const [taskId, level] of taskLevels) {
       if (!levelGroups.has(level)) levelGroups.set(level, []);
@@ -373,7 +373,7 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Execute a single task.
+   * 执行单个任务。
    */
   private async _executeTask(
     taskId: string,
@@ -387,7 +387,7 @@ export class SwarmCoordinator {
 
     const startTime = Date.now();
 
-    // 创建 or reuse an agent for this task
+    // 为该任务创建或复用 agent
     const agentId = `${node.role}-exec-${taskId}`;
     let handle = this.pool.getHandle(agentId) ?? null;
 
@@ -403,7 +403,7 @@ export class SwarmCoordinator {
       const agent = this.pool.getAgent(agentId);
       if (!agent) throw new Error(`Agent not found: ${agentId}`);
 
-      // Prepare the task prompt
+      // 准备任务提示词
       const taskInstructions = node.instructions
         ? `${node.description}\n\nInstructions: ${node.instructions}`
         : node.description;
@@ -412,10 +412,10 @@ export class SwarmCoordinator {
         ? `${taskInstructions}\n\n${dependencyResults}`
         : taskInstructions;
 
-      // 处理 scout tasks — these are read-only
+      // 处理 scout 任务——这些是只读的
       this.pool.setLifecycle(agentId, AgentLifecycle.ToolCalling);
 
-      // 执行 the agent
+      // 执行 agent
       const result = await agent.asyncRun(taskPrompt, undefined, undefined, undefined, signal);
 
       this.pool.setLifecycle(agentId, AgentLifecycle.Completed);
@@ -451,7 +451,7 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Build a human-readable summary string.
+   * 构建人类可读的摘要字符串。
    */
   private _buildSummary(
     results: Map<string, TaskResult>,
@@ -465,7 +465,7 @@ export class SwarmCoordinator {
       summary += `\nFailed tasks: ${failedTaskIds.join(", ")}`;
     }
 
-    // 添加 output from successful tasks
+    // 追加成功任务的输出
     for (const [id, result] of results) {
       if (result.success && result.output) {
         summary += `\n\n--- Task: ${id} ---\n${result.output.slice(0, 1000)}`;
@@ -475,7 +475,7 @@ export class SwarmCoordinator {
     return summary;
   }
 
-  /** Record tasks that never started after a cooperative cancellation. */
+  /** 记录协作式取消后始终未启动的任务。 */
   private _markCancelledTasks(
     dag: TaskDAG,
     results: Map<string, TaskResult>,
@@ -498,7 +498,7 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Create an error result.
+   * 创建错误结果。
    */
   private _errorResult(message: string): ExecutionResult {
     const result: ExecutionResult = {

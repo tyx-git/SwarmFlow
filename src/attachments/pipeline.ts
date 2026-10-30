@@ -1,6 +1,4 @@
-/**
- * @file 附件领域：引用解析、扫描、读取摘要与上下文块渲染。
- */
+/** 附件处理主流程：解析 @ 引用、读取文件、汇总告警并生成上下文块。 */
 
 import path from "node:path";
 
@@ -17,12 +15,7 @@ import { formatContextBlock } from "./context-block.js";
 // 主入口
 // ------------------------------------------------------------------
 
-/**
- * 处理用户输入中的“@file”引用。
- * 这是主要的入口。它解析引用、读取文件，
- * 并返回一个FileAttachResult，
- * 其中包含清理过的文本和呈现的“<context>”块。
- */
+/** 处理输入中的 @file 引用：解析引用、读取文件，返回清理后的文本与 `<context>` 块。 */
 export async function processFileAttachments(
   userInput: string,
   cwd?: string,
@@ -76,11 +69,11 @@ export async function processFileAttachments(
             matchedExternal = extBase;
             break;
           } catch {
-            // 尝试下一个批准的外部根
+            // 尝试下一个已批准的外部根
           }
         }
         if (matchedExternal) {
-          // 继续使用匹配的经批准的外底座。
+          // 命中已批准的外部根，沿用解析结果。
         } else {
           if (e.code === "PATH_OUTSIDE_SCOPE") {
             warnings.push(`${raw}: path is outside the project root boundary.`);

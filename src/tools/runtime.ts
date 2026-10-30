@@ -385,8 +385,8 @@ export class ToolGate {
         case "deny":
           return { kind: "deny", message: decision.message };
         case "ask":
-          // Callers that need the full ask flow should use evaluate() directly
-          // and construct the ApprovalRequest themselves.
+          // 需要完整 ask 流程的调用方应直接用 evaluate()，
+          // 并自行构造 ApprovalRequest。
           return undefined;
       }
     };

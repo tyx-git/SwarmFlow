@@ -442,7 +442,7 @@ export class OpenAIResponsesProvider extends BaseProvider {
       }
     }
 
-    // Usage
+    // 用量
     let usage = new Usage();
     const respUsage = response["usage"] as Record<string, unknown> | undefined;
     if (respUsage) {

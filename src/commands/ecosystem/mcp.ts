@@ -13,9 +13,9 @@ import {
 } from "../types.js";
 
 /**
- * Read the full MCP server list from settings (including disabled).
- * This is the picker's data source — separate from MCPClientManager
- * which only knows about active (non-disabled) servers.
+ * 从设置中读取完整的 MCP 服务器列表（含已禁用项）。
+ * 这是选择器的数据源——与 MCPClientManager 分开，后者只认识
+ * 活跃（未禁用）的服务器。
  */
 function getAllMcpServerNames(homeDir?: string): Map<string, { disabled: boolean }> {
   const settings = loadGlobalSettings(homeDir);
@@ -135,15 +135,15 @@ export async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;
   const hint = ctx.showHint ?? ctx.showMessage;
 
-  // 更喜欢旋转锁包装的命令变体，这样MCP重新加载就不能
-  // 重叠一圈；对于较旧的会话形状，退回到bare方法。
+  // 优先使用带 turn lock 的命令变体，避免 MCP 重载与回合重叠；
+  // 旧会话形状回退到不带锁的方法。
   const reloadMcpLocked = (reason: string): Promise<string> =>
     typeof session.reloadMcpFromCommand === "function"
       ? session.reloadMcpFromCommand(reason)
       : session.reloadMcp({ reason });
 
-  // 确保MCP已准备就绪（如果已连接则无操作）。使用旋转锁包装
-  // 变体，因此连接服务器的状态预热不能重叠一个回合。
+  // 确保 MCP 已就绪（已连接时无操作）。使用带 turn lock 的变体，
+  // 避免连接预热与回合重叠。
   try {
     if (typeof session.ensureMcpReadyFromCommand === "function") {
       await session.ensureMcpReadyFromCommand();
@@ -230,7 +230,3 @@ export async function cmdMcp(ctx: CommandContext, args: string): Promise<void> {
   const enabledCount = [...allServers.values()].filter((s) => !s.disabled).length;
   hint(`MCP: ${allServers.size} server(s), ${enabledCount} enabled. Use picker for details.`);
 }
-
-// ------------------------------------------------------------------
-// /skills — enable or disable installed skills
-// ------------------------------------------------------------------

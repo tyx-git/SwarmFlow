@@ -35,7 +35,7 @@ export interface MessageBusConfig {
 
 const DEFAULT_CONFIG: MessageBusConfig = {
   historySize: 1000,
-  defaultTTL: 300_000, // 5 minutes
+  defaultTTL: 300_000, // 5 分钟
 };
 
 /**
@@ -58,19 +58,19 @@ export class MessageBus {
   private _subscriptionCounter = 0;
   private _messageCounter = 0;
 
-  /** Fired for every message (for monitoring). */
+  /** 每条消息都会触发（供监控使用）。 */
   onMessage?: (message: SwarmMessage) => void;
 
   constructor(config?: Partial<MessageBusConfig>) {
     this._config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  /** Current history size. */
+  /** 当前历史消息数量。 */
   get historySize(): number {
     return this._history.length;
   }
 
-  /** Total messages sent since bus creation. */
+  /** 总线创建以来发送的消息总数。 */
   get totalMessages(): number {
     return this._messageCounter;
   }
@@ -80,7 +80,7 @@ export class MessageBus {
   // ------------------------------------------------------------------
 
   /**
-   * Publish a message to a topic.
+   * 向某个主题发布消息。
    */
   publish(topic: string, payload: unknown, ttl?: number): SwarmMessage {
     const message = this._createMessage(
@@ -97,7 +97,7 @@ export class MessageBus {
   }
 
   /**
-   * Send a direct message to a specific agent.
+   * 向指定 agent 发送直接消息。
    */
   send(to: string, type: MessageType, payload: unknown, from?: string, ttl?: number): SwarmMessage {
     const message = this._createMessage(
@@ -114,22 +114,22 @@ export class MessageBus {
   }
 
   /**
-   * Task assignment: send a task to an agent.
+   * 任务派发：把任务发送给 agent。
    */
   assignTask(agentId: string, taskId: string, description: string): SwarmMessage {
     return this.send(agentId, MessageType.TaskAssign, { taskId, description }, "coordinator");
   }
 
   /**
-   * Task result: an agent reports back.
+   * 任务结果：agent 回报结果。
    */
   reportResult(from: string, taskId: string, result: unknown): SwarmMessage {
     return this.send("coordinator", MessageType.TaskResult, { taskId, result }, from);
   }
 
   /**
-   * Request/response: send a request and wait for a response.
-   * Returns a promise that resolves when the response arrives or rejects on timeout.
+   * 请求/响应：发送请求并等待响应。
+   * 返回的 Promise 在收到响应时 resolve，超时则 reject。
    */
   request(
     to: string,
@@ -160,7 +160,7 @@ export class MessageBus {
   }
 
   /**
-   * Respond to a request.
+   * 响应一个请求。
    */
   respond(to: string, inReplyTo: string, payload: unknown): SwarmMessage {
     const message = this._createMessage(
@@ -180,7 +180,7 @@ export class MessageBus {
   // ------------------------------------------------------------------
 
   /**
-   * Subscribe to a topic.
+   * 订阅某个主题。
    */
   subscribe(topic: string, handler: MessageHandler): Subscription {
     if (!this._topicHandlers.has(topic)) {
@@ -201,7 +201,7 @@ export class MessageBus {
   }
 
   /**
-   * Subscribe to direct messages from a specific agent (or all).
+   * 订阅来自指定 agent（或全部）的直接消息。
    */
   subscribeDirect(agentId: string | undefined, handler: MessageHandler): Subscription {
     const key = agentId ?? "*";
@@ -223,27 +223,27 @@ export class MessageBus {
   }
 
   /**
-   * Unsubscribe all handlers for a topic.
+   * 取消某个主题上的全部处理程序。
    */
   unsubscribeTopic(topic: string): void {
     this._topicHandlers.delete(topic);
   }
 
   /**
-   * Unsubscribe all handlers for direct messages.
+   * 取消直接消息的全部处理程序。
    */
   unsubscribeAllDirect(): void {
     this._directHandlers.clear();
   }
 
   /**
-   * Remove all subscriptions and history.
+   * 清除所有订阅和历史。
    */
   reset(): void {
     this._topicHandlers.clear();
     this._directHandlers.clear();
     this._history = [];
-    // Clean up pending requests
+    // 清理未完成的请求
     for (const [, { reject, timer }] of this._pendingRequests) {
       clearTimeout(timer);
       reject(new Error("Bus reset"));
@@ -256,7 +256,7 @@ export class MessageBus {
   // ------------------------------------------------------------------
 
   /**
-   * Get message history, optionally filtered by topic or agent.
+   * 获取消息历史，可按主题或 agent 过滤。
    */
   getHistory(topic?: string, agentId?: string, limit = 50): SwarmMessage[] {
     let filtered = this._history;
@@ -274,7 +274,7 @@ export class MessageBus {
   }
 
   /**
-   * Get the last N messages.
+   * 获取最近 N 条消息。
    */
   getLastMessages(n = 10): SwarmMessage[] {
     return this._history.slice(-n);
@@ -310,43 +310,43 @@ export class MessageBus {
   }
 
   private _dispatch(message: SwarmMessage): void {
-    // Store in history
+    // 写入历史
     this._history.push(message);
     if (this._history.length > this._config.historySize) {
       this._history.shift();
     }
 
-    // Global listener
+    // 全局监听器
     this.onMessage?.(message);
 
-    // Topic handlers
+    // 主题处理器
     if (message.topic) {
       const handlers = this._topicHandlers.get(message.topic);
       if (handlers) {
         for (const handler of handlers) {
-          try { handler(message); } catch { /* handler error */ }
+          try { handler(message); } catch { /* 处理器异常 */ }
         }
       }
     }
 
-    // Direct handlers
+    // 直接消息处理器
     if (message.recipient) {
       const handlers = this._directHandlers.get(message.recipient);
       if (handlers) {
         for (const handler of handlers) {
-          try { handler(message); } catch { /* handler error */ }
+          try { handler(message); } catch { /* 处理器异常 */ }
         }
       }
-      // Also notify wildcard listeners
+      // 同时通知通配符监听器
       const wildcardHandlers = this._directHandlers.get("*");
       if (wildcardHandlers) {
         for (const handler of wildcardHandlers) {
-          try { handler(message); } catch { /* handler error */ }
+          try { handler(message); } catch { /* 处理器异常 */ }
         }
       }
     }
 
-    // 检查 for pending requests
+    // 检查未完成的请求
     if (message.type === MessageType.Answer) {
       const payload = message.payload as { inReplyTo?: string };
       if (payload?.inReplyTo) {

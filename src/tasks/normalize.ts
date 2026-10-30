@@ -1,6 +1,4 @@
-/**
- * 任务清单领域：内存为权威，`tasks.json` 为 write-through 持久副本。
- */
+/** 任务字段的容错解析与载入修复：磁盘记录可能来自旧版本、被手改或写中断。 */
 
 import type { Task } from "./types.js";
 

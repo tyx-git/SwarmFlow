@@ -1,9 +1,9 @@
 import { existsSync, renameSync, rmSync } from "node:fs";
 
 /**
- * Rotate a bounded file history: `path` -> `path.1`, older files move up,
- * and the oldest archive is discarded. Returns false when there was no file
- * to rotate or the filesystem operation failed.
+ * 轮转有上限的文件历史：`path` -> `path.1`，旧文件依次后移，
+ * 最旧的归档被丢弃。没有可轮转的文件或文件系统操作失败时
+ * 返回 false。
  */
 export function rotateLogFile(path: string, keep: number): boolean {
   if (!existsSync(path)) return false;

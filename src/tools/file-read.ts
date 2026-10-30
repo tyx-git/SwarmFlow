@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** read_file 执行器：按行窗口读取文本、图片与投影文档，处理敏感文件、大小与字符上限。 */
 
 import fs from "node:fs/promises";
 import { existsSync, statSync, readFileSync } from "node:fs";
@@ -35,10 +28,6 @@ import {
   READ_MAX_CHARS,
 } from "./limits.js";
 import { fileTooLargeMessage } from "./file-version.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export async function toolReadFile(
   filePath: string,
@@ -157,9 +146,8 @@ export async function toolReadFile(
       `Request a smaller \`tail_lines\`, or omit it and page with \`start_line\` if needed. --->`;
   }
 
-  // Per-line truncation for runaway minified lines. The cap is overridable
-  // per call so a truncated long line can be recovered in-tool instead of
-  // through shell pipelines.
+  // 对压缩成一行的超长行做逐行截断。上限可按调用覆盖，
+  // 被截断的长行能在工具内重新读全，不必绕道 shell 管道。
   const lineCap = Math.min(
     Math.max(maxLineChars ?? READ_MAX_LINE_CHARS, READ_LINE_CHARS_FLOOR),
     READ_LINE_CHARS_CEILING,
@@ -175,15 +163,15 @@ export async function toolReadFile(
     return line;
   });
 
-  // Apply character limit (counts post-line-trim characters)
+  // 应用字符上限（按行截断后的字符数计算）
   let charCount = 0;
   let truncatedAtLine: number | null = null;
   for (let i = 0; i < selected.length; i++) {
-    charCount += selected[i].length + 1; // +1 for newline
+    charCount += selected[i].length + 1; // +1 是新行符
     if (charCount > READ_MAX_CHARS) {
       selected = selected.slice(0, i);
-      truncatedAtLine = start + i; // 1-indexed line that exceeded the limit
-      end = start + i - 1; // last fully included line
+      truncatedAtLine = start + i; // 从 1 开始计数、超限的那一行
+      end = start + i - 1; // 最后一行完整的行
       break;
     }
   }
@@ -218,27 +206,25 @@ export async function toolReadFile(
     const plural = lineTrimCount === 1 ? "" : "s";
     const wasWere = lineTrimCount === 1 ? "was" : "were";
     if (longestLineChars <= READ_LINE_CHARS_CEILING) {
-      // Recoverable in-tool: re-reading with a larger cap shows the full line.
+      // 工具内可恢复：用更大的上限重读即可看到整行。
       result +=
         `\n\n[Note: ${lineTrimCount} line${plural} exceeded ${lineCap} chars and ${wasWere} truncated ` +
         `(longest is ${longestLineChars} chars). ` +
         `Re-read with max_line_chars=${longestLineChars} to see ${lineTrimCount === 1 ? "it" : "them"} in full; ` +
         `the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget still applies.]`;
     } else {
-      // A line this long cannot fit the per-call char budget at all, so point
-      // the model at a read-class shell escape hatch. The command and quoting
-      // depend on the resolved shell —head/tail/cut don't exist under
-      // PowerShell and its single-quote escaping differs —so render a
-      // shell-appropriate hint. Use the full absolute path so the model can
-      // paste it verbatim from any working directory.
+      // 这种长度的行根本装不进单次调用的字符预算，只能把模型引到只读的
+      // shell 逃生口。命令与引号写法取决于解析到的 shell——PowerShell 没有
+      // head/tail/cut，单引号转义也不同——所以要按 shell 生成对应提示。
+      // 路径用完整绝对路径，模型在任何工作目录下都能原样粘贴。
       const isPwsh = shell.kind === "pwsh" || shell.kind === "powershell";
       let escapeHatch: string;
       if (isPwsh) {
         const psPath = filePath.replace(/'/g, "''");
-        // @(...) forces an array even for a single-line/minified file —        // without it Get-Content returns a bare string, indexing yields a
-        // [char], and .Substring throws. This windowing form may prompt for
-        // approval (it's not on the pre-approved read list like the bash
-        // pipeline below).
+        // @(...) 强制成数组，单行或压缩文件也一样——否则 Get-Content 返回裸字符串，
+        // 索引得到 [char]，.Substring 就会抛错。这种窗口式写法不在
+        // 预批准的只读清单里（不像下面的 bash 管道），
+        // 因此可能弹出审批提示。
         escapeHatch =
           `run \`@(Get-Content '${psPath}')[LINE_NUM - 1].Substring(START_INDEX, LENGTH)\` ` +
           `(START_INDEX is 0-based; may prompt for approval).`;

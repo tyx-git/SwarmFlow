@@ -32,13 +32,13 @@ export interface FileRecord {
 
 /** 共享上下文中的条目。 */
 export interface SharedContextEntry {
-  /** When this entry was added. */
+  /** 条目添加时间。 */
   timestamp: number;
-  /** Which agent added it. */
+  /** 添加该条目的 agent。 */
   agentId: string;
-  /** The key. */
+  /** 键。 */
   key: string;
-  /** The value. */
+  /** 值。 */
   value: string;
 }
 

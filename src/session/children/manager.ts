@@ -70,7 +70,7 @@ export class ChildSessionManager {
   }
 
   // ==================================================================
-  // Snapshots & status 报告
+  // 快照与状态报告
   // ==================================================================
 
   /** 获取所有子会话快照（按 lifecycle 优先级和活跃时间排序）。 */
@@ -485,7 +485,7 @@ export class ChildSessionManager {
     handle.turnPromise = null;
     handle.lastActivityAt = Date.now();
 
-    // Fire SubagentStop hook
+    // 触发 SubagentStop hook
     this.deps.fireHook("SubagentStop", {
       event: "SubagentStop",
       timestamp: Date.now(),
@@ -1262,7 +1262,7 @@ export class ChildSessionManager {
   }
 
   // ==================================================================
-  // Staged child restore
+  // 分阶段子会话恢复
   // ==================================================================
 
   /** 准备子会话恢复：加载日志、验证、修复。 */

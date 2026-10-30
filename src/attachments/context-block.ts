@@ -1,6 +1,4 @@
-/**
- * @file 附件领域：引用解析、扫描、读取摘要与上下文块渲染。
- */
+/** 把附加文件渲染成注入消息的 `<context>` 块。 */
 
 import path from "node:path";
 import type { FileInfo } from "./types.js";

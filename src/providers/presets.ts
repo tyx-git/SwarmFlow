@@ -1,4 +1,4 @@
-/** Shared provider metadata used by settings and runtime model selection. */
+/** 设置界面与运行时模型选择共享的 provider 元数据。 */
 
 import {
   type ProviderSpec,

@@ -111,14 +111,12 @@ export function finalizeDrainInterruptedWork(host: ToolDrainHost, fromLogIndex: 
 }
 
 /**
- * Drain pending tool_calls in the current turn (in emission order).
- * For each: gate →execute →append tool_result, updating tool_call meta.
- * Returns a structured result so approval suspension and interruption are
- * not collapsed into the same empty-string resume path.
+ * 按产生顺序排空当前轮次里待执行的 tool_call。每个调用依次
+ * 过闸门 →执行 →追加 tool_result，并更新 tool_call 的 meta。
+ * 返回结构化结果，避免审批挂起和中断被压成同一条空字符串续跑路径。
  *
- * This is the single canonical path for executing tool_calls outside of
- * the streaming tool-loop —used after approval resume and to handle
- * orphan parallel tool_calls.
+ * 这是流式 tool-loop 之外执行 tool_call 的唯一规范路径——
+ * 审批 resume 之后以及处理孤立的并行 tool_call 时都走它。
  */
 export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortSignal): Promise<DrainPendingToolCallsResult> {
   while (true) {
@@ -127,7 +125,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
     const next = host._findNextPendingToolCall();
     if (!next) return { kind: "drained" };
 
-    // Mark as running in tool_call meta so the display shows shimmer.
+    // 在 tool_call meta 里标记为 running，让界面显示流动效果。
     host._updateToolCallExecState(next.toolCallId, "running");
 
     const ctx: ToolPreflightContext = {
@@ -140,8 +138,8 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
 
     let denyMessage: string | undefined;
     let allowOnce = false;
-    // Skip the permission gate if this tool_call was already approved
-    // (allow-once grant was set in resolveApprovalAsk before resume).
+    // 该 tool_call 已获批时跳过权限闸门
+    //（resume 之前 resolveApprovalAsk 已写入 allow-once 授权）。
     allowOnce = host._permissionAdvisor["_allowOnceGrants"].has(next.toolCallId);
     if (!allowOnce) {
       const decision = await host._beforeToolExecute(ctx);
@@ -175,7 +173,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
         denyMessage = decision.message;
       }
     } else {
-      // Gate already passed; still run hooks
+      // 闸门已通过，但仍要跑钩子
       if (host.hookRuntime.hooks.length > 0) {
         const hookResult = await host.hookRuntime.evaluate("PreToolUse", {
           event: "PreToolUse",
@@ -196,7 +194,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
       }
     }
 
-    // Execute (or deny)
+    // 执行（或拒绝）
     const contextId = host._findToolCallContextId(next.toolCallId, next.roundIndex)
       ?? host._allocateContextId();
     const execStartMs = Date.now();
@@ -219,8 +217,8 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
           isError = true;
         } else {
           const result = await executor(next.toolArgs, { signal });
-          // Keep toolExecState as "running" here —_completeMissingToolResultsFromLog
-          // uses it to distinguish "ran but interrupted" (partial effects) from "never ran".
+          // 这里保持 toolExecState 为 "running"——_completeMissingToolResultsFromLog
+          // 靠它区分“跑了但被中断”（可能有部分副作用）和“从未执行”。
           if (signal?.aborted) return { kind: "interrupted" };
           if (typeof result === "string") {
             resultContent = result;
@@ -244,7 +242,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
       }
     }
 
-    // Build preview (matches tool-loop's logic)
+    // 构造预览（与 tool-loop 的逻辑一致）
     const previewSrc = toolMetadata["tui_preview"];
     let previewText: string | undefined;
     let previewDim: boolean | undefined;
@@ -300,10 +298,10 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
 }
 
 /**
- * Find the next pending tool_call in the active window (no matching result),
- * in log/emission order. Returns null when all are resolved.
- * Window-wide rather than per-turn: an approved tool_call must execute on
- * resume even if the turn counter advanced while the ask was pending.
+ * 在活跃窗口内按日志（产生）顺序找下一个待执行的 tool_call（还没有对应结果）。
+ * 全部有结果时返回 null。
+ * 按窗口而非按轮次查找：已批准的 tool_call 必须在 resume 时执行，
+ * 即使 ask 挂起期间轮次计数已经推进。
  */
 export function findNextPendingToolCall(host: ToolDrainHost): {
   toolCallId: string;
@@ -328,7 +326,7 @@ export function findNextPendingToolCall(host: ToolDrainHost): {
   };
 }
 
-/** Update tool_call entry's toolExecState meta in-place. */
+/** 就地更新 tool_call 条目的 toolExecState meta。 */
 export function updateToolCallExecState(host: ToolDrainHost, 
   toolCallId: string,
   state: "not_started" | "running" | "completed" | "failed",
@@ -339,14 +337,14 @@ export function updateToolCallExecState(host: ToolDrainHost,
   host._touchLog();
 }
 
-/** Returns true if the path is strictly inside the session artifacts dir. */
+/** 路径严格位于会话 artifacts 目录内时返回 true。 */
 export function isInsideArtifactsDir(host: ToolDrainHost, rawPath: unknown): boolean {
   if (typeof rawPath !== "string" || !rawPath) return false;
   const artifactsDir = host._getArtifactsDirIfAvailable();
   if (!artifactsDir) return false;
   const absPath = isAbsolute(rawPath) ? rawPath : resolve(host._projectRoot, rawPath);
   const rel = relative(artifactsDir, absPath);
-  if (!rel) return false; // exact match means writing the artifacts dir itself
+  if (!rel) return false; // 完全相等说明要写的就是 artifacts 目录本身
   if (rel.startsWith("..")) return false;
   if (isAbsolute(rel)) return false;
   return true;
@@ -356,9 +354,9 @@ export async function beforeToolExecute(
   host: ToolDrainHost,
   ctx: ToolPreflightContext,
 ): Promise<ToolPreflightDecision | void> {
-  // 0a. Artifacts-dir bypass: file tools (read/write/edit/list/glob/grep)
-  //    operating inside session artifacts/ don't need approval (agent-owned
-  //    scratch space). Bash is excluded —its cwd-tracking is a separate gate.
+  // 0a. artifacts 目录放行：文件类工具（read/write/edit/list/glob/grep）
+  //    在会话 artifacts/ 内操作无需审批（这是 agent 自己的草稿区）。
+  //    Bash 除外——它的 cwd 跟踪是另一套闸门。
   const ARTIFACTS_BYPASS_TOOLS = new Set([
     "read_file", "write_file", "edit_file", "list_dir", "glob", "grep",
   ]);
@@ -366,7 +364,7 @@ export async function beforeToolExecute(
     ARTIFACTS_BYPASS_TOOLS.has(ctx.toolName) &&
     host._isInsideArtifactsDir((ctx.toolArgs as Record<string, unknown>)["path"]);
 
-  // 1. Permission gate check (skip for artifacts-dir file ops)
+  // 1. 权限闸门检查（artifacts 目录内的文件操作跳过）
   if (!skipPermissionGate) {
     const decision = await host.toolGate.evaluate(ctx);
     switch (decision.kind) {
@@ -410,7 +408,7 @@ export async function beforeToolExecute(
     }
   }
 
-  // 2. PreToolUse hooks (run after permission gate allows)
+  // 2. PreToolUse 钩子（权限闸门放行后执行）
   if (host.hookRuntime.hooks.length > 0) {
     const hookPayload: HookPayload = {
       event: "PreToolUse",
@@ -423,7 +421,7 @@ export async function beforeToolExecute(
     if (hookResult.decision === "deny") {
       return { kind: "deny", message: hookResult.denyReason ?? "Denied by hook" };
     }
-    // Apply updatedInput from hooks (merge into tool args)
+    // 应用钩子返回的 updatedInput（合并进工具参数）
     if (hookResult.updatedInput) {
       Object.assign(ctx.toolArgs, hookResult.updatedInput);
     }

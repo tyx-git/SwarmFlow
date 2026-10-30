@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** 内置工具的 ToolDef 定义：读取、编辑、shell、时间、搜索与网络工具；执行器分派见 dispatch.ts。 */
 
 import fs from "node:fs/promises";
 
@@ -20,10 +13,6 @@ import { WEB_FETCH } from "./web-fetch.js";
 
 import { FIND_SYMBOL } from "./symbol-search.js";
 import { JQ } from "./json-query.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export const READ: ToolDef = {
   name: "read_file",

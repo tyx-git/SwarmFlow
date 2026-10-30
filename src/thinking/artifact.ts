@@ -114,8 +114,8 @@ export function isThinkingArtifact(value: unknown): value is ThinkingArtifact {
   if (encryption === "none") {
     return !("sealedPayload" in raw);
   }
-  // For encrypted artifacts we require sealedPayload to be present (may be null).
-  // sealedSchema is also expected but accept legacy artifacts that pre-date it.
+  // 加密产物要求 sealedPayload 存在（可为 null）。sealedSchema 也应有，
+  // 但兼容早于该字段的旧产物。
   return "sealedPayload" in raw;
 }
 
@@ -265,7 +265,7 @@ export function inferThinkingArtifact(
         SEALED_SCHEMA_OPENROUTER_CHAT,
       );
     }
-    // Non-encrypted OpenRouter model — sealed round-trip unavailable.
+    // 非加密的 OpenRouter 模型——无法密封往返。
     return createThinkingArtifact("none", replayText);
   }
 

@@ -352,7 +352,7 @@ import {
 
 export type { InlineImageInput, TurnLifecycleEvent, TurnLifecycleStatus } from "./session/turn-types.js";
 // ------------------------------------------------------------------
-// Constants
+// 常量
 // ------------------------------------------------------------------
 
 const SYSTEM_PREFIXES = [
@@ -367,12 +367,12 @@ const SYSTEM_PREFIXES = [
 
 
 // ------------------------------------------------------------------
-// MessageEnvelope —typed message envelope (see session/tree-types.ts)
+// MessageEnvelope：带类型的消息信封（见 session/tree-types.ts）
 // ------------------------------------------------------------------
 
 
-// ChildSessionHandle / PreparedChildRestore —moved to ./session/children/types.ts
-// BackgroundShellEntry —moved to ./session/background-shell/types.ts
+// ChildSessionHandle / PreparedChildRestore 已迁移至 ./session/children/types.ts
+// BackgroundShellEntry 已迁移至 ./session/background-shell/types.ts
 
 
 
@@ -392,25 +392,25 @@ export class Session implements SessionLike {
   _mcpConnected = false;
   _mcpReadyPromise?: Promise<void>;
 
-  /** Tool permission gate —add advisors to control tool execution. */
+  /** 工具权限闸门：添加 advisor 以控制工具执行。 */
   readonly toolGate = new ToolGate();
 
-  /** Permission advisor —classifies tools and enforces permission mode. */
+  /** 权限 advisor：对工具分类并执行权限模式。 */
   _permissionAdvisor!: PermissionAdvisor;
   private _permissionRuleStore!: PermissionRuleStore;
 
-  /** Hook runtime —fires events and evaluates hook commands. */
+  /** Hook 运行时：触发事件并执行 hook 命令。 */
   readonly hookRuntime = new HookRuntime();
 
   _createdAt: string;
-  /** Model identity snapshot taken at session creation. Stable across resumes and /model switches. */
+  /** 会话创建时的模型身份快照；跨恢复与 /model 切换保持稳定。 */
   _initialModel: string;
   _title: string | undefined;
   private _cachedSummary: string | undefined;
 
-  // Structured log —entries, revision, listeners, and id allocation live in
-  // SessionLog (src/session/log.ts); these accessors keep the many
-  // Session-internal `_log` / `_idAllocator` call sites unchanged.
+  // 结构化日志：条目、revision、监听器与 ID 分配都在 SessionLog
+  // (src/session/log.ts)；下面的访问器让 Session 内部大量
+  // `_log` / `_idAllocator` 调用点无需改动。
   /** M0：本次保存要按磁盘视图剥离 presentation 的条目 id。 */
   private _persistenceStripIds = new Set<string>();
   private _presentationArchiveIds: Set<string> | undefined;
@@ -447,18 +447,17 @@ export class Session implements SessionLike {
     this._logStore.idAllocator = alloc;
   }
 
-  // Token tracking (per-response snapshot)
+  // Token 统计（按响应快照）
   _lastInputTokens = 0;
   _lastTotalTokens = 0;
   _lastCacheReadTokens = 0;
   _cacheSupported = false;
 
-  // Cumulative usage (Total Input/Output/Cached/Uncached + system prompt) is
-  // DERIVED from the log's token_update entries, not kept as live counters:
-  // token_update entries persist across restore and survive compaction (they
-  // carry no contextId/content to strip), so the log is the single source of
-  // truth and live/restored values can't drift. Memoized by log length so
-  // repeated usage-panel renders don't rescan the log.
+  // 累计用量（总输入/输出/缓存/未缓存 + system prompt）由日志中的
+  // token_update 条目推导，而非实时累加：token_update 跨恢复保留，
+  // 压缩后也不会丢（不含 contextId/content，无需剥离），因此日志是
+  // 唯一事实来源，实时值与恢复值不会漂移。按日志长度记忆化，
+  // 避免用量面板反复渲染时重复扫描日志。
   private _usageStatsCache: { logLen: number; baseVersion: number; stats: UsageStats } | null = null;
   /** 有界恢复的累计基线；null=从内存日志重算。 */
   private _usageBase: { input: number; output: number; cacheRead: number } | null = null;
@@ -467,23 +466,23 @@ export class Session implements SessionLike {
   private _usageFirstInput = 0;
   private _usageFirstUserMessageTokens = 0;
 
-  // Per-section gptEncode estimates of the system prompt. Invalidated only
-  // when the prompt is reassembled (_reloadPromptAndTools / _resetTransientState).
+  // system prompt 各段的 gptEncode 估算值；仅在提示词重组时失效
+  // （_reloadPromptAndTools / _resetTransientState）。
   private _promptSectionEstimates: { systemPrompt: number; tools: number; agentsMd: number; skills: number } | null = null;
   private _contextEstimateCache: { revision: number; tokens: number } | null = null;
 
-  // Compact phase
+  // 压缩阶段
   _compactInProgress = false;
   _compactTerminatedThisTurn = false;
 
-  // Context-pressure state (thresholds and budget percent) lives in ContextManager.
+  // 上下文压力状态（阈值与预算百分比）由 ContextManager 持有。
   _contextManager!: ContextManager;
 
   private get _thresholds(): ContextThresholds {
     return this._contextManager.thresholds;
   }
 
-  // Skills
+  // 技能
   _skills = new Map<string, SkillMeta>();
   _skillRoots: string[] = [];
   _disabledSkills = new Set<string>();
@@ -496,10 +495,10 @@ export class Session implements SessionLike {
   /** 全局记忆 ~/.swarmflow/MEMORY.md 所在目录。 */
   private readonly _swarmflowHomeDir: string;
 
-  // Cached system prompt (static between reloads for prompt cache stability)
+  // 缓存的 system prompt（重载之间保持不变，以稳定 prompt cache）
   private _cachedSystemPrompt: string | null = null;
 
-  // Artifacts / persistence
+  // 产物与持久化
   _store: any;
 
   // Path resolution（仅供运行时使用，不进入 system prompt）
@@ -514,22 +513,22 @@ export class Session implements SessionLike {
   _taskStoreKey: string | undefined;
   _taskListeners: (() => void)[] = [];
 
-  // File/bash rewind planning + application (owns the crash journal).
+  // 文件/bash 回退的规划与应用（持有崩溃日志）。
   private _rewindEngine!: RewindEngine;
   /** rewind 计划期间临时装载的归档 meta；结束后还原，不常驻。 */
   private _archivedMetaLookup: Map<string, Record<string, unknown>> | undefined;
 
-  // Builds Agent instances for child sessions (templates + model resolution).
-  // Lazily constructed so prototype-based test doubles get a working factory
-  // wired to their own stubbed fields on first use.
+  // 为子会话构建 Agent 实例（模板 + 模型解析）。
+  // 惰性构造，使基于原型的测试替身首次使用时也能拿到接到自身
+  // stub 字段的可用工厂。
   private _subAgentFactory?: SubAgentFactory;
 
-  // Session tree / child sessions —state lives in ChildSessionManager.
-  // Same-name private accessors below keep internal call sites and tests stable.
+  // 会话树 / 子会话 —— 状态由 ChildSessionManager 持有。
+  // 下方同名私有访问器让内部调用点与测试保持稳定。
   private _childSessionManager?: ChildSessionManager;
   _shellManager!: BackgroundShellManager;
 
-  // Session capabilities / routing
+  // 会话能力与路由
   _capabilities: SessionCapabilities = ROOT_SESSION_CAPABILITIES;
   private _turnOutputTarget?: (text: string) => void;
   private _selfPhase: ChildSessionPhase = "idle";
@@ -537,13 +536,13 @@ export class Session implements SessionLike {
   _lastToolCallSummary = "";
   private _recentSessionEvents: string[] = [];
 
-  // Active entry tracker —tracks which log entry is currently "live"
+  // 活动条目跟踪器：标记当前处于「活跃」状态的日志条目
   _activeLogEntryId: string | null = null;
 
-  /** Update the active entry tracker; implicitly marks previous reasoning as complete. */
+  /** 更新活动条目跟踪器；同时把前一个 reasoning 隐式标记为完成。 */
   _setActiveLogEntry(entryId: string | null): void {
     if (this._activeLogEntryId === entryId) return;
-    // If the previous active entry was a reasoning entry, mark it complete
+    // 前一个活动条目是 reasoning 条目时，标记其完成
     if (this._activeLogEntryId) {
       const prevEntry = this._log.find((e) => e.id === this._activeLogEntryId);
       if (prevEntry && prevEntry.type === "reasoning") {
@@ -555,33 +554,33 @@ export class Session implements SessionLike {
   }
   _lastTurnEndStatus: "completed" | "interrupted" | "error" | null = null;
 
-  // Thinking level + accent
+  // 思考等级与主题色
   _persistedModelSelection: PersistedModelSelection = {};
   _preferredThinkingLevel = "";
   _preferredAccentColor?: string;
   _thinkingLevel = "none";
 
-  /** Stable key for OpenAI prompt cache routing affinity. */
+  /** OpenAI prompt cache 路由亲和性所用的稳定 key。 */
   _promptCacheKey: string;
 
   /** fork 默认路由策略；可被 session.fork 的显式参数覆盖。 */
   readonly forkInheritPromptCacheKey: boolean;
 
-  // Agent runtime state (for message delivery mode selection)
+  // Agent 运行时状态（用于选择消息投递方式）
   _agentState: "working" | "idle" | "waiting" = "idle";
 
-  // Inbox: holds messages for push delivery into tool results.
-  // Typed message inbox —all messages flow through _deliverMessage.
+  // 收件箱：保存以推送方式注入工具结果的消息。
+  // 带类型的消息收件箱 —— 所有消息统一经 _deliverMessage 投递。
   _inbox: MessageEnvelope[] = [];
-  // True once a real user message has driven an activation (or was loaded from
-  // a restored log). Gates tool-availability notices: skill/MCP changes made
-  // before the first user message never queue a ride-along notice. Flipped in
-  // _beginActiveInput; seeded on restore in _applyRestoredState.
+  // 真实用户消息驱动过一次激活（或从恢复的日志载入）后为 true。
+  // 用于门控工具可用性通知：首条用户消息之前的 skill/MCP 变更不会
+  // 排队随行通知。在 _beginActiveInput 中翻转；恢复时由
+  // _applyRestoredState 写入。
   _conversationStarted = false;
   _currentTurnSignal: AbortSignal | null = null;
   _currentTurnAbortController: AbortController | null = null;
 
-  // Turn serialization —prevents concurrent turn() calls from corrupting state
+  // 回合串行化 —— 防止并发 turn() 调用破坏状态
   _turnInFlight: Promise<string | void> | null = null;
 
   /**
@@ -592,12 +591,12 @@ export class Session implements SessionLike {
    */
   private _sessionStartHooksPromise: Promise<void> | null = null;
 
-  /** Callback for incremental persistence — returns whether the log was persisted synchronously. */
+  /** 增量持久化回调 —— 返回日志是否已同步落盘。 */
   onSaveRequest?: () => boolean;
-  /** Callback for MCP connection status —called after initial connect or reload. */
+  /** MCP 连接状态回调 —— 首次连接或重载后调用。 */
   onMcpStatus?: (statuses: McpServerStatus[]) => void;
 
-  // Counters
+  // 计数器
   _turnCount = 0;
   private _workCount = 0;
   private _currentWorkId: string | null = null;
@@ -607,17 +606,16 @@ export class Session implements SessionLike {
   _autoCompactCountThisTurn = 0;
   private _usedContextIds = new Set<string>();
 
-  // Last time we ran a sync GC at idle (ms epoch). Used to throttle the
-  // optional exposed GC call so back-to-back work boundaries don't burn
-  // CPU on repeated full-heap collections.
+  // 上次在 idle 执行同步 GC 的时间（ms epoch）。用于限制对外暴露的
+  // 可选 GC 调用频率，避免连续的工作边界反复做全堆回收而白烧 CPU。
   _lastIdleGcAt = 0;
 
-  // Tool executors
+  // 工具执行器
   _toolExecutors: Record<string, ToolExecutor>;
   private _toolExecutorOverrides: Record<string, ToolExecutor> = {};
 
-  // Ask state. All reads/writes go through the `_activeAsk` accessor pair so
-  // every transition (suspend/resolve/restore/reset) notifies ask subscribers —  // including sites added in the future.
+  // Ask 状态。所有读写都经过 `_activeAsk` 访问器对，
+  // 使每次状态变更（挂起/解决/恢复/重置）都通知 ask 订阅者 —— 包括将来新增的调用点。
   _activeAskValue: AskRequest | null = null;
   _askHistory: AskAuditRecord[] = [];
   _pendingTurnState: PendingTurnState | null = null;
@@ -632,30 +630,28 @@ export class Session implements SessionLike {
     this._notifyAskChanged();
   }
 
-  // Ask / turn-lifecycle subscribers (UI + RPC layer). Log subscription alone
-  // cannot observe child-session asks (they live in the child's log), so ask
-  // state gets its own channel; child asks bubble to the root via the
-  // createChildSession wiring.
+  // Ask 与回合生命周期订阅者（UI + RPC 层）。仅订阅日志观察不到子会话的
+  // ask（它们在子会话自己的日志里），因此 ask 状态走独立通道；子会话的
+  // ask 通过 createChildSession 的接线冒泡到根会话。
   _askListeners = new Set<() => void>();
   private _turnLifecycleListeners = new Set<(event: TurnLifecycleEvent) => void>();
 
   /**
-   * Subscribe to pending-ask changes (own asks and child-session asks).
-   * Listeners receive no payload; call `getPendingAsk()` for current state.
+   * 订阅 pending-ask 变化（自身的 ask 与子会话的 ask）。
+   * 监听器不接收参数；如需当前状态请调用 `getPendingAsk()`。
    */
   /**
-   * Subscribe to pending-ask changes (own asks and child-session asks).
-   * Listeners receive no payload; call `getPendingAsk()` for current state.
+   * 订阅 pending-ask 变化（自身的 ask 与子会话的 ask）。
+   * 监听器不接收参数；如需当前状态请调用 `getPendingAsk()`。
    */
   subscribeAsk(listener: () => void): () => void {
     return subscribeAsk(this, listener);
   }
 
   /**
-   * Subscribe to turn lifecycle events. Fires for every activation-loop run,
-   * including auto-resume and post-approval resume turns that never pass
-   * through an external entry point. `status: "waiting"` means the turn parked
-   * on a pending ask —it has not completed.
+   * 订阅回合生命周期事件。每次 activation-loop 运行都会触发，包括不经过
+   * 外部入口的自动续跑与审批后恢复回合。`status: "waiting"` 表示回合停在
+   * 某个 pending ask 上，尚未完成。
    */
   subscribeTurnLifecycle(listener: (event: TurnLifecycleEvent) => void): () => void {
     this._turnLifecycleListeners.add(listener);
@@ -674,12 +670,12 @@ export class Session implements SessionLike {
       try {
         listener(event);
       } catch {
-        // Subscriber errors must never break the turn loop.
+        // 订阅者抛错绝不能打断回合循环。
       }
     }
   }
 
-  /** Allocate a unique random hex context ID. */
+  /** 分配一个唯一的随机十六进制 context ID。 */
   _allocateContextId(): string {
     return allocateContextId(this._usedContextIds);
   }
@@ -762,27 +758,27 @@ export class Session implements SessionLike {
       && !this._hasUnprocessedUserMessage();
   }
 
-  /** Current input/turn index (1-based; advances as user inputs are delivered). */
+  /** 当前输入/回合序号（从 1 开始；随用户输入投递递增）。 */
   get turnCount(): number {
     return this._turnCount;
   }
 
-  /** ISO timestamp of session creation. Stable across resumes. */
+  /** 会话创建的 ISO 时间戳；跨恢复保持不变。 */
   get createdAt(): string {
     return this._createdAt;
   }
 
-  /** Number of compactions performed in this session. */
+  /** 本会话已执行的压缩次数。 */
   get compactCount(): number {
     return this._compactCount;
   }
 
-  /** Attach the progress reporter that receives streaming UI events. */
+  /** 绑定接收流式 UI 事件的进度报告器。 */
   setProgressReporter(reporter: ProgressReporter | undefined): void {
     this._progress = reporter;
   }
 
-  /** Detach the given reporter only if it is still the active one. */
+  /** 仅当给定报告器仍是当前报告器时才解绑。 */
   clearProgressReporter(reporter: ProgressReporter): void {
     if (this._progress === reporter) {
       this._progress = undefined;
@@ -793,8 +789,8 @@ export class Session implements SessionLike {
     return this._lastTurnEndStatus;
   }
 
-  /** Child-session tree state + lifecycle (lazy: prototype-based test doubles
-   * get a manager wired to their own stubbed fields on first use). */
+  /** 子会话树状态 + 生命周期（惰性：基于原型的测试替身
+   * 首次使用时也能拿到接到自身 stub 字段的 manager）。 */
   get _childSessionManagerInstance(): ChildSessionManager {
     return this._childSessionManager ??= this._buildChildSessionManager();
   }
@@ -835,7 +831,7 @@ export class Session implements SessionLike {
     skillRoots?: string[];
     progress?: ProgressReporter;
     mcpManager?: MCPClientManager;
-    /** Promise from bootstrap's fire-and-forget connectAll(). Awaited on first turn. */
+    /** bootstrap 中 fire-and-forget 的 connectAll() 返回的 Promise；首个回合前等待。 */
     mcpReadyPromise?: Promise<void>;
     promptsDirs?: string[];
     store?: any;
@@ -858,15 +854,15 @@ export class Session implements SessionLike {
     taskStoreScope?: "session" | "memory";
     onTurnOutput?: (text: string) => void;
     toolExecutorOverrides?: Record<string, ToolExecutor>;
-    /** Stable key for OpenAI prompt cache routing affinity. Auto-generated if omitted. */
+    /** OpenAI prompt cache 路由亲和性所用的稳定 key；省略时自动生成。 */
     promptCacheKey?: string;
     /** fork 时默认继承父 prompt cache key（settings.json 控制）；默认 false。 */
     forkInheritPromptCacheKey?: boolean;
-    /** Permission mode for this session. Default: "reversible". */
+    /** 本会话的权限模式。默认 "reversible"。 */
     permissionMode?: PermissionMode;
-    /** Shared rule store for child sessions. If omitted, a new store is created. */
+    /** 子会话共享的规则存储；省略时新建。 */
     permissionRuleStore?: PermissionRuleStore;
-    /** Pre-loaded hook manifests. Each session keeps its own runtime; hooks are copied in. */
+    /** 预加载的 hook manifest。每个会话持有自己的 runtime，hook 只是拷贝进来。 */
     hooks?: readonly HookManifest[];
   }) {
     initLogger();
@@ -877,7 +873,7 @@ export class Session implements SessionLike {
       hasSkills: (opts.skills?.size ?? 0) > 0,
     });
     this.primaryAgent = opts.primaryAgent;
-    // Thinking depth is user/provider controlled; off is the safe default.
+    // 思考深度由用户/供应商控制；off 是安全默认值。
     this._thinkingLevel = "off";
     this.config = opts.config;
     this.agentTemplates = opts.agentTemplates ?? {};
@@ -901,17 +897,17 @@ export class Session implements SessionLike {
       estimateContextTokens: () => this._estimateContextTokens(),
     });
 
-    // Apply context budget percentage.
+    // 应用上下文预算百分比。
     if (opts.contextBudgetPercent !== undefined) {
       this._contextManager.setBudgetPercent(opts.contextBudgetPercent);
     }
 
-    // Attach store if provided (must be set before _initConversation)
+    // 若传入 store 则挂上（必须在 _initConversation 之前设置）
     if (opts.store) {
       this._store = opts.store;
     }
 
-    // Resolve runtime paths（system prompt 不再渲染这些值）
+    // 解析运行时路径（system prompt 不再渲染这些值）
     this._projectRoot = resolve(opts.projectRoot ?? process.cwd());
     this._sessionArtifactsOverride = opts.sessionArtifactsDir ?? "";
     this._shellLogDirOverride = opts.shellLogDir ?? "";
@@ -932,7 +928,7 @@ export class Session implements SessionLike {
     });
     this._subAgentFactory = this._buildSubAgentFactory();
 
-    // Permission system
+    // 权限系统
     this._permissionRuleStore = opts.permissionRuleStore ?? new PermissionRuleStore({
       projectStoreDir: this._store?.projectDir ?? this._projectRoot,
       workspaceRoot: this._projectRoot,
@@ -959,7 +955,7 @@ export class Session implements SessionLike {
     this._ensureSkillTool();
     this._persistedModelSelection = this._buildPersistedModelSelection();
 
-    // Init tree-sitter bash parser (async, non-blocking)
+    // 初始化 tree-sitter bash 解析器（异步、不阻塞）
     initBashParser();
   }
 
@@ -980,7 +976,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Initialisation helpers
+  // 初始化辅助
   // ==================================================================
 
   _initConversation(): void {
@@ -996,7 +992,7 @@ export class Session implements SessionLike {
     this._currentWorkStartedAt = 0;
     this._workCount = 0;
 
-    // Assemble system prompt and cache it for prompt cache stability
+    // 组装 system prompt 并缓存，以稳定 prompt cache
     this._reloadPromptAndTools();
     this._appendEntry(
       createSystemPrompt(this._nextLogId("system_prompt"), this._cachedSystemPrompt!),
@@ -1006,24 +1002,24 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Effective context length for a given ModelConfig, scaled by context budget percent.
+   * 给定 ModelConfig 的有效上下文长度，按上下文预算百分比缩放。
    */
   _effectiveContextLength(mc: ModelConfig): number {
     return this._contextManager.effectiveContextLength(mc);
   }
 
-  /** Context budget for pressure decisions (see ContextManager.budgetInfo). */
+  /** 用于压力判定的上下文预算（见 ContextManager.budgetInfo）。 */
   private _contextBudgetInfo(): { budget: number; fullContext: boolean } {
     return this._contextManager.budgetInfo();
   }
 
   // ==================================================================
-  // Message infrastructure
+  // 消息基础设施
   // ==================================================================
 
   /**
-   * Append a LogEntry to the structured log.
-   * Auto-triggers save request and notifies log listeners.
+   * 向结构化日志追加一个 LogEntry。
+   * 自动触发保存请求并通知日志监听器。
    */
   _appendEntry(entry: LogEntry, save = true): void {
     this._logStore.append(entry);
@@ -1042,12 +1038,12 @@ export class Session implements SessionLike {
     this._logStore.notifyListeners();
   }
 
-  /** Allocate the next log entry ID for a given type. */
+  /** 为给定类型分配下一个日志条目 ID。 */
   _nextLogId(type: LogEntry["type"]): string {
     return this._logStore.nextId(type);
   }
 
-  /** Live-session view for the shared log-surgery functions (session/log-surgery.ts). */
+  /** 供共享的 log-surgery 函数（session/log-surgery.ts）使用的 live 会话视图。 */
   _logSurgeryView(): LogSurgery {
     const session = this;
     return {
@@ -1083,18 +1079,16 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Run an optional synchronous GC at work boundaries to keep saw-tooth heap
-   * growth in check during long sessions. Throttled to once per 10s so
-   * rapid interrupt/restart cycles don't pile up GC pauses, and only on
-   * "completed" status —interrupted/error paths may be followed by an
-   * immediate restart where pausing is more visible to the user.
+   * 在工作边界按需执行同步 GC，抑制长会话中的锯齿状堆增长。
+   * 限流为每 10 秒最多一次，避免快速中断/重启循环堆积 GC 停顿；
+   * 且仅在 "completed" 状态下执行 —— 被中断或报错的路径之后可能
+   * 立刻重启，此时停顿对用户更明显。
    */
   /**
-   * Run an optional synchronous GC at work boundaries to keep saw-tooth heap
-   * growth in check during long sessions. Throttled to once per 10s so
-   * rapid interrupt/restart cycles don't pile up GC pauses, and only on
-   * "completed" status —interrupted/error paths may be followed by an
-   * immediate restart where pausing is more visible to the user.
+   * 在工作边界按需执行同步 GC，抑制长会话中的锯齿状堆增长。
+   * 限流为每 10 秒最多一次，避免快速中断/重启循环堆积 GC 停顿；
+   * 且仅在 "completed" 状态下执行 —— 被中断或报错的路径之后可能
+   * 立刻重启，此时停顿对用户更明显。
    */
   _maybeRunIdleGc(): void {
     maybeRunIdleGc(this);
@@ -1108,22 +1102,20 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Record an input_received entry.
+   * 记录一条 input_received 条目。
    *
-   * `_turnCount` (the "current input index" used by subsequent provider rounds)
-   * advances to this new input ONLY when the agent is idle. While the agent
-   * is working/waiting, the new input gets its own higher inputIndex but
-   * `_turnCount` stays put —round entries from the in-flight activation must
-   * keep using the current input's index until drain delivers the new one.
+   * `_turnCount`（后续 provider 轮次使用的「当前输入序号」）只在 agent
+   * 空闲时推进到新输入。agent 处于 working/waiting 时，新输入拥有更大的
+   * inputIndex，但 `_turnCount` 保持不变 —— 进行中激活产生的回合条目必须
+   * 继续使用当前输入的序号，直到 drain 投递新输入。
    */
   /**
-   * Record an input_received entry.
+   * 记录一条 input_received 条目。
    *
-   * `_turnCount` (the "current input index" used by subsequent provider rounds)
-   * advances to this new input ONLY when the agent is idle. While the agent
-   * is working/waiting, the new input gets its own higher inputIndex but
-   * `_turnCount` stays put —round entries from the in-flight activation must
-   * keep using the current input's index until drain delivers the new one.
+   * `_turnCount`（后续 provider 轮次使用的「当前输入序号」）只在 agent
+   * 空闲时推进到新输入。agent 处于 working/waiting 时，新输入拥有更大的
+   * inputIndex，但 `_turnCount` 保持不变 —— 进行中激活产生的回合条目必须
+   * 继续使用当前输入的序号，直到 drain 投递新输入。
    */
   _recordInputReceived(
     inputKind: "user" | "compact",
@@ -1146,8 +1138,8 @@ export class Session implements SessionLike {
     appendDeliveredUserMessage(this, inputIndex, inputId, inputKind, display, content, contextId, tuiVisible);
   }
 
-  /** Compute the next roundIndex for the given turn based on existing entries. */
-  /** Compute the next roundIndex for the given turn based on existing entries. */
+  /** 基于已有条目计算给定回合的下一个 roundIndex。 */
+  /** 基于已有条目计算给定回合的下一个 roundIndex。 */
   _computeNextRoundIndex(turnIndex: number = this._turnCount): number {
     return computeNextRoundIndex(this, turnIndex);
   }
@@ -1166,28 +1158,28 @@ export class Session implements SessionLike {
     retagRoundEntries(this, turnIndex, roundIndex, contextId);
   }
 
-  /** Index of the first entry after the last live compact_marker (active window start). */
-  /** Index of the first entry after the last live compact_marker (active window start). */
+  /** 最后一个 live compact_marker 之后的第一条条目索引（活动窗口起点）。 */
+  /** 最后一个 live compact_marker 之后的第一条条目索引（活动窗口起点）。 */
   _activeWindowStartIdx(): number {
     return activeWindowStartIdx(this);
   }
 
   /**
-   * Find a tool_call entry by id within the active window (newest first).
-   * Not scoped to the current turn: ask bookkeeping must keep pairing with
-   * its tool_call even when the turn counter has moved on.
+   * 在活动窗口内按 id 查找 tool_call 条目（从新到旧）。
+   * 不限定当前回合：即使回合计数已经推进，ask 记账仍需
+   * 与其 tool_call 配对。
    */
   /**
-   * Find a tool_call entry by id within the active window (newest first).
-   * Not scoped to the current turn: ask bookkeeping must keep pairing with
-   * its tool_call even when the turn counter has moved on.
+   * 在活动窗口内按 id 查找 tool_call 条目（从新到旧）。
+   * 不限定当前回合：即使回合计数已经推进，ask 记账仍需
+   * 与其 tool_call 配对。
    */
   _findToolCallEntry(toolCallId: string): LogEntry | undefined {
     return findToolCallEntry(this, toolCallId);
   }
 
-  /** Turn/round anchor for ask bookkeeping, derived from the gated tool_call. */
-  /** Turn/round anchor for ask bookkeeping, derived from the gated tool_call. */
+  /** ask 记账所用的回合/轮次锚点，由受门控的 tool_call 推导。 */
+  /** ask 记账所用的回合/轮次锚点，由受门控的 tool_call 推导。 */
   _toolCallAnchor(toolCallId: string, ask?: AskRequest | null): { turnIndex: number; roundIndex: number } {
     return toolCallAnchor(this, toolCallId, ask);
   }
@@ -1197,30 +1189,30 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // Unified message delivery (v2 architecture)
+  // 统一消息投递（v2 架构）
   // ------------------------------------------------------------------
 
   /**
-   * Unified message delivery entry point.
-   * All states push to inbox. Idle state also schedules auto-resume.
-   * Working/waiting: the activation boundary or await_event poll drains.
+   * 统一的消息投递入口。
+   * 所有状态都先压入收件箱；空闲状态还会安排自动续跑。
+   * working/waiting 时由激活边界或 await_event 轮询排空。
    */
   /**
-   * Unified message delivery entry point.
-   * All states push to inbox. Idle state also schedules auto-resume.
-   * Working/waiting: the activation boundary or await_event poll drains.
+   * 统一的消息投递入口。
+   * 所有状态都先压入收件箱；空闲状态还会安排自动续跑。
+   * working/waiting 时由激活边界或 await_event 轮询排空。
    */
   _deliverMessage(msg: MessageEnvelope): DeliverMessageResult {
     return deliverInboxMessage(this, msg);
   }
 
   /**
-   * Public wrapper for TUI / GUI to deliver messages.
-   * Preserves the original (source, content) signature for external callers.
+   * 供 TUI / GUI 投递消息的公开封装。
+   * 保留原有的 (source, content) 签名，兼容外部调用方。
    */
   /**
-   * Public wrapper for TUI / GUI to deliver messages.
-   * Preserves the original (source, content) signature for external callers.
+   * 供 TUI / GUI 投递消息的公开封装。
+   * 保留原有的 (source, content) 签名，兼容外部调用方。
    */
   deliverMessage(source: "user" | "system", content: string): DeliverMessageResult {
     return deliverMessage(this, source, content);
@@ -1246,110 +1238,104 @@ export class Session implements SessionLike {
   _autoResumeScheduled = false;
 
   /**
-   * Schedule an auto-resume turn for the idle state. Used when messages arrive
-   * (sub-agent completion, shell exit, etc.) while the parent agent has no
-   * active turn. Without this, the queued messages would sit in the log
-   * unprocessed until the user manually starts a new turn.
+   * 为空闲状态安排一次自动续跑回合。用于父 agent 没有活动回合时收到
+   * 消息（子代理完成、shell 退出等）的场景。否则排队的消息会一直
+   * 躺在日志里，直到用户手动开启新回合才被处理。
    */
   /**
-   * Schedule an auto-resume turn for the idle state. Used when messages arrive
-   * (sub-agent completion, shell exit, etc.) while the parent agent has no
-   * active turn. Without this, the queued messages would sit in the log
-   * unprocessed until the user manually starts a new turn.
+   * 为空闲状态安排一次自动续跑回合。用于父 agent 没有活动回合时收到
+   * 消息（子代理完成、shell 退出等）的场景。否则排队的消息会一直
+   * 躺在日志里，直到用户手动开启新回合才被处理。
    */
   _scheduleAutoResume(): void {
     scheduleAutoResume(this);
   }
 
   /**
-   * Run a turn that drains queued messages without taking new user input.
-   * Acquires the turn lock to serialize with normal turn() calls.
+   * 运行一个排空排队消息、但不接收新用户输入的回合。
+   * 获取回合锁，与普通 turn() 调用串行化。
    */
   /**
-   * Run a turn that drains queued messages without taking new user input.
-   * Acquires the turn lock to serialize with normal turn() calls.
+   * 运行一个排空排队消息、但不接收新用户输入的回合。
+   * 获取回合锁，与普通 turn() 调用串行化。
    */
   async _autoResumeFromIdle(): Promise<void> {
     return autoResumeFromIdle(this);
   }
 
   /**
-   * Scan the log backward to find whether the most recent turn-relevant entry
-   * is a user_message that hasn't been responded to (no assistant_text/tool_call/
-   * reasoning after it). Used by auto-resume to decide whether to fire a new
-   * turn after a finally-block drain wrote messages without the model seeing
-   * them.
+   * 反向扫描日志，判断最近一条与回合相关的条目是否为尚未响应的
+   * user_message（其后没有 assistant_text/tool_call/reasoning）。
+   * 供自动续跑判断：finally 块中的排空写过消息、模型却没看到时，
+   * 是否需要再触发一个回合。
    */
   /**
-   * Scan the log backward to find whether the most recent turn-relevant entry
-   * is a user_message that hasn't been responded to (no assistant_text/tool_call/
-   * reasoning after it). Used by auto-resume to decide whether to fire a new
-   * turn after a finally-block drain wrote messages without the model seeing
-   * them.
+   * 反向扫描日志，判断最近一条与回合相关的条目是否为尚未响应的
+   * user_message（其后没有 assistant_text/tool_call/reasoning）。
+   * 供自动续跑判断：finally 块中的排空写过消息、模型却没看到时，
+   * 是否需要再触发一个回合。
    */
   _hasUnprocessedUserMessage(): boolean {
     return hasUnprocessedUserMessage(this);
   }
 
   /**
-   * Check whether the inbox has pending messages.
+   * 检查收件箱是否有待处理消息。
    */
   /**
-   * Check whether the inbox has pending messages.
+   * 检查收件箱是否有待处理消息。
    */
   _hasInboxMessages(): boolean {
     return hasInboxMessages(this);
   }
 
   /**
-   * Check whether the inbox has pending WAKING messages. Ride-along messages
-   * (wake === false) don't block manual context commands —they are passive
-   * records (e.g. user-initiated kill notices) that wait for the next turn.
+   * 检查收件箱是否有待处理的 WAKING 消息。随行消息（wake === false）
+   * 不阻塞手动上下文命令 —— 它们是被动记录（例如用户发起的 kill 通知），
+   * 等下一个回合再处理。
    */
   /**
-   * Check whether the inbox has pending WAKING messages. Ride-along messages
-   * (wake === false) don't block manual context commands —they are passive
-   * records (e.g. user-initiated kill notices) that wait for the next turn.
+   * 检查收件箱是否有待处理的 WAKING 消息。随行消息（wake === false）
+   * 不阻塞手动上下文命令 —— 它们是被动记录（例如用户发起的 kill 通知），
+   * 等下一个回合再处理。
    */
   _hasWakingInboxMessages(): boolean {
     return hasWakingInboxMessages(this);
   }
 
-  /** Remove the previous completed task list when a real user input is delivered. */
-  /** Remove the previous completed task list when a real user input is delivered. */
+  /** 投递真实用户输入时，移除上一轮已完成的任务清单。 */
+  /** 投递真实用户输入时，移除上一轮已完成的任务清单。 */
   _clearCompletedTasksBeforeUserInput(): void {
     clearCompletedTasksBeforeUserInput(this);
   }
 
   /**
-   * Pre-activation prelude shared by every entry that records a NEW active
-   * input (user message or /compact). The single choke point that
-   * enforces wake:false ordering and the "conversation has started" boundary:
+   * 激活前的公共前奏，供所有记录新活动输入（用户消息或 /compact）的
+   * 入口共用。这里是唯一的收口点，负责 wake:false 的顺序与
+   * 「会话已开始」边界：
    *
-   *   1. Earlier-arrived ride-along (wake:false) inbox messages land in the log
-   *      first, in arrival order. `wake:false` means "do not start a turn by
-   *      itself", not "jump behind the next active input".
-   *   2. The new active input is recorded.
+   *   1. 先到的随行（wake:false）收件箱消息按到达顺序先落入日志。
+   *      `wake:false` 表示「不要自行开启回合」，而不是「插到下一个
+   *      活动输入之后」。
+   *   2. 记录新的活动输入。
    *
-   * Delivery to the model-facing log (user_message vs status entry) stays with
-   * the caller —it legitimately differs per activation kind. The
-   * "conversation started" flag is flipped at that delivery point
-   * (_appendDeliveredUserMessage), so every user-message path sets it.
+   * 向模型侧日志的投递（user_message 还是 status 条目）留给调用方 ——
+   * 不同激活类型本就不同。「会话已开始」标志在该投递点
+   * （_appendDeliveredUserMessage）翻转，因此每条用户消息路径都会置位。
    */
   /**
-   * Pre-activation prelude shared by every entry that records a NEW active
-   * input (user message or /compact). The single choke point that
-   * enforces wake:false ordering and the "conversation has started" boundary:
+   * 激活前的公共前奏，供所有记录新活动输入（用户消息或 /compact）的
+   * 入口共用。这里是唯一的收口点，负责 wake:false 的顺序与
+   * 「会话已开始」边界：
    *
-   *   1. Earlier-arrived ride-along (wake:false) inbox messages land in the log
-   *      first, in arrival order. `wake:false` means "do not start a turn by
-   *      itself", not "jump behind the next active input".
-   *   2. The new active input is recorded.
+   *   1. 先到的随行（wake:false）收件箱消息按到达顺序先落入日志。
+   *      `wake:false` 表示「不要自行开启回合」，而不是「插到下一个
+   *      活动输入之后」。
+   *   2. 记录新的活动输入。
    *
-   * Delivery to the model-facing log (user_message vs status entry) stays with
-   * the caller —it legitimately differs per activation kind. The
-   * "conversation started" flag is flipped at that delivery point
-   * (_appendDeliveredUserMessage), so every user-message path sets it.
+   * 向模型侧日志的投递（user_message 还是 status 条目）留给调用方 ——
+   * 不同激活类型本就不同。「会话已开始」标志在该投递点
+   * （_appendDeliveredUserMessage）翻转，因此每条用户消息路径都会置位。
    */
   _beginActiveInput(
     inputKind: "user" | "compact",
@@ -1368,24 +1354,23 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // Background shells —UI surface (badge, picker, detail tab)
+  // 后台 shell 的 UI 面（角标、选择器、详情页）
   // ------------------------------------------------------------------
 
-  /** Snapshots of all tracked background shells for UI surfaces. */
+  /** 供 UI 使用的全部受跟踪后台 shell 快照。 */
   getBackgroundShellSnapshots(): BackgroundShellSnapshot[] {
     return this._shellManager.listShells();
   }
 
-  /** Snapshot + log tail for the shell detail view. Null for unknown ids. */
+  /** shell 详情视图的快照 + 日志尾部；未知 id 返回 null。 */
   getBackgroundShellDetail(id: string, opts?: { maxChars?: number }): BackgroundShellDetail | null {
     return this._shellManager.getShellDetail(id, opts);
   }
 
   /**
-   * User-initiated stop of a background shell (Shells panel / detail tab).
-   * When a kill is actually performed, a ride-along system notice is queued
-   * so the agent learns about it on its next turn —without being woken:
-   * the user is present and steering.
+   * 用户主动停止某个后台 shell（Shells 面板 / 详情页）。
+   * 实际执行 kill 时，会排队一条随行系统通知，让 agent 在下一个回合
+   * 得知 —— 但不唤醒它：用户就在场主导。
    */
   async stopBackgroundShell(id: string): Promise<string> {
     const result = await this._shellManager.killShell(id);
@@ -1405,24 +1390,22 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // Inbox drain —per-entry rendering
+  // 收件箱排空 —— 逐条渲染
   // ------------------------------------------------------------------
 
   /**
-   * Deliver queued messages to the model-facing log.
+   * 把排队消息投递到模型侧日志。
    *
-   * User messages are displayed when received, then delivered here only after
-   * the current provider round has finished. This preserves the API ordering:
-   * user A →assistant A →user B, even when user B was typed while assistant A
-   * was still streaming.
+   * 用户消息在收到时先展示，但要等当前 provider 轮次结束后才在这里投递。
+   * 这样能保持 API 顺序：user A → assistant A → user B，即使 user B
+   * 是在 assistant A 仍在流式输出时输入的。
    */
   /**
-   * Deliver queued messages to the model-facing log.
+   * 把排队消息投递到模型侧日志。
    *
-   * User messages are displayed when received, then delivered here only after
-   * the current provider round has finished. This preserves the API ordering:
-   * user A →assistant A →user B, even when user B was typed while assistant A
-   * was still streaming.
+   * 用户消息在收到时先展示，但要等当前 provider 轮次结束后才在这里投递。
+   * 这样能保持 API 顺序：user A → assistant A → user B，即使 user B
+   * 是在 assistant A 仍在流式输出时输入的。
    */
   _drainInboxAsEntries(): number {
     return drainInboxAsEntries(this);
@@ -1452,7 +1435,7 @@ export class Session implements SessionLike {
     this._currentTurnAbortController = controller;
     this._currentTurnSignal = controller.signal;
 
-    // Clear active entry tracker on abort
+    // 中止时清空活动条目跟踪器
     controller.signal.addEventListener("abort", () => {
       this._activeLogEntryId = null;
     }, { once: true });
@@ -1476,48 +1459,48 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // Turn serialization
+  // 回合串行化
   // ------------------------------------------------------------------
 
   /**
-   * Wait for any in-flight turn to finish. Safe to call at any time.
-   * Used by resetForNewSession, close, and callers that need to ensure
-   * the previous turn has fully unwound before proceeding.
+   * 等待进行中的回合结束。任何时刻调用都安全。
+   * 供 resetForNewSession、close 以及需要确保上一回合完全收尾后再继续的
+   * 调用方使用。
    */
   /**
-   * Wait for any in-flight turn to finish. Safe to call at any time.
-   * Used by resetForNewSession, close, and callers that need to ensure
-   * the previous turn has fully unwound before proceeding.
+   * 等待进行中的回合结束。任何时刻调用都安全。
+   * 供 resetForNewSession、close 以及需要确保上一回合完全收尾后再继续的
+   * 调用方使用。
    */
   async waitForTurnComplete(): Promise<void> {
     return waitForTurnComplete(this);
   }
 
   /**
-   * Promise-based turn lock. Ensures at most one turn entry point executes
-   * at a time. Callers are serialized: if a turn is in flight, the next
-   * caller waits for it to finish (which happens quickly after abort).
+   * 基于 Promise 的回合锁，保证同一时刻最多只有一个回合入口在执行。
+   * 调用方被串行化：若有回合正在进行，下一个调用方会等它结束
+   * （中止后通常很快）。
    */
   /**
-   * Promise-based turn lock. Ensures at most one turn entry point executes
-   * at a time. Callers are serialized: if a turn is in flight, the next
-   * caller waits for it to finish (which happens quickly after abort).
+   * 基于 Promise 的回合锁，保证同一时刻最多只有一个回合入口在执行。
+   * 调用方被串行化：若有回合正在进行，下一个调用方会等它结束
+   * （中止后通常很快）。
    */
   async _withTurnLock<T>(fn: () => Promise<T>): Promise<T> {
     return withTurnLock(this, fn);
   }
 
   /**
-   * Prepare and execute interruption cleanup for the current turn.
+   * 为当前回合准备并执行中断清理。
    *
-   * This captures a non-destructive delivery snapshot first, then kills active
-   * workers and drops unconsumed runtime state.
+   * 先做一次非破坏性的投递快照，然后杀掉活跃 worker，
+   * 丢弃未消费的运行时状态。
    */
   /**
-   * Prepare and execute interruption cleanup for the current turn.
+   * 为当前回合准备并执行中断清理。
    *
-   * This captures a non-destructive delivery snapshot first, then kills active
-   * workers and drops unconsumed runtime state.
+   * 先做一次非破坏性的投递快照，然后杀掉活跃 worker，
+   * 丢弃未消费的运行时状态。
    */
   requestTurnInterrupt(): { accepted: true } {
     return requestTurnInterrupt(this);
@@ -1527,7 +1510,7 @@ export class Session implements SessionLike {
     return denyAndInterruptPendingAsk(this);
   }
 
-  /** Stop all running child sessions for RPC and lifecycle callers. */
+  /** 为 RPC 与生命周期调用方停止所有运行中的子会话。 */
   interruptAllChildAgents(): void {
     if (this._childSessions.size > 0) {
       this._cascadeKillRunningChildren("user_mass_interrupt");
@@ -1548,21 +1531,21 @@ export class Session implements SessionLike {
   }
 
   /**
-   * If a permission approval or agent_question ask is pending, synthesize
-   * Deny/Decline resolution + denial tool_result. Returns true if anything
-   * was denied. Called by TUI on ESC/Ctrl+C while a prompt is showing.
+   * 若存在待处理的权限审批或 agent_question ask，合成 Deny/Decline
+   * 决议与拒绝用的 tool_result。只要有任一项被拒绝就返回 true。
+   * 由 TUI 在提示框显示时按下 ESC/Ctrl+C 调用。
    */
   /**
-   * If a permission approval or agent_question ask is pending, synthesize
-   * Deny/Decline resolution + denial tool_result. Returns true if anything
-   * was denied. Called by TUI on ESC/Ctrl+C while a prompt is showing.
+   * 若存在待处理的权限审批或 agent_question ask，合成 Deny/Decline
+   * 决议与拒绝用的 tool_result。只要有任一项被拒绝就返回 true。
+   * 由 TUI 在提示框显示时按下 ESC/Ctrl+C 调用。
    */
   denyPendingAsk(): boolean {
     return denyPendingAsk(this);
   }
 
   /**
-   * Backward-compatible alias.
+   * 向后兼容的别名。
    */
   cancelCurrentTurn(): void {
     this.requestTurnInterrupt();
@@ -1587,7 +1570,7 @@ export class Session implements SessionLike {
     this._inbox = [];
     this._currentWorkId = null;
     this._currentWorkStartedAt = 0;
-    // _waitHandle removed —await_event uses polling now
+    // _waitHandle 已移除 —— await_event 改为轮询
     this._activeAsk = null;
     this._askHistory = [];
     this._pendingTurnState = null;
@@ -1614,15 +1597,15 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // Log accessors (v2)
+  // 日志访问器（v2）
   // ------------------------------------------------------------------
 
-  /** Read-only snapshot of the structured log. */
+  /** 结构化日志的只读快照。 */
   get log(): readonly LogEntry[] {
     return this._log;
   }
 
-  /** Display cutoff index — entries before this index are hidden from UI but preserved for model context. */
+  /** 展示截断索引 —— 此索引之前的条目对 UI 隐藏，但仍保留在模型上下文中。 */
   private _displayCutoff = 0;
 
   // R-3 有界历史：活动窗口在 _log，早期历史按页从磁盘取回。
@@ -1637,7 +1620,7 @@ export class Session implements SessionLike {
   private _archivedDisplays: Map<string, string> | null = null;
   private _historyPageLoadInFlight: Promise<{ loaded: number; hasMore: boolean; capped?: boolean }> | null = null;
 
-  /** Read-only snapshot of the log filtered by display cutoff, including loaded earlier history. */
+  /** 按展示截断过滤后的日志只读快照，含已加载的更早历史。 */
   getDisplayLog(): readonly LogEntry[] {
     // 默认只展示活动窗口（含最近的 compact marker）；更早条目通过分页加入。
     const activeStart = this._logStore.activeWindowStartIdx();
@@ -1931,13 +1914,13 @@ export class Session implements SessionLike {
     return temp.listTurns(archivedTurnInfo);
   }
 
-  /** Set display cutoff to current log length (used by /clear). */
+  /** 把展示截断设为当前日志长度（供 /clear 使用）。 */
   setDisplayCutoff(): void {
     this._displayCutoff = this._log.length;
     this._logStore.bumpRevision();
   }
 
-  /** Reset display cutoff to 0 (show all entries). */
+  /** 把展示截断重置为 0（显示全部条目）。 */
   resetDisplayCutoff(): void {
     this._displayCutoff = 0;
   }
@@ -1946,23 +1929,23 @@ export class Session implements SessionLike {
     return this._logStore.revision;
   }
 
-  /** The ID of the currently active (streaming/executing) log entry, or null. */
+  /** 当前活跃（正在流式输出/执行）的日志条目 ID；没有则为 null。 */
   get activeLogEntryId(): string | null {
     return this._activeLogEntryId;
   }
 
-  /** Subscribe to log changes. Returns an unsubscribe function. */
+  /** 订阅日志变化，返回取消订阅函数。 */
   subscribeLog(listener: () => void): () => void {
     return this._logStore.subscribe(listener);
   }
 
   // ------------------------------------------------------------------
-  // Turn listing (shared by rewind and history projections)
+  // 回合列表（回退与历史投影共用）
   // ------------------------------------------------------------------
 
   /**
-   * Return metadata for every turn in the log (see SessionLog.listTurns).
-   * Shared by rewind and history projections.
+   * 返回日志中每个回合的元数据（见 SessionLog.listTurns）。
+   * 回退与历史投影共用。
    */
   listTurns(): TurnListing[] {
     return this._listTurnsFrom(this._loadFullHistoryEntries());
@@ -2036,14 +2019,14 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // Rewind
+  // 回退
   // ------------------------------------------------------------------
 
   /**
-   * Get the list of turn boundaries available for rewind.
-   * Only shows real user turns (not injected or compact turns).
-   * Includes turns before compact markers (rewind undoes compacts).
-   * Returns turns in reverse chronological order (most recent first).
+   * 获取可回退的回合边界列表。
+   * 只显示真实的用户回合（不含注入回合与压缩回合）。
+   * 包含 compact marker 之前的回合（回退会撤销压缩）。
+   * 按时间倒序返回（最近的在前）。
    */
   /**
    * 有界会话的回退数据源：索引有效则只读 turn/mutation 摘要；否则整读重建一次。
@@ -2452,7 +2435,7 @@ export class Session implements SessionLike {
     return mutations;
   }
 
-  /** Build a rewind plan (see RewindEngine.planRewind). */
+  /** 构建回退计划（见 RewindEngine.planRewind）。 */
   async planRewind(fromTurnIndex: number): Promise<RewindPlan> {
     const materialized = this._materializeFullHistory();
     if (!materialized.ok) throw new Error(materialized.error);
@@ -2465,7 +2448,7 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Rewind conversation only: truncate log from the given turn onward.
+   * 仅回退对话：从给定回合起截断日志。
    */
   rewindConversation(toTurnIndex: number): { removed: number; error?: string } {
     if (this._turnInFlight) {
@@ -2518,13 +2501,11 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Rewind truncation can remove a summary entry or compact marker whose
-   * covered / pre-compact entries had their content archived to disk. Those
-   * entries are live context again after the rewind, but the API projection
-   * silently skips archived entries with null content —so restore their
-   * content from the archive files, or the revived window would have holes.
-   * Missing/corrupt archives are a hard failure: a silent rewind would leave
-   * the user with a conversation whose files and context disagree.
+   * 回退截断可能删掉 summary 条目或 compact marker，而被它们覆盖的
+   * 压缩前条目内容已归档到磁盘。回退后这些条目重新成为 live 上下文，
+   * 但 API 投影会静默跳过 content 为 null 的归档条目 —— 因此必须从
+   * 归档文件恢复其内容，否则复活后的窗口会出现空洞。
+   * 归档缺失或损坏按硬失败处理：静默回退会让用户的文件与上下文对不上。
    */
   private _restoreArchivesRescindedBy(removedEntries: LogEntry[]): void {
     const sessionDir = this._store?.sessionDir as string | undefined;
@@ -2562,8 +2543,8 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Rewind files only: apply reverse patches and mark mutations as reverted.
-   * Does not truncate the conversation log.
+   * 仅回退文件：应用反向补丁，并把 mutation 标记为已回退。
+   * 不截断对话日志。
    */
   async rewindFiles(plan: RewindPlan): Promise<RewindApplyResult> {
     if (this._turnInFlight) {
@@ -2586,7 +2567,7 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Rewind both conversation and files.
+   * 同时回退对话与文件。
    */
   async rewindBoth(
     toTurnIndex: number,
@@ -2628,8 +2609,8 @@ export class Session implements SessionLike {
     this._usedContextIds.clear();
     this._compactCount = 0;
     this._workCount = 0;
-    // Keep the "conversation started" flag truthful to the rewound log: a rewind
-    // that drops every real user message must re-suppress availability notices.
+    // 让「会话已开始」标志与回退后的日志保持一致：若回退删光了所有真实
+    // 用户消息，就必须重新屏蔽可用性通知。
     this._conversationStarted = this._entriesHaveRealUserMessage(log);
     for (const entry of log) {
       const ctx = (entry.meta as Record<string, unknown>)?.["contextId"];
@@ -2651,7 +2632,7 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Check for and recover from a crashed rewind on session restore.
+   * 会话恢复时检查并修复崩溃的回退。
    */
   recoverRewindIfNeeded(): boolean {
     const recovered = this._rewindEngine.recoverJournalIfNeeded();
@@ -2660,19 +2641,19 @@ export class Session implements SessionLike {
     try {
       saved = this.onSaveRequest?.() === true;
     } catch {
-      // Keep the recovery journal until a later save confirms the log state.
+      // 保留恢复日志，直到后续保存确认日志状态。
     }
     if (saved) this._rewindEngine.finalizeJournal();
     return true;
   }
 
-  /** Mark a rewind transaction complete after the caller has saved the log. */
+  /** 调用方保存日志后，把回退事务标记为完成。 */
   finalizeRewindJournal(): void {
     this._rewindEngine.finalizeJournal();
   }
 
   /**
-   * Restore session from a loaded log.
+   * 从已加载的日志恢复会话。
    */
   prepareRestoreFromLog(
     meta: LogSessionMeta,
@@ -2697,19 +2678,18 @@ export class Session implements SessionLike {
     restoreFromLog(this, meta, entries, idAllocator);
   }
 
-  /** Single assignment pass for a parsed restore (no failure paths in here). */
+  /** 对解析好的恢复数据做一次性赋值（此处没有失败分支）。 */
   _applyRestoredState(state: RestoredSessionState): void {
     this.primaryAgent.replaceModelConfig({ ...state.modelConfig });
     this._persistedModelSelection = { ...state.persistedModelSelection };
 
     this._log = state.entries;
-    // A restored log that already holds a real user message means the
-    // conversation has started —toggling MCP/skills after resume should queue
-    // notices normally. Seed the flag here (the single restore commit point).
+    // 恢复的日志里已有真实用户消息，说明会话已开始 —— 恢复后切换
+    // MCP/技能应正常排队通知。在此处写入该标志（恢复的唯一提交点）。
     this._conversationStarted = this._entriesHaveRealUserMessage(state.entries);
-    // Do NOT reset the log revision —it is a transient change-detection
-    // counter that must stay monotonically increasing on *this* session so
-    // that UI subscribers (shouldSyncTranscript) always detect the swap.
+    // 不要重置日志 revision —— 它是瞬时的变更检测计数器，在*本*会话上
+    // 必须保持单调递增，这样 UI 订阅者（shouldSyncTranscript）才能
+    // 始终检测到日志替换。
     this._idAllocator = state.idAllocator;
     this._turnCount = state.turnCount;
     this._workCount = state.workCount;
@@ -2746,8 +2726,8 @@ export class Session implements SessionLike {
     this._lastTurnEndStatus = state.signals.lastTurnEndStatus;
     this._selfPhase = state.signals.selfPhase;
     this._activeLogEntryId = null;
-    // A parsed restore carries no live ask/turn state: open asks were
-    // deny-resolved during parsing and the interrupted turn was normalized.
+    // 解析出的恢复数据不含 live 的 ask/回合状态：未关闭的 ask 在解析时
+    // 已按拒绝处理，被中断的回合也已规范化。
     this._activeAsk = null;
     this._askHistory = state.askHistory;
     this._agentState = "idle";
@@ -2762,8 +2742,8 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Get log data for persistence (v2).
-   * Returns meta + entries suitable for persistToDisk().
+   * 获取用于持久化的日志数据（v2）。
+   * 返回适合交给 persistToDisk() 的 meta + 条目。
    */
   getLogForPersistence(): { meta: LogSessionMeta; entries: readonly LogEntry[] } {
     return getLogForPersistence(this);
@@ -3015,25 +2995,24 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Full reset for /new —equivalent to constructing a fresh Session.
-   * Leaves storage unbound; session/artifacts directories are created lazily
-   * on the first subsequent turn.
+   * /new 的完整重置 —— 等价于新建一个 Session。
+   * 不绑定存储；session/artifacts 目录在后续首个回合才惰性创建。
    */
   async resetForNewSession(newStore?: any): Promise<void> {
-    // 0. Terminate any in-flight turn before resetting
+    // 0. 重置前先终止进行中的回合
     this.requestTurnInterrupt();
     await this.waitForTurnComplete();
 
-    // 1. Kill active sub-agents, reset transient flags
+    // 1. 杀掉活跃子代理，重置瞬时标志
     this._resetTransientState();
     this._resetHookContextForNewSession();
 
-    // 2. Update store FIRST (so path resolution picks up new session)
+    // 2. 先更新 store（让路径解析取到新会话）
     if (newStore !== undefined) {
       this._store = newStore;
     }
 
-    // 3. Reset counters
+    // 3. 重置计数器
     this._turnCount = 0;
     this._workCount = 0;
     this._currentWorkId = null;
@@ -3041,25 +3020,24 @@ export class Session implements SessionLike {
     this._compactCount = 0;
     this._usedContextIds = new Set<string>();
 
-    // 4. Reset thinking state
+    // 4. 重置思考状态
     this._thinkingLevel = this._preferredThinkingLevel || "off";
 
-    // 5. Reset MCP connection flag (will reconnect on next turn)
+    // 5. 重置 MCP 连接标志（下个回合会重连）
     this._mcpConnected = false;
 
-    // 6. Drop the in-memory task list. The file stays in the old session
-    // directory (each session owns its own tasks.json).
+    // 6. 丢弃内存中的任务清单。文件留在旧会话目录里
+    // （每个会话有自己的 tasks.json）。
     this._taskStoreRef = undefined;
     this._taskStoreKey = undefined;
     if (this._taskListeners.length > 0) this._notifyTaskListeners();
 
-    // 7. /new must start from a truly fresh session tree. _resetTransientState()
-    // archives existing children so they can be saved before teardown, but those
-    // archived handles must not leak into the next root session's persisted meta.
+    // 7. /new 必须从全新的会话树开始。_resetTransientState() 会归档现有
+    // 子会话，以便拆除前保存；但这些归档句柄不能泄漏进下一个根会话的持久化 meta。
     this._childSessionManagerInstance.clearTables();
 
-    // 8. Re-init conversation LAST (fresh session state, storage may still be lazy)
-    // _initConversation also resets _log and _idAllocator
+    // 8. 最后再重新初始化对话（全新会话状态，存储仍可保持惰性）
+    // _initConversation 同时会重置 _log 与 _idAllocator
     this._initConversation();
     this._displayCutoff = 0;
   }
@@ -3112,22 +3090,22 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Skills
+  // 技能
   // ==================================================================
 
-  /** Read-only access to loaded skills (for command registration). */
-  /** Read-only access to loaded skills (for command registration). */
+  /** 已加载技能的只读访问（供命令注册使用）。 */
+  /** 已加载技能的只读访问（供命令注册使用）。 */
   get skills(): ReadonlyMap<string, SkillMeta> {
     return getSkills(this);
   }
 
   // ==================================================================
-  // Sub-agent introspection (for TUI/GUI)
+  // 子代理内省（供 TUI/GUI 使用）
   // ==================================================================
 
   getAgentLog(agentId: string): readonly LogEntry[] | null {
-    // Same path as getChildSessionLog —the manager serves released
-    // children's logs from disk.
+    // 与 getChildSessionLog 同一条路径 —— manager 会从磁盘读取
+    // 已释放子会话的日志。
     return this.getChildSessionLog(agentId);
   }
 
@@ -3158,17 +3136,17 @@ export class Session implements SessionLike {
     return ensureMcpReady(this);
   }
 
-  /** Read-only access to disabled skill names. */
-  /** Read-only access to disabled skill names. */
+  /** 已禁用技能名称的只读访问。 */
+  /** 已禁用技能名称的只读访问。 */
   get disabledSkills(): ReadonlySet<string> {
     return getDisabledSkills(this);
   }
 
   /**
-   * Return all skills from disk (both enabled and disabled) for UI display.
+   * 返回磁盘上的全部技能（含启用与禁用），供 UI 展示。
    */
   /**
-   * Return all skills from disk (both enabled and disabled) for UI display.
+   * 返回磁盘上的全部技能（含启用与禁用），供 UI 展示。
    */
   getAllSkillNames(): { name: string; description: string; enabled: boolean }[] {
     return getAllSkillNames(this);
@@ -3180,36 +3158,34 @@ export class Session implements SessionLike {
     return skillsDirty(this);
   }
 
-  /** Enable or disable a skill by name. Call applySkillsFromCommand() to apply. */
-  /** Enable or disable a skill by name. Call applySkillsFromCommand() to apply. */
+  /** 按名称启用或禁用技能。调用 applySkillsFromCommand() 使其生效。 */
+  /** 按名称启用或禁用技能。调用 applySkillsFromCommand() 使其生效。 */
   setSkillEnabled(name: string, enabled: boolean): void {
     setSkillEnabled(this, name, enabled);
   }
 
   /**
-   * Rescan skill directories, apply disabled filter, and rebuild
-   * the skill tool definition. /skills calls this immediately;
-   * /reload also calls it as part of a full configuration reload.
-   * Returns change report for callers that need it.
+   * 重扫技能目录，应用禁用过滤，并重建 skill 工具定义。
+   * /skills 会立即调用；/reload 也会在完整重载配置时调用。
+   * 返回变更报告，供需要的调用方使用。
    */
   /**
-   * Rescan skill directories, apply disabled filter, and rebuild
-   * the skill tool definition. /skills calls this immediately;
-   * /reload also calls it as part of a full configuration reload.
-   * Returns change report for callers that need it.
+   * 重扫技能目录，应用禁用过滤，并重建 skill 工具定义。
+   * /skills 会立即调用；/reload 也会在完整重载配置时调用。
+   * 返回变更报告，供需要的调用方使用。
    */
   reloadSkills(): { added: string[]; removed: string[]; total: number } {
     return reloadSkills(this);
   }
 
   /**
-   * Build the fixed `skill` tool definition.
+   * 构建固定的 `skill` 工具定义。
    *
    * skills 列表位于 system prompt；工具的 description 不随 skills 集合变化，
    * 从而保持 tools 段字节稳定。
    */
   /**
-   * Build the fixed `skill` tool definition.
+   * 构建固定的 `skill` 工具定义。
    *
    * skills 列表位于 system prompt；工具的 description 不随 skills 集合变化，
    * 从而保持 tools 段字节稳定。
@@ -3219,19 +3195,19 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Refresh skills from disk. Called during prompt/tool reload so installed,
-   * removed, or modified skills update the dynamic skill tool definition.
+   * 从磁盘刷新技能。在提示词/工具重载时调用，使新增、移除或修改的技能
+   * 更新动态的 skill 工具定义。
    */
   /**
-   * Refresh skills from disk. Called during prompt/tool reload so installed,
-   * removed, or modified skills update the dynamic skill tool definition.
+   * 从磁盘刷新技能。在提示词/工具重载时调用，使新增、移除或修改的技能
+   * 更新动态的 skill 工具定义。
    */
   private _refreshSkills(): void {
     refreshSkills(this);
   }
 
-  /** Execute the `skill` tool —load and return skill instructions. */
-  /** Execute the `skill` tool —load and return skill instructions. */
+  /** 执行 `skill` 工具 —— 加载并返回技能说明。 */
+  /** 执行 `skill` 工具 —— 加载并返回技能说明。 */
   private _execSkill(
     args: Record<string, unknown>,
   ): ToolResult {
@@ -3239,7 +3215,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Shared helpers
+  // 共享辅助
   // ==================================================================
 
   _sortedUnique(values: Iterable<string | undefined | null>): string[] {
@@ -3247,9 +3223,8 @@ export class Session implements SessionLike {
       .sort((a, b) => a.localeCompare(b));
   }
 
-  /** Scan-once helper: do the given entries contain a delivered real user
-   * message? Used only to seed _conversationStarted on restore —the live guard
-   * reads the cached flag, not this. */
+  /** 一次性扫描辅助：给定条目中是否含已投递的真实用户消息？
+   * 仅在恢复时用于初始化 _conversationStarted —— 实时守卫读的是缓存标志。 */
   _entriesHaveRealUserMessage(entries: Iterable<LogEntry>): boolean {
     for (const entry of entries) {
       if (entry.discarded || entry.type !== "user_message") continue;
@@ -3278,14 +3253,12 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Reload MCP servers from settings. Reads global + local settings,
-   * reconfigures the MCPClientManager, and notifies the TUI.
-   * Returns a human-readable summary of what changed.
+   * 按设置重载 MCP 服务器：读取全局与本地设置，重新配置
+   * MCPClientManager，并通知 TUI。返回人类可读的变更摘要。
    */
   /**
-   * Reload MCP servers from settings. Reads global + local settings,
-   * reconfigures the MCPClientManager, and notifies the TUI.
-   * Returns a human-readable summary of what changed.
+   * 按设置重载 MCP 服务器：读取全局与本地设置，重新配置
+   * MCPClientManager，并通知 TUI。返回人类可读的变更摘要。
    */
   async reloadMcp(options?: { notice?: boolean; reason?: string }): Promise<string> {
     return reloadMcp(this, options);
@@ -3295,18 +3268,14 @@ export class Session implements SessionLike {
     return reconnectMcpServer(this, serverName);
   }
 
-  // Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
-  // (and the ride-along notice it queues) cannot overlap a turn's tool snapshot.
-  // The bare reloadMcp/reconnectMcpServer stay lock-free on purpose —the reload
-  // path that needs them runs either inside a turn's tool execution or wrapped by
-  // a command-side _withTurnLock, and _withTurnLock is not reentrant, so
-  // re-locking there would deadlock.
-  // Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
-  // (and the ride-along notice it queues) cannot overlap a turn's tool snapshot.
-  // The bare reloadMcp/reconnectMcpServer stay lock-free on purpose —the reload
-  // path that needs them runs either inside a turn's tool execution or wrapped by
-  // a command-side _withTurnLock, and _withTurnLock is not reentrant, so
-  // re-locking there would deadlock.
+  // 面向命令的 MCP 变更：先拿回合锁，避免 connect/disconnect（以及它排队的
+  // 随行通知）与回合的工具快照重叠。reloadMcp/reconnectMcpServer 刻意保持
+  // 无锁 —— 需要它们的重载路径要么跑在回合的工具执行里，要么已被命令侧的
+  // _withTurnLock 包住，而 _withTurnLock 不可重入，再锁一次会死锁。
+  // 面向命令的 MCP 变更：先拿回合锁，避免 connect/disconnect（以及它排队的
+  // 随行通知）与回合的工具快照重叠。reloadMcp/reconnectMcpServer 刻意保持
+  // 无锁 —— 需要它们的重载路径要么跑在回合的工具执行里，要么已被命令侧的
+  // _withTurnLock 包住，而 _withTurnLock 不可重入，再锁一次会死锁。
   async reloadMcpFromCommand(reason: string): Promise<string> {
     return reloadMcpFromCommand(this, reason);
   }
@@ -3315,14 +3284,12 @@ export class Session implements SessionLike {
     return reconnectMcpServerFromCommand(this, serverName);
   }
 
-  // The /mcp command warms up MCP status before showing the picker. That ensure
-  // can connect servers (mutating agent.tools), so it must serialize against
-  // turns just like the reload/reconnect variants —no MCP connection work on
-  // the command side may run concurrently with a turn's tool snapshot.
-  // The /mcp command warms up MCP status before showing the picker. That ensure
-  // can connect servers (mutating agent.tools), so it must serialize against
-  // turns just like the reload/reconnect variants —no MCP connection work on
-  // the command side may run concurrently with a turn's tool snapshot.
+  // /mcp 命令在展示选择器前会预热 MCP 状态。该 ensure 可能连接服务器
+  // （修改 agent.tools），因此必须像 reload/reconnect 变体一样与回合串行化 ——
+  // 命令侧的 MCP 连接工作不能与回合的工具快照并发。
+  // /mcp 命令在展示选择器前会预热 MCP 状态。该 ensure 可能连接服务器
+  // （修改 agent.tools），因此必须像 reload/reconnect 变体一样与回合串行化 ——
+  // 命令侧的 MCP 连接工作不能与回合的工具快照并发。
   async ensureMcpReadyFromCommand(): Promise<void> {
     return ensureMcpReadyFromCommand(this);
   }
@@ -3337,7 +3304,7 @@ export class Session implements SessionLike {
   private async _execReload(): Promise<string> {
     const report: string[] = [];
 
-    // 1. Reload skills + system prompt
+    // 1. 重载技能与 system prompt
     const skillResult = this.reloadSkills();
     report.push(
       `Skills: ${skillResult.total} loaded` +
@@ -3345,11 +3312,11 @@ export class Session implements SessionLike {
       (skillResult.removed.length ? `, -${skillResult.removed.join(", ")}` : ""),
     );
 
-    // 2. Rebuild system prompt
+    // 2. 重建 system prompt
     this._rebuildSystemPrompt();
     report.push("System prompt: rebuilt");
 
-    // 3. Reload MCP
+    // 3. 重载 MCP
     const mcpBefore = this._snapshotMcpAvailability();
     try {
       report.push(await this.reloadMcp({
@@ -3399,13 +3366,13 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Session title
+  // 会话标题
   // ==================================================================
 
   setTitle(title: string): void {
     this._title = title || undefined;
-    // No onSaveRequest —renaming should not update last_active_at.
-    // The caller (store:renameSession) writes title to disk directly.
+    // 不触发 onSaveRequest —— 重命名不应更新 last_active_at。
+    // 调用方（store:renameSession）会直接把标题写入磁盘。
   }
 
   getTitle(): string | undefined {
@@ -3582,7 +3549,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Thinking level + cache hit
+  // 思考等级与缓存命中
   // ==================================================================
 
   get thinkingLevel(): string {
@@ -3603,23 +3570,23 @@ export class Session implements SessionLike {
     this._preferredAccentColor = value;
   }
 
-  /** The model name from the primary agent's config. */
+  /** 主 agent 配置中的模型名。 */
   get currentModelName(): string {
     return this.primaryAgent.modelConfig.model;
   }
 
-  /** The config name for the current model (e.g., "my-claude"). */
+  /** 当前模型的配置名（例如 "my-claude"）。 */
   get currentModelConfigName(): string {
     return this.primaryAgent.modelConfig.name;
   }
 
   /**
-   * Switch the primary agent to a different model config.
-   * Only callable between turns (not while a turn is in progress).
+   * 把主 agent 切换到另一个模型配置。
+   * 只能在回合之间调用（回合进行中不可调用）。
    */
   /**
-   * Switch the primary agent to a different model config.
-   * Only callable between turns (not while a turn is in progress).
+   * 把主 agent 切换到另一个模型配置。
+   * 只能在回合之间调用（回合进行中不可调用）。
    */
   switchModel(modelConfigName: string): void {
     switchModel(this, modelConfigName);
@@ -3672,7 +3639,7 @@ export class Session implements SessionLike {
     this._cacheSupported = false;
   }
 
-  /** Input tokens from the most recent provider response. */
+  /** 最近一次 provider 响应的输入 token 数。 */
   get lastInputTokens(): number {
     return this._lastInputTokens;
   }
@@ -3681,7 +3648,7 @@ export class Session implements SessionLike {
     this._lastInputTokens = value;
   }
 
-  /** Total tokens (input + output) from the most recent provider response. */
+  /** 最近一次 provider 响应的总 token 数（输入 + 输出）。 */
   get lastTotalTokens(): number {
     return this._lastTotalTokens;
   }
@@ -3690,7 +3657,7 @@ export class Session implements SessionLike {
     this._lastTotalTokens = value;
   }
 
-  /** Cache-read tokens from the most recent provider response. */
+  /** 最近一次 provider 响应的缓存读取 token 数。 */
   get lastCacheReadTokens(): number {
     return this._lastCacheReadTokens;
   }
@@ -3707,11 +3674,11 @@ export class Session implements SessionLike {
     this._lastCacheReadTokens = value;
   }
 
-  // 鈹€鈹€ Cumulative usage stats (derived from log token_update entries) 鈹€鈹€
+  // —— 累计用量统计（由日志的 token_update 条目推导） ——
 
   /**
-   * Estimate token counts for each section of the system prompt using
-   * gpt-tokenizer. Cached until prompt/skills/tools reload.
+   * 用 gpt-tokenizer 估算 system prompt 各段的 token 数。
+   * 缓存至提示词/技能/工具重载时失效。
    */
   private _getPromptSectionEstimates(): PromptSectionEstimates {
     if (this._promptSectionEstimates) return this._promptSectionEstimates;
@@ -3760,9 +3727,9 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Recompute cumulative usage by summing every token_update entry in the log.
-   * Memoized by log length: the result only changes when entries are appended
-   * (live turn) or the log is replaced (restore / new session).
+   * 汇总日志中所有 token_update 条目，重算累计用量。
+   * 按日志长度记忆化：只有追加条目（live 回合）或替换日志
+   * （恢复 / 新会话）时结果才会变化。
    */
   private _computeUsageStats(): UsageStats {
     const logLen = this._log.length;
@@ -3833,7 +3800,7 @@ export class Session implements SessionLike {
       ?? { cumulativeInput: 0, cumulativeOutput: 0, cumulativeCacheRead: 0, cumulativeUncached: 0, sessionCount: 0 };
   }
 
-  /** Effective context budget: contextLength 脳 context budget percent. */
+  /** 有效上下文预算：contextLength × 上下文预算百分比。 */
   get contextBudget(): number {
     return Math.round((this.primaryAgent?.modelConfig?.contextLength ?? 0) * this._contextManager.budgetPercent / 100);
   }
@@ -3915,9 +3882,8 @@ export class Session implements SessionLike {
     options?: { signal?: AbortSignal },
   ): Promise<string> {
     return this._withTurnLock(async () => {
-      // The catch must live INSIDE the lock: the failure flags are reset per
-      // lock acquisition, and a queued claimant resumes before an outside
-      // catch would run —double-writing or suppressing the entry.
+      // catch 必须放在锁内部：失败标志在每次获取锁时重置，排队中的
+      // 竞争者会在外部 catch 执行前恢复 —— 那会重复写入或漏写该条目。
       try {
         this._ensureSessionStorageReady();
         await this._claimSessionWriter();
@@ -3938,8 +3904,8 @@ export class Session implements SessionLike {
     return runManualCompact(this, instruction, options);
   }
 
-  /** Body of runManualCompact. Caller holds the turn lock. */
-  /** Body of runManualCompact. Caller holds the turn lock. */
+  /** runManualCompact 的主体。调用方持有回合锁。 */
+  /** runManualCompact 的主体。调用方持有回合锁。 */
   async _runManualCompactBody(
     instruction?: string,
     options?: { signal?: AbortSignal; completionDisplay?: string },
@@ -3948,16 +3914,16 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Ask state
+  // Ask 状态
   // ==================================================================
 
   /**
-   * Restore ask state from log entries.
-   * Scans for unclosed ask_request (no matching ask_resolution).
+   * 从日志条目恢复 ask 状态。
+   * 扫描未关闭的 ask_request（没有匹配的 ask_resolution）。
    */
   /**
-   * Restore ask state from log entries.
-   * Scans for unclosed ask_request (no matching ask_resolution).
+   * 从日志条目恢复 ask 状态。
+   * 扫描未关闭的 ask_request（没有匹配的 ask_resolution）。
    */
   getPendingAsk(): PendingAskUi | null {
     return getPendingAsk(this);
@@ -3975,8 +3941,8 @@ export class Session implements SessionLike {
     emitAskResolvedProgress(this, askId, decision, askKind);
   }
 
-  /** Returns true if the path is strictly inside the session artifacts dir. */
-  /** Returns true if the path is strictly inside the session artifacts dir. */
+  /** 路径严格位于会话 artifacts 目录内时返回 true。 */
+  /** 路径严格位于会话 artifacts 目录内时返回 true。 */
   _isInsideArtifactsDir(rawPath: unknown): boolean {
     return isInsideArtifactsDir(this, rawPath);
   }
@@ -3986,7 +3952,7 @@ export class Session implements SessionLike {
 
 
   // ==================================================================
-  // Main turn loop
+  // 主回合循环
   // ==================================================================
 
   async resumePendingTurn(options?: { signal?: AbortSignal }): Promise<string> {
@@ -4002,7 +3968,7 @@ export class Session implements SessionLike {
       this._contextManager?.assertBudgetAvailable();
       this._pendingTurnState = null;
       if (pending.stage === "pre_user_input") {
-        // Already inside the lock —call the inner turn logic directly
+        // 已在锁内 —— 直接调用内层回合逻辑
         return this._turnInner(pending.userInput ?? "", options);
       }
       return this._resumeActivationStage(options);
@@ -4010,18 +3976,16 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Continue a turn that suspended mid-activation (approval resolved, question
-   * answered). Single canonical resume path —turn() and resumePendingTurn()
-   * both land here, so pending approved tool_calls always execute and queued
-   * messages are always delivered, whichever entry point the UI used.
-   * Caller must hold the turn lock and have cleared _pendingTurnState after
-   * session-start hooks and the context-budget check succeed.
+   * 继续一个在激活中途挂起的回合（审批已解决、问题已回答）。
+   * 这是唯一的规范续跑路径 —— turn() 与 resumePendingTurn() 都汇到这里，
+   * 因此无论 UI 从哪个入口进来，已批准的 pending tool_call 都会执行、
+   * 排队消息都会投递。调用方必须持有回合锁，并在 session-start hooks 与
+   * 上下文预算检查通过后清空 _pendingTurnState。
    */
   async _resumeActivationStage(options?: { signal?: AbortSignal }): Promise<string> {
     this._invalidateProviderTokenSnapshot();
-    // The suspended turn never closed its work, so the previous turn's end
-    // status is stale here; null it like every other turn entry point so the
-    // error path below can tell whether work still needs closing.
+    // 挂起的回合从未收尾，上一回合的结束状态在此已过期；像其他回合入口
+    // 一样置空，下面的错误路径才能判断 work 是否仍需关闭。
     this._lastTurnEndStatus = null;
     try {
       return await this._resumeActivationStageInner(options);
@@ -4037,16 +4001,15 @@ export class Session implements SessionLike {
   }
 
   async _resumeActivationStageInner(options?: { signal?: AbortSignal }): Promise<string> {
-    // Install the turn signal early so that _drainPendingToolCalls can
-    // pass it to tool executors (e.g. client-side web_search).
+    // 尽早安装回合信号，使 _drainPendingToolCalls 能把它传给工具执行器
+    // （例如客户端 web_search）。
     const turnSignalState = this._installCurrentTurnSignal(options?.signal);
 
     const interruptionStartIdx = this._findEarliestPendingToolCallLogIndex();
 
     try {
-      // Drain any pending tool_calls (including the just-approved one and any
-      // siblings that were emitted in parallel but never reached). This is the
-      // single, canonical execution path post-approval. Stops on suspension.
+      // 排空所有 pending tool_call（包括刚批准的那个，以及并行发出却没执行到的
+      // 兄弟调用）。这是审批后唯一的规范执行路径；遇到挂起即停止。
       const drainResult = await this._drainPendingToolCalls(turnSignalState.signal);
       if (drainResult.kind === "suspended") {
         return "";
@@ -4056,9 +4019,8 @@ export class Session implements SessionLike {
         return "";
       }
 
-      // Post-resume activation boundary drain: tool_results from the
-      // just-resolved approval are in the log; drain any queued inbox
-      // messages before the model sees them in the next activation.
+      // 续跑后的激活边界排空：刚解决的审批产生的 tool_result 已在日志里；
+      // 在模型下一次激活看到它们之前，先排空收件箱中的排队消息。
       if (this._hasInboxMessages()) {
         this._drainInboxAsEntries();
       }
@@ -4069,8 +4031,8 @@ export class Session implements SessionLike {
     const textAccumulator = { text: "" };
     const reasoningAccumulator = { text: "" };
     const result = await this._runTurnActivationLoop(options?.signal, textAccumulator, reasoningAccumulator);
-    // Notify parent of the resumed turn's output. Without this, post-approval
-    // assistant_text is lost and agent_result.content shows "(no output)".
+    // 把续跑回合的输出通知父会话。否则审批后的 assistant_text 会丢失，
+    // agent_result.content 会显示 "(no output)"。
     if (!this._activeAsk) {
       this._turnOutputTarget?.(result?.trim() || "");
       if (result?.trim()) this._recordSessionEvent("returned output");
@@ -4079,19 +4041,16 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Resume-drain interruption starts from the earliest unresolved tool_call in
-   * the active window, not from the current log tail: orphan tool_calls were
-   * emitted before the approval ask and must be visible to interruption cleanup.
-   * Scanned window-wide (not per-turn): the turn counter may have advanced
-   * while the work was suspended, but its orphans still need completion.
+   * 续跑排空的中断处理从活动窗口中最早的未解决 tool_call 开始，而不是
+   * 从当前日志尾部：孤儿 tool_call 在审批 ask 之前就已发出，必须让中断
+   * 清理看到。按整个窗口扫描（而非按回合）：work 挂起期间回合计数可能
+   * 已推进，但其孤儿调用仍需补全。
    */
   /**
-   * Scan the active window for the first tool_call without a matching
-   * tool_result anywhere in the window. Single implementation shared by the
-   * index- and object-shaped callers. Two-pass on purpose: a merged
-   * single-pass with a pending map measured ~2.8x slower in
-   * scripts/bench-log-hotpaths.ts (Map insert/delete churn beats the
-   * second pass's early exit).
+   * 在活动窗口中查找第一个在整个窗口内都没有匹配 tool_result 的 tool_call。
+   * 这是 index 与对象两种调用方共用的唯一实现。故意分两遍：在
+   * scripts/bench-log-hotpaths.ts 中实测，改用 pending map 的单遍合并写法
+   * 慢约 2.8 倍（Map 增删的开销超过第二遍提前退出省下的时间）。
    */
   _firstPendingToolCall(): { index: number; entry: LogEntry } | null {
     const windowStart = this._activeWindowStartIdx();
@@ -4123,40 +4082,34 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Drain pending tool_calls in the current turn (in emission order).
-   * For each: gate →execute →append tool_result, updating tool_call meta.
-   * Returns a structured result so approval suspension and interruption are
-   * not collapsed into the same empty-string resume path.
+   * 按发出顺序排空当前回合的 pending tool_call。
+   * 每个调用依次：门控 → 执行 → 追加 tool_result，并更新 tool_call meta。
+   * 返回结构化结果，避免把审批挂起与中断都压成同一条空字符串续跑路径。
    *
-   * This is the single canonical path for executing tool_calls outside of
-   * the streaming tool-loop —used after approval resume and to handle
-   * orphan parallel tool_calls.
+   * 这是流式 tool-loop 之外执行 tool_call 的唯一规范路径 —— 用于审批后
+   * 续跑，以及处理并行的孤儿 tool_call。
    */
   /**
-   * Drain pending tool_calls in the current turn (in emission order).
-   * For each: gate →execute →append tool_result, updating tool_call meta.
-   * Returns a structured result so approval suspension and interruption are
-   * not collapsed into the same empty-string resume path.
+   * 按发出顺序排空当前回合的 pending tool_call。
+   * 每个调用依次：门控 → 执行 → 追加 tool_result，并更新 tool_call meta。
+   * 返回结构化结果，避免把审批挂起与中断都压成同一条空字符串续跑路径。
    *
-   * This is the single canonical path for executing tool_calls outside of
-   * the streaming tool-loop —used after approval resume and to handle
-   * orphan parallel tool_calls.
+   * 这是流式 tool-loop 之外执行 tool_call 的唯一规范路径 —— 用于审批后
+   * 续跑，以及处理并行的孤儿 tool_call。
    */
   async _drainPendingToolCalls(signal?: AbortSignal): Promise<DrainPendingToolCallsResult> {
     return drainPendingToolCalls(this, signal);
   }
 
   /**
-   * Find the next pending tool_call in the active window (no matching result),
-   * in log/emission order. Returns null when all are resolved.
-   * Window-wide rather than per-turn: an approved tool_call must execute on
-   * resume even if the turn counter advanced while the ask was pending.
+   * 按日志/发出顺序找出活动窗口中下一个 pending tool_call（无匹配结果）。
+   * 全部解决时返回 null。按整个窗口而非按回合查找：即使 ask 挂起期间
+   * 回合计数已推进，已批准的 tool_call 也必须在续跑时执行。
    */
   /**
-   * Find the next pending tool_call in the active window (no matching result),
-   * in log/emission order. Returns null when all are resolved.
-   * Window-wide rather than per-turn: an approved tool_call must execute on
-   * resume even if the turn counter advanced while the ask was pending.
+   * 按日志/发出顺序找出活动窗口中下一个 pending tool_call（无匹配结果）。
+   * 全部解决时返回 null。按整个窗口而非按回合查找：即使 ask 挂起期间
+   * 回合计数已推进，已批准的 tool_call 也必须在续跑时执行。
    */
   _findNextPendingToolCall(): {
     toolCallId: string;
@@ -4169,8 +4122,8 @@ export class Session implements SessionLike {
     return findNextPendingToolCall(this);
   }
 
-  /** Update tool_call entry's toolExecState meta in-place. */
-  /** Update tool_call entry's toolExecState meta in-place. */
+  /** 就地更新 tool_call 条目的 toolExecState meta。 */
+  /** 就地更新 tool_call 条目的 toolExecState meta。 */
   _updateToolCallExecState(
     toolCallId: string,
     state: "not_started" | "running" | "completed" | "failed",
@@ -4211,9 +4164,8 @@ export class Session implements SessionLike {
         return result;
       } catch (err) {
         turnLog.error("turn:exit:err", { err: err instanceof Error ? err.message : String(err) });
-        // Catch-all for failures _turnInner's own catch doesn't reach
-        // (storage/MCP/attachments/before-turn compact). Idempotent against
-        // the inner layers via the per-lock once-flags.
+        // 兜底 _turnInner 自身 catch 覆盖不到的失败（存储/MCP/附件/
+        // 回合前压缩）。借助按锁的 once 标志与内层保持幂等。
         this._recordTurnFailure(err, options?.signal);
         throw err;
       }
@@ -4237,10 +4189,10 @@ export class Session implements SessionLike {
     await this._sessionStartHooksPromise;
   }
 
-  /** Inner turn logic, called from within the turn lock. */
+  /** 内层回合逻辑，在回合锁内调用。 */
   async _turnInner(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[]; skipUserInput?: boolean }): Promise<string> {
-    // A pending ask owns the conversation: the turn cannot run until the user
-    // answers. New input is queued (Q5) and delivered when work resumes —    // never dropped, never run into the suspended round's bookkeeping.
+    // pending ask 独占对话：用户回答之前回合无法运行。新输入会排队（Q5），
+    // 等 work 恢复时投递 —— 既不丢弃，也不会挤进挂起轮次的记账。
     if (this._activeAsk) {
       if (!options?.skipUserInput && userInput.trim()) {
         this._deliverMessage({
@@ -4266,15 +4218,15 @@ export class Session implements SessionLike {
 
     const signal = options?.signal;
     if (this._pendingTurnState) {
-      // Already inside the lock via turn() —resume inline (calling turn()
-      // here would deadlock on the turn lock).
+      // 已经通过 turn() 处于锁内 —— 就地续跑（此处再调 turn()
+      // 会在回合锁上死锁）。
       const pending = this._pendingTurnState;
       this._pendingTurnState = null;
       if (pending.stage === "pre_user_input") {
         return this._turnInner(pending.userInput ?? "", options);
       }
-      // New input arriving through turn() while work waits to continue:
-      // queue it first so the canonical resume path delivers it (Q5).
+      // work 等待续跑期间又有新输入经 turn() 到来：先排队，
+      // 由规范续跑路径负责投递（Q5）。
       if (!options?.skipUserInput && userInput.trim()) {
         this._deliverMessage({
           type: "user_input",
@@ -4286,8 +4238,8 @@ export class Session implements SessionLike {
       return this._resumeActivationStage(options);
     }
 
-    // skipUserInput path: auto-resume from idle. Drain inbox as individual
-    // entries instead of writing a synthetic empty user input.
+    // skipUserInput 路径：从 idle 自动续跑。把收件箱按独立条目排空，
+    // 而不是写一条合成的空用户输入。
     if (options?.skipUserInput) {
       this._lastTurnEndStatus = null;
       if (!this._hasInboxMessages() && !this._hasUnprocessedUserMessage()) {
@@ -4307,7 +4259,7 @@ export class Session implements SessionLike {
         }
         throw err;
       }
-      // Fire UserPromptSubmit hooks (can deny or modify the prompt)
+      // 触发 UserPromptSubmit hooks（可拒绝或修改提示词）
       if (this.hookRuntime.hooks.length > 0) {
         this.hookRuntime.clearTurnContext();
         // 上一轮若因异常退出，next-round 上下文可能残留；新用户输入前清理。
@@ -4327,7 +4279,7 @@ export class Session implements SessionLike {
       }
 
       this._lastTurnEndStatus = null;
-      // Merge inline images (clipboard paste) into multimodal content
+      // 把内联图片（剪贴板粘贴）合并进多模态内容
       const inlineImages = options?.inlineImages;
       if (inlineImages && inlineImages.length > 0) {
         const parts: Array<Record<string, unknown>> = [];
@@ -4348,9 +4300,9 @@ export class Session implements SessionLike {
         userContent = parts;
       }
 
-      // display = original user input (what they typed); content = expanded for API
+      // display = 用户原始输入（键入内容）；content = 为 API 展开后的内容
       const displayText = userInput;
-      // For the log entry, replace inline base64 images with image_ref file paths
+      // 写入日志条目时，把内联 base64 图片替换为 image_ref 文件路径
       const logContent = this._extractAndSaveImages(userContent);
       const received = this._beginActiveInput("user", displayText, logContent);
       this._appendDeliveredUserMessage(
@@ -4364,13 +4316,13 @@ export class Session implements SessionLike {
     }
     this.onSaveRequest?.();
 
-    // Ensure MCP is connected (after user message is displayed).
+    // 确保 MCP 已连接（在用户消息展示之后）。
     if (this._mcpManager) {
       await this._ensureMcp();
     }
 
-    // Before-turn auto-compact: if last known usage + estimated new tokens
-    // exceeds the threshold, compact now so the activation runs in fresh context.
+    // 回合前自动压缩：若已知用量 + 估算的新 token 超过阈值，就现在压缩，
+    // 让激活在新鲜上下文中运行。
     if (this._capabilities.includeSpawnTool && !this._compactInProgress) {
       const { budget } = this._contextBudgetInfo();
       if (budget > 0) {
@@ -4394,7 +4346,7 @@ export class Session implements SessionLike {
             }
             throw compactErr;
           }
-          // Messages held back during compact (Q6) land after the marker.
+          // 压缩期间被暂扣的消息（Q6）在 marker 之后落位。
           if (this._hasInboxMessages()) {
             this._drainInboxAsEntries();
           }
@@ -4403,19 +4355,19 @@ export class Session implements SessionLike {
       }
     }
 
-    // Track streamed content for abort recovery
+    // 记录流式内容，用于中止后的恢复
     const textAccumulator = { text: "" };
     const reasoningAccumulator = { text: "" };
     try {
       const result = await this._runTurnActivationLoop(signal, textAccumulator, reasoningAccumulator);
-      // Always notify parent —even for empty results.
+      // 总是通知父会话 —— 即使结果为空。
       if (!this._activeAsk) {
         this._turnOutputTarget?.(result?.trim() || "");
         if (result?.trim()) this._recordSessionEvent("returned output");
       }
       return result;
     } catch (err) {
-      // Deliver error to parent so it's never silently lost
+      // 把错误投递给父会话，绝不静默丢失
       if (!this._activeAsk) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         this._turnOutputTarget?.(`[Error] ${errorMsg}`);
@@ -4428,93 +4380,84 @@ export class Session implements SessionLike {
     }
   }
 
-  /** True when the error is a user interrupt rather than a real failure. */
-  /** True when the error is a user interrupt rather than a real failure. */
+  /** 错误是用户中断而非真实失败时返回 true。 */
+  /** 错误是用户中断而非真实失败时返回 true。 */
   _isTurnAbortError(err: unknown, signal?: AbortSignal): boolean {
     return isTurnAbortError(this, err, signal);
   }
 
   /**
-   * Internal compact code uses this exact message for a deliberate stop. A
-   * provider may also throw an AbortError, but without this marker it is a
-   * transport failure and must remain visible as an error.
+   * 内部压缩代码用这条固定消息表示主动停止。provider 也可能抛 AbortError，
+   * 但没有该标记时它属于传输失败，必须继续作为错误暴露。
    */
   _isCompactAbortError(err: unknown): boolean {
     return (err as { name?: unknown })?.name === "AbortError"
       && (err as { message?: unknown })?.message === "Compact phase aborted.";
   }
 
-  // Set while the current turn-lock execution has already written its error
-  // log entry; reset on every lock acquisition. Multiple catch layers
-  // (entry-point wrappers, resume stage, manual context commands) can then
-  // call _recordTurnErrorEntry without double-writing.
+  // 当前这次回合锁执行已写入错误日志条目时置位；每次获取锁时重置。
+  // 这样多个 catch 层（入口封装、续跑阶段、手动上下文命令）都能调用
+  // _recordTurnErrorEntry 而不会重复写入。
   _turnErrorEntryWritten = false;
 
-  // Whether the current turn-lock execution emitted a lifecycle "ended"
-  // event (set by _runTurnActivationLoop's finally). Failure paths that die
-  // before the activation loop use this to emit the missing ended(error)
-  // exactly once. Reset on every lock acquisition.
+  // 当前这次回合锁执行是否已发出生命周期 "ended" 事件（由
+  // _runTurnActivationLoop 的 finally 设置）。在激活循环之前就失败的
+  // 路径据此补发缺失的 ended(error)，且只发一次。每次获取锁时重置。
   _lifecycleEndedEmitted = false;
 
   /**
-   * Write the user-visible error log entry for a failed turn —at most once
-   * per turn-lock execution, and never for user interrupts. The runtime owns
-   * error visibility: all UIs see the entry via log projection. (Historically
-   * the TUI's catch wrote this entry, which left server-mode UIs blind to
-   * turn errors.)
+   * 为失败的回合写入用户可见的错误日志条目 —— 每次回合锁执行最多一次，
+   * 且用户中断时从不写入。错误可见性由 runtime 负责：所有 UI 都通过日志
+   * 投影看到该条目。（历史上由 TUI 的 catch 写这条，导致 server 模式的
+   * UI 看不到回合错误。）
    */
   /**
-   * Write the user-visible error log entry for a failed turn —at most once
-   * per turn-lock execution, and never for user interrupts. The runtime owns
-   * error visibility: all UIs see the entry via log projection. (Historically
-   * the TUI's catch wrote this entry, which left server-mode UIs blind to
-   * turn errors.)
+   * 为失败的回合写入用户可见的错误日志条目 —— 每次回合锁执行最多一次，
+   * 且用户中断时从不写入。错误可见性由 runtime 负责：所有 UI 都通过日志
+   * 投影看到该条目。（历史上由 TUI 的 catch 写这条，导致 server 模式的
+   * UI 看不到回合错误。）
    */
   _recordTurnErrorEntry(err: unknown, signal?: AbortSignal): void {
     recordTurnErrorEntry(this, err, signal);
   }
 
   /**
-   * Full failure surface for a turn that died anywhere inside (or just
-   * outside) the turn lock: error log entry + a lifecycle ended(error) event
-   * if the activation loop never got to emit one (pre-loop failures:
-   * storage, MCP, attachments, before-turn compact, manual-command
-   * validation). Both halves are idempotent per lock execution, so every
-   * catch layer can call this unconditionally.
+   * 回合在锁内（或紧邻锁外）任意位置失败时的完整失败面：错误日志条目，
+   * 以及激活循环来不及发出时补发的生命周期 ended(error) 事件（循环前
+   * 失败：存储、MCP、附件、回合前压缩、手动命令校验）。两部分都按锁
+   * 执行保持幂等，因此每个 catch 层都可以无条件调用。
    */
   /**
-   * Full failure surface for a turn that died anywhere inside (or just
-   * outside) the turn lock: error log entry + a lifecycle ended(error) event
-   * if the activation loop never got to emit one (pre-loop failures:
-   * storage, MCP, attachments, before-turn compact, manual-command
-   * validation). Both halves are idempotent per lock execution, so every
-   * catch layer can call this unconditionally.
+   * 回合在锁内（或紧邻锁外）任意位置失败时的完整失败面：错误日志条目，
+   * 以及激活循环来不及发出时补发的生命周期 ended(error) 事件（循环前
+   * 失败：存储、MCP、附件、回合前压缩、手动命令校验）。两部分都按锁
+   * 执行保持幂等，因此每个 catch 层都可以无条件调用。
    */
   _recordTurnFailure(err: unknown, signal?: AbortSignal): void {
     recordTurnFailure(this, err, signal);
   }
 
   /**
-   * Handle interruption using structured log (v2).
+   * 基于结构化日志处理中断（v2）。
    *
-   * Rules:
-   * - Keep completed reasoning, drop incomplete reasoning of the currently interrupted round
-   * - Materialize partial streamed text as assistant_text
-   * - For each complete tool_call lacking result, append contextual tool_result
-   * - For partial (unclosed) tool_calls visible only in TUI, append a user-role
-   *   system-message explaining their absence from the API context
-   * - Inject a single user-role system-message about the interruption
+   * 规则：
+   * - 保留已完成的 reasoning，丢弃当前被中断轮次中未完成的 reasoning
+   * - 把部分流式文本固化为 assistant_text
+   * - 对每个缺少结果的完整 tool_call，追加带上下文的 tool_result
+   * - 对只在 TUI 可见的部分（未关闭）tool_call，追加一条 user 角色
+   *   system 消息，说明它们为何不在 API 上下文中
+   * - 注入一条关于本次中断的 user 角色 system 消息
    */
   /**
-   * Handle interruption using structured log (v2).
+   * 基于结构化日志处理中断（v2）。
    *
-   * Rules:
-   * - Keep completed reasoning, drop incomplete reasoning of the currently interrupted round
-   * - Materialize partial streamed text as assistant_text
-   * - For each complete tool_call lacking result, append contextual tool_result
-   * - For partial (unclosed) tool_calls visible only in TUI, append a user-role
-   *   system-message explaining their absence from the API context
-   * - Inject a single user-role system-message about the interruption
+   * 规则：
+   * - 保留已完成的 reasoning，丢弃当前被中断轮次中未完成的 reasoning
+   * - 把部分流式文本固化为 assistant_text
+   * - 对每个缺少结果的完整 tool_call，追加带上下文的 tool_result
+   * - 对只在 TUI 可见的部分（未关闭）tool_call，追加一条 user 角色
+   *   system 消息，说明它们为何不在 API 上下文中
+   * - 注入一条关于本次中断的 user 角色 system 消息
    */
   _handleInterruption(
     logLenBefore: number,
@@ -4525,12 +4468,12 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Scan the current turn's log entries to collect human-readable interrupt hints.
-   * Called after _handleInterruption, before writing turn_end.
+   * 扫描当前回合的日志条目，收集人类可读的中断提示。
+   * 在 _handleInterruption 之后、写入 turn_end 之前调用。
    */
   /**
-   * Scan the current turn's log entries to collect human-readable interrupt hints.
-   * Called after _handleInterruption, before writing turn_end.
+   * 扫描当前回合的日志条目，收集人类可读的中断提示。
+   * 在 _handleInterruption 之后、写入 turn_end 之前调用。
    */
   _collectInterruptHints(): string[] {
     return collectInterruptHints(this);
@@ -4541,7 +4484,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Activation
+  // 激活
   // ==================================================================
 
   async _runActivation(
@@ -4555,7 +4498,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Ask tool
+  // Ask 工具
   // ==================================================================
 
   _execAsk(args: Record<string, unknown>): ToolResult {
@@ -4600,7 +4543,7 @@ export class Session implements SessionLike {
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       const answer = decision.answers.find((a) => a.questionIndex === i);
-      // Show question with all options, marking the selected one
+      // 展示问题及全部选项，并标出当前选中项
       lines.push(`Q${questions.length > 1 ? i + 1 : ""}: ${q.question}`);
       for (let j = 0; j < q.options.length; j++) {
         const opt = q.options[j];
@@ -4631,14 +4574,14 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Resolve a permission approval ask.
-   * @param askId  The ask ID to resolve.
-   * @param choiceIndex  Index into the ask's options array. Last option is always "Deny".
+   * 解决一个权限审批 ask。
+   * @param askId  要解决的 ask ID。
+   * @param choiceIndex  ask 选项数组中的下标。最后一个选项始终是 "Deny"。
    */
   /**
-   * Resolve a permission approval ask.
-   * @param askId  The ask ID to resolve.
-   * @param choiceIndex  Index into the ask's options array. Last option is always "Deny".
+   * 解决一个权限审批 ask。
+   * @param askId  要解决的 ask ID。
+   * @param choiceIndex  ask 选项数组中的下标。最后一个选项始终是 "Deny"。
    */
   resolveApprovalAsk(askId: string, choiceIndex: number): void {
     resolveApprovalAsk(this, askId, choiceIndex);
@@ -4661,14 +4604,14 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Route an ask operation to the correct session (self or child).
-   * If the ask belongs to this session, runs onSelf. If it belongs to a
-   * child, runs onChild then resumes the child's pending turn.
+   * 把 ask 操作路由到正确的会话（自身或子会话）。
+   * ask 属于本会话时执行 onSelf；属于子会话时执行 onChild，
+   * 然后续跑子会话的 pending 回合。
    */
   /**
-   * Route an ask operation to the correct session (self or child).
-   * If the ask belongs to this session, runs onSelf. If it belongs to a
-   * child, runs onChild then resumes the child's pending turn.
+   * 把 ask 操作路由到正确的会话（自身或子会话）。
+   * ask 属于本会话时执行 onSelf；属于子会话时执行 onChild，
+   * 然后续跑子会话的 pending 回合。
    */
   _withAskRouting<T>(
     askId: string,
@@ -4679,13 +4622,12 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Tool call visibility
+  // 工具调用可见性
   // ==================================================================
 
   /**
-   * Hook to override a tool call's TUI visibility. Returning "hide" suppresses
-   * the call entirely —the runtime "hide" machinery is retained for future use,
-   * but nothing uses it right now.
+   * 覆盖工具调用 TUI 可见性的 hook。返回 "hide" 会完全隐藏该调用 ——
+   * runtime 的 "hide" 机制保留备用，目前没有地方使用。
    */
   _resolveToolCallVisibility: ResolveToolCallVisibilityCallback = () => {
     return undefined;
@@ -4758,7 +4700,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Path variable resolution
+  // 路径变量解析
   // ==================================================================
 
   private _resolveSessionArtifacts(): string {
@@ -4794,8 +4736,8 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Assemble the full system prompt using the layered assembler.
-   * Called by _reloadPromptAndTools(), not per-call.
+   * 用分层 assembler 组装完整的 system prompt。
+   * 由 _reloadPromptAndTools() 调用，不是每次请求都调用。
    */
   _describeInitialModel(): string {
     const mc = this.primaryAgent.modelConfig;
@@ -4823,8 +4765,8 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Get the cached system prompt. Computed once and reused across API calls
-   * for prompt cache stability. Refreshed only by _reloadPromptAndTools().
+   * 获取缓存的 system prompt。只计算一次并在多次 API 调用间复用，
+   * 以稳定 prompt cache；仅由 _reloadPromptAndTools() 刷新。
    *
    * 动态 hooks/提醒不再拼接到 system：它们由消息投影追加到 ephemeral 尾巴，
    * 否则每次请求都会改变 system 前缀，使整段历史失去缓存。
@@ -4837,16 +4779,16 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Reload skills and rebuild the system snapshot.
-   * Called at session init and by explicit /reload only; file edits and
-   * store binding do not change the cached prefix.
+   * 重载技能并重建 system 快照。
+   * 仅在会话初始化与显式 /reload 时调用；文件修改与 store 绑定
+   * 都不会改变缓存前缀。
    */
   _reloadPromptAndTools(): void {
     this._refreshSkills();
     this._rebuildSystemPrompt();
   }
 
-  /** Rebuild the cached system snapshot after tools/skills/memory change. */
+  /** 工具/技能/记忆变化后重建缓存的 system 快照。 */
   _rebuildSystemPrompt(): void {
     this._cachedSystemPrompt = this._assembleSystemPrompt();
     this._promptSectionEstimates = null;
@@ -4854,7 +4796,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Auto-compact
+  // 自动压缩
   // ==================================================================
 
   _buildCompactCheck(): ((
@@ -4864,12 +4806,12 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Run the compact phase: inject compact prompt, let the Agent produce
-   * a continuation prompt (possibly using tools), then return it.
+   * 运行压缩阶段：注入压缩提示词，让 Agent 生成续跑提示词
+   * （可能借助工具），然后返回。
    */
   /**
-   * Run the compact phase: inject compact prompt, let the Agent produce
-   * a continuation prompt (possibly using tools), then return it.
+   * 运行压缩阶段：注入压缩提示词，让 Agent 生成续跑提示词
+   * （可能借助工具），然后返回。
    */
   async _runCompactPhase(
     scenario: "before_turn" | "mid_turn",
@@ -4880,12 +4822,12 @@ export class Session implements SessionLike {
   }
 
   /**
-   * Execute auto-compact: run compact phase, then reconstruct conversation
-   * with marker + system prompt + continuation prompt.
+   * 执行自动压缩：先跑压缩阶段，再用 marker + system prompt + 续跑提示词
+   * 重建对话。
    */
   /**
-   * Execute auto-compact: run compact phase, then reconstruct conversation
-   * with marker + system prompt + continuation prompt.
+   * 执行自动压缩：先跑压缩阶段，再用 marker + system prompt + 续跑提示词
+   * 重建对话。
    */
   async _doAutoCompact(
     scenario: "before_turn" | "mid_turn",
@@ -4953,11 +4895,11 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Sub-agent spawn / cancel / lifecycle
+  // 子代理的 spawn / cancel / 生命周期
   // ==================================================================
 
   private _saveChildSession(handle: ChildSessionHandle): boolean {
-    if (!handle.session) return true; // released —already persisted at settle
+    if (!handle.session) return true; // 已释放 —— settle 时已持久化
     try {
       return handle.session.persistToDisk();
     } catch (e) {
@@ -4966,7 +4908,7 @@ export class Session implements SessionLike {
     }
   }
 
-  /** @internal Kept as a stable test/runtime hook around ChildSessionManager. */
+  /** @internal 作为 ChildSessionManager 的稳定测试/运行时 hook 保留。 */
   _instantiateChildSession(
     taskId: string,
     templateLabel: string,
@@ -5032,7 +4974,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // send tool —async message to interactive/team agent
+  // send 工具 —— 向交互式/团队 agent 异步发送消息
   // ==================================================================
 
   private async _execSend(args: Record<string, unknown>): Promise<ToolResult> {
@@ -5060,7 +5002,7 @@ export class Session implements SessionLike {
   }
 
   // ------------------------------------------------------------------
-  // await_event —blocking wait for sub-agent completion or new messages
+  // await_event —— 阻塞等待子代理完成或新消息
   //
   // 设计约定（2026-10-19）：本工具不接受时长参数。它阻塞到「runtime 事件落进
   // inbox」为止，唯一的退出条件是：事件到达 / 用户中断 / 无可等对象 / 防卡死
@@ -5228,9 +5170,8 @@ export class Session implements SessionLike {
       notifyLogListeners: () => this._notifyLogListeners(),
       requestSave: () => this.onSaveRequest?.(),
       deliverMessageToParent: (msg) => { this._deliverMessage(msg); },
-      // Child-private access wrappers: same-class private access is legal
-      // here in Session, and routing through the instance keeps test stubs
-      // (e.g. a mocked _saveChildSession) effective.
+      // 子会话私有访问的封装：在 Session 内同类私有访问是合法的，
+      // 而经由实例路由能让测试桩（例如 mock 的 _saveChildSession）继续生效。
       deliverToChild: (child, msg) => { child._deliverMessage(msg); },
       childHasInbox: (child) => child._hasInboxMessages(),
       setChildInbox: (child, msgs) => { child._inbox = msgs; },
@@ -5276,10 +5217,9 @@ export class Session implements SessionLike {
           hooks: this.config.subAgentInheritHooks ? this.hookRuntime.hooks : undefined,
         });
         childSession.onSaveRequest = o.onSaveRequest;
-        // Bubble child ask changes to this session (and transitively to the
-        // root): child asks live in the child's log, so without this hook
-        // out-of-process UIs (which only subscribe to the root) never learn
-        // that a sub-agent is waiting for approval.
+        // 把子会话的 ask 变化冒泡到本会话（并间接到根会话）：子会话的 ask
+        // 存在子会话自己的日志里，没有这个 hook，进程外的 UI（只订阅根会话）
+        // 永远不知道有子代理在等待审批。
         childSession.subscribeAsk(() => this._notifyAskChanged());
         return childSession;
       },
@@ -5328,12 +5268,11 @@ export class Session implements SessionLike {
     return this._subAgentFactoryInstance.buildSubAgentSystemPrompt(basePrompt, persistent);
   }
 
-  // _waitForAnyAgent removed —await_event uses 1s polling now, and the
-  // activation loop no longer does implicit waits. Model should call
-  // await_event explicitly to wait for sub-agent completion.
+  // _waitForAnyAgent 已移除 —— await_event 现在用 1s 轮询，激活循环也不再
+  // 做隐式等待。模型应显式调用 await_event 等待子代理完成。
 
   // ==================================================================
-  // Image file storage (v2 —image_ref)
+  // 图片文件存储（v2 —— image_ref）
   // ==================================================================
 
   private _imageCounter = 0;
@@ -5370,7 +5309,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // MCP integration
+  // MCP 集成
   // ==================================================================
 
   async _ensureMcp(): Promise<void> {
@@ -5378,11 +5317,11 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Persistence
+  // 持久化
   // ==================================================================
 
-  // getStateForPersistence() and restoreFromPersistence() removed.
-  // All persistence is now via getLogForPersistence() / restoreFromLog().
+  // getStateForPersistence() 与 restoreFromPersistence() 已移除。
+  // 现在所有持久化都走 getLogForPersistence() / restoreFromLog()。
 
   _generateSummary(): string {
     for (const entry of this._log) {
@@ -5413,7 +5352,7 @@ export class Session implements SessionLike {
   }
 
   // ==================================================================
-  // Resource cleanup
+  // 资源清理
   // ==================================================================
 
   async close(): Promise<void> {

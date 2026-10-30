@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** grep 执行器：文件/内容匹配、glob 与类型过滤；rg 优先、JS 回退，统一排序与截断。 */
 
 import fs from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
@@ -37,10 +30,6 @@ import {
 } from "./limits.js";
 import { globToRegex } from "./glob.js";
 
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
-
 export interface GrepOptions {
   /** 测试注入：false 时强制 JS 回退；生产默认走随包二进制。 */
   useNative?: boolean;
@@ -51,7 +40,7 @@ export interface GrepOptions {
   outputMode: "content" | "files_with_matches" | "count";
   afterContext: number;
   beforeContext: number;
-  /** undefined = smart-case (auto), true = forced -i, false = forced case-sensitive */
+  /** undefined = smart-case（自动），true = 强制 -i，false = 强制区分大小写 */
   caseInsensitive: boolean | undefined;
   showLineNumbers: boolean;
   headLimit: number;
@@ -74,7 +63,7 @@ export interface GrepOptions {
   signal?: AbortSignal;
 }
 
-/** Check if a filename matches a simple glob pattern (e.g. "*.ts", "*.{ts,tsx}") */
+/** 判断文件名是否匹配简单 glob 模式（如 "*.ts"、"*.{ts,tsx}"）。 */
 export function matchFileGlob(filename: string, globPatterns: readonly string[]): boolean {
   if (globPatterns.length === 0) return true;
   let included = false;
@@ -91,7 +80,7 @@ export function matchFileGlob(filename: string, globPatterns: readonly string[])
   return hasPositive ? included : true;
 }
 
-/** Check if file extension matches a type filter */
+/** 判断文件扩展名是否匹配类型过滤。 */
 export function matchFileType(filename: string, typeFilters: readonly string[]): boolean {
   if (typeFilters.length === 0) return true;
   const ext = path.extname(filename).slice(1).toLowerCase();
@@ -544,9 +533,9 @@ export async function toolGrep(
     return finalizeGrepOutput(formatGrepSummaries(files, options, notices), true);
   }
 
-  // Smart case (ripgrep-style): no ASCII uppercase in any pattern 鈬?-i.
-  // Note this includes ranges like `[a-z]+` (currently get -i) and
-  // letter-free patterns like `\d+` (where -i is a no-op).
+  // Smart case（ripgrep 风格）：pattern 里没有 ASCII 大写时 → -i。
+  // 注意这也包括 `[a-z]+` 这类区间（当前同样带上 -i）和
+  // `\d+` 这类不含字母的 pattern（此时 -i 无意义）。
   let effectiveCaseInsensitive: boolean;
   if (options.caseInsensitive === undefined) {
     effectiveCaseInsensitive = patterns.every((p) => p === p.toLowerCase());
@@ -565,10 +554,9 @@ export async function toolGrep(
     return source;
   });
 
-  // Combine multiple patterns into a single OR regex. For one pattern, use
-  // it directly to keep the existing regex semantics intact (capture groups,
-  // anchors, etc.). For multiple, wrap each in a non-capturing group so
-  // alternation has the right precedence.
+  // 多个 pattern 合成一个 OR 正则。只有一个时直接用它，保持原有
+  // 正则语义（捕获组、锚点等）不变；多个时各自套一层非捕获组，
+  // 保证选择分支的优先级正确。
   let regex: RegExp;
   try {
     const flags = effectiveCaseInsensitive ? "i" : "";
@@ -595,7 +583,7 @@ export async function toolGrep(
     timeoutHit: false,
   };
 
-  // Results storage depends on output mode
+  // 结果的存储方式取决于输出模式
   const fileMatches: GrepFileMatches[] = [];
   let totalEntries = 0;
 
@@ -755,9 +743,9 @@ export async function toolGrep(
     entries.sort((a, b) => a.localeCompare(b));
     for (const name of entries) {
       if (shouldStop()) return;
-      // Hidden names skip universally. Excluded-dir names are filtered
-      // only after stat to avoid hiding regular files that happen to be
-      // named `build` / `dist` / `target` / etc.
+      // 点开头的隐藏名一律跳过。排除目录名只在 stat 之后过滤，
+      // 免得把恰好叫 `build` / `dist` / `target` 之类的普通文件
+      // 也一并藏起来。
       if (!options.hidden && isHiddenName(name)) continue;
       const full = path.join(dir, name);
       let stat;
@@ -800,7 +788,7 @@ export async function toolGrep(
     }
   }
 
-  // Handle single file path
+  // 处理单个文件路径
   const pathStat = searchStat;
   if (pathStat.isFile()) {
     if (shouldIncludeFile(path.basename(searchPath), path.basename(searchPath))) {
@@ -808,7 +796,7 @@ export async function toolGrep(
     }
   } else {
     if (options.sort === "path") {
-      // Directory traversal already sorts entries lexicographically.
+      // 目录遍历本身已按字典序排序。
     }
     await walkForGrep(searchPath, 0);
   }

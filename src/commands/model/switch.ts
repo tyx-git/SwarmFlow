@@ -31,9 +31,9 @@ function parseModelArgs(args: string): { target: string } {
 }
 
 /**
- * /model command: switch model by creating a new session.
+ * /model 命令：通过创建新会话切换模型。
  *
- * The selected value is either a config name or a provider:model target.
+ * 选中值既可以是配置名，也可以是 provider:model 形式的目标。
  */
 export async function cmdModel(ctx: CommandContext, args: string): Promise<void> {
   const session = ctx.session;

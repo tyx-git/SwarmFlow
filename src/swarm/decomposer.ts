@@ -315,11 +315,11 @@ export class TaskDecomposer {
    * 将用户请求分解为 TaskDAG。
    *
    * @param request - 用户的自然语言请求
-   * @param context - 可选的項目上下文
+   * @param context - 可选的项目上下文
    * @returns 经过验证的 TaskDAG
    */
   async decompose(request: string, context?: ProjectContext): Promise<TaskDAG> {
-    // The deterministic strategy does not consume project context yet.
+    // 确定性策略暂不使用项目上下文。
     void context;
     const strat = this._options.strategy;
     let nodes: TaskNode[];

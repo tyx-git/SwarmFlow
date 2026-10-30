@@ -7,12 +7,12 @@ import type { ModelPickerTreeContext } from "../../models/picker/types.js";
 import { type CommandOption, type CommandOptionsContext } from "../types.js";
 
 /**
- * Build options for /model picker.
+ * 构建 /model 选择器的选项。
  *
- * Supports three structures:
- * - Two-level: provider → model (for ungrouped providers like anthropic, openai)
- * - Three-level via group field: group → sub-provider → model (kimi, glm, minimax)
- * - Three-level via vendor prefix: openrouter → vendor → model
+ * 支持三种结构：
+ * - 两级：provider → model（适用于 anthropic、openai 这类未分组的 provider）
+ * - 借助 group 字段的三级：group → 子 provider → model（kimi、glm、minimax）
+ * - 借助厂商前缀的三级：openrouter → 厂商 → model
  */
 export function modelOptions(ctx: CommandOptionsContext): CommandOption[] {
   return modelOptionsWithTree(ctx);

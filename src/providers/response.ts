@@ -11,7 +11,7 @@ export class Usage {
   outputTokens: number;
   cacheCreationTokens: number;
   cacheReadTokens: number;
-  /** Whether the provider response exposed a cache-read metric. */
+  /** provider 响应是否提供了缓存读取指标。 */
   cacheSupported: boolean;
 
   constructor(inputTokens = 0, outputTokens = 0, cacheCreationTokens = 0, cacheReadTokens = 0, cacheSupported = false) {

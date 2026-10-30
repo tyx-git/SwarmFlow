@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** 工具路径作用域：把相对路径解析到工作区根，并按读/写访问类型执行安全边界。 */
 
 import fs from "node:fs/promises";
 
@@ -14,10 +7,6 @@ import path from "node:path";
 import { safePath, SafePathError, type PathAccessKind } from "../security/path.js";
 
 import { ExecuteToolContext } from "./dispatch.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export function toolRoot(ctx?: ExecuteToolContext): string {
   return path.resolve(ctx?.projectRoot ?? process.cwd());
@@ -69,8 +58,8 @@ export function scopedPath(
       }
     }
 
-    // Read-like operations outside scope: advisor is the sole gate for external reads,
-    // executor does not double-enforce.
+    // 读类操作超出作用域时放行：外部读取由 advisor 单独把关，
+    // executor 不再重复拦截。
     if (READ_ACCESS_KINDS.has(accessKind)) {
       const resolved = path.isAbsolute(requestedPath)
         ? path.resolve(requestedPath)
@@ -83,5 +72,5 @@ export function scopedPath(
 }
 
 // ------------------------------------------------------------------
-// glob executor
+// glob 执行器
 // ------------------------------------------------------------------

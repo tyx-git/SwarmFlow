@@ -57,9 +57,9 @@ async function promptTokenCount(
 }
 
 /**
- * Discover (/v1/models) + multi-model add loop. Returns the models added, or
- * null if the user cancelled. Shared by the add-provider wizard and the
- * "add a model" management action. Doesn't close after each model.
+ * 发现模型（/v1/models）并循环添加多个模型。返回已添加的模型，
+ * 用户取消时返回 null。新增供应商向导与"添加模型"管理操作共用；
+ * 每加完一个模型不退出。
  */
 async function addModelsInteractive(
   ctx: CommandContext,
@@ -182,7 +182,7 @@ export async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?
   // 4. API密钥（可选）
   const apiKey = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "apiKey"], { label }), allowEmpty: true }))?.trim();
 
-  // 5 - 6。发现+添加模型（多模型循环，不关闭后每个）。
+  // 5–6. 发现并添加模型（多模型循环，添加一个后不关闭）。
   const added = await addModelsInteractive(ctx, { label, baseUrl, protocol, apiKey });
   if (!added || added.length === 0) return false;
 

@@ -15,7 +15,7 @@ import { truncateMiddle } from "./output-truncation.js";
 // ------------------------------------------------------------------
 
 const FETCH_TIMEOUT_MS = 30_000;
-const FETCH_MAX_CONTENT_LENGTH = 5 * 1024 * 1024; // 5 MB raw HTML
+const FETCH_MAX_CONTENT_LENGTH = 5 * 1024 * 1024; // 原始 HTML 上限 5 MB
 const OUTPUT_MAX_CHARS = 100_000;
 const JINA_READER_PREFIX = "https://r.jina.ai/";
 const LOCAL_MAX_REDIRECTS = 10;

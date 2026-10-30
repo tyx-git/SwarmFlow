@@ -671,7 +671,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
           const text = (delta["text"] as string) || "";
           if (text) {
             if (pendingLeading !== null && index === pendingLeading.index) {
-              // Buffer instead of emitting —may be a search preamble.
+              // 先缓冲而不发出——可能是搜索前言。
               pendingLeading.text += text;
             } else {
               textParts.push(text);
@@ -718,17 +718,15 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
       }
     }
 
-    // A leading text block that was never followed by another block (i.e. it is
-    // the whole message, not a preamble) is still buffered —release it now.
+    // 始终没有等到后续块的前导文本块（即它就是整条消息，并非前言）仍在缓冲区，
+    // 现在释放它。
     flushPendingLeading();
 
     const response = await stream.finalMessage();
 
-    // Re-derive the final text from the parsed message so the preamble filter
-    // (drop text blocks immediately followed by server_tool_use) applies to
-    // both streaming and non-streaming paths. The streamed `textParts` array
-    // is built from raw deltas without lookahead, so it would otherwise
-    // include vendor preambles like Kimi's "Search results for query: ...".
+    // 从解析后的消息重新推导最终文本，让前言过滤（丢弃紧跟 server_tool_use 的
+    // 文本块）对流式与非流式路径一致生效。流式 `textParts` 由原始增量拼成、
+    // 没有前瞻，否则会把厂商前言（如 Kimi 的 "Search results for query: ..."）也算进去。
     let finalText = "";
     {
       const respBlocks = response.content;
@@ -753,7 +751,7 @@ export abstract class BaseAnthropicProvider extends BaseProvider {
         }
       }
     }
-    // Fallback if the final message can't be inspected for some reason
+    // 兜底：最终消息因故无法检查时使用
     if (!finalText && textParts.length > 0) {
       finalText = textParts.join("");
     }

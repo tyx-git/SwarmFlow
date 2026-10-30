@@ -11,36 +11,30 @@ import { execFileSync } from "node:child_process";
 export type SupportedPlatform = "darwin" | "linux" | "win32";
 
 export function currentPlatform(): SupportedPlatform {
-  //通过更广泛的NodeJS进行强制转换。平台联盟。外面有什么吗
-  //我们支持的三个仍然会到达这个分支，但是
-  //错误分类—这是有意的:提供者选择器抛出
-  //在不支持的平台上显式，因此不支持的情况是
-  //永不沉默。
+  // process.platform 的类型比 SupportedPlatform 宽；三个受支持的平台
+  // 会落到下面的精确分支。其余平台按 Linux 处理，以便工具探测继续
+  // 使用 xclip / wl-paste / xdg-open 那一套；provider 选择器会在真正
+  // 不支持的平台上显式报错，不会静默降级。
   const p = process.platform;
   if (p === "darwin" || p === "linux" || p === "win32") return p;
-  //FreeBSD/openbsd/sunos/AIX→作为工具的linux对待
-  //目的；相关的提供商仍然需要linux端
-  //工具(xclip / wl-paste / xdg-open)存在。
   return "linux";
 }
 
-/** True when running inside an SSH session —used to gate browser launches. */
+/** 是否运行在 SSH 会话中——用于决定能否启动浏览器。 */
 export function isRemoteSession(): boolean {
   return Boolean(process.env["SSH_CLIENT"] || process.env["SSH_TTY"]);
 }
 
 /**
-*检查$PATH中是否存在可执行文件。按名称缓存的
-*进程的生命周期，因为$PATH在运行时很少改变。
-*
-*为什么使用`/bin/sh '而不是从
-* `posix.ts `:这个助手是每个shell的底层依赖项
-* provider(在模块加载时从linux剪贴板探针调用，
-*举例来说)，所以它不能依赖于更高级别的解析
-*没有圆形的外壳。“command -v”是一个内置的POSIX shell
-*这在sh、dash和bash中是一样的，并且“sh”存在于
-*每次POSIX安装都不需要单独的探针。
-*/
+ * 检查可执行文件是否在 `$PATH` 中。
+ * 按名称缓存整个进程生命周期，因为 `$PATH` 在运行时几乎不变。
+ *
+ * 为什么通过 `sh` 调用而不是从 `posix.ts` 导入：这个助手是各 shell
+ * provider 的底层依赖（例如 Linux 剪贴板探针会在模块加载时调用它），
+ * 不能反向依赖更高层的解析逻辑，否则会形成循环依赖。`command -v` 是
+ * POSIX shell 内建命令，在 sh、dash、bash 中行为一致，且每次 POSIX
+ * 安装都有 `sh`，无需额外探测。
+ */
 const _commandExistsCache = new Map<string, boolean>();
 
 export function commandExists(name: string): boolean {
@@ -57,8 +51,7 @@ function _commandExistsUncached(name: string): boolean {
     if (process.platform === "win32") {
       execFileSync("where", [name], { stdio: "ignore" });
     } else {
-      // `command -v `是POSIX可移植的，比` which `快。
-      //我们通过“sh”调用它，因为它是shell内置的。
+      // `command -v` 是 POSIX 可移植写法，且比 `which` 更快。
       execFileSync("sh", ["-c", `command -v ${JSON.stringify(name)}`], {
         stdio: "ignore",
       });
@@ -69,8 +62,6 @@ function _commandExistsUncached(name: string): boolean {
   }
 }
 
-// `command -v '是POSIX可移植的，比哪个更快。
-//我们通过“sh”调用它，因为它内置在shell中。
 export type LinuxDisplayServer = "wayland" | "x11" | "none";
 
 export function linuxDisplayServer(): LinuxDisplayServer {

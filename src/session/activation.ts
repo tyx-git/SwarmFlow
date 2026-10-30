@@ -133,7 +133,7 @@ export async function runActivation(host: ActivationHost,
   let onReasoningChunk: ((roundIndex: number, chunk: string) => boolean | void) | undefined;
 
   if (suppressStreaming) {
-    // During compact phase: accumulate text but don't stream to TUI
+    // 压缩阶段：只累积文本，不向 TUI 流式输出
     if (textAccumulator) {
       const stripBuf = new ContextTagStripBuffer((chunk: string) => {
         textAccumulator.text += chunk;
@@ -154,15 +154,14 @@ export async function runActivation(host: ActivationHost,
     const agentName = host.primaryAgent.name;
     const progress = host._progress;
 
-    // Track the last chunk kind per round so that when the provider
-    // interleaves reasoning and text items (e.g. Responses API),
-    // each contiguous segment gets its own LogEntry instead of being
-    // merged into a single sticky entry at the first-chunk position.
+    // 按轮次记录上一个 chunk 的类型：provider 交错返回 reasoning 与 text
+    // 条目时（如 Responses API），每段连续内容各自生成 LogEntry，
+    // 而不是全部并进首个 chunk 位置的 sticky 条目。
     let lastStreamKind: "reasoning" | "text" | null = null;
     let lastStreamRound = -1;
 
     onTextChunk = (roundIndex: number, chunk: string) => {
-      // If switching from reasoning →text in same round, start fresh buffers + entry
+      // 同一轮内从 reasoning 切到 text：重建 buffer 与条目
       if (lastStreamRound === roundIndex && lastStreamKind === "reasoning") {
         streamedAssistantEntries.delete(roundIndex);
         textBuffers.delete(roundIndex);
@@ -204,7 +203,7 @@ export async function runActivation(host: ActivationHost,
         textBuffers.set(roundIndex, roundBuffer);
       }
       roundBuffer.feed(chunk);
-      // Check if the streaming callback actually created/updated a log entry
+      // 检查流式回调是否真的创建或更新了日志条目
       return streamedAssistantEntries.has(roundIndex);
     };
 
@@ -213,7 +212,7 @@ export async function runActivation(host: ActivationHost,
       if (progress) progress.onReasoningChunk(agentName, chunk);
       host._setSelfPhase("thinking");
 
-      // If switching from text →reasoning in same round, start a new reasoning entry
+      // 同一轮内从 text 切到 reasoning：新建 reasoning 条目
       if (lastStreamRound === roundIndex && lastStreamKind === "text") {
         streamedReasoningEntries.delete(roundIndex);
       }
@@ -239,7 +238,7 @@ export async function runActivation(host: ActivationHost,
           target.display += chunk;
           target.content = String(target.content ?? "") + chunk;
         });
-        // Keep active tracker pointing to this reasoning entry
+        // 保持活跃指针指向这个 reasoning 条目
         if (host._activeLogEntryId !== entry.id) {
           host._setActiveLogEntry(entry.id);
         }
@@ -248,7 +247,7 @@ export async function runActivation(host: ActivationHost,
     };
   }
 
-  // Mark reasoning entry as complete when the provider finishes streaming reasoning
+  // provider 结束 reasoning 流式输出后，把该 reasoning 条目标记为完成
   const onReasoningDone = (
     roundIndex: number,
     thinkingArtifact?: import("../thinking/artifact.js").ThinkingArtifact | null,
@@ -290,7 +289,7 @@ export async function runActivation(host: ActivationHost,
     if (host._progress) {
       host._progress.onToolResult(host._turnCount, name, tool, toolCallId, isError, summary);
     }
-    // Fire PostToolUse / PostToolUseFailure hooks
+    // 触发 PostToolUse / PostToolUseFailure 钩子
     if (host.hookRuntime.hooks.length > 0) {
       const event = isError ? "PostToolUseFailure" : "PostToolUse";
       host.hookRuntime.fireAndForget(event, {
@@ -303,18 +302,18 @@ export async function runActivation(host: ActivationHost,
     }
   };
 
-  // Streaming tool call callbacks —set active entry for early display
+  // 流式 tool call 回调——提前设置活跃条目，尽早显示
   const onToolCallPartialCb = (_callId: string, _name: string, _rawArguments: string) => {
-    // Active entry tracking happens in tool-loop via appendEntry →_appendEntry;
-    // we find the just-appended pending tool_call entry and mark it active
+    // 活跃条目的跟踪在 tool-loop 里由 appendEntry →_appendEntry 完成；
+    // 这里找到刚追加的待执行 tool_call 条目并标记为活跃
     const lastEntry = host._log[host._log.length - 1];
     if (lastEntry && lastEntry.type === "tool_call") {
       host._setActiveLogEntry(lastEntry.id);
     }
   };
 
-  // Token update callback: update _lastInputTokens after each provider call
-  // so the TUI can display real-time context usage.
+  // token 更新回调：每次 provider 调用后更新 _lastInputTokens，
+  // 供 TUI 实时显示上下文占用。
   const onTokenUpdate = (inputTokens: number, usage?: import("../providers/response.js").Usage) => {
     if (!Number.isFinite(inputTokens) || inputTokens <= 0) {
       host._lastInputTokens = 0;
@@ -327,8 +326,8 @@ export async function runActivation(host: ActivationHost,
     host._lastTotalTokens = usage?.totalTokens ?? inputTokens;
     host._lastCacheReadTokens = usage?.cacheReadTokens ?? 0;
     host._cacheSupported = usage?.cacheSupported ?? false;
-    // Cumulative stats are derived from the token_update entry appended below
-    // (see _computeUsageStats), so there is nothing to accumulate here.
+    // 累计统计由下面追加的 token_update 条目推导（见 _computeUsageStats），
+    // 这里不需要再做累加。
     host._appendEntry(
       createTokenUpdate(
         host._nextLogId("token_update"),
@@ -411,8 +410,8 @@ export async function runActivation(host: ActivationHost,
     host._progress?.onRetryExhausted(agentName, max, errMsg, kind);
   };
 
-  // v2: callback-based message management
-  // getMessages projects from _log via projectToApiMessages.
+  // v2：基于回调的消息管理
+  // getMessages 通过 projectToApiMessages 从 _log 投影出消息。
   const getMessages = (): Array<Record<string, unknown>> => {
     const runtimeState = host._buildRuntimeStateBlock();
     const hookContext = host.hookRuntime.getAdditionalContext() ?? "";
@@ -455,7 +454,7 @@ export async function runActivation(host: ActivationHost,
     return host._nextLogId(type);
   };
 
-  /** Update an existing log entry in-place (for finalizing pending tool call entries). */
+  /** 就地更新已有日志条目（用于收尾待执行的 tool call 条目）。 */
   const updateEntryFn = (entryId: string, patch: {
     apiRole?: LogEntry["apiRole"];
     content?: unknown;
@@ -464,9 +463,9 @@ export async function runActivation(host: ActivationHost,
     displayKind?: LogEntry["displayKind"];
     meta?: Record<string, unknown>;
   }): void => {
-    // Contract: the elapsed-pairing memo in log-projection folds each
-    // entry once —timestamp, meta.toolCallId and meta.execStartMs are
-    // fixed at append time and must not be patched here.
+    // 约定：log-projection 里的耗时配对 memo 对每个条目只折叠一次——
+    // timestamp、meta.toolCallId 和 meta.execStartMs 在追加时就已固定，
+    // 不能在这里打补丁。
     const entry = host._logStore.findEntryById(entryId);
     if (!entry) return;
     host._logStore.updateEntry(entryId, (target) => {
@@ -488,7 +487,7 @@ export async function runActivation(host: ActivationHost,
     if (entry.type === "tool_call" && patch.meta) {
       const execState = patch.meta["toolExecState"];
       const streamState = patch.meta["toolStreamState"];
-      // Check completion first —exec finished takes priority over stream state
+      // 先判断完成状态——执行结束优先于流式状态
       if (execState === "completed" || execState === "failed") {
         if (host._activeLogEntryId === entry.id) {
           host._setActiveLogEntry(null);
@@ -514,7 +513,7 @@ export async function runActivation(host: ActivationHost,
     host._touchLog();
   };
 
-  /** Mark a log entry as discarded (for cleanup on retry). */
+  /** 把日志条目标记为已丢弃（供重试时清理）。 */
   const discardEntryFn = (entryId: string): void => {
     const entry = host._logStore.findEntryById(entryId);
     if (!entry) return;
@@ -552,9 +551,8 @@ export async function runActivation(host: ActivationHost,
     beforeToolExecute: host._beforeToolExecute,
     suppressAsks: host._compactInProgress,
     getNotification: () => null,
-    // Round-boundary inbox drain. Suppressed during compact: anything
-    // drained mid-compact would land before the upcoming compact_marker
-    // and be hidden from the model afterwards (Q6).
+    // 轮次边界的 inbox 排空。压缩期间禁用：压缩中途排空的消息会落在
+    // 即将写入的 compact_marker 之前，之后对模型不可见（Q6）。
     onToolRoundComplete: () => {
       if (!host._compactInProgress) host._drainInboxAsEntries();
     },
@@ -593,13 +591,12 @@ export async function runTurnActivationLoop(host: ActivationHost,
       host._agentState = "working";
       host._setSelfPhase("thinking");
 
-      // Capture the turn index ONCE per activation. Every log entry produced
-      // by this activation (streamed/finalized reasoning + text, tool calls,
-      // ask, status) must share it. `host._turnCount` can advance mid-flight
-      // when a queued user message is drained into this same work lifecycle;
-      // reading it live would split a single provider round's reasoning from
-      // its tool_calls across two turn indices (see projectToApiMessages
-      // grouping), producing a degenerate assistant message.
+      // 每次激活只捕获一次 turn index。本次激活产生的所有日志条目
+      //（流式/收尾的 reasoning 与 text、tool call、ask、status）必须共用它。
+      // 排队的用户消息被排空进同一工作生命周期时，`host._turnCount` 可能在
+      // 途中推进；实时读取会把同一 provider 轮次的 reasoning 和 tool_calls
+      // 拆到两个 turn index（见 projectToApiMessages 的分组逻辑），
+      // 生成退化的 assistant 消息。
       const activationTurnIndex = host._turnCount;
 
       if (host._progress) {
@@ -624,8 +621,8 @@ export async function runTurnActivationLoop(host: ActivationHost,
         throw err;
       }
 
-      // Check abort AFTER successful completion —handles providers that
-      // don't throw AbortError (stream finishes before abort takes effect).
+      // 成功完成后再检查中止——有些 provider 不会抛 AbortError
+      //（流在 abort 生效前就已结束）。
       if (activeSignal.aborted) {
         host._handleInterruption(logLenBeforeActivation, textAccumulator.text, {
           activationCompleted: true,
@@ -682,8 +679,8 @@ export async function runTurnActivationLoop(host: ActivationHost,
         || (!_trimmedText && result.toolHistory.length === 0);
 
       if (_hasNoReply) {
-        // Strip the <NO_REPLY> marker (if present) —treat as empty response.
-        // Emit progress event so TUI can show a status message.
+        // 去掉 <NO_REPLY> 标记（若有），按空响应处理。
+        // 发出进度事件，让 TUI 显示状态提示。
         if (_trimmedText.endsWith(NO_REPLY_MARKER)) {
           result.text = _trimmedText
             .slice(0, _trimmedText.length - NO_REPLY_MARKER.length)
@@ -697,13 +694,13 @@ export async function runTurnActivationLoop(host: ActivationHost,
         if (host._progress) {
           host._progress.onAgentNoReply(host.primaryAgent.name);
         }
-        // Fall through to normal response handling —turn ends naturally.
+        // 落到正常响应处理——回合自然结束。
       }
 
       if (result.text) {
         finalText = result.text;
 
-        // v2 log: create final assistant_text + optional reasoning entries
+        // v2 日志：创建最终的 assistant_text 和可选的 reasoning 条目
         {
           const finalRound = (result.textHandledInLog || result.reasoningHandledInLog)
             ? Math.max(0, host._computeNextRoundIndex(activationTurnIndex) - 1)
@@ -771,35 +768,35 @@ export async function runTurnActivationLoop(host: ActivationHost,
           }
           throw compactErr;
         }
-        // Messages held back during compact (Q6) land after the marker.
+        // 压缩期间暂扣的消息（Q6）落在 marker 之后。
         if (host._hasInboxMessages()) {
           host._drainInboxAsEntries();
         }
         host.onSaveRequest?.();
-        // Always continue after compact —fresh context, reset activation budget.
+        // 压缩后总是继续——上下文是新的，激活预算也重置。
         activationIdx = -1;
         continue;
       }
 
-      // Messages typed while the assistant was producing a final text reply
-      // become the next model input in the same work lifecycle.
+      // 助手输出最终文本期间输入的消息，
+      // 在同一工作生命周期里成为模型的下一次输入。
       if (host._hasInboxMessages()) {
         host._drainInboxAsEntries();
         continue;
       }
 
-      // Final output (no tool calls in the last provider call) →turn ends.
-      // Sub-agent results are processed via auto-resume in a new turn.
-      // Model should use await_event explicitly to wait for sub-agents.
-      // Note: toolHistory.length is cumulative across all rounds in the tool
-      // loop, so it can be > 0 even when the last call had no tool_calls.
+      // 最终输出（最后一次 provider 调用没有 tool call）→回合结束。
+      // 子代理结果通过新回合里的 auto-resume 处理。
+      // 模型应显式使用 await_event 等待子代理。
+      // 注意：toolHistory.length 在工具循环的所有轮次间累计，
+      // 即使最后一次调用没有 tool_calls 也可能 > 0。
       if (result.endedWithoutToolCalls) {
         reachedLimit = false;
         turnEndStatus = "completed";
         break;
       }
-      // No explicit boundary drain here —the earlier drain check (above)
-      // already handles inbox messages before this break decision.
+      // 这里不再单独做边界排空——上文那次检查
+      // 已在决定 break 之前处理了 inbox 消息。
     }
 
     if (reachedLimit && !activeSignal.aborted) {
@@ -812,10 +809,9 @@ export async function runTurnActivationLoop(host: ActivationHost,
       turnEndStatus = "error";
     }
   } catch (err) {
-    // Non-abort errors escaping the loop (provider failures, mid-turn
-    // compact, drain) end the turn as "error". The visible error log entry
-    // is written exactly once per escape path by the entry-point catches
-    // (_turnInner / _resumeActivationStage).
+    // 非中止类错误逃出循环（provider 失败、轮中压缩、排空）时，回合以
+    // "error" 收尾。可见的错误日志条目由入口层的 catch 按逃逸路径
+    // 恰好写一次（_turnInner / _resumeActivationStage）。
     const aborted = activeSignal.aborted;
     if (!aborted) {
       loopError = err instanceof Error ? err.message : String(err);
@@ -827,10 +823,9 @@ export async function runTurnActivationLoop(host: ActivationHost,
     if (turnEndStatus === "interrupted" && host._hasActiveAgents()) {
       await host._waitForAllChildTurnsSettled();
     }
-    // Never infer success from an incomplete state machine. A provider or
-    // executor may finish without throwing (for example, a stream can end
-    // unexpectedly), leaving no explicit terminal status. Treat that path
-    // as an error unless the signal was deliberately aborted.
+    // 状态机没走完就不能当作成功。provider 或执行器可能不抛错就结束
+    //（例如流意外中断），没有留下明确的终止状态。除非信号是被主动中止的，
+    // 否则这条路径按错误处理。
     if (!host._activeAsk && turnEndStatus === null) {
       if (activeSignal.aborted) {
         turnEndStatus = "interrupted";
@@ -840,14 +835,12 @@ export async function runTurnActivationLoop(host: ActivationHost,
         host._recordTurnErrorEntry(loopError);
       }
     }
-    // A suspended ask keeps the session in "waiting" (Q1): the turn has not
-    // ended, it is parked on the user's answer. Input arriving now must
-    // queue without advancing the turn counter.
+    // 挂起的 ask 让会话停在 "waiting"（Q1）：回合没结束，只是等着用户回答。
+    // 此时到达的输入必须排队，不能推进回合计数。
     host._agentState = host._activeAsk ? "waiting" : "idle";
-    // Finalize tool_call entries stuck in non-terminal state (e.g. abort during await_event).
-    // Scan backward: only the current round's tool_calls can be affected; stop at the first
-    // non-tool_call entry after seeing at least one tool_call (entries are interleaved with
-    // tool_result, token_update, etc. so we skip those).
+    // 收尾卡在非终态的 tool_call 条目（例如 await_event 期间被中止）。
+    // 从后往前扫：只有当前轮的 tool_call 会受影响；看到至少一个 tool_call 后，
+    // 遇到第一个非 tool_call 条目就停（条目间夹杂 tool_result、token_update 等，跳过即可）。
     {
       let sawToolCall = false;
       for (let i = host._log.length - 1; i >= 0; i--) {
@@ -872,8 +865,8 @@ export async function runTurnActivationLoop(host: ActivationHost,
       }
       host._finishCurrentWork(turnEndStatus, interruptHints);
     }
-    // If the finally drain wrote messages to the log without the model
-    // seeing them, schedule an auto-resume turn to process them.
+    // 若 finally 里的排空往日志写了消息而模型没看到，
+    // 安排一个 auto-resume 回合来处理。
     if (!host._activeAsk && !host._compactTerminatedThisTurn && host._hasUnprocessedUserMessage()) {
       host._scheduleAutoResume();
     }

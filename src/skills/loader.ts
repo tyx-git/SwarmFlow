@@ -21,7 +21,7 @@ import { join } from "node:path";
 import * as yaml from "js-yaml";
 
 // ------------------------------------------------------------------
-// Types
+// 类型
 // ------------------------------------------------------------------
 
 export interface SkillMeta {
@@ -40,11 +40,10 @@ export interface SkillMeta {
 }
 
 /**
- * Skill definition used by the built-in `/skills-creater` workflow.
+ * 内置 `/skills-creater` 工作流使用的 Skill 定义。
  *
- * They are copied to the user's global skill directory on first startup so
- * the workflow remains inspectable and compatible with other Agent Skills
- * clients.  The files are only created when absent; user edits are preserved.
+ * 首次启动时复制到用户的全局 skill 目录，使该工作流保持可查看，
+ * 并与其他 Agent Skills 客户端兼容。仅在文件缺失时创建，不覆盖用户的修改。
  */
 export const BUILTIN_SKILL_DEFINITIONS: ReadonlyArray<{ name: string; content: string }> = [
   {
@@ -63,7 +62,7 @@ Clarify the user's goal, triggers, inputs, outputs, examples, and constraints be
   },
 ];
 
-/** Ensure the built-in skill creator workflow exists in a global skill directory. */
+/** 确保内置的 skill 创建器工作流存在于全局 skill 目录中。 */
 export function ensureBuiltinSkills(globalSkillsRoot: string): void {
   try {
     mkdirSync(globalSkillsRoot, { recursive: true });
@@ -75,8 +74,8 @@ export function ensureBuiltinSkills(globalSkillsRoot: string): void {
       writeFileSync(skillMd, definition.content, "utf-8");
     }
   } catch (error) {
-    // A read-only home should not prevent the runtime from starting; the
-    // protected commands remain available even without persisted skill files.
+    // 家目录只读不应阻止运行时启动；即使 skill 文件没能落盘，
+    // 受保护的命令仍然可用。
     console.warn(
       `Unable to initialize built-in skills: ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -84,7 +83,7 @@ export function ensureBuiltinSkills(globalSkillsRoot: string): void {
 }
 
 // ------------------------------------------------------------------
-// Frontmatter parsing
+// frontmatter 解析
 // ------------------------------------------------------------------
 
 interface ParsedSkillMd {
@@ -105,12 +104,12 @@ function parseSkillMd(raw: string): ParsedSkillMd | null {
   const trimmed = raw.trimStart();
   if (!trimmed.startsWith("---")) return null;
 
-  // Find closing ---
+  // 查找结束的 ---
   const endIdx = trimmed.indexOf("\n---", 3);
   if (endIdx === -1) return null;
 
   const yamlStr = trimmed.slice(3, endIdx).trim();
-  const body = trimmed.slice(endIdx + 4).trim(); // skip past \n---
+  const body = trimmed.slice(endIdx + 4).trim(); // 跳过 \n---
 
   let frontmatter: Record<string, unknown>;
   try {
@@ -173,13 +172,13 @@ export function loadSkills(skillsRoot: string): Map<string, SkillMeta> {
         userInvocable = fm["user-invocable"] !== false;
         body = parsed.body;
       } else {
-        // No frontmatter —use directory name and full content
+        // 没有 frontmatter——用目录名和完整内容
         name = stripBom(entry).trim();
         description = stripBom(extractFirstParagraph(raw)).trim();
         body = raw;
       }
 
-      // Validate name: lowercase letters, numbers, hyphens only
+      // 校验名称：仅允许小写字母、数字和连字符
       if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
         console.warn(
           `Skill "${entry}": invalid name "${name}" (must be lowercase alphanumeric + hyphens). Skipping.`,
@@ -213,18 +212,18 @@ export function loadSkills(skillsRoot: string): Map<string, SkillMeta> {
 }
 
 // ------------------------------------------------------------------
-// Argument substitution
+// 参数替换
 // ------------------------------------------------------------------
 
 /**
- * Resolve a skill's content by substituting `$ARGUMENTS`, `$ARGUMENTS[N]`,
- * and `$N` placeholders with the provided arguments string.
+ * 用传入的参数串替换 `$ARGUMENTS`、`$ARGUMENTS[N]` 和 `$N` 占位符，
+ * 得到 skill 的最终内容。
  */
 export function resolveSkillContent(skill: SkillMeta, args: string): string {
   const parts = args.trim() ? args.trim().split(/\s+/) : [];
   let content = skill.contentRaw;
 
-  // Replace positional: $ARGUMENTS[N] and $N (longest match first)
+  // 替换位置参数：$ARGUMENTS[N] 和 $N（优先匹配最长的）
   for (let i = parts.length - 1; i >= 0; i--) {
     content = content.replace(
       new RegExp(`\\$ARGUMENTS\\[${i}\\]`, "g"),
@@ -236,19 +235,19 @@ export function resolveSkillContent(skill: SkillMeta, args: string): string {
     );
   }
 
-  // Replace $ARGUMENTS (full string)
+  // 替换 $ARGUMENTS（完整字符串）
   content = content.replace(/\$ARGUMENTS/g, args.trim());
 
   return content;
 }
 
 // ------------------------------------------------------------------
-// Helpers
+// 辅助函数
 // ------------------------------------------------------------------
 
 /**
- * Load skills from multiple root directories (e.g. bundled + user).
- * Later roots override earlier ones by skill name.
+ * 从多个根目录加载 skills（例如内置目录 + 用户目录）。
+ * 同名 skill 由后面的根目录覆盖前面的。
  */
 export function loadSkillsMulti(roots: string[]): Map<string, SkillMeta> {
   const merged = new Map<string, SkillMeta>();
@@ -256,13 +255,13 @@ export function loadSkillsMulti(roots: string[]): Map<string, SkillMeta> {
     if (!existsSync(root) || !statSync(root).isDirectory()) continue;
     const found = loadSkills(root);
     for (const [name, skill] of found) {
-      merged.set(name, skill); // later roots override earlier (user > bundled)
+      merged.set(name, skill); // 后面的根目录覆盖前面的（用户 > 内置）
     }
   }
   return merged;
 }
 
-/** Extract the first non-empty paragraph from markdown text. */
+/** 提取 Markdown 文本中第一个非空段落。 */
 function extractFirstParagraph(text: string): string {
   for (const line of text.split("\n")) {
     const trimmed = line.trim();

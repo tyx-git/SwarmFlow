@@ -68,7 +68,7 @@ export async function ensureMcp(host: McpHost): Promise<void> {
   if (!host._mcpManager) return;
   if (host._mcpConnected) return;
 
-  // Await bootstrap's fire-and-forget connectAll if available.
+  // bootstrap 已发起 connectAll（不等待结果）时，在这里等它完成。
   if (host._mcpReadyPromise) {
     await host._mcpReadyPromise;
     host._mcpReadyPromise = undefined;
@@ -105,7 +105,7 @@ export function snapshotMcpAvailability(host: McpHost): McpAvailabilitySnapshot 
         }
       }
     }
-  } catch { /* best effort */ }
+  } catch { /* 尽力而为 */ }
 
   try {
     if (typeof manager.getServerStatuses === "function") {
@@ -113,7 +113,7 @@ export function snapshotMcpAvailability(host: McpHost): McpAvailabilitySnapshot 
         if (status.state === "connected") serverNames.push(status.name);
       }
     }
-  } catch { /* best effort */ }
+  } catch { /* 尽力而为 */ }
 
   return {
     servers: host._sortedUnique(serverNames),
@@ -159,9 +159,9 @@ export function queueToolAvailabilityNotice(host: McpHost, notice: ToolAvailabil
 }
 
 /**
- * Reload MCP servers from settings. Reads global + local settings,
- * reconfigures the MCPClientManager, and notifies the TUI.
- * Returns a human-readable summary of what changed.
+ * 按 settings 重载 MCP 服务器：读取全局 + 本地 settings，
+ * 重新配置 MCPClientManager，并通知 TUI。
+ * 返回本次变更的可读摘要。
  */
 export async function reloadMcp(host: McpHost, options?: { notice?: boolean; reason?: string }): Promise<string> {
   const before = host._snapshotMcpAvailability();
@@ -258,12 +258,11 @@ export async function reconnectMcpServer(host: McpHost, serverName: string): Pro
   return ok;
 }
 
-// Command-facing MCP mutation: acquire the turn lock so the connect/disconnect
-// (and the ride-along notice it queues) cannot overlap a turn's tool snapshot.
-// The bare reloadMcp/reconnectMcpServer stay lock-free on purpose —the reload
-// path that needs them runs either inside a turn's tool execution or wrapped by
-// a command-side _withTurnLock, and _withTurnLock is not reentrant, so
-// re-locking there would deadlock.
+// 命令侧的 MCP 变更：先取 turn 锁，使连接/断开（以及顺带排队的通知）
+// 不会与某轮的工具快照重叠。
+// 裸的 reloadMcp/reconnectMcpServer 故意不加锁——需要它们的重载路径
+// 要么在 turn 的工具执行内部，要么已被命令侧的 _withTurnLock 包裹，
+// 而 _withTurnLock 不可重入，在那里再加锁会死锁。
 export async function reloadMcpFromCommand(host: McpHost, reason: string): Promise<string> {
   return host._withTurnLock(() => host.reloadMcp({ reason }));
 }
@@ -272,10 +271,9 @@ export async function reconnectMcpServerFromCommand(host: McpHost, serverName: s
   return host._withTurnLock(() => host.reconnectMcpServer(serverName));
 }
 
-// The /mcp command warms up MCP status before showing the picker. That ensure
-// can connect servers (mutating agent.tools), so it must serialize against
-// turns just like the reload/reconnect variants —no MCP connection work on
-// the command side may run concurrently with a turn's tool snapshot.
+// /mcp 命令在展示选择器前会先预热 MCP 状态。该预热可能连接服务器
+// （改动 agent.tools），因此必须和 reload/reconnect 一样与 turn 串行——
+// 命令侧的任何 MCP 连接工作都不得与某轮的工具快照并发执行。
 export async function ensureMcpReadyFromCommand(host: McpHost): Promise<void> {
   return host._withTurnLock(() => host.ensureMcpReady());
 }

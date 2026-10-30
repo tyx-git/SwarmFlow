@@ -62,7 +62,7 @@ export interface ProcessedImage {
 function readPngDimensions(buf: Buffer): { width: number; height: number } | null {
   if (buf.length < 24) return null;
   if (!buf.subarray(0, 8).equals(PNG_SIGNATURE)) return null;
-  // IHDR type tag at bytes 12-15 must spell "IHDR" for a valid PNG.
+  // IHDR 类型标签必须位于第 12-15 字节且拼作 "IHDR"，PNG 才合法。
   if (buf.toString("ascii", 12, 16) !== "IHDR") return null;
   return {
     width: buf.readUInt32BE(16),
@@ -71,17 +71,17 @@ function readPngDimensions(buf: Buffer): { width: number; height: number } | nul
 }
 
 /**
- * Process an image buffer: resize if too large, compress if too heavy.
- * Cross-platform — runs on macOS, Linux, and Windows without external
- * binaries.
+ * 处理图片缓冲区：过大则缩放，过重则压缩。
+ * 跨平台——在 macOS、Linux 和 Windows 上运行，
+ * 无需外部二进制。
  */
 export async function processImage(
   inputBuffer: Buffer,
   _inputMediaType: string,
 ): Promise<ProcessedImage> {
-  // 0. Fast path: well-formed PNG that already fits the size + edge
-  //    budget. Return as-is so we don't bloat real screenshots by
-  //    re-encoding through jimp's PNG writer.
+  // 0. 快速路径：格式正确且已满足大小与长边限制的 PNG 直接返回，
+  //    避免经 jimp 的 PNG 编码器重编码，
+  //    把真实截图撑大。
   if (inputBuffer.length <= MAX_SIZE_BYTES) {
     const dims = readPngDimensions(inputBuffer);
     if (dims && Math.max(dims.width, dims.height) <= MAX_LONG_EDGE) {
@@ -110,7 +110,7 @@ export async function processImage(
   const width = image.bitmap.width;
   const height = image.bitmap.height;
 
-  // 1. Try PNG first — lossless, fits most attachments.
+  // 1. 先试 PNG——无损，多数附件都能装下。
   const pngBuf = await image.getBuffer("image/png");
   if (pngBuf.length <= MAX_SIZE_BYTES) {
     return {
@@ -122,7 +122,7 @@ export async function processImage(
     };
   }
 
-  // 2. PNG too large — re-encode as JPEG with decreasing quality.
+  // 2. PNG 过大——按递减质量重新编码为 JPEG。
   let lastJpegBuf: Buffer | null = null;
   for (const quality of JPEG_QUALITY_LADDER) {
     const buf = await image.getBuffer("image/jpeg", { quality });
@@ -138,8 +138,8 @@ export async function processImage(
     }
   }
 
-  // 3. Even the lowest quality is over the limit. Return it anyway
-  //    (matches the prior sips-based behaviour).
+  // 3. 最低质量仍超限，照样返回
+  //    （与此前基于 sips 的行为一致）。
   const finalBuf = lastJpegBuf ?? pngBuf;
   return {
     base64: finalBuf.toString("base64"),

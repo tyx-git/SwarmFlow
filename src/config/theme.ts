@@ -22,7 +22,7 @@ const AUTO_THEME_PREF = "auto" as const;
 
 export type ThemeModePref = typeof AUTO_THEME_PREF | ThemeMode;
 
-/** Parse a value into a ThemeModePref, or null if unrecognized. */
+/** 将值解析为 ThemeModePref；无法识别时返回 null。 */
 export function parseThemeModePref(value: string | undefined | null): ThemeModePref | null {
   if (!value) return null;
   const v = value.trim().toLowerCase();

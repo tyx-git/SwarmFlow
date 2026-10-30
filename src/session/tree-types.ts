@@ -42,7 +42,7 @@ export interface ChildSessionSnapshot {
   recentEvents: string[];
   pendingInboxCount: number;
   lastActivityAt: number;
-  // Phase 1 Step 3: child page chrome fields
+  // Phase 1 Step 3：子页面外壳字段
   inputTokens: number;
   contextBudget: number;
   modelConfigName: string;

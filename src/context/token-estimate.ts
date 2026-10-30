@@ -1,9 +1,9 @@
-/** Token estimation helpers used by usage accounting. */
+/** 基于 gpt-tokenizer 估算日志条目的 token 数，供用量记账使用。 */
 
 import { encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
 import type { LogEntry } from "./entry/types.js";
 
-/** Estimate the token count of one persisted log entry. */
+/** 估算单条已持久化日志条目的 token 数。 */
 export function estimateEntryTokens(entry: LogEntry): number {
   let text: string;
   switch (entry.type) {

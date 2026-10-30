@@ -25,27 +25,27 @@ import { spawn } from "node:child_process";
 import type { BrowserProvider } from "../types.js";
 
 function escapeForStart(arg: string): string {
-  // cmd's quote escape is doubling the quote character. No backslashes.
+  // cmd 的引号转义是把引号字符写两遍，不用反斜杠。
   return `"${arg.replace(/"/g, '""')}"`;
 }
 
 function safeOpen(arg: string): void {
   try {
     const quoted = escapeForStart(arg);
-    // windowsVerbatimArguments: don't let Node re-quote the args; we
-    // built the exact command line we want cmd to see. The empty
-    // first quoted token after `start` is the (intentionally blank)
-    // window title.
+    // windowsVerbatimArguments：不让 Node 重新给参数加引号，
+    // 我们已经拼好要让 cmd 看到的完整命令行。
+    // `start` 之后第一个带引号的 token 是
+    // （有意留空的）窗口标题。
     const child = spawn("cmd.exe", ["/c", "start", '""', quoted], {
       stdio: "ignore",
       detached: true,
       windowsHide: true,
       windowsVerbatimArguments: true,
     });
-    child.on("error", () => { /* ignore */ });
+    child.on("error", () => { /* 忽略 */ });
     child.unref();
   } catch {
-    // ignore
+    // 忽略
   }
 }
 

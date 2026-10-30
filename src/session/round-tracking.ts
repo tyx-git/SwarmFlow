@@ -54,11 +54,10 @@ export function finishCurrentWork(host: RoundTrackingHost,
 }
 
 /**
- * Run an optional synchronous GC at work boundaries to keep saw-tooth heap
- * growth in check during long sessions. Throttled to once per 10s so
- * rapid interrupt/restart cycles don't pile up GC pauses, and only on
- * "completed" status —interrupted/error paths may be followed by an
- * immediate restart where pausing is more visible to the user.
+ * 在工作边界按需跑一次同步 GC，抑制长会话中的锯齿状堆增长。
+ * 限流为每 10s 最多一次，避免快速的中断/重启循环堆积 GC 停顿；
+ * 且只在 "completed" 状态下执行——interrupted/error 之后
+ * 可能立刻重启，此时停顿对用户更明显。
  */
 export function maybeRunIdleGc(host: RoundTrackingHost): void {
   if (host._lastTurnEndStatus !== "completed") return;
@@ -101,13 +100,12 @@ export function appendInterruptionSystemMessage(host: RoundTrackingHost,
 }
 
 /**
- * Record an input_received entry.
+ * 记录一条 input_received 条目。
  *
- * `_turnCount` (the "current input index" used by subsequent provider rounds)
- * advances to this new input ONLY when the agent is idle. While the agent
- * is working/waiting, the new input gets its own higher inputIndex but
- * `_turnCount` stays put —round entries from the in-flight activation must
- * keep using the current input's index until drain delivers the new one.
+ * 只有当 agent 空闲时，`_turnCount`（后续 provider 轮次使用的"当前输入索引"）
+ * 才推进到这条新输入。agent 正在工作/等待时，新输入会拿到自己更大的 inputIndex，
+ * 但 `_turnCount` 保持不动——进行中的 activation 产生的 round 条目
+ * 必须继续沿用当前输入的索引，直到 drain 把新输入送达。
  */
 export function recordInputReceived(host: RoundTrackingHost, 
   inputKind: "user" | "compact",
@@ -125,9 +123,9 @@ export function recordInputReceived(host: RoundTrackingHost,
   const inputIndex = maxInputIndex + 1;
   const inputId = host._nextLogId("input_received");
   const inputContextId = contextId ?? host._allocateContextId();
-  // Advance the current input index only when nothing is in flight or
-  // suspended: a pending ask / pending resume still owns the current turn,
-  // and its bookkeeping (tool_calls awaiting results) must keep pairing up.
+  // 仅在没有进行中或挂起的轮次时才推进当前输入索引：
+  // 待处理的 ask / 待恢复的 resume 仍占着当前轮，
+  // 其簿记（等待结果的 tool_calls）必须继续配对。
   if (host._agentState === "idle" && !host._activeAsk && !host._pendingTurnState) {
     host._turnCount = inputIndex;
   }
@@ -156,10 +154,9 @@ export function appendDeliveredUserMessage(host: RoundTrackingHost,
   contextId: string,
   tuiVisible = true,
 ): void {
-  // The canonical point a real user message enters the model log —every
-  // active-input and drain path funnels here. Mark the conversation started so
-  // tool-availability notices are suppressed only before the first user
-  // message, regardless of which path delivered it.
+  // 真实用户消息进入模型日志的规范入口——所有 active-input 与 drain 路径都汇到这里。
+  // 在此标记会话已开始，使工具可用性通知只在首条用户消息之前被抑制，
+  // 无论消息由哪条路径投递。
   if (inputKind === "user") host._conversationStarted = true;
   host._appendEntry(
     createUserMessageEntry(
@@ -174,7 +171,7 @@ export function appendDeliveredUserMessage(host: RoundTrackingHost,
   );
 }
 
-/** Compute the next roundIndex for the given turn based on existing entries. */
+/** 根据现有条目计算指定 turn 的下一个 roundIndex。 */
 export function computeNextRoundIndex(host: RoundTrackingHost, turnIndex: number = host._turnCount): number {
   let maxRound = -1;
   for (let i = host._log.length - 1; i >= 0; i--) {
@@ -229,15 +226,15 @@ export function retagRoundEntries(host: RoundTrackingHost, turnIndex: number, ro
   if (changed) host._touchLog();
 }
 
-/** Index of the first entry after the last live compact_marker (active window start). */
+/** 最后一个 live compact_marker 之后第一条条目的索引（活动窗口起点）。 */
 export function activeWindowStartIdx(host: RoundTrackingHost): number {
   return host._logStore.activeWindowStartIdx();
 }
 
 /**
- * Find a tool_call entry by id within the active window (newest first).
- * Not scoped to the current turn: ask bookkeeping must keep pairing with
- * its tool_call even when the turn counter has moved on.
+ * 在活动窗口内按 id 查找 tool_call 条目（从新到旧）。
+ * 不限于当前 turn：即使 turn 计数器已经推进，
+ * ask 簿记仍要与对应的 tool_call 保持配对。
  */
 export function findToolCallEntry(host: RoundTrackingHost, toolCallId: string): LogEntry | undefined {
   if (!toolCallId) return undefined;
@@ -252,7 +249,7 @@ export function findToolCallEntry(host: RoundTrackingHost, toolCallId: string): 
   return undefined;
 }
 
-/** Turn/round anchor for ask bookkeeping, derived from the gated tool_call. */
+/** ask 簿记使用的 turn/round 锚点，取自触发闸门的 tool_call。 */
 export function toolCallAnchor(host: RoundTrackingHost, toolCallId: string, ask?: AskRequest | null): { turnIndex: number; roundIndex: number } {
   const entry = host._findToolCallEntry(toolCallId);
   const turnIndex = ask?.turnIndex ?? entry?.turnIndex ?? host._turnCount;

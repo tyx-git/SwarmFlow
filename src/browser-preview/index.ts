@@ -1,12 +1,12 @@
 /**
- * Browser module — reusable local browser server for interactive design.
+ * 浏览器模块：为交互式设计提供可复用的本地浏览器服务器。
  *
- * Provides:
- * - `launchDesignHelper()` — opens a browser-based design assistant (beta)
- * - `stopServer()` — shuts down the running server
+ * 提供：
+ * - `launchDesignHelper()` — 打开基于浏览器的设计助手（beta）
+ * - `stopServer()` — 关闭正在运行的服务器
  *
- * Pages are stored in `.swarmflow/<session_id>/chrome/` and served via
- * a Node.js HTTP server on localhost (no external dependencies).
+ * 页面存放在 `.swarmflow/<session_id>/chrome/`，由 localhost 上的
+ * Node.js HTTP 服务器提供（无外部依赖）。
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ import { getUiCommonColors } from "../config/ui-colors.js";
 
 export { stopServer } from "./server.js";
 
-// ── Helpers ────────────────────────────────────────────────────────
+// ── 辅助函数 ──
 
 function ensureChromeDir(sessionId: string, cwd: string): string {
   const dir = join(cwd, ".swarmflow", sessionId, "chrome");
@@ -25,9 +25,9 @@ function ensureChromeDir(sessionId: string, cwd: string): string {
   return dir;
 }
 
-// ── Design Helper ──────────────────────────────────────────────────
+// ── 设计助手 ──
 
-/** Options for launching the browser-based design assistant. */
+/** 启动浏览器设计助手的选项。 */
 export interface DesignHelperOptions {
   sessionId: string;
   goal: string;
@@ -35,16 +35,16 @@ export interface DesignHelperOptions {
 }
 
 /**
- * Launch a browser-based design assistant page.
- * Currently serves a simple landing page; can be extended with
- * wireframe tools, color scheme generators, etc.
+ * 打开浏览器设计助手页面。
+ * 目前只提供简单落地页，后续可扩展线框工具、
+ * 配色生成器等。
  */
 export async function launchDesignHelper(options: DesignHelperOptions): Promise<void> {
   const { sessionId, goal, cwd } = options;
 
   const chromeDir = ensureChromeDir(sessionId, cwd);
 
-  // Generate a simple design helper landing page
+  // 生成简单的设计助手落地页
   const html = generateDesignHelperHtml(goal);
   writeFileSync(join(chromeDir, "index.html"), html, "utf-8");
 

@@ -26,7 +26,7 @@ export function applySystemProxyToEnv(
     env["https_proxy"] ||
     env["HTTP_PROXY"] ||
     env["http_proxy"];
-  if (hasProxyEnv) return; // explicit configuration wins
+  if (hasProxyEnv) return; // 显式配置优先
 
   const cfg = provider.getSystemProxy();
   if (!cfg) return;

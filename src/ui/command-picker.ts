@@ -12,7 +12,7 @@ export interface CommandPickerLevel {
 
 export interface CommandPickerState extends InputAreaPickerConfig {
   commandName: string;
-  /** Picker behavior. Toggle pickers submit one item and remain open. */
+  /** 选择器行为。toggle 模式提交单项后保持打开。 */
   mode: "single" | "toggle";
   maxVisible: number;
   stack: CommandPickerLevel[];

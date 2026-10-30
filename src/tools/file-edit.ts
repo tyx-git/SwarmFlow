@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** edit_file 执行器：精确匹配替换与多处编辑，保留文件原有 EOL。 */
 
 import fs from "node:fs/promises";
 import { existsSync, statSync, readFileSync } from "node:fs";
@@ -31,10 +24,6 @@ import {
 } from "./file-version.js";
 import { buildUnifiedDiffPreview, simpleUnifiedDiff } from "./bash.js";
 import { buildFileMutation } from "./mutations.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export async function toolEditFileAppend(
   filePath: string,
@@ -64,9 +53,8 @@ export async function toolEditFileAppend(
     }
 
     const totalLineCount = countFileLines(before);
-    // Re-encode the appended text to the file's existing EOL so appending
-    // model-authored LF text to a CRLF file doesn't seed mixed line
-    // endings (the same churn write_file/edit_file guard against).
+    // 把追加文本重编码成文件既有的 EOL，免得向 CRLF 文件追加模型写的
+    // LF 文本时留下混合换行（write_file / edit_file 都在防这种噪音）。
     const finalContent = before + reencodeEol(appendStr, detectFileEol(before));
 
     const beforeLines = before.length > 0 ? before.split("\n") : [];
@@ -103,7 +91,7 @@ export async function toolEditFileAppend(
 }
 
 // ------------------------------------------------------------------
-// edit_file multi-edit
+// edit_file 多处编辑
 // ------------------------------------------------------------------
 
 /** 在 haystack 中查找 needle 的所有出现位置，以字符偏移量表示。 */
@@ -136,7 +124,7 @@ export function buildNewlineIndex(content: string): number[] {
 
 /** 通过预建的换行符索引将字符偏移量转换为 1索引的行号。 */
 export function offsetToLineWithIndex(newlineIndex: readonly number[], offset: number): number {
-  // Count of newlines strictly before `offset` (binary search).
+  // 严格位于 `offset` 之前的换行符数量（二分查找）。
   let lo = 0;
   let hi = newlineIndex.length;
   while (lo < hi) {
@@ -207,18 +195,16 @@ export async function toolEditFileMulti(
       return `ERROR: ${e instanceof Error ? e.message : String(e)}`;
     }
 
-    // read_file shows LF-only content, so a multi-line old_str echoed
-    // back by the model is LF even when the file is CRLF. Re-encode each
-    // edit's strings to the file's actual EOL before matching/replacing,
-    // so multi-line edits work on CRLF (Windows-authored) files and the
-    // replacement keeps the file's line-ending convention.
+    // read_file 只呈现 LF，所以模型回传的多行 old_str 都是 LF，即使文件是 CRLF。
+    // 匹配/替换前先把每次编辑的字符串重编码成文件实际的 EOL，
+    // 多行编辑才在 CRLF（Windows 写出）文件上也能生效，
+    // 替换结果也沿用文件原有的换行约定。
     const fileEol = detectFileEol(content);
 
-    // Find all matches; validate uniqueness unless replace_all is opted in.
-    // No-op edits (old_str === new_str) are rejected so the model doesn't
-    // confuse itself with diffs that don't change anything.
-    // Lazily build a newline index —only when we actually need to format
-    // an ambiguous-match error. Avoids scanning the file on the happy path.
+    // 找出所有匹配；未显式 replace_all 时校验唯一性。
+    // old_str === new_str 的空编辑直接拒绝，免得模型被没有变化的 diff 绕晕。
+    // 换行符索引按需构建——只在确实要格式化「匹配不唯一」的错误时创建，
+    // 正常路径上不扫全文件。
     let newlineIndex: number[] | null = null;
     const lineOf = (offset: number): number => {
       if (!newlineIndex) newlineIndex = buildNewlineIndex(content);
@@ -228,8 +214,8 @@ export async function toolEditFileMulti(
     const matches: MatchInfo[] = [];
     for (let editIdx = 0; editIdx < edits.length; editIdx++) {
       const edit = edits[editIdx];
-      // Match and replace using the file's EOL; report errors with the
-      // model's original (LF) strings so messages stay readable.
+      // 按文件的 EOL 匹配与替换；报错时用模型原始的（LF）字符串，
+      // 保证提示好读。
       const oldStr = reencodeEol(edit.old_str, fileEol);
       const newStr = reencodeEol(edit.new_str, fileEol);
       if (oldStr === newStr) {
@@ -255,7 +241,7 @@ export async function toolEditFileMulti(
           `old_str: ${JSON.stringify(snippetFor(edit.old_str))}`
         );
       }
-      // Push every occurrence (single match by default, all matches when replace_all).
+      // 收集每一处出现（默认单处，replace_all 时全部）。
       for (const off of offsets) {
         matches.push({
           index: off,
@@ -265,10 +251,10 @@ export async function toolEditFileMulti(
       }
     }
 
-    // Sort by offset ascending for overlap check
+    // 按偏移升序排序，便于检查重叠
     matches.sort((a, b) => a.index - b.index);
 
-    // Check overlaps
+    // 检查重叠
     for (let i = 1; i < matches.length; i++) {
       const prev = matches[i - 1];
       if (prev.index + prev.oldStr.length > matches[i].index) {
@@ -276,16 +262,16 @@ export async function toolEditFileMulti(
       }
     }
 
-    // Apply replacements from bottom to top (reverse offset order)
+    // 从后往前替换（偏移倒序），避免前面的改动移动后面的位置
     let newContent = content;
     for (let i = matches.length - 1; i >= 0; i--) {
       const m = matches[i];
       newContent = newContent.slice(0, m.index) + m.newStr + newContent.slice(m.index + m.oldStr.length);
     }
 
-    // Append always executes last, after all replacements. Re-encode to
-    // the file's EOL so an LF append doesn't seed mixed endings in a CRLF
-    // file (consistent with the old_str/new_str re-encoding above).
+    // append 总在所有替换之后执行。同样重编码成文件的 EOL，
+    // 免得 LF 追加在 CRLF 文件里留下混合换行
+    //（与上面的 old_str/new_str 重编码保持一致）。
     if (appendStr) {
       newContent += reencodeEol(appendStr, fileEol);
     }
@@ -293,7 +279,7 @@ export async function toolEditFileMulti(
     const totalLineCount = countFileLines(content);
     const hunks = buildMultiEditHunks(content, matches);
 
-    // If append, add an append hunk at the end
+    // 有追加时，在末尾补一个 append hunk
     if (appendStr) {
       const appendStartLine = countFileLines(newContent) - countFileLines(appendStr) + 1;
       hunks.push({

@@ -48,19 +48,19 @@ export class AgentPool {
   private _agents: Map<string, Agent> = new Map();
   private _config: AgentPoolConfig;
 
-  /** Fired when an agent's lifecycle changes. */
+  /** agent 生命周期变化时触发。 */
   onLifecycleChange?: (handle: SwarmAgentHandle) => void;
 
   constructor(config?: Partial<AgentPoolConfig>) {
     this._config = { ...DEFAULT_POOL_CONFIG, ...config };
   }
 
-  /** Current pool configuration. */
+  /** 当前池配置。 */
   get config(): AgentPoolConfig {
     return this._config;
   }
 
-  /** Number of currently active (non-completed/non-cancelled) agents. */
+  /** 当前活跃（未完成、未取消）的 agent 数量。 */
   get activeCount(): number {
     let count = 0;
     for (const h of this._handles.values()) {
@@ -71,12 +71,12 @@ export class AgentPool {
     return count;
   }
 
-  /** All agent handles. */
+  /** 所有 agent 句柄。 */
   get handles(): SwarmAgentHandle[] {
     return [...this._handles.values()];
   }
 
-  /** Total token usage across all agents. */
+  /** 所有 agent 的 token 总用量。 */
   get totalTokenUsage(): { inputTokens: number; outputTokens: number } {
     const totals = { inputTokens: 0, outputTokens: 0 };
     for (const h of this._handles.values()) {
@@ -87,7 +87,7 @@ export class AgentPool {
   }
 
   /**
-   * Check if the pool can accept a new agent.
+   * 检查池是否还能接纳新 agent。
    */
   canAcquire(): boolean {
     if (this.activeCount >= this._config.maxConcurrency) return false;
@@ -97,8 +97,8 @@ export class AgentPool {
   }
 
   /**
-   * Register a new agent instance in the pool.
-   * Returns the handle for tracking.
+   * 向池中注册新的 agent 实例。
+   * 返回用于追踪的句柄。
    */
   register(id: string, role: AgentRole, agent: Agent): SwarmAgentHandle {
     const handle: SwarmAgentHandle = {
@@ -117,21 +117,21 @@ export class AgentPool {
   }
 
   /**
-   * Get an agent instance by handle ID.
+   * 按句柄 ID 获取 agent 实例。
    */
   getAgent(id: string): Agent | undefined {
     return this._agents.get(id);
   }
 
   /**
-   * Get handle by ID.
+   * 按 ID 获取句柄。
    */
   getHandle(id: string): SwarmAgentHandle | undefined {
     return this._handles.get(id);
   }
 
   /**
-   * Update lifecycle state for an agent.
+   * 更新 agent 的生命周期状态。
    */
   setLifecycle(id: string, lifecycle: AgentLifecycle, error?: string): void {
     const handle = this._handles.get(id);
@@ -143,7 +143,7 @@ export class AgentPool {
   }
 
   /**
-   * Record token usage for an agent.
+   * 记录 agent 的 token 用量。
    */
   recordUsage(id: string, inputTokens: number, outputTokens: number): void {
     const handle = this._handles.get(id);
@@ -154,7 +154,7 @@ export class AgentPool {
   }
 
   /**
-   * Assign a task to an agent.
+   * 给 agent 分配任务。
    */
   assignTask(id: string, taskId: string): void {
     const handle = this._handles.get(id);
@@ -166,7 +166,7 @@ export class AgentPool {
   }
 
   /**
-   * Remove a completed task from an agent's list.
+   * 从 agent 的任务列表中移除已完成的任务。
    */
   unassignTask(id: string, taskId: string): void {
     const handle = this._handles.get(id);
@@ -176,7 +176,7 @@ export class AgentPool {
   }
 
   /**
-   * Release an agent from the pool.
+   * 从池中释放 agent。
    */
   release(id: string): void {
     this._handles.delete(id);
@@ -184,7 +184,7 @@ export class AgentPool {
   }
 
   /**
-   * Release all agents.
+   * 释放所有 agent。
    */
   releaseAll(): void {
     this._handles.clear();

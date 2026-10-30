@@ -27,10 +27,8 @@ export function skillsOptions(ctx: CommandOptionsContext): CommandOption[] {
     .getAllSkillNames()
     .sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name))
     .map((skill: { name: string; description: string; enabled: boolean }) => ({
-      // The picker renders `label` as the flexible left/middle column and
-      // `detail` as the fixed right status column. Description truncation is
-      // therefore based on the actual terminal width, rather than a fixed
-      // character limit.
+      // 选择器把 `label` 渲染为左侧/中间的弹性列，把 `detail` 渲染为右侧固定的
+      // 状态列，因此描述截断取决于终端实际宽度，而不是固定的字符上限。
       label: skill.description.trim(),
       labelPrefix: skill.name,
       value: skill.name,
@@ -157,10 +155,10 @@ export async function cmdSkillsCreater(ctx: CommandContext, args: string): Promi
 // ------------------------------------------------------------------
 
 /**
- * Register slash commands for user-invocable skills.
+ * 为可由用户调用的 skill 注册斜杠命令。
  *
- * Each skill with `userInvocable === true` gets a `/skill-name` command.
- * When invoked, the skill content is injected and a turn is triggered.
+ * 每个 `userInvocable === true` 的 skill 都会得到一条 `/skill-name` 命令；
+ * 调用时注入 skill 内容并触发新回合。
  */
 export function registerSkillCommands(
   registry: CommandRegistry,
@@ -177,7 +175,7 @@ export function registerSkillCommands(
       continue;
     }
 
-    const captured = skill; // capture for closure
+    const captured = skill; // 捕获到闭包中
     registry.register({
       name: cmdName,
       description: captured.description,
@@ -199,8 +197,8 @@ export function registerSkillCommands(
 }
 
 /**
- * Unregister old skill commands, then register new ones.
- * Used after reloadSkills() to keep slash commands in sync.
+ * 先注销旧的技能命令，再注册新的。
+ * reloadSkills() 之后调用，保持斜杠命令同步。
  */
 export function reRegisterSkillCommands(
   registry: CommandRegistry,
@@ -216,7 +214,3 @@ export function reRegisterSkillCommands(
   }
   registerSkillCommands(registry, newSkills);
 }
-
-// ------------------------------------------------------------------
-// /permission -设置权限模式
-// ------------------------------------------------------------------

@@ -37,11 +37,10 @@ export function resolveUniqueProviderId(baseId: string, isTaken: (id: string) =>
 }
 
 /**
- * Normalize a user-pasted endpoint into the base URL its selected SDK expects.
- * The optional protocol keeps suffix inference available for callers that have
- * not selected a protocol yet; provider setup passes the selected protocol.
- * `changed` reports whitespace, trailing slash, endpoint suffix cleanup, or a
- * missing version root.
+ * 把用户粘贴的端点规范化为所选 SDK 期望的 base URL。
+ * 可选 protocol 参数为尚未选定协议的调用方保留后缀推断；供应商配置流程
+ * 会直接传入所选协议。
+ * `changed` 表示发生了空白、末尾斜杠、端点后缀清理或版本根补全等改动。
  */
 export function normalizeEndpointUrl(raw: string, selectedProtocol?: string): {
   baseUrl: string;

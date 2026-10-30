@@ -284,7 +284,7 @@ export function createToolResult(
       incompleteArguments?: boolean;
     };
     previewText?: string;
-    /** When true, TUI renders the preview in dim/gray style. */
+    /** 为 true 时，TUI 以暗色/灰色样式渲染预览。 */
     previewDim?: boolean;
   },
 ): LogEntry {

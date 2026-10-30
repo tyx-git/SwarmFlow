@@ -1,6 +1,4 @@
-/**
- * @file 附件领域：引用解析、扫描、读取摘要与上下文块渲染。
- */
+/** 附件类型判定与展示上限：扩展名集合、媒体类型、预览长度和扫描排除。 */
 
 import path from "node:path";
 
@@ -8,7 +6,7 @@ import { isProjectedDocumentPath } from "../context/document/view.js";
 import { EXCLUDE_DIRS } from "../tools/scan-exclusions.js";
 
 // ------------------------------------------------------------------
-// Constants
+// 常量
 // ------------------------------------------------------------------
 
 export const PREVIEW_CHAR_LIMIT = 5000;
@@ -36,7 +34,7 @@ export const BINARY_EXTENSIONS = new Set([
   ".o", ".pyc", ".class", ".wasm",
 ]);
 
-// Regex: @ must be at start-of-string or preceded by whitespace.
+// 正则：@ 必须位于字符串开头，或前面是空白字符。
 export const AT_PATTERN =
   /(?:^|(?<=\s))@(?:"([^"]+)"|'([^']+)'|(\S+))/g;
 
@@ -52,8 +50,7 @@ export const IMAGE_MEDIA_TYPES: Record<string, string> = {
   ".tiff": "image/tiff",
 };
 
-// 使用统一的排除列表，如文件附加自动完成，glob, grep，
-// 和list_dir都共享“默认跳过”的概念。
+// 与文件附加补全、glob、grep、list_dir 共用同一份默认跳过目录。
 export const SCAN_EXCLUDE_DIRS = EXCLUDE_DIRS;
 
 export function classifyFile(
@@ -65,7 +62,3 @@ export function classifyFile(
   const isBinary = isImage || projectedDocumentType !== null || BINARY_EXTENSIONS.has(ext);
   return [isImage, isBinary, projectedDocumentType];
 }
-
-/**
- * 读取文件并生成包含内容/摘要的FileInfo。
- */

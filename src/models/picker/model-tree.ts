@@ -32,7 +32,7 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   const currentModel = String(ctx.currentSelection?.modelId ?? session.primaryAgent?.modelConfig?.model ?? "");
   const currentConfigName = String(ctx.currentSelection?.configName ?? session.currentModelConfigName ?? "");
 
-  // ── Build providerHasKey FIRST (before adding models) ──
+  // ── 先构建 providerHasKey（在添加模型之前）──
   const providerHasKey = new Map<string, boolean>();
   for (const entry of allEntries) {
     if (entry.hasResolvedApiKey) {
@@ -48,20 +48,19 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
   try {
     if (hasOAuthTokens()) providerHasKey.set("openai-codex", true);
   } catch {
-    // Ignore auth lookup failures here.
+    // 此处忽略认证查询失败。
   }
   try {
     if (hasGitHubTokens()) providerHasKey.set("copilot", true);
   } catch {
-    // Ignore auth lookup failures here.
+    // 此处忽略认证查询失败。
   }
   if (currentProvider && session.primaryAgent?.modelConfig?.apiKey) {
     providerHasKey.set(currentProvider, true);
   }
 
-  // Populate only models that are registered in the current configuration.
-  // Provider presets remain metadata for grouping, labels, and credentials;
-  // their built-in model catalog must not be injected into `/model`.
+  // 只填充当前配置中已注册的模型。provider 预设仅作为分组、标签和凭据的
+  // 元数据保留；其内置模型目录不得注入 `/model`。
   const byProvider = new Map<string, Map<string, { modelId: string }>>();
   const providerOrder: string[] = [];
 
@@ -78,8 +77,8 @@ export function buildModelPickerTree(ctx: ModelPickerTreeContext): ModelPickerTr
     }
   };
 
-  // Config entries are the source of truth for the model picker. This keeps
-  // `/model` limited to models the user has actually added or registered.
+  // 配置条目是模型选择器的唯一真实来源，这样 `/model` 只展示用户实际添加或
+  // 注册过的模型。
   for (const entry of entries) {
     addModel(entry.provider, entry.model, entry.model);
   }

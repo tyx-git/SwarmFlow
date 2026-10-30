@@ -104,7 +104,7 @@ export function validateAndRepairLog(
             ...(entry.meta.contextId !== undefined ? { contextId: entry.meta.contextId } : {}),
           },
         };
-        // Insert after the tool_call
+        // 插到对应的 tool_call 之后
         entries.splice(i + 1, 0, recoveredEntry);
         warnings.push(`Added recovered tool_result for tool_call ${entry.id} (${toolCallId}).`);
         repaired = true;
@@ -190,15 +190,14 @@ export function validateAndRepairLog(
   }
 
   // --- 4. 修复因过时的 turnIndex 而与轮次分离的推理条目 ---
-  // Pre-fix (see Session._runActivation / activationTurnIndex), a queued
-  // message draining mid-activation could advance `_turnCount` so a round's
-  // streamed `reasoning` got a higher turnIndex than its sibling tool_call /
-  // tool_result entries. projectToApiMessages groups by (turnIndex, roundIndex),
-  // so such reasoning becomes an orphan →a degenerate "thinking-only" assistant
-  // message that strict backends (DeepSeek /anthropic) reject. Re-stamp an
-  // orphaned reasoning entry to the turnIndex of its own round's action
-  // entries. Tightly scoped: only fires when the reasoning's (turn,round) has
-  // NO action sibling AND the round's real entries live under one other turn.
+  // 修复前（见 Session._runActivation / activationTurnIndex），激活过程中排空
+  // 队列消息可能推进 `_turnCount`，导致某轮流式输出的 `reasoning` 拿到比同轮
+  // tool_call / tool_result 更高的 turnIndex。projectToApiMessages 按
+  // (turnIndex, roundIndex) 分组，这类 reasoning 就成了孤儿，最终生成一条
+  // 只有思考、没有动作的畸形 assistant 消息，被严格后端（DeepSeek / Anthropic）
+  // 拒绝。这里把孤儿 reasoning 重新盖到它所在轮次动作条目的 turnIndex 上。
+  // 范围收得很紧：仅当该 reasoning 的 (turn, round) 没有任何动作兄弟、
+  // 且该轮的真实条目都位于另一个 turn 下时才触发。
   {
     const ACTION_TYPES = new Set(["tool_call", "tool_result", "assistant_text", "no_reply"]);
     // 一次预扫描：只收未丢弃、roundIndex 明确的 action；reasoning 不参与索引。

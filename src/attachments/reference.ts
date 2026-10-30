@@ -1,18 +1,15 @@
-/**
- * @file 附件领域：引用解析、扫描、读取摘要与上下文块渲染。
- */
+/** 从用户输入中提取 @ 引用，并解析为可读取的绝对路径。 */
 
 import path from "node:path";
 import { AT_PATTERN } from "./file-kinds.js";
 
 // ------------------------------------------------------------------
-// Core functions
+// 核心函数
 // ------------------------------------------------------------------
 
 /**
- * 提取@path引用并返回[cleanedText， paths]。
- * 不匹配类似电子邮件的模式（user@example.com），
- * 因为regex要求@前面有空格或行开始。
+ * 提取 @path 引用，返回清理后的文本与路径列表。
+ * 正则要求 @ 位于行首或空白之后，因此不会匹配 user@example.com。
  */
 export function parseReferences(text: string): [string, string[]] {
   const paths: string[] = [];
@@ -28,16 +25,9 @@ export function parseReferences(text: string): [string, string[]] {
   return [normalized, paths];
 }
 
-/**
- *  将原始路径字符串解析为绝对路径。
- */
+/** 把原始路径解析为绝对路径。 */
 export function resolvePath(raw: string, cwd?: string): string {
   if (path.isAbsolute(raw)) return raw;
   const base = cwd ?? process.cwd();
   return path.resolve(base, raw);
 }
-
-/**
- * 按扩展名对文件进行分类。
- * 返回‘ [isImage, isBinary, projectedDocumentType] ’。
- */

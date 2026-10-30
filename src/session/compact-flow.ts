@@ -399,7 +399,7 @@ export async function runManualCompact(host: CompactHost,
   options?: { signal?: AbortSignal; completionDisplay?: string },
 ): Promise<void> {
   return host._withTurnLock(async () => {
-    // In-lock catch —see runInjectedCommand for why it cannot sit outside.
+    // 锁内 catch——不能放在锁外的原因见 runInjectedCommand。
     try {
       return await host._runManualCompactBody(instruction, options);
     } catch (err) {
@@ -409,7 +409,7 @@ export async function runManualCompact(host: CompactHost,
   });
 }
 
-/** Body of runManualCompact. Caller holds the turn lock. */
+/** runManualCompact 的主体。调用方需持有 turn 锁。 */
 export async function runManualCompactBody(host: CompactHost,
   instruction?: string,
   options?: { signal?: AbortSignal; completionDisplay?: string },
@@ -473,8 +473,8 @@ export async function runManualCompactBody(host: CompactHost,
     } catch (err) {
       warnPostCommit(host, `post-commit bookkeeping failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    // Waking messages held back during compact (Q6) get their delivery turn
-    // now that the session is idle again.
+    // 压缩期间暂扣的唤醒消息（Q6），
+    // 在会话重新空闲后获得投递轮次。
     if (host._hasWakingInboxMessages()) {
       host._scheduleAutoResume();
     }
@@ -488,8 +488,8 @@ export function buildCompactCheck(host: CompactHost): ((
 }
 
 /**
- * Run the compact phase: inject compact prompt, let the Agent produce
- * a continuation prompt (possibly using tools), then return it.
+ * 执行 compact phase：注入压缩提示，让 Agent 产出
+ * continuation prompt（可能用到工具），然后返回它。
  */
 export async function runCompactPhase(host: CompactHost,
   scenario: "before_turn" | "mid_turn",
@@ -498,12 +498,12 @@ export async function runCompactPhase(host: CompactHost,
 ): Promise<string> {
   host._compactInProgress = true;
   try {
-    // Inject compact prompt as user_message entry (compactPhase, invisible in TUI)
+    // 以 user_message 条目注入压缩提示（compactPhase，TUI 不可见）
     const prompt = promptOverride ?? (scenario === "before_turn" ? COMPACT_PROMPT_OUTPUT : COMPACT_PROMPT_TOOLCALL);
     const compactPromptEntry = createUserMessageEntry(
       host._nextLogId("user_message"),
       host._turnCount,
-      "",  // not visible in TUI
+      "",  // TUI 不可见
       prompt,
       host._allocateContextId(),
     );
@@ -517,10 +517,10 @@ export async function runCompactPhase(host: CompactHost,
         throw new DOMException("Compact phase aborted.", "AbortError");
       }
 
-      // Same per-activation turn-index invariant as _runTurnActivationLoop:
-      // capture once so the tool-loop entries and the finalized reasoning/
-      // text below can't be split across turnIndices if a queued message
-      // drains mid-activation. See _runActivation / Docs/session.md.
+      // 与 _runTurnActivationLoop 相同的"每次 activation 固定 turnIndex"不变量：
+      // 只取一次，这样即便排队消息在 activation 中途被 drain，
+      // 工具循环条目与下面定稿的 reasoning/text
+      // 也不会被拆到不同 turnIndex。见 _runActivation / Docs/session.md。
       const compactTurnIndex = host._turnCount;
       const result = await host._runActivation(compactTurnIndex, signal, undefined, undefined, true);
       if (signal?.aborted) {
@@ -583,9 +583,9 @@ export async function runCompactPhase(host: CompactHost,
 }
 
 /**
- * Execute auto-compact transactionally:
- *   compact phase → archive atomic write → compact_checkpoint (commit) →
- *   in-memory archive/strip/token bookkeeping.
+ * 事务化执行自动压缩：
+ *   compact phase → archive 原子写 → compact_checkpoint（commit）→
+ *   内存侧 archive/strip/token 簿记。
  */
 export async function doAutoCompact(host: CompactHost,
   scenario: "before_turn" | "mid_turn",

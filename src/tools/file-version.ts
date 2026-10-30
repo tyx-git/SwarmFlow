@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** 文件版本快照与冲突校验：用修改时间和大小检测编辑期间的并发变更。 */
 
 import fs from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
@@ -13,10 +6,6 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { FILE_CONTENT_MAX_BYTES } from "./limits.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export interface FileVersionSnapshot {
   exists: boolean;
@@ -77,8 +66,8 @@ export function validateExpectedMtime(
   current: FileVersionSnapshot,
 ): void {
   if (expectedMtimeMs == null) return;
-  if (!current.exists) return; // new file —mtime guard is meaningless
-  if (current.size === 0) return; // empty file —nothing to protect
+  if (!current.exists) return; // 新文件——mtime 守卫无意义
+  if (current.size === 0) return; // 空文件——没有需要保护的内容
   if (current.mtimeMs !== expectedMtimeMs) {
     throw new FileVersionConflictError(
       `File changed since last read (mtime conflict): ${filePath} ` +

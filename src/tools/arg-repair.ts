@@ -3,12 +3,11 @@
  * 宽容强制转换，这些参数是开放模型（DeepSeek、GLM、
  * Qwen、Kimi 等）经常产生的。
  *
- * 设计原则：验证然后修复，绝不预处理。调用者首先按原样
- * 解析输入；只有在类型不匹配时才在这些修复中查找
- * 确切失败的参数。有效输入永远不会被触碰——这就是
- * 保持一个 merely *looks* like JSON 的 `write_file` `content`
- * 不会被静默重写的原因。验证器定位 bug；我们只在架构
- * 实际不同意的地方花费修复预算。
+ * 设计原则：验证后修复，绝不预处理。调用者先按原样解析输入；
+ * 只有类型不匹配时才在这些修复中查找确切失败的参数。有效输入
+ * 永远不会被触碰——这正是看起来像 JSON 的 `write_file` `content`
+ * 不会被静默重写的原因。验证器定位 bug；修复预算只花在架构
+ * 确实不一致的地方。
  *
  * 目录故意很小且封闭。在我们服务的开放模型中，
  * 相同的形状错误几乎完全重复：
@@ -47,15 +46,14 @@ function reportRepair(tool: string, key: string, kind: ArgRepairKind): void {
   try {
     repairSink?.({ tool, key, kind });
   } catch {
-    /* telemetry must never break a tool call */
+    /* 遥测绝不能弄坏工具调用 */
   }
 }
 
 /**
- * Attempt to coerce a non-array `value` into a string[] using repairs 2—.
- * Returns the repaired array (and which repair fired) or null if unrepairable.
- * Pure —does not report telemetry; callers report on accept so the failing
- * path is known.
+ * 用第 2–4 类修复尝试把非数组的 `value` 强制成 string[]。
+ * 成功时返回修复后的数组及命中的修复类型，无法修复返回 null。
+ * 纯函数——不发送遥测；调用方在采纳时上报，才能定位到失败路径。
  */
 export function repairToStringArray(
   value: unknown,

@@ -16,8 +16,8 @@ import { persistSettingsPatch } from "../settings-patch.js";
 import { type CommandContext } from "../types.js";
 
 /**
- * Local provider discovery sub-flow for /model.
- * Scans the server, lets user pick a model, registers it, and switches.
+ * /model 的本地 provider 发现子流程。
+ * 扫描服务器，让用户挑选模型，注册并切换。
  */
 export async function cmdModelLocalDiscover(ctx: CommandContext, providerId: string): Promise<void> {
   const t = providerText(ctx.swarmflowHomeDir);
@@ -124,7 +124,7 @@ export async function cmdModelLocalDiscover(ctx: CommandContext, providerId: str
     supports_web_search: false,
   });
 
-  // 将本地提供程序配置保存到设置中。Json，以便它在重启中幸存下来
+  // 将本地 provider 配置写入 settings.json，使其在重启后仍然有效。
   {
     const existing = loadGlobalSettings(ctx.swarmflowHomeDir);
     const providerEntry: ProviderEntry = {

@@ -40,7 +40,7 @@ import {
 import { cmdReviewer, reviewOptions } from "./workflow/review.js";
 
 /**
- * Build the default command registry with all built-in commands.
+ * 构建包含全部内置命令的默认命令注册表。
  */
 export function buildDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();

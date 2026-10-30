@@ -101,11 +101,10 @@ export function persistRuntimeModelConfig(ctx: CommandContext, selection: Resolv
 }
 
 /**
- * Prompt the user to select a thinking level for the current model.
- * Called after model switch to let the user choose a thinking level
- * (replaces the removed /thinking command).
+ * 提示用户为当前模型选择思考深度。
+ * 在模型切换后调用（取代已移除的 /thinking 命令）。
  *
- * Returns the selected level string, or undefined if the user cancelled.
+ * 返回选中的深度字符串；用户取消时返回 undefined。
  */
 export async function promptThinkingLevel(
   ctx: CommandContext,
@@ -113,9 +112,8 @@ export async function promptThinkingLevel(
 ): Promise<string | undefined> {
   const session = ctx.session;
   const t = createUiText(getUiLanguage(ctx.swarmflowHomeDir));
-  // Keep the final step uniform across registered and custom models. The
-  // session/provider layer normalizes unsupported values for models whose
-  // capabilities are not known locally.
+  // 让注册模型与自定义模型的最后一步保持一致；对于本地不了解能力的模型，
+  // 不受支持的值由 session/provider 层归一化。
   const configuredLevels = loadGlobalSettings(ctx.swarmflowHomeDir).thinking_levels;
   const levels = Array.isArray(configuredLevels)
     ? [...new Set(configuredLevels.map((level) => String(level).trim()).filter(Boolean))]

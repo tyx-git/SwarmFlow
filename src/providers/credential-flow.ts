@@ -183,7 +183,7 @@ export function removeCredentialKey(slot: CredentialSlot, homeDir?: string): Rem
 }
 
 // ------------------------------------------------------------------
-// Interactive flows
+// 交互流程
 // ------------------------------------------------------------------
 
 export interface EnsureCredentialOptions {
@@ -397,7 +397,7 @@ export async function runCredentialManageFlow(
     return { status: "removed", shellMayResurface, envVar: slot.envVar, label: slot.label };
   }
 
-  // set / replace →paste loop
+  // set / replace → 粘贴循环
   while (true) {
     const pasted = await adapter.secret({
       message: t.get(["Commands", "/provider", "credential", "pasteMessage"], { label: slot.label }),

@@ -192,7 +192,7 @@ function toConversationEntry(
   if (entry.type === "agent_result") {
     const fullText = typeof entry.content === "string" ? entry.content : undefined;
     const meta = { ...(entry.meta as Record<string, unknown>) };
-    delete meta.preview; // legacy display-only preview; display/fullText are authoritative.
+    delete meta.preview; // 旧版仅用于展示的预览；以 display/fullText 为准。
 
     let text = entry.display;
     if (!text && fullText) {
@@ -240,7 +240,7 @@ function toConversationEntry(
     if (typeof entry.meta["errorType"] === "string") ce.meta.errorType = entry.meta["errorType"];
   }
 
-  // Attach timing info and meta for tool_call entries
+  // 为 tool_call 条目附上耗时信息与 meta
   if (entry.type === "tool_call") {
     ce.startedAt = entry.timestamp;
     const toolCallId = entry.meta["toolCallId"];
@@ -275,16 +275,15 @@ function toConversationEntry(
       if (typeof streamMode === "string") ce.meta.toolStreamMode = streamMode;
       const fmd = entry.meta["fileModifyData"];
       if (fmd && typeof fmd === "object") ce.meta.fileModifyData = fmd;
-      // Forward toolMetadata so the TUI can relabel a
-      // plan-file write/edit as "Update Todos" while it streams —before the
-      // tool_result lands and carries the same flag. Without this the call-side
-      // flag set in tool-loop is dropped here and "Write" + diff flashes first.
+      // 透传 toolMetadata，让 TUI 在流式期间就能把针对 plan 文件的 write/edit
+      // 改标为 "Update Todos"，不必等携带同样标记的 tool_result 落地。
+      // 否则 tool-loop 在调用侧设的标记会在这里丢失，先闪出 "Write" 和 diff。
       const toolMetadata = entry.meta["toolMetadata"];
       if (toolMetadata && typeof toolMetadata === "object") ce.meta.toolMetadata = toolMetadata;
     }
   }
 
-  // Forward reasoningComplete for reasoning entries (needed by TUI active entry tracker)
+  // 透传 reasoning 条目的 reasoningComplete（TUI 活动条目跟踪器需要）
   if (entry.type === "reasoning") {
     const rc = entry.meta["reasoningComplete"];
     if (rc !== undefined) {
@@ -312,7 +311,7 @@ function toConversationEntry(
       ce.meta ??= {};
       ce.meta.isError = isError;
     }
-    // Forward fileModifyData from tool result metadata
+    // 透传 tool_result 元数据中的 fileModifyData
     if (toolMetadata && typeof toolMetadata === "object") {
       const fmd = (toolMetadata as Record<string, unknown>)["fileModifyData"];
       if (fmd && typeof fmd === "object") {
@@ -508,7 +507,7 @@ function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, numbe
           if (typeof callId === "string") {
             toolResultByCallId.set(callId, re);
           } else {
-            // Orphan result —append after all paired entries
+            // 孤立结果——排在所有已配对条目之后
             nonToolEntries.push(re);
           }
         } else {
@@ -530,7 +529,7 @@ function projectTuiWindow(entries: LogEntry[], toolElapsedMap: Map<string, numbe
           }
         }
       }
-      // Flush any unmatched tool_results (shouldn't happen, but be safe)
+      // 冲出所有未配对的 tool_result（正常不该出现，防御性处理）
       for (const tr of toolResultByCallId.values()) {
         result.push(...toConversationEntries(tr, toolElapsedMap));
       }
@@ -588,9 +587,9 @@ export function projectToTuiEntries(
   // 只有 API 投影隐藏它们。这使用户能够回滚并验证摘要捕获的内容
   // （并允许选择器列出磁盘上仍然存在的分组）。
 
-  // 整个窗口上的一个配对映射。窗口本地映射对于任一窗口
-  // 渲染的任何内容都会相同配对：结果总是跟随其调用，因此窗口永远不会
-  // 渲染其结果位于更早窗口中的调用，未渲染条目的额外配对 simply 未使用。
+  // 整个窗口上的一个配对映射。窗口本地映射对任一窗口渲染的内容
+  // 都会给出相同的配对：结果总是跟随其调用，因此窗口不会渲染结果位于
+  // 更早窗口中的调用，未渲染条目的额外配对自然不会被使用。
   const toolElapsedMap = buildToolElapsedMap(windowEntries);
 
   // 确定折叠边界：如果 N >= 阈值，折叠第 (N - 阈值 + 1) 个标记之前的条目。

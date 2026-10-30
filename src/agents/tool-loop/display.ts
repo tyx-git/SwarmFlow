@@ -1,19 +1,4 @@
-/**
- * Agent 共享的 tool loop 逻辑。
- *
- * 提供异步 LLM <-> tool 往返循环。调用 provider，执行 tool call，
- * 通过回调追加结果，重复直到模型不再调用工具或达到最大轮数。
- *
- * v2 设计：通过回调（getMessages / appendEntry）而非直接修改 provider 消息。
- * 后端存储可以是结构化会话日志（主 Agent）或临时结构化日志（子 Agent / 无状态运行）。
- *
- * 核心概念：
- * - PendingToolCallState：跟踪每个进行中的 tool call（参数流式传输、
- *   执行状态、TUI 可见性、edit-file 上下文探测）
- * - 顺序排出：已提交的 tool call 按发射顺序执行；挂起的 ask 暂停排出，
- *   以保证审批语义正确
- * - Compact：可在任意 provider 调用后触发中途压缩，返回 compactNeeded=true
- */
+/** 工具调用的展示层：摘要模板、调用展示与结果预览提取；tool loop 本体在 run.ts。 */
 
 /**
  * 为工具调用生成人类可读的简短摘要。

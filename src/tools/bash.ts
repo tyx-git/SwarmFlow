@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** bash / bash_background 执行器：超时、输出截断与溢出落盘，并提供 time 与后台 shell 接管入口。 */
 
 import fs from "node:fs/promises";
 import {
@@ -31,10 +24,6 @@ import {
   BASH_MAX_OUTPUT_CHARS,
 } from "./limits.js";
 
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
-
 /**
  * 构建传递给 bash 子进程的环境。这是 platform-shell provider
  * 的薄重导出，这样调用者不需要从 `src/platform/` 导入。
@@ -53,8 +42,8 @@ export function spillOutputToFile(
     const dir = path.join(baseDir, "bash-output");
     mkdirSync(dir, { recursive: true });
 
-    // Prune oldest spill files to keep the directory bounded. Best-effort
-    // —any error here is ignored; spilling is more important than tidiness.
+    // 修剪最旧的溢出文件，让目录保持有限大小。尽力而为：
+    // 此处的任何错误都被忽略，落盘比整洁更重要。
     try {
       const entries = readdirSync(dir)
         .filter((name) => name.endsWith(".log"))
@@ -68,9 +57,9 @@ export function spillOutputToFile(
       while (entries.length >= BASH_SPILL_KEEP_LAST) {
         const oldest = entries.shift();
         if (!oldest) break;
-        try { unlinkSync(oldest.p); } catch { /* ignore */ }
+        try { unlinkSync(oldest.p); } catch { /* 忽略 */ }
       }
-    } catch { /* ignore pruning failure */ }
+    } catch { /* 忽略修剪失败 */ }
 
     const file = path.join(dir, `${prefix}-${Date.now()}-${randomUUID().slice(0, 8)}.log`);
     fsWriteFileSync(file, full, { encoding: "utf-8" });
@@ -86,10 +75,10 @@ export async function toolBash(
   cwd = "",
   opts: { signal?: AbortSignal; spillDir?: string; adoptShell?: AdoptShellFn; hasTools?: (name: string) => boolean } = {},
 ): Promise<string> {
-  // Clamp timeout defensively (the dispatcher already validated presence/integer).
+  // 防御性地收紧超时（调度器已校验存在性与整数性）。
   timeout = Math.min(Math.max(1, timeout), BASH_MAX_TIMEOUT);
 
-  // Resolve working directory
+  // 解析工作目录
   let runCwd: string | undefined;
   if (cwd) {
     if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
@@ -99,10 +88,9 @@ export async function toolBash(
   }
 
   return new Promise<string>((resolve) => {
-    // Shell selection, env filtering, and process-group setup live in
-    // src/platform/shell. `killTree` reaps the whole descendant tree
-    // so long-running grandchildren (e.g. vite under `npm run dev`)
-    // don't leak as orphans.
+    // shell 选择、环境变量过滤与进程组设置都在 src/platform/shell。
+    // `killTree` 会收掉整棵子孙进程树，`npm run dev` 下的 vite 这类
+    // 长跑的孙进程才不会泄漏成孤儿。
     const child = shell.spawn({ command, cwd: runCwd });
     const spawnedAt = performance.now();
 
@@ -122,11 +110,10 @@ export async function toolBash(
     const collectPartial = (): string => {
       const out = Buffer.concat(stdoutChunks).toString("utf-8");
       const err = Buffer.concat(stderrChunks).toString("utf-8");
-      // On the timeout / abort path, each stream is truncated at `half`
-      // (not BASH_MAX_OUTPUT_CHARS), since we have two streams to fit
-      // inside the overall budget. So the spill check must use `half` too
-      // —otherwise a 150K-stdout command that times out loses 50K of
-      // output silently because total < BASH_MAX_OUTPUT_CHARS.
+      // 超时 / 中断路径下，两条流各截到 `half`（而不是
+      // BASH_MAX_OUTPUT_CHARS），因为总预算要装下两条流。
+      // 因此溢出判断也必须用 `half`：否则一条 stdout 有 150K 的命令
+      // 超时后，只因总量 < BASH_MAX_OUTPUT_CHARS 就静默丢掉 50K 输出。
       const half = Math.floor(BASH_MAX_OUTPUT_CHARS / 2);
       const parts: string[] = [];
       if (out) parts.push(`PARTIAL STDOUT:\n${truncateMiddle(out, half)}`);
@@ -152,10 +139,9 @@ export async function toolBash(
       resolved = true;
       clearTimeout(timer);
       opts.signal?.removeEventListener("abort", onAbort);
-      // Release Node's references to the pipe file descriptors so the
-      // parent process doesn't hold them open waiting for a late `close`.
-      // Skipped on the background hand-off path: the shell manager owns
-      // the child's stdio from that point on.
+      // 释放 Node 对管道文件描述符的引用，父进程才不会一直握着它们
+      // 等一个迟到的 `close`。后台移交路径跳过此步：从那一刻起，
+      // 子进程的 stdio 归 shell 管理器所有。
       if (!keepStdio) {
         try { child.stdout?.destroy(); } catch {}
         try { child.stderr?.destroy(); } catch {}
@@ -164,11 +150,10 @@ export async function toolBash(
       resolve(text);
     };
 
-    // Timeout hand-off: the command is NOT killed —it keeps running as a
-    // tracked background shell. Output captured so far seeds the shell log;
-    // from here on the shell manager owns the child's stdio. stdin is
-    // closed (EOF) so commands stuck waiting for input get an honest "no
-    // input is coming" signal and usually exit on their own.
+    // 超时移交：不杀命令，让它继续作为被追踪的后台 shell 运行。已捕获的
+    // 输出作为 shell 日志的种子；此后子进程的 stdio 归 shell 管理器。
+    // stdin 会被关闭（EOF），卡在等输入的命令因此得到「不会再有输入」的
+    // 明确信号，通常自行退出。
     const handoffToBackground = (): boolean => {
       if (resolved || !opts.adoptShell) return false;
       child.stdout?.removeAllListeners("data");
@@ -188,7 +173,7 @@ export async function toolBash(
           startedAt: spawnedAt,
         });
       } catch {
-        return false; // adoption failed —caller falls back to the kill path
+        return false; // 接管失败——调用方退回 kill 路径
       }
       try { child.stdin?.destroy(); } catch {}
       const partial = collectPartial();
@@ -248,8 +233,8 @@ export async function toolBash(
     const timer = setTimeout(() => {
       cause = "timeout";
       if (handoffToBackground()) return;
-      // No adoption available (standalone executeTool) or adoption failed:
-      // fall back to the legacy kill path.
+      // 没有可用的接管（独立调用 executeTool）或接管失败：
+      // 退回旧的 kill 路径。
       killGroup();
       finishEarly();
     }, timeout * 1000);
@@ -265,7 +250,7 @@ export async function toolBash(
     }
 
     child.on("close", (code) => {
-      // If timeout/abort already settled, ignore the delayed close.
+      // 超时/中断已定局时，忽略迟到的 close。
       if (resolved) return;
       const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
       const stderr = Buffer.concat(stderrChunks).toString("utf-8");
@@ -283,15 +268,14 @@ export async function toolBash(
       }
       const exitCode = code ?? 1;
       if (exitCode !== 0) {
-        // Keep the numeric exit code for the model, but make the result a
-        // first-class tool failure so the loop and TUI do not treat a command
-        // failure as an ordinary successful tool result.
+        // 数字退出码留给模型，同时把结果标成一等公民的工具失败，
+        // 免得 agent loop 与 TUI 把命令失败当成普通的成功结果。
         parts.unshift(`ERROR: Command exited with code ${exitCode}`);
       }
       parts.push(`EXIT CODE: ${exitCode}`);
 
-      // If output was truncated and a spill dir was provided, persist the
-      // full output so the model can read_file the whole thing if needed.
+      // 输出被截断且给了溢出目录时，把完整输出落盘，
+      // 模型需要时可用 read_file 读全文。
       if (willTruncate && opts.spillDir && total > 0) {
         const full =
           (stdout ? `==== STDOUT ====\n${stdout}\n` : "") +
@@ -391,9 +375,8 @@ export function buildUnifiedDiffPreview(
     return `${lineCol} ${line.raw}`;
   };
 
-  // Keep every changed line in the preview. Context omission is already handled
-  // upstream by the unified diff hunking logic, which limits unchanged lines
-  // around each change instead of globally truncating the rendered preview.
+  // 预览里保留每一个变更行。上下文省略已由上游的 unified diff 分块逻辑
+  // 处理：它按每个变更点限制未改动行数，而不是整体截断渲染结果。
   const text = parsedLines.map(formatLine).join("\n");
   return { text, truncated: false };
 }
@@ -407,20 +390,20 @@ export function simpleUnifiedDiff(
   labelA: string,
   labelB: string,
 ): string {
-  // Use a simple LCS-based approach
+  // 用简单的 LCS 算法
   const n = a.length;
   const m = b.length;
 
-  // For very large files, fall back to a simpler comparison
+  // 文件极大时退回更简单的比较
   if (n * m > 10_000_000) {
-    // Too large for full LCS, just show stats
+    // 太大，算不了完整 LCS，只给统计
     return (
       `--- ${labelA}\n+++ ${labelB}\n` +
       `(Files differ: ${n} lines vs ${m} lines, diff too large to compute)`
     );
   }
 
-  // Build LCS table
+  // 构建 LCS 表
   const dp: number[][] = Array.from({ length: n + 1 }, () =>
     new Array(m + 1).fill(0),
   );
@@ -434,7 +417,7 @@ export function simpleUnifiedDiff(
     }
   }
 
-  // Backtrack to find edit script
+  // 回溯得到编辑序列
   const ops: Array<{ type: "equal" | "delete" | "insert"; line: string }> = [];
   let i = n;
   let j = m;
@@ -453,7 +436,7 @@ export function simpleUnifiedDiff(
   }
   ops.reverse();
 
-  // Group into hunks with context
+  // 带上下文合并成 hunk
   const contextLines = 3;
   const hunks: string[] = [];
   let hunkStart = -1;
@@ -482,14 +465,14 @@ export function simpleUnifiedDiff(
 
     if (isChange) {
       if (hunkStart === -1 || idx - lastChangeIdx > contextLines * 2) {
-        // Start a new hunk
+        // 开一个新 hunk
         flushHunk();
         hunkStart = idx;
         aStart = aLine;
         bStart = bLine;
         aCount = 0;
         bCount = 0;
-        // Add leading context
+        // 补上起始上下文
       }
       lastChangeIdx = idx;
     }
@@ -519,7 +502,7 @@ export function simpleUnifiedDiff(
 }
 
 export function formatUtcOffset(date: Date): string {
-  // getTimezoneOffset returns minutes behind UTC; invert for UTC offset HH:MM.
+  // getTimezoneOffset 返回落后 UTC 的分钟数，取反得到 UTC 偏移 HH:MM。
   const offsetMinutes = -date.getTimezoneOffset();
   const sign = offsetMinutes >= 0 ? "+" : "-";
   const abs = Math.abs(offsetMinutes);

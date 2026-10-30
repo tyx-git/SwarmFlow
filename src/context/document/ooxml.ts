@@ -34,7 +34,7 @@ export type XmlElement = {
 
 const OOXML_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-/** The r:id of an OOXML element, namespace-aware with a conventional-prefix fallback. */
+/** OOXML 元素的 r:id，按命名空间解析，失败时回退到常规前缀。 */
 export function relationshipId(el: XmlElement): string | null {
   return el.getAttributeNS(OOXML_RELATIONSHIPS_NS, "id") || el.getAttribute("r:id");
 }

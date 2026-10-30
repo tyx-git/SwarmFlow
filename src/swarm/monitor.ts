@@ -40,7 +40,7 @@ export class SwarmMonitor {
   onUpdate?: (snapshot: SwarmSnapshot) => void;
 
   // ------------------------------------------------------------------
-  // 事件 recording
+  // 事件记录
   // ------------------------------------------------------------------
 
   /** 记录新 DAG 已创建。 */
@@ -59,7 +59,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record an agent lifecycle change. */
+  /** 记录 agent 生命周期变化。 */
   recordAgentStateChange(handle: SwarmAgentHandle): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -71,7 +71,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record that a task started. */
+  /** 记录任务开始。 */
   recordTaskStart(taskId: string, agentId: string): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -84,7 +84,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record that a task completed successfully. */
+  /** 记录任务成功完成。 */
   recordTaskComplete(result: TaskResult): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -99,7 +99,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record that a task failed. */
+  /** 记录任务失败。 */
   recordTaskFailed(taskId: string, error: string): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -115,9 +115,9 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record a message sent on the bus. */
+  /** 记录总线上发出的消息。 */
   recordMessage(message: SwarmMessage): void {
-    // Don't record every heartbeat to avoid noise
+    // 心跳不逐条记录，避免噪声
     if (message.type === MessageType.Heartbeat) return;
 
     this._timeline.push({
@@ -129,7 +129,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record an execution-level start. */
+  /** 记录执行层级开始。 */
   recordLevelStart(levelIndex: number, taskCount: number): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -139,7 +139,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record an execution-level completion. */
+  /** 记录执行层级完成。 */
   recordLevelComplete(levelIndex: number): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -149,7 +149,7 @@ export class SwarmMonitor {
     this._pruneTimeline();
   }
 
-  /** Record an error. */
+  /** 记录错误。 */
   recordError(error: string): void {
     this._timeline.push({
       timestamp: Date.now(),
@@ -160,12 +160,12 @@ export class SwarmMonitor {
   }
 
   // ------------------------------------------------------------------
-  // Snapshots
+  // 快照
   // ------------------------------------------------------------------
 
   /**
-   * Build a point-in-time snapshot of the swarm.
-   * Call this periodically (e.g., every 500ms) from the TUI.
+   * 构建 swarm 的即时快照。
+   * 由 TUI 周期性调用（例如每 500ms 一次）。
    */
   getSnapshot(
     agents: SwarmAgentHandle[],
@@ -191,37 +191,37 @@ export class SwarmMonitor {
   }
 
   // ------------------------------------------------------------------
-  // Metrics access
+  // 指标访问
   // ------------------------------------------------------------------
 
-  /** Get current metrics without building a full snapshot. */
+  /** 只读取当前指标，不构建完整快照。 */
   getMetrics(): SwarmMetrics {
     return { ...this._metrics };
   }
 
-  /** Get the event timeline. */
+  /** 获取事件时间线。 */
   getTimeline(limit = 50): TimelineEvent[] {
     return this._timeline.slice(-limit);
   }
 
-  /** Get agent errors. */
+  /** 获取 agent 错误。 */
   getAgentErrors(): Map<string, string[]> {
     return new Map(this._agentErrors);
   }
 
-  /** Get task durations (ms). */
+  /** 获取任务耗时（毫秒）。 */
   getTaskDurations(): Map<string, number> {
     return new Map(this._taskDurations);
   }
 
-  /** Get average task duration. */
+  /** 获取任务平均耗时。 */
   getAverageTaskDuration(): number {
     const durations = [...this._taskDurations.values()];
     if (durations.length === 0) return 0;
     return durations.reduce((s, d) => s + d, 0) / durations.length;
   }
 
-  /** Get swarm efficiency ratio (busy time / total time). */
+  /** 获取 swarm 效率比（忙碌时间 / 总时间）。 */
   getEfficiency(): number {
     const elapsed = this._metrics.elapsedMs;
     if (elapsed === 0) return 0;
@@ -230,11 +230,11 @@ export class SwarmMonitor {
   }
 
   // ------------------------------------------------------------------
-  // Formatting
+  // 格式化
   // ------------------------------------------------------------------
 
   /**
-   * Format a compact status line for the TUI status bar.
+   * 格式化 TUI 状态栏用的紧凑状态行。
    */
   formatStatusLine(): string {
     const m = this._metrics;
@@ -248,7 +248,7 @@ export class SwarmMonitor {
   }
 
   /**
-   * Format a detailed status panel for the TUI.
+   * 格式化 TUI 用的详细状态面板。
    */
   formatStatusPanel(): string {
     const parts: string[] = [
@@ -265,7 +265,7 @@ export class SwarmMonitor {
     parts.push(`Tokens:   ${(m.totalTokens / 1000).toFixed(0)}K`);
     parts.push(`Efficiency: ${(this.getEfficiency() * 100).toFixed(0)}%`);
 
-    // Recent timeline
+    // 最近事件
     const recent = this.getTimeline(5);
     if (recent.length > 0) {
       parts.push("");
@@ -279,7 +279,7 @@ export class SwarmMonitor {
     return parts.join("\n");
   }
 
-  /** Reset all monitoring data. */
+  /** 重置所有监控数据。 */
   reset(): void {
     this._timeline = [];
     this._metrics = {
@@ -297,7 +297,7 @@ export class SwarmMonitor {
   }
 
   // ------------------------------------------------------------------
-  // Private
+  // 私有
   // ------------------------------------------------------------------
 
   private _updateMetrics(agents?: SwarmAgentHandle[]): void {
@@ -317,15 +317,15 @@ export class SwarmMonitor {
 }
 
 /**
- * Format a swarm snapshot as a compact TUI-friendly summary.
+ * 将 swarm 快照格式化为简洁的、适合 TUI 的摘要。
  */
 export function formatSwarmSnapshot(snapshot: SwarmSnapshot): string {
   const parts: string[] = [];
 
-  // Header
+  // 头部
   parts.push(`🐝 Swarm  |  ${snapshot.agents.length} agents  |  ${snapshot.metrics.activeAgents} active`);
 
-  // Agent list
+  // Agent 列表
   for (const agent of snapshot.agents) {
     const icon = agent.lifecycle === AgentLifecycle.Completed ? "✅"
       : agent.lifecycle === AgentLifecycle.Error ? "❌"
@@ -339,7 +339,7 @@ export function formatSwarmSnapshot(snapshot: SwarmSnapshot): string {
     if (agent.error) parts.push(`       Error: ${agent.error}`);
   }
 
-  // Metrics
+  // 指标
   const m = snapshot.metrics;
   parts.push(`Tasks: ✓${m.tasksCompleted} ✗${m.tasksFailed} pending:${m.tasksPending}`);
   parts.push(`Tokens: ${(m.totalTokens / 1000).toFixed(0)}K  |  ${(m.elapsedMs / 1000).toFixed(1)}s`);

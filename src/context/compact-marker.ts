@@ -1,6 +1,4 @@
-/**
- * 上下文压缩标记与上下文 ID 标签——由基于日志的运行时共享。
- */
+/** 压缩标记消息的角色、投影形状与类型守卫。 */
 
 export const COMPACT_MARKER_ROLE = "__compact_marker";
 
@@ -17,6 +15,6 @@ export function isCompactMarker(msg: Record<string, unknown>): boolean {
 }
 
 // ------------------------------------------------------------------
-// Context ID
+// 上下文 ID
 // ------------------------------------------------------------------
 

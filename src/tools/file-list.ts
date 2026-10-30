@@ -1,11 +1,4 @@
-﻿/**
- * 内置工具定义和执行器。
- *
- * 包含文件读取、目录/内容/符号搜索、文件修改、shell 和网络工具：
- * read_file、list_dir、glob、grep、find_symbol、edit_file、write_file、
- * bash、bash_background、kill_shell、
- * time、web_search、web_fetch。
- */
+﻿/** list_dir 执行器：列出目录条目并标注类型与文件大小。 */
 
 import fs from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
@@ -20,10 +13,6 @@ import {
   LIST_MAX_ENTRIES_DEFAULT,
   LIST_MAX_ENTRIES_CAP,
 } from "./limits.js";
-
-// ------------------------------------------------------------------
-// 文件变更追踪（用于回滚文件还原）
-// ------------------------------------------------------------------
 
 export interface ListDirOptions {
   maxDepth: number;
@@ -68,9 +57,8 @@ export async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>)
       return;
     }
 
-    // Stat entries first, then apply directory-only exclusion. A regular
-    // file named "build" or "dist" should still be shown —only same-named
-    // *directories* are skipped.
+    // 先 stat 再套「仅目录」排除。名为 "build" / "dist" 的普通文件
+    // 仍应列出——只跳过同名的目录。
     const candidates: string[] = [];
     for (const name of entries) {
       if (!options.includeHidden && isHiddenName(name)) continue;
@@ -89,16 +77,15 @@ export async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>)
           size = st.size;
           statOk = true;
         } catch {
-          // inaccessible
+          // 无法访问
         }
         return { name, full, isDir, size, statOk };
       }),
     ))
       .filter((entry) => {
-        // Skip excluded directories only after we confirm it IS a directory.
-        // If stat failed but the name matches the exclude list, keep the
-        // conservative "skip" behaviour —almost certainly an inaccessible
-        // node_modules / target / etc. rather than a regular file.
+        // 确认确实是目录之后，才跳过被排除的目录。若 stat 失败但名字在
+        // 排除表里，仍保守地跳过——那几乎肯定是访问不到的
+        // node_modules / target 之类，而不是普通文件。
         const excludedByName = isExcludedDirName(entry.name);
         if (excludedByName && (entry.isDir || !entry.statOk)) {
           skippedDirs += 1;
@@ -106,7 +93,7 @@ export async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>)
         }
         return true;
       })
-      // Sort: directories first, then files, alphabetical
+      // 排序：目录在前，文件在后，各自按字母序
       .sort((a, b) => {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
         return a.name.localeCompare(b.name);
@@ -138,7 +125,7 @@ export async function toolListDir(dirPath = ".", opts?: Partial<ListDirOptions>)
     if (suggestion > options.maxEntries) {
       notices.push(`Output truncated at ${options.maxEntries} entries —pass max_entries=${suggestion} or narrow the path.`);
     } else {
-      // Already at the cap; raising max_entries won't help.
+      // 已到硬上限，再调大 max_entries 也没用。
       notices.push(`Output truncated at ${options.maxEntries} entries (cap reached) —narrow the path or use glob/grep instead.`);
     }
   }

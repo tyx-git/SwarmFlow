@@ -38,7 +38,7 @@ export function loadDotenv(homeDir?: string): void {
     if (eqIdx <= 0) continue;
     const key = trimmed.slice(0, eqIdx).trim();
     let value = trimmed.slice(eqIdx + 1).trim();
-    // Strip surrounding quotes
+    // 去掉首尾引号
     if ((value.startsWith('"') && value.endsWith('"'))
       || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
@@ -65,7 +65,7 @@ export function setDotenvKey(key: string, value: string, homeDir?: string): void
     }
   }
 
-  // Check if key already exists — update in place
+  // 检查密钥是否已存在——存在则原地更新
   let found = false;
   for (let i = 0; i < lines.length; i++) {
     const trimmed = lines[i].trim();
@@ -77,7 +77,7 @@ export function setDotenvKey(key: string, value: string, homeDir?: string): void
   }
 
   if (!found) {
-    // Add header comment if file is empty
+    // 文件为空时补一段头部注释
     if (lines.length === 0 || (lines.length === 1 && lines[0].trim() === "")) {
       lines = [
         "# swarmflow API keys",
@@ -88,11 +88,11 @@ export function setDotenvKey(key: string, value: string, homeDir?: string): void
     lines.push(`${key}=${value}`);
   }
 
-  // Ensure trailing newline
+  // 保证结尾有换行
   const content = lines.join("\n").trimEnd() + "\n";
   writeFileSync(path, content, { mode: 0o600 });
 
-  // Also set in current process so subsequent wizard steps can detect it
+  // 同步写入当前进程，后续向导步骤才能检测到
   process.env[key] = value;
 }
 
@@ -124,6 +124,6 @@ export function unsetDotenvKey(key: string, homeDir?: string): void {
     }
   }
 
-  // Remove from the live process so the running session reflects the change.
+  // 同时从当前进程移除，让正在运行的会话立即反映变更。
   delete process.env[key];
 }

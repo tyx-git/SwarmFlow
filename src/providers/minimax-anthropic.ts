@@ -36,7 +36,7 @@ export class MiniMaxAnthropicProvider extends BaseAnthropicProvider {
   ): void {
     const raw = options?.temperature !== undefined ? options.temperature : this._config.temperature;
     if (raw === undefined) return;
-    // MiniMax: temperature ∈(0.0, 1.0), exclusive on both ends.
+    // MiniMax：temperature ∈ (0.0, 1.0)，两端均不包含。
     let t = raw;
     if (t <= 0) t = 0.01;
     if (t >= 1) t = 0.99;

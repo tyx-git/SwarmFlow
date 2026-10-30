@@ -8,7 +8,7 @@ export type DrainPendingToolCallsResult =
   | { kind: "interrupted" };
 
 // ------------------------------------------------------------------
-// InlineImageInput —clipboard / drag-drop image passed to turn()
+// InlineImageInput——传给 turn() 的剪贴板/拖放图片
 // ------------------------------------------------------------------
 
 export interface InlineImageInput {
@@ -18,17 +18,17 @@ export interface InlineImageInput {
 }
 
 // ------------------------------------------------------------------
-// TurnLifecycleEvent —runtime-emitted turn start/end notifications
+// TurnLifecycleEvent——运行时发出的轮次开始/结束通知
 // ------------------------------------------------------------------
 
-/** Terminal status of a turn. `waiting` = parked on a pending ask (not done). */
+/** 轮次的终态。`waiting` 表示停在待处理的 ask 上（尚未结束）。 */
 export type TurnLifecycleStatus = "completed" | "interrupted" | "error" | "waiting";
 
 /**
- * Emitted by the Session around every activation-loop run —including
- * auto-resume and post-approval resume turns that have no external caller.
- * Subscribed by the RPC layer (forwarded as `turn.started` / `turn.ended`
- * wire events) and available to in-process UIs.
+ * Session 在每次 activation 循环运行前后发出——包括没有外部调用方的
+ * auto-resume 与审批后 resume 轮次。
+ * RPC 层订阅后转发为 `turn.started` / `turn.ended` 事件，
+ * 进程内 UI 也可直接使用。
  */
 export type TurnLifecycleEvent =
   | { phase: "started"; turnIndex: number }

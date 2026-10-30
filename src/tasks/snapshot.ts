@@ -1,6 +1,4 @@
-/**
- * 任务清单领域：内存为权威，`tasks.json` 为 write-through 持久副本。
- */
+/** 压缩上下文用的任务清单快照：全部未完成项 + 最近完成的若干条。 */
 
 import { join } from "node:path";
 import type { Task } from "./types.js";

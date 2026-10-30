@@ -74,8 +74,8 @@ export interface AskHost {
 // ==================================================================
 
 /**
- * Subscribe to pending-ask changes (own asks and child-session asks).
- * Listeners receive no payload; call `getPendingAsk()` for current state.
+ * 订阅挂起 ask 的变化（本会话的和子会话的）。
+ * 监听器不带参数；需要当前状态时调用 `getPendingAsk()`。
  */
 export function subscribeAsk(host: AskHost, listener: () => void): () => void {
   host._askListeners.add(listener);
@@ -85,27 +85,27 @@ export function subscribeAsk(host: AskHost, listener: () => void): () => void {
 }
 
 export function notifyAskChanged(host: AskHost): void {
-  // Prototype-based test doubles (Object.create(Session.prototype)) have no
-  // field initializers; tolerate a missing listener set.
+  // 基于原型的测试替身（Object.create(Session.prototype)）不会执行字段初始化，
+  // 这里容忍监听器集合缺失。
   if (!host._askListeners) return;
   for (const listener of host._askListeners) {
     try {
       listener();
     } catch {
-      // Subscriber errors must never break the turn loop.
+      // 订阅者抛错绝不能打断轮次循环。
     }
   }
 }
 
 /**
- * If a permission approval or agent_question ask is pending, synthesize
- * Deny/Decline resolution + denial tool_result. Returns true if anything
- * was denied. Called by TUI on ESC/Ctrl+C while a prompt is showing.
+ * 若有挂起的权限审批或 agent_question ask，合成 Deny/Decline 决议
+ * 与一条拒绝的 tool_result。拒绝成功返回 true。
+ * TUI 在提示框显示时按 ESC/Ctrl+C 会调用它。
  */
 export function denyPendingAsk(host: AskHost): boolean {
   const ask = host._activeAsk;
   if (!ask) {
-    // Find the child that owns the visible ask and deny via routing
+    // 找到这个可见 ask 所属的子会话，经路由去拒绝
     const pendingAsk = host.getPendingAsk();
     if (!pendingAsk) return false;
     const child = host._findChildWithPendingAsk(pendingAsk.id);
@@ -123,7 +123,7 @@ export function denyPendingAsk(host: AskHost): boolean {
     return true;
   }
 
-  // agent_question: synthesize decline resolution + error tool_result.
+  // agent_question：合成 decline 决议和一条报错的 tool_result。
   const toolCallId = (ask.payload as Record<string, unknown>)["toolCallId"] as string ?? "ask";
   const anchor = host._toolCallAnchor(toolCallId, ask);
   host._appendEntry(createAskResolution(
@@ -183,7 +183,7 @@ export function denyAndInterruptPendingAsk(host: AskHost): { accepted: boolean; 
     host._finishChildTurn(child);
     host._notifyLogListeners();
     host.onSaveRequest?.();
-    // Root turn is still running (child was killed, root continues with its result).
+    // 根回合仍在运行（被杀的是子会话，根回合继续用它的结果）
     return { accepted: true, turnFinished: false };
   }
 
@@ -197,8 +197,8 @@ export function denyAndInterruptPendingAsk(host: AskHost): { accepted: boolean; 
 }
 
 /**
- * Restore ask state from log entries.
- * Scans for unclosed ask_request (no matching ask_resolution).
+ * 从日志条目还原 ask 状态。
+ * 扫描未闭合的 ask_request（没有对应 ask_resolution）。
  */
 export function getPendingAsk(host: AskHost): PendingAskUi | null {
   const ownAsk = toPendingAskUi(host._activeAsk);
@@ -243,7 +243,7 @@ export function emitAskResolvedProgress(host: AskHost, askId: string, decision: 
 }
 
 export function execAsk(host: AskHost, args: Record<string, unknown>): ToolResult {
-  // Validate args
+  // 校验参数
   const questions = args["questions"];
   if (!Array.isArray(questions) || questions.length === 0 || questions.length > 4) {
     return new ToolResult({
@@ -306,7 +306,7 @@ export function execAsk(host: AskHost, args: Record<string, unknown>): ToolResul
     roundIndex: undefined,
     summary: `Agent asking: ${parsedQuestions[0].question}${parsedQuestions.length > 1 ? ` (+${parsedQuestions.length - 1} more)` : ""}`,
     payload: { questions: parsedQuestions, toolCallId: "" },
-    options: [], // per-question options are in payload
+    options: [], // 每个问题的选项放在 payload 里
   };
   throw new AskPendingError(ask);
 }
@@ -331,7 +331,7 @@ export function resolveOwnAgentQuestionAsk(host: AskHost, askId: string, decisio
   const toolCallId = ask.payload.toolCallId || "ask";
   const anchor = host._toolCallAnchor(toolCallId, ask);
 
-  // Create ask_resolution entry in log
+  // 在日志里创建 ask_resolution 条目
   host._appendEntry(createAskResolution(
     host._nextLogId("ask_resolution"),
     anchor.turnIndex,
@@ -388,9 +388,9 @@ export function resolveOwnAgentQuestionAsk(host: AskHost, askId: string, decisio
 }
 
 /**
- * Resolve a permission approval ask.
- * @param askId  The ask ID to resolve.
- * @param choiceIndex  Index into the ask's options array. Last option is always "Deny".
+ * 决议一个权限审批 ask。
+ * @param askId  要决议的 ask ID。
+ * @param choiceIndex  ask 的 options 数组下标。最后一个选项固定是 "Deny"。
  */
 export function resolveApprovalAsk(host: AskHost, askId: string, choiceIndex: number): void {
   host._withAskRouting(
@@ -411,7 +411,7 @@ export function resolveOwnApprovalAsk(host: AskHost, askId: string, choiceIndex:
 
   const anchor = host._toolCallAnchor(payload.toolCallId, ask);
 
-  // Log the resolution
+  // 记录决议结果
   host._appendEntry(createAskResolution(
     host._nextLogId("ask_resolution"),
     anchor.turnIndex,
@@ -421,7 +421,7 @@ export function resolveOwnApprovalAsk(host: AskHost, askId: string, choiceIndex:
   ), false);
 
   if (isDeny) {
-    // Inject a deny tool_result so the model knows
+    // 注入一条拒绝的 tool_result，让模型知道
     const toolCallId = payload.toolCallId;
     const contextId = host._findToolCallContextId(toolCallId, ask.roundIndex)
       ?? host._allocateContextId();
@@ -438,8 +438,8 @@ export function resolveOwnApprovalAsk(host: AskHost, askId: string, choiceIndex:
       { isError: true, contextId },
     ), false);
   } else {
-    // Apply the offer. The approved tool_call's grant is consumed in
-    // _drainPendingToolCalls during resume.
+    // 应用所选 offer。批准后的 tool_call 授权会在 resume 时
+    // 由 _drainPendingToolCalls 消费。
     if (offer?.type === "tool_once") {
       host._permissionAdvisor.grantAllowOnce(payload.toolCallId);
     } else if (offer?.type === "mode_upgrade") {
@@ -473,9 +473,9 @@ export function resolveOwnApprovalAsk(host: AskHost, askId: string, choiceIndex:
 }
 
 /**
- * Route an ask operation to the correct session (self or child).
- * If the ask belongs to this session, runs onSelf. If it belongs to a
- * child, runs onChild then resumes the child's pending turn.
+ * 把 ask 操作路由到正确的会话（本会话或子会话）。
+ * ask 属于本会话就跑 onSelf；属于子会话就先跑 onChild，
+ * 再续跑该子会话挂起的回合。
  */
 export function withAskRouting<T>(host: AskHost, 
   askId: string,

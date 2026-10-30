@@ -177,7 +177,7 @@ async function copilotLogin(): Promise<void> {
     );
     await refreshCopilotModelsCache();
   } catch {
-    // ignore
+    // 忽略
   }
 
   console.log();
@@ -219,7 +219,7 @@ function copilotLogout(): void {
     try {
       m.clearCopilotModelsCache();
     } catch {
-      // ignore
+      // 忽略
     }
   });
   console.log("  Copilot OAuth tokens cleared.");

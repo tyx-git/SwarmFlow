@@ -81,7 +81,7 @@ export async function convertXlsx(filePath: string): Promise<string> {
     for (const si of byLocalName(shared, "si")) sharedStrings.push(sharedStringText(si));
   }
 
-  // Style index →"is a date format" lookup, for serial→ISO rendering.
+  // 样式索引 →“是否为日期格式”查找表，用于把序列号渲染成 ISO 日期。
   const dateStyleIds = new Set<number>();
   const styles = await readXml("xl/styles.xml");
   if (styles) {

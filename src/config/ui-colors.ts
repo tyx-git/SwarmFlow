@@ -1,6 +1,6 @@
 import colorTable from "../../assets/ui-colors/color.json" with { type: "json" };
 
-/** Shared colors used outside the OpenTUI theme renderer. */
+/** OpenTUI 主题渲染器之外共用的颜色。 */
 export interface UiColorCommonTokens {
   workingStatus: string;
   workedStatus: string;

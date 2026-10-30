@@ -14,25 +14,25 @@ import { formatSkillsListing, readMemoryFiles } from "../prompts/assembler.js";
 import type { ToolDef } from "../providers/types.js";
 import { getPromptLayers, type PromptRecipe } from "../prompts/templates.js";
 
-/** Cumulative usage figures derived from the log's token_update entries. */
+/** 由日志中的 token_update 条目累计出的用量。 */
 export interface UsageStats {
-  /** Total inputTokens across every provider call (billed input, re-sent each call). */
+  /** 所有 provider 调用的 inputTokens 总和（每次调用都会重发的计费输入）。 */
   cumulativeInput: number;
-  /** Total output tokens (totalTokens - inputTokens) across every provider call. */
+  /** 所有 provider 调用的输出 token 总和（totalTokens - inputTokens）。 */
   cumulativeOutput: number;
-  /** Total cacheReadTokens (the cached slice of cumulativeInput). */
+  /** cacheReadTokens 总和（cumulativeInput 中命中缓存的部分）。 */
   cumulativeCacheRead: number;
-  /** Total uncached input (inputTokens - cacheReadTokens), the uncached slice of cumulativeInput. */
+  /** 未命中缓存的输入总和（inputTokens - cacheReadTokens）。 */
   cumulativeUncached: number;
-  /** Estimated fixed prompt: first call's input minus the first user message. */
+  /** 估算的固定 prompt：首次调用的输入减去首条用户消息。 */
   systemPromptTotal: number;
-  /** Per-section breakdown of systemPromptTotal (ratio-scaled estimates). */
+  /** systemPromptTotal 的分段明细（按比例缩放后的估算）。 */
   systemPromptBreakdown: ContextBreakdown;
   firstInput: number;
   firstUserMessageTokens: number;
 }
 
-/** Per-section token estimates for the context breakdown. */
+/** 上下文分段的逐段 token 估算。 */
 export interface ContextBreakdown {
   systemPrompt: number;
   tools: number;
@@ -134,7 +134,7 @@ export interface PromptSectionInputs {
  * 纯函数，调用方负责缓存。
  */
 export function estimatePromptSections(input: PromptSectionInputs): PromptSectionEstimates {
-  // System Prompt (role body + knowledge —NOT tool docs)
+  // System Prompt（角色正文 + 知识——不含工具文档）
   let estSystemPrompt = 0;
   let estToolDocs = 0;
   if (input.recipe) {
@@ -145,7 +145,7 @@ export function estimatePromptSections(input: PromptSectionInputs): PromptSectio
     estSystemPrompt = gptEncode(input.systemPrompt).length;
   }
 
-  // Tool schemas (ToolDef[] serialized as provider would)
+  // 工具 schema（ToolDef[] 按 provider 的序列化方式估算）
   let estToolSchemas = 0;
   for (const tool of input.toolDefs) {
     estToolSchemas += gptEncode(
@@ -162,7 +162,7 @@ export function estimatePromptSections(input: PromptSectionInputs): PromptSectio
   const skillsListing = formatSkillsListing([...input.skills]);
   const estSkills = skillsListing ? gptEncode(skillsListing).length : 0;
 
-  // Tools = tool docs (inline in prompt) + tool schemas (API tools[])
+  // Tools = 工具文档（内联在 prompt 中）+ 工具 schema（API tools[]）
   const tools = estToolDocs + estToolSchemas;
 
   return { systemPrompt: estSystemPrompt, tools, agentsMd: estAgentsMd, skills: estSkills };
@@ -183,6 +183,6 @@ export function scalePromptBreakdown(
     tools: Math.round(est.tools * ratio),
     agentsMd: Math.round(est.agentsMd * ratio),
     skills: Math.round(est.skills * ratio),
-    messages: 0, // filled by the panel from context - systemPromptTotal
+    messages: 0, // 由面板用 context - systemPromptTotal 填充
   };
 }

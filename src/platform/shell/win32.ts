@@ -21,7 +21,7 @@ import { delimiter, dirname, join } from "node:path";
 import type { ShellKind, ShellProvider, ShellSpawnRequest } from "../types.js";
 
 // ------------------------------------------------------------------
-// Env allowlists
+// 环境变量白名单
 // ------------------------------------------------------------------
 
 // 所有 shell 类型共享的 Windows 环境变量。
@@ -193,7 +193,7 @@ function isPowerShell(kind: ShellKind): boolean {
 function leadsWithFirstStatementConstruct(command: string): boolean {
   for (const rawLine of command.split(/\r?\n/)) {
     const line = rawLine.trim();
-    if (line === "" || line.startsWith("#")) continue; // blanks, comments, #requires
+    if (line === "" || line.startsWith("#")) continue; // 空行、注释、#requires
     return /^(?:using\b|param[ \t]*\()/i.test(line);
   }
   return false;
@@ -215,14 +215,11 @@ function buildEnv(): NodeJS.ProcessEnv {
       env[key] = value;
     }
   }
-  // 仅在继承的 env 没有 PATH 时才合成 PATH。守卫
-  // 必须是大小写不敏感：Windows 将变量存储为 "Path"，
-  // 因此它通过该精确键转发，而大小写敏感的
-  // `env["PATH"]` 在此普通对象上查找总是错过它并
-  // 注入第二个、最小 PATH 键。子进程然后会看到两个
-  // 大小写等效的键（Path=<完整>，PATH=<仅 System32>），且
-  // spawn 层的，大小写不敏感去重可能让截断的胜出，
-  // 从 shell 中隐藏 git/node/etc.
+  // 仅在继承的 env 没有 PATH 时才合成 PATH。检测必须大小写不敏感：
+  // Windows 把变量存成 "Path"，spawn 会按这个键原样转发；如果这里用
+  // 大小写敏感的 `env["PATH"]` 查找，就会错过它并再注入一个最小 PATH。
+  // 子进程随后会看到两个大小写等效的键（Path=<完整>、PATH=<仅 System32>），
+  // spawn 层去重时可能留下被截断的那个，导致 shell 里找不到 git/node 等。
   const hasPath = Object.keys(env).some((k) => k.toUpperCase() === "PATH");
   if (!hasPath) {
     env["PATH"] = "C:\\Windows\\System32;C:\\Windows";

@@ -78,8 +78,8 @@ function parseProxyServer(raw: string): { http?: string; https?: string } {
     if (key === "http") out.http = url;
     else if (key === "https") out.https = url;
   }
-  // A common config sets only http=; reuse it for https targets so
-  // HTTPS downloads (the GitHub release CDN) still route through it.
+  // 常见配置只设 http=；复用它作为 https 目标，让 HTTPS 下载
+  // （GitHub release CDN）也能走代理。
   if (out.http && !out.https) out.https = out.http;
   return out;
 }
@@ -112,11 +112,11 @@ export interface WinInetRawValues {
  * 从 IO 中提取，以便可以在非 Windows 上对解析进行单元测试。
  */
 export function parseWinInetProxy(v: WinInetRawValues): SystemProxyConfig | null {
-  // A PAC script (auto-config) can't be resolved by reading the
-  // registry —bail rather than guess. Manual env vars still apply.
+  // PAC 脚本（自动配置）无法靠读注册表解析出来，直接放弃而不是猜测。
+  // 手动设置的环境变量仍然生效。
   if (v.autoConfigUrl) return null;
 
-  // REG_DWORD prints as hex ("0x1"); accept a decimal "1" defensively.
+  // REG_DWORD 以十六进制打印（"0x1"）；防御性地兼容十进制 "1"。
   if (!v.proxyEnable || !(/^0x0*1$/i.test(v.proxyEnable) || v.proxyEnable === "1")) {
     return null;
   }

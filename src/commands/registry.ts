@@ -4,7 +4,7 @@ import { createUiText, hasUiText, type UiLanguage } from "../ui/text.js";
 
 import { type SlashCommand } from "./types.js";
 
-/** Resolve an installed command description from language.json when available. */
+/** 可用时从 language.json 解析已安装命令的描述。 */
 export function getLocalizedCommandDescription(
   command: Pick<SlashCommand, "name" | "description">,
   language: UiLanguage,
@@ -37,8 +37,8 @@ export class CommandRegistry {
 
   /* 注册命令。覆盖任何具有相同名称的现有命令。 */
   register(cmd: SlashCommand): void {
-    // Every command that exposes options uses the shared composer picker by
-    // default. Commands can opt out explicitly for non-interactive clients.
+    // 暴露 options 的命令默认使用共享的 composer 选择器；
+    // 非交互客户端可以显式退出这套默认。
     const picker = cmd.options || cmd.picker
       ? {
         inputArea: true,

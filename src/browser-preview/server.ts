@@ -1,9 +1,4 @@
-/**
- * Node.js HTTP server for the browser module.
- *
- * Serves static files over localhost.
- * Runs in-process using the built-in `http` module — no external dependencies.
- */
+/** 浏览器预览模块的本地 HTTP 服务器：在 localhost 提供静态文件，使用 Node 内置 `http`，无外部依赖。 */
 
 import { createServer, type Server } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
@@ -12,7 +7,7 @@ import net from "node:net";
 
 let activeServer: Server | null = null;
 
-// ── MIME types ─────────────────────────────────────────────────────
+// ── MIME 类型 ──
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -25,7 +20,7 @@ const MIME_TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-// ── Port allocation ────────────────────────────────────────────────
+// ── 端口分配 ──
 
 async function findAvailablePort(): Promise<number> {
   const min = 9100;
@@ -48,13 +43,13 @@ function isPortFree(port: number): Promise<boolean> {
   });
 }
 
-// ── Request handling ───────────────────────────────────────────────
+// ── 请求处理 ──
 
 function serveStatic(rootDir: string, urlPath: string, res: import("node:http").ServerResponse): void {
-  // Default to index.html
+  // 默认返回 index.html
   if (urlPath === "/") urlPath = "/index.html";
 
-  // Prevent directory traversal
+  // 阻止目录穿越
   const safePath = urlPath.replace(/\.\./g, "");
   const filePath = join(rootDir, safePath);
 
@@ -77,7 +72,7 @@ function serveStatic(rootDir: string, urlPath: string, res: import("node:http").
   }
 }
 
-// ── Public API ─────────────────────────────────────────────────────
+// ── 对外 API ──
 
 export interface ServerInfo {
   port: number;
@@ -85,8 +80,8 @@ export interface ServerInfo {
 }
 
 /**
- * Start a Node.js HTTP server serving files from `rootDir`.
- * Handles GET (static files).
+ * 启动 Node.js HTTP 服务器，提供 `rootDir` 下的文件。
+ * 只处理 GET（静态文件）。
  */
 export async function startServer(rootDir: string): Promise<ServerInfo> {
   if (activeServer) {
@@ -99,7 +94,7 @@ export async function startServer(rootDir: string): Promise<ServerInfo> {
     const method = req.method ?? "GET";
     const urlPath = req.url ?? "/";
 
-    // CORS preflight
+    // CORS 预检
     if (method === "OPTIONS") {
       res.writeHead(200, {
         "Access-Control-Allow-Origin": "*",
@@ -110,7 +105,7 @@ export async function startServer(rootDir: string): Promise<ServerInfo> {
       return;
     }
 
-    // GET — serve static files
+    // GET — 提供静态文件
     serveStatic(rootDir, urlPath, res);
   });
 
@@ -119,19 +114,19 @@ export async function startServer(rootDir: string): Promise<ServerInfo> {
 
   activeServer = server;
 
-  // Give the server a moment to bind
+  // 留一点时间让服务器完成绑定
   await new Promise((r) => setTimeout(r, 100));
 
   return { port, url: `http://127.0.0.1:${port}` };
 }
 
-/** Stop the running server. */
+/** 停止正在运行的服务器。 */
 export function stopServer(): void {
   if (activeServer) {
     try {
       activeServer.close();
     } catch {
-      // already closed
+      // 已经关闭
     }
     activeServer = null;
   }

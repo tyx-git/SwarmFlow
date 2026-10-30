@@ -15,13 +15,13 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 
 export interface LineWindowOptions {
-  /** 1-based first line. Default 1. */
+  /** 起始行，从 1 开始。默认 1。 */
   startLine?: number;
-  /** Inclusive last line; undefined or -1 means EOF. */
+  /** 结束行（含）；undefined 或 -1 表示读到 EOF。 */
   endLine?: number;
-  /** Tail window; overrides start/end. */
+  /** 尾部窗口；优先于 start/end。 */
   tailLines?: number;
-  /** Per-call fuse; selected lines never exceed this. */
+  /** 单次调用的熔断上限；选中行数不会超过它。 */
   maxLines: number;
 }
 
@@ -30,9 +30,9 @@ export interface LineWindowResult {
   start: number;
   end: number;
   lines: string[];
-  /** The requested range was cut at maxLines. */
+  /** 请求的范围在 maxLines 处被截断。 */
   lineCapApplied: boolean;
-  /** tailLines was cut at maxLines and the file is longer than maxLines. */
+  /** tailLines 被 maxLines 截断，且文件行数超过 maxLines。 */
   tailCapped: boolean;
 }
 

@@ -44,13 +44,13 @@ export function resolveBackend(): { kind: BackendKind; key?: string } {
   return { kind: "exa_free" };
 }
 
-// Allow tests to reset the cached backend
+// 供测试重置后端缓存
 export function _resetSearchBackend(): void {
   _resolvedBackend = null;
   _resolvedApiKey = null;
 }
 
-// 鈹€鈹€ API backends 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── API 后端 ──
 
 export async function searchSerper(query: string, numResults: number, key: string, signal?: AbortSignal): Promise<SearchResult[]> {
   const resp = await fetch("https://google.serper.dev/search", {
@@ -125,7 +125,7 @@ export async function searchBrave(query: string, numResults: number, key: string
   }));
 }
 
-// 鈹€鈹€ Exa free MCP 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Exa free MCP ──
 
 export async function searchExaFreeMcp(query: string, numResults: number, signal?: AbortSignal): Promise<SearchResult[]> {
   const resp = await fetch("https://mcp.exa.ai/mcp", {
@@ -165,12 +165,12 @@ export async function searchExaFreeMcp(query: string, numResults: number, signal
           highlights: [text],
         }];
       }
-    } catch { /* skip malformed lines */ }
+    } catch { /* 跳过格式错误行 */ }
   }
   throw new Error("Exa MCP returned no results");
 }
 
-// 鈹€鈹€ Parallel Web Search MCP 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Parallel Web Search MCP ──
 
 const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
 
@@ -236,7 +236,7 @@ export async function searchParallelFreeMcp(
   }];
 }
 
-// 鈹€鈹€ DuckDuckGo lite 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── DuckDuckGo lite ──
 
 const DDG_USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -256,7 +256,7 @@ const DDG_ACCEPT_LANGUAGES = [
 let _lastDdgSearch = 0;
 
 export async function searchDuckDuckGo(query: string, numResults: number, signal?: AbortSignal): Promise<SearchResult[]> {
-  // Rate limiting: 500-2000ms random gap between requests
+  // 限速：请求之间随机间隔 500-2000ms
   const minGap = 500 + Math.floor(Math.random() * 1500);
   const elapsed = Date.now() - _lastDdgSearch;
   if (elapsed < minGap) {
@@ -309,7 +309,7 @@ function parseDdgLiteResults(html: string, maxResults: number): SearchResult[] {
       try {
         const uddg = new URL("https://duckduckgo.com" + rawUrl).searchParams.get("uddg");
         if (uddg) finalUrl = uddg;
-      } catch { /* keep rawUrl */ }
+      } catch { /* 保留 rawUrl */ }
     }
     links.push({ url: finalUrl, title });
   }
@@ -330,4 +330,4 @@ function parseDdgLiteResults(html: string, maxResults: number): SearchResult[] {
   return results;
 }
 
-// 鈹€鈹€ Main executor 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── 主执行器 ──

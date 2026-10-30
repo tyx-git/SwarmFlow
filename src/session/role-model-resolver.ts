@@ -38,7 +38,7 @@ export function resolveInheritedThinkingLevel(session: SessionLike): string {
     : "off";
 }
 
-/** Resolve every role from its session setting or the active Queen model. */
+/** 按各角色的会话设置解析模型，未设置时沿用当前 Queen 的模型。 */
 export function resolveRoleModel(
   session: SessionLike,
   role: string,

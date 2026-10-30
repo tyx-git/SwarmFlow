@@ -58,7 +58,7 @@ export interface ShellProvider {
 }
 
 // --------------------------------------------------------------------
-// Clipboard
+// 剪贴板
 // --------------------------------------------------------------------
 
 export type ClipboardImageMediaType = "image/png" | "image/jpeg" | "image/tiff";
@@ -87,7 +87,7 @@ export interface ClipboardProvider {
 }
 
 // --------------------------------------------------------------------
-// Browser / system file opener
+// 浏览器 / 系统文件打开器
 // --------------------------------------------------------------------
 
 export interface BrowserProvider {
@@ -103,7 +103,7 @@ export interface BrowserProvider {
 }
 
 // --------------------------------------------------------------------
-// Binary asset (release tarball naming + install paths)
+// 二进制产物（release 包命名 + 安装路径）
 // --------------------------------------------------------------------
 
 export interface BinaryAssetProvider {
@@ -181,12 +181,11 @@ export interface OsCapabilities {
   readonly toolIndicatorGlyph: string;
 
   /**
-   * 在主对话中应用于鼠标滚轮增量的乘数
-   * 滚动视口。macOS / Linux 上终端通常提供 1
-   * （用户首选的操作系统级滚动加速已经完成）。
-   * Windows 终端 / PowerShell 提供单一
-   * 无操作系统端加速的每刻钟原始增量，使得与原生 macOS 相比，默认滚动感觉迟缓
-   * 惯性：通过注入一个常量滚动加速进入对话滚动视口。
+   * 主对话滚动视口的鼠标滚轮增量乘数。
+   *
+   * macOS / Linux 的终端通常已经做了操作系统级滚动加速，取 1 即可；
+   * Windows 终端 / PowerShell 只提供每格原始增量，没有这种加速，
+   * 默认滚动会比原生 macOS 更迟钝。这里用常量乘数补上惯性。
    */
   readonly conversationScrollMultiplier: number;
 }
@@ -222,7 +221,7 @@ export interface SystemProxyProvider {
 }
 
 // --------------------------------------------------------------------
-// Aggregate
+// 聚合
 // --------------------------------------------------------------------
 
 export interface PlatformProviders {

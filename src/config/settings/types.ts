@@ -111,11 +111,10 @@ export interface SwarmflowSettings {
 }
 
 /**
- * A provider entry in settings.json.
- * Cloud providers use `api_key_env` plus a user supplied `models` list;
- * local/custom providers use `base_url` plus `model` or `models`.
+ * settings.json 中的提供商条目。
+ * 云提供商使用 `api_key_env` 加用户提供的 `models` 列表；
+ * 本地/自定义提供商使用 `base_url` 加 `model` 或 `models`。
  */
-/** settings.json 中的提供商条目。云提供商使用 `api_key_env` + 用户模型列表；本地/自定义 provider 使用 `base_url` + 模型。 */
 export interface ProviderEntry {
   /** 持有 API 密钥的环境变量名（云提供商） */
   api_key_env?: string;

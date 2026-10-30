@@ -1,6 +1,4 @@
-/**
- * @file 附件领域：引用解析、扫描、读取摘要与上下文块渲染。
- */
+/** 读取单个附件并按类型生成摘要或预览（文本、代码、图片、投影文档）。 */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -67,8 +65,6 @@ export function summarizeTextContent(
   };
 }
 
-/* 处理用户输入中的@file引用的结果。 */
-
 export async function readAndSummarize(
   filePath: string,
   isImage = false,
@@ -101,7 +97,7 @@ export async function readAndSummarize(
   }
   const size = stat.size;
 
-  // --- Image ---
+  // ── 图片 ──
   if (isImage) {
     if (size > MAX_IMAGE_FILE_SIZE) {
       return makeFileInfo({
@@ -156,7 +152,7 @@ export async function readAndSummarize(
     });
   }
 
-  // --- PDF ---
+  // ── PDF ──
   if (projectedDocumentType) {
     try {
       const view = await loadProjectedDocumentView(filePath, artifactsDir);
@@ -183,7 +179,7 @@ export async function readAndSummarize(
     }
   }
 
-  // ——其他二进制——
+  // ── 其他二进制 ──
   if (isBinary) {
     return makeFileInfo({
       originalRef: ref,
@@ -195,7 +191,7 @@ export async function readAndSummarize(
     });
   }
 
-  // ——文本文件——
+  // ── 文本文件 ──
   if (size > MAX_TEXT_FILE_SIZE) {
     return makeFileInfo({
       originalRef: ref,
@@ -226,7 +222,3 @@ export async function readAndSummarize(
     ...summarizeTextContent(text, filePath),
   });
 }
-
-/**
- * 将FileInfo列表格式化为编号的文本条目。
- */

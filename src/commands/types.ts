@@ -10,15 +10,15 @@ import { CommandRegistry } from "./registry.js";
 import type { SessionLike } from "../session/contract.js";
 
 /**
- * Callback used by command handlers to display a message to the user.
- * The TUI layer supplies the concrete implementation.
+ * 命令处理程序用来向用户显示消息的回调。
+ * 具体实现由 TUI 层提供。
  */
 export type ShowMessageFn = (text: string) => void;
 
 /**
- * Context passed to every command handler.
+ * 传给每个命令处理程序的上下文。
  *
- * Uses a generic interface so command handlers don't need direct TUI imports.
+ * 使用通用接口，命令处理程序无需直接导入 TUI。
  */
 export interface CommandContext {
   /** 活动会话实例；能力面见 `session/contract.ts`（`Session implements SessionLike`）。 */
@@ -31,10 +31,9 @@ export interface CommandContext {
   appendSwitchCommandEcho?: (command: string, args: string) => void;
 
   /**
-   * Brief, non-persistent UI hint shown in the input area's bottom-left
-   * corner (TUI) — for short, no-copy-value confirmations like "Copied" or
-   * "Wait until the agent finishes." Falls back to `showMessage` when not
-   * wired (e.g. tests, server mode).
+   * 输入区左下角的简短非持久提示（TUI），用于 "Copied"、
+   * "Wait until the agent finishes." 这类不带复制值的确认。
+   * 未接线时（如测试、服务模式）回退到 `showMessage`。
    */
   showHint?: (message: string) => void;
 
@@ -51,9 +50,8 @@ export interface CommandContext {
   resetUiState: () => void;
 
   /**
-   * Force the next render to be a full repaint (TUI provides the impl).
-   * Used after session restore so the physical terminal is re-asserted from
-   * scratch instead of incrementally diffed against a possibly-drifted state.
+   * 强制下一次渲染为全量重绘（TUI 提供实现）。
+   * 用于会话恢复之后：从零重建物理终端，而不是基于可能已漂移的状态做增量 diff。
    */
   requestFullRepaint?: () => void;
 
@@ -67,9 +65,8 @@ export interface CommandContext {
   onTurnRequested?: (content: string) => void;
 
   /**
-   * Inject a turn where the user sees `displayText` but the model receives
-   * `content`. Used by /review and skill commands to keep the conversation
-   * clean while sending detailed prompts to the model.
+   * 注入一个回合：用户看到 `displayText`，模型收到 `content`。
+   * /review 与技能命令借此在向模型发送详细提示词的同时保持对话干净。
    */
   onInjectedTurnRequested?: (displayText: string, content: string) => void;
 
@@ -89,8 +86,8 @@ export interface CommandContext {
   promptSecret?: (request: PromptSecretRequest) => Promise<string | undefined>;
 
   /**
-   * Show the hierarchical command picker (with drill-down children support).
-   * Returns the selected leaf value (and optional note), or undefined if cancelled.
+   * 显示分层命令选择器（支持逐级下钻子项）。
+   * 返回选中的叶子值（及可选备注）；取消时返回 undefined。
    */
   promptCommandPicker?: (
     options: CommandOption[],
@@ -98,10 +95,9 @@ export interface CommandContext {
   ) => Promise<CommandPickerResult | undefined>;
 
   /**
-   * Show the inline OAuth login overlay for the given provider and return
-   * on completion (resolved value is non-null on success, null on cancel).
-   * The returned token type varies by provider; callers typically only care
-   * that it's non-null.
+   * 为指定 provider 显示内联 OAuth 登录浮层，完成后返回
+   * （成功时解析值非 null，取消时为 null）。
+   * 返回的 token 类型随 provider 而异；调用方通常只关心它非 null。
    */
   requestOAuthLogin?: (
     provider: "codex" | "copilot",
@@ -109,19 +105,19 @@ export interface CommandContext {
 }
 
 /**
- * An option entry for command overlays.
+ * 命令浮层中的一个选项条目。
  */
 export type SemanticColor = "success" | "error" | "muted";
 
 export interface CommandOption {
   /* 显示在统一选择器中的标签。 */
   label: string;
-  /** Optional fixed text rendered before the flexible label column. */
+  /** 渲染在弹性标签列之前的可选固定文本。 */
   labelPrefix?: string;
   /**
-   * Rich label segments with optional per-segment color.
-   * When present, the label is rendered as concatenated colored segments
-   * instead of a plain string. `label` is still used for search/fallback.
+   * 富文本标签分段，每段可单独着色。
+   * 存在时标签按彩色分段拼接渲染，不再使用纯字符串；
+   * `label` 仍用于搜索与回退。
    */
   labelParts?: Array<{ text: string; color?: SemanticColor }>;
   /* 选择时作为命令参数提交的值。 */
@@ -136,9 +132,9 @@ export interface CommandOption {
   children?: CommandOption[];
   /* 当为true时，Enter打开一个内联文本输入，而不是立即提交。 */
   customInput?: boolean;
-  /* Label shown above the inline text input. */
+  /* 内联文本输入框上方的标签。 */
   inputLabel?: string;
-  /* Placeholder shown in the inline text input. */
+  /* 内联文本输入框中的占位符。 */
   inputPlaceholder?: string;
 }
 
@@ -146,32 +142,32 @@ export interface CommandOption {
 export interface CommandOptionsContext {
   session: SessionLike;
   store?: SessionStore;
-  /** Active global SwarmFlow directory, when the UI supplies one. */
+  /** UI 提供时生效的全局 SwarmFlow 目录。 */
   swarmflowHomeDir?: string;
 }
 
 /**
- * A single slash command.
+ * 单条斜杠命令。
  */
 export interface SlashCommand {
-  /* Command name, for example "/provider". */
+  /* 命令名，例如 "/provider"。 */
   name: string;
-  /* Short description shown by /help. */
+  /* /help 中显示的简短描述。 */
   description: string;
-  /* Async handler invoked when the command runs. */
+  /* 命令运行时调用的异步处理程序。 */
   handler: (ctx: CommandContext, args: string) => Promise<void>;
   /**
-   * Optional callback that returns dynamic picker options for this command.
-   * Receives session/store context so it can compute the current options.
+   * 可选回调，返回该命令的动态选择器选项。
+   * 接收 session/store 上下文，以便计算当前选项。
    */
   options?: (ctx: CommandOptionsContext) => CommandOption[];
   /* 在搜索过程中也匹配的备选名称。 */
   aliases?: string[];
   /* /help分类显示。 */
   category?: CommandCategory;
-  /** Shared picker presentation contract for command-owned selectors. */
+  /** 命令自带选择器共用的展示契约。 */
   picker?: CommandPickerPresentation;
-  /** The handler owns a multi-step picker flow instead of submitting an option as a command. */
+  /** 处理程序自行接管多步选择流程，而不是把某个选项当命令提交。 */
   pickerFlow?: "handler";
   /** 命令分流：查看类命令始终直达；部分命令在工作中直达或等工作结束后执行。 */
   executionMode?: "always" | "whenBusy" | "queued";

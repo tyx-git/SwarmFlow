@@ -1,4 +1,4 @@
-/** Full-log consumers and their cold-zone contract. */
+/** 需要读取完整日志的调用方清单，以及它们对归档冷区的约定。 */
 
 export interface FullLogConsumerContract {
   name: string;

@@ -3,8 +3,8 @@
 import { type CommandContext } from "../types.js";
 
 export async function cmdHelp(ctx: CommandContext, _args: string): Promise<void> {
-  // The TUI owns the help overlay and builds it from the same registry. A
-  // sentinel keeps command execution independent from the renderer.
+  // 帮助浮层由 TUI 自己基于同一份注册表构建；
+  // 用哨兵值让命令执行不依赖渲染器。
   ctx.showMessage("__help_panel__");
 }
 

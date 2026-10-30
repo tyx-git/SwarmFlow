@@ -1,18 +1,5 @@
 /** 启动时的会话选择 UI：项目/全局会话列表、续跑动画与交互式选择。 */
 
-/**
- * SwarmFlow CLI 入口点。
- *
- * 用法：
- *   swarmflow                       # 自动检测配置
- *   swarmflow init                  # 运行初始化向导
- *   swarmflow --templates ./tpls    # 指定模板路径
- *   swarmflow --verbose             # 启用调试日志
- *   swarmflow --resume <id>         # 恢复指定会话
- *   swarmflow --session             # 管理全局历史会话
- *   swarmflow --server              # 服务模式（Electron GUI 派生）
- */
-
 import { existsSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 
 import { join, relative, resolve } from "node:path";
@@ -51,7 +38,7 @@ function listGlobalSessionGroups(homeDir: string): GlobalSessionGroup[] {
     try {
       const meta = JSON.parse(readFileSync(join(projectDir, "project.json"), "utf8"));
       if (typeof meta.original_path === "string" && meta.original_path.trim()) projectPath = meta.original_path.trim();
-    } catch { /* older project stores may not have project.json */ }
+    } catch { /* 旧版项目存储可能没有 project.json */ }
     const sessions = listSessionsForProject(projectDir);
     if (sessions.length > 0) groups.push({ projectDir, projectPath, sessions });
   }
