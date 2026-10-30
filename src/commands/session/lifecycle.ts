@@ -125,8 +125,8 @@ export async function cmdRename(ctx: CommandContext, args: string): Promise<void
 /**
  * 显式 /reload：重新扫描 skills/MCP，并重建 system snapshot。
  *
- * 这是会话内唯一允许改变 tools/system 缓存前缀的用户入口；
- * /skills 只记录选择，等这里才真正应用。
+ * /skills 会在自身命令内即时应用 skill 变更（重扫 + 重建 prompt + 重注册
+ * 斜杠命令）；/reload 仍是同时刷新 skills、MCP 与完整 system snapshot 的入口。
  */
 export async function cmdReload(ctx: CommandContext, _args: string): Promise<void> {
   const session = ctx.session;

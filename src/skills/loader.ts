@@ -92,6 +92,11 @@ interface ParsedSkillMd {
   body: string;
 }
 
+/** Windows 记事本等编辑器可能在字段前保留 BOM；名称/描述进入命令与 UI 前移除。 */
+function stripBom(value: string): string {
+  return value.replace(/\uFEFF/g, "");
+}
+
 /**
  * 将 SKILL.md 文件拆分为 YAML frontmatter 和 markdown 正文。
  * 如果未找到有效的 frontmatter，则返回 null。
@@ -158,17 +163,19 @@ export function loadSkills(skillsRoot: string): Map<string, SkillMeta> {
 
       if (parsed) {
         const fm = parsed.frontmatter;
-        name = typeof fm["name"] === "string" ? fm["name"] : entry;
-        description = typeof fm["description"] === "string"
-          ? fm["description"]
-          : extractFirstParagraph(parsed.body);
+        name = stripBom(typeof fm["name"] === "string" ? fm["name"] : entry).trim();
+        description = stripBom(
+          typeof fm["description"] === "string"
+            ? fm["description"]
+            : extractFirstParagraph(parsed.body),
+        ).trim();
         disableModelInvocation = fm["disable-model-invocation"] === true;
         userInvocable = fm["user-invocable"] !== false;
         body = parsed.body;
       } else {
         // No frontmatter —use directory name and full content
-        name = entry;
-        description = extractFirstParagraph(raw);
+        name = stripBom(entry).trim();
+        description = stripBom(extractFirstParagraph(raw)).trim();
         body = raw;
       }
 

@@ -77,6 +77,7 @@ export interface SessionLike {
   reconnectMcpServer(serverName: string): Promise<boolean>;
   reconnectMcpServerFromCommand(serverName: string): Promise<boolean>;
   reloadConfigurationFromCommand(): Promise<string>;
+  applySkillsFromCommand(): Promise<{ added: string[]; removed: string[]; total: number }>;
 
   /* Rewind */
   getRewindTargets(): RewindTargetTurn[];

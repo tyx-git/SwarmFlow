@@ -324,12 +324,10 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
 
   // ── Skills ──
   server.on("session.listSkills", () => session.getAllSkillNames());
-  server.on("session.setSkillEnabled", (params) => {
+  server.on("session.setSkillEnabled", async (params) => {
     const p = expectObject(params, "session.setSkillEnabled");
     const name = expectString(p, "name", "session.setSkillEnabled");
     const enabled = p["enabled"] === true;
-    // 只记录选择；skills 影响 tools/system 前缀，必须等显式 /reload
-    // 或进程重启才重新扫描，避免当前会话缓存整体失效。
     session.setSkillEnabled(name, enabled);
     const disabledSkills = session
       .getAllSkillNames()
@@ -342,7 +340,15 @@ export function registerSessionRpc(opts: SessionRpcOptions): { dispose: () => vo
     } catch {
       // 运行时 skill 状态已经更新；持久化尽力而为。
     }
-    return { ok: true, pendingReload: true };
+    // 与 /skills 命令一致：立即重扫并应用到当前会话，不再等待 /reload。
+    const report = await session.applySkillsFromCommand();
+    return {
+      ok: true,
+      pendingReload: false,
+      added: report.added,
+      removed: report.removed,
+      total: report.total,
+    };
   });
 
   server.on("session.reloadConfiguration", () => session.reloadConfigurationFromCommand());

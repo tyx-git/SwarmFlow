@@ -41,10 +41,18 @@ export function skillsOptions(ctx: CommandOptionsContext): CommandOption[] {
     }));
 }
 
-function persistSkillAvailability(ctx: CommandContext, name: string, enabled: boolean): void {
+async function applySkillState(
+  ctx: CommandContext,
+  oldSkills: ReadonlyMap<string, SkillMeta>,
+): Promise<void> {
+  await ctx.session.applySkillsFromCommand();
+  // 技能列表变化会改变 system prompt 与 /skill-name 命令集合，必须同步注册表。
+  reRegisterSkillCommands(ctx.commandRegistry, oldSkills, ctx.session.skills);
+}
+
+async function persistSkillAvailability(ctx: CommandContext, name: string, enabled: boolean): Promise<void> {
   const session = ctx.session;
-  // 只更新选择并持久化。skills 属于 tools/system 前缀的一部分，
-  // 立即重扫会让当前会话的缓存前缀失效；显式 /reload 才应用变更。
+  const oldSkills = session.skills;
   session.setSkillEnabled(name, enabled);
   const allSkills = session.getAllSkillNames?.() ?? [];
   const disabledSkills = allSkills
@@ -54,6 +62,14 @@ function persistSkillAvailability(ctx: CommandContext, name: string, enabled: bo
     { disabled_skills: disabledSkills.length > 0 ? disabledSkills : undefined },
     ctx.swarmflowHomeDir,
   );
+  // /skills 是用户显式操作：立即重扫并让当前会话使用新列表，不再等待 /reload。
+  await applySkillState(ctx, oldSkills);
+}
+
+/** 进入 /skills 时先重扫磁盘，让运行中新增的 skill 立即可见、可用。 */
+async function refreshSkillsForCommand(ctx: CommandContext): Promise<void> {
+  const oldSkills = ctx.session.skills;
+  await applySkillState(ctx, oldSkills);
 }
 
 export async function cmdSkills(ctx: CommandContext, args: string): Promise<void> {
@@ -70,13 +86,14 @@ export async function cmdSkills(ctx: CommandContext, args: string): Promise<void
       ctx.showMessage(t.get(["Commands", "/skills", "unknown"], { name }));
       return;
     }
-    persistSkillAvailability(ctx, name, !skill.enabled);
+    await persistSkillAvailability(ctx, name, !skill.enabled);
     (ctx.showHint ?? ctx.showMessage)(
-      `${name}: ${skill.enabled ? t.get(["Commands", "/skills", "disabled"]) : t.get(["Commands", "/skills", "enabled"])}. Run /reload to apply.`,
+      `${name}: ${skill.enabled ? t.get(["Commands", "/skills", "disabled"]) : t.get(["Commands", "/skills", "enabled"])}.`,
     );
     return;
   }
 
+  await refreshSkillsForCommand(ctx);
   const availableSkills = session.getAllSkillNames();
   if (availableSkills.length === 0) {
     ctx.showMessage(t.get(["Commands", "/skills", "empty"]));
@@ -96,7 +113,7 @@ export async function cmdSkills(ctx: CommandContext, args: string): Promise<void
       if (!picked) return;
       const selected = session.getAllSkillNames().find((item: { name: string }) => item.name === picked.value);
       if (!selected) return;
-      persistSkillAvailability(ctx, selected.name, !selected.enabled);
+      await persistSkillAvailability(ctx, selected.name, !selected.enabled);
     }
   }
 

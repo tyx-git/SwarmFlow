@@ -68,9 +68,8 @@ export function AssistantEntry({
   colors,
   markdownStyle,
 }: AssistantEntryProps): React.ReactNode {
-  // 模型或历史文本可能带 BOM；它会扰乱开头 Markdown 标记的匹配和隐藏范围，
-  // 导致正文丢字或格式标记残留在界面上。
-  const text = (entry.assistantText ?? "").replace(/^\uFEFF+/, "");
+  // 模型、历史文本或复制粘贴可能夹带 BOM；它会扰乱 Markdown 匹配并出现在界面上。
+  const text = (entry.assistantText ?? "").replace(/\uFEFF/g, "");
   const streaming = entry.assistantStreaming === true;
   // renderNode 换身份会让官方实现重建全部块，因此按主题稳定记忆。
   const renderNode = React.useMemo(

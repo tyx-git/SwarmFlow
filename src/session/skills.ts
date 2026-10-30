@@ -47,7 +47,7 @@ export function skillsDirty(host: SkillsHost): boolean {
   return host._skillsDirty;
 }
 
-/** Enable or disable a skill by name. The change applies on the next /reload. */
+/** Enable or disable a skill by name. Call applySkillsFromCommand() to apply. */
 export function setSkillEnabled(host: SkillsHost, name: string, enabled: boolean): void {
   if (enabled) {
     host._disabledSkills.delete(name);
@@ -59,8 +59,9 @@ export function setSkillEnabled(host: SkillsHost, name: string, enabled: boolean
 
 /**
  * Rescan skill directories, apply disabled filter, and rebuild
- * the skill tool definition. Explicit /reload only.
- * Returns change report for callers that need it (e.g. /skills command).
+ * the skill tool definition. /skills calls this immediately;
+ * /reload also calls it as part of a full configuration reload.
+ * Returns change report for callers that need it.
  */
 export function reloadSkills(host: SkillsHost): { added: string[]; removed: string[]; total: number } {
   const oldNames = new Set(host._skills.keys());
@@ -111,7 +112,7 @@ export function refreshSkills(host: SkillsHost): void {
 export function execSkill(host: SkillsHost, 
   args: Record<string, unknown>,
 ): ToolResult {
-  const name = ((args["name"] as string) ?? "").trim();
+  const name = ((args["name"] as string) ?? "").replace(/\uFEFF/g, "").trim();
   if (!name) {
     return new ToolResult({ content: "Error: 'name' parameter is required." });
   }

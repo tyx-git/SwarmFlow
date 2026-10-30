@@ -3180,21 +3180,23 @@ export class Session implements SessionLike {
     return skillsDirty(this);
   }
 
-  /** Enable or disable a skill by name. The change applies on the next /reload. */
-  /** Enable or disable a skill by name. The change applies on the next /reload. */
+  /** Enable or disable a skill by name. Call applySkillsFromCommand() to apply. */
+  /** Enable or disable a skill by name. Call applySkillsFromCommand() to apply. */
   setSkillEnabled(name: string, enabled: boolean): void {
     setSkillEnabled(this, name, enabled);
   }
 
   /**
    * Rescan skill directories, apply disabled filter, and rebuild
-   * the skill tool definition. Explicit /reload only.
-   * Returns change report for callers that need it (e.g. /skills command).
+   * the skill tool definition. /skills calls this immediately;
+   * /reload also calls it as part of a full configuration reload.
+   * Returns change report for callers that need it.
    */
   /**
    * Rescan skill directories, apply disabled filter, and rebuild
-   * the skill tool definition. Explicit /reload only.
-   * Returns change report for callers that need it (e.g. /skills command).
+   * the skill tool definition. /skills calls this immediately;
+   * /reload also calls it as part of a full configuration reload.
+   * Returns change report for callers that need it.
    */
   reloadSkills(): { added: string[]; removed: string[]; total: number } {
     return reloadSkills(this);
@@ -3382,6 +3384,18 @@ export class Session implements SessionLike {
    */
   async reloadConfigurationFromCommand(): Promise<string> {
     return this._withTurnLock(() => this._execReload());
+  }
+
+  /**
+   * /skills 的即时应用入口：重扫技能、重建 system prompt，但不重载 MCP。
+   * 通过 turn lock 与活动回合串行化，避免工具/system 前缀在回合中途变化。
+   */
+  async applySkillsFromCommand(): Promise<{ added: string[]; removed: string[]; total: number }> {
+    return this._withTurnLock(async () => {
+      const result = this.reloadSkills();
+      this._rebuildSystemPrompt();
+      return result;
+    });
   }
 
   // ==================================================================

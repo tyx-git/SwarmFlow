@@ -121,6 +121,108 @@ describe("skills workflows", () => {
     }
   });
 
+  it("applies newly added skills to the current session immediately", async () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-apply-"));
+    const harness = makeScriptedSession();
+    try {
+      harness.internals._skillRoots = [root];
+      const skillDir = join(root, "alpha");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), [
+        "---",
+        "name: alpha",
+        "description: Alpha skill",
+        "---",
+        "",
+        "Do alpha work.",
+      ].join("\n"), "utf-8");
+
+      expect(harness.internals._skills.has("alpha")).toBe(false);
+      const report = await harness.session.applySkillsFromCommand();
+
+      expect(report.added).toContain("alpha");
+      expect(harness.internals._skills.has("alpha")).toBe(true);
+      expect(harness.internals._cachedSystemPrompt).toContain("- alpha: Alpha skill");
+      expect(harness.internals._skillsDirty).toBe(false);
+    } finally {
+      harness.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes and applies from /skills without requiring /reload", async () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-command-"));
+    const home = mkdtempSync(join(tmpdir(), "swarmflow-skills-home-"));
+    const harness = makeScriptedSession();
+    try {
+      harness.internals._skillRoots = [root];
+      const registry = buildDefaultRegistry();
+      const messages: string[] = [];
+      const ctx: any = {
+        session: harness.session,
+        showMessage: (message: string) => messages.push(message),
+        showHint: (message: string) => messages.push(message),
+        commandRegistry: registry,
+        autoSave: () => {},
+        resetUiState: () => {},
+        swarmflowHomeDir: home,
+      };
+      const command = registry.lookup("/skills");
+      expect(command).toBeTruthy();
+
+      const skillDir = join(root, "alpha");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), [
+        "---",
+        "name: alpha",
+        "description: Alpha skill",
+        "---",
+        "",
+        "Do alpha work.",
+      ].join("\n"), "utf-8");
+
+      await command!.handler(ctx, "");
+
+      expect(harness.internals._skills.has("alpha")).toBe(true);
+      expect(registry.lookup("/alpha")).toBeTruthy();
+      expect(harness.internals._cachedSystemPrompt).toContain("- alpha: Alpha skill");
+      expect(harness.session.getAllSkillNames().find((skill) => skill.name === "alpha")?.enabled).toBe(true);
+      expect(messages.join("\n")).not.toContain("/reload");
+
+      await command!.handler(ctx, "alpha");
+
+      expect(harness.internals._skills.has("alpha")).toBe(false);
+      expect(registry.lookup("/alpha")).toBeUndefined();
+      expect(harness.internals._cachedSystemPrompt).not.toContain("- alpha: Alpha skill");
+      expect(messages.at(-1)).not.toContain("/reload");
+    } finally {
+      harness.dispose();
+      rmSync(root, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("strips BOM from skill names and descriptions", () => {
+    const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-bom-"));
+    try {
+      const skillDir = join(root, "alpha");
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, "SKILL.md"), [
+        "---",
+        "name: \uFEFFalpha",
+        "description: \uFEFFAlpha skill",
+        "---",
+        "",
+        "Do alpha work.",
+      ].join("\n"), "utf-8");
+
+      const loaded = loadSkills(root);
+      expect(loaded.get("alpha")?.description).toBe("Alpha skill");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rebuilds the system snapshot when startup settings disable a skill", async () => {
     const root = mkdtempSync(join(tmpdir(), "swarmflow-skills-settings-"));
     const harness = makeScriptedSession();

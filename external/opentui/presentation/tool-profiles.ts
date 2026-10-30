@@ -202,7 +202,7 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
   skill: {
     category: "observe",
     displayName: "Skill",
-    text: (args) => str(args.name),
+    text: (args) => str(args.name).replace(/\uFEFF/g, "").trim(),
     inlineResult: false,
   },
   await_event: {
