@@ -48,6 +48,8 @@ export interface DisplayThemeColorTokens {
   userPrompt: string;
   /** 弱化文本：工具结果正文、非活动行的说明文字。 */
   textFaint: string;
+  /** 回合结束的阶段总结 Tips 行。 */
+  tips: string;
   /** 次级文本：非活动条目的标题与正文，比 textFaint 更亮一档。 */
   textSecondary: string;
   /** 徽标：子代理面板指示器（前景 / 常态底色 / 展开态底色）。 */

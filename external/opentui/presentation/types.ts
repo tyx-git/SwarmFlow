@@ -8,7 +8,8 @@ export type PresentationKind =
   | "tool_group"
   | "assistant"
   | "system"
-  | "turn_summary";
+  | "turn_summary"
+  | "tips";
 
 export type PresentationState = "active" | "done" | "error";
 
@@ -106,6 +107,9 @@ export interface PresentationEntry {
   turnSummaryInterrupted?: boolean;
   turnSummaryError?: boolean;
   turnSummaryHints?: string[];
+
+  // kind=tips
+  tipsText?: string;
 
   // Unified file-modify display data (replaces toolStreamSections for file-modify tools)
   fileModifyData?: FileModifyDisplayData;

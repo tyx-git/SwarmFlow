@@ -11,7 +11,188 @@ function reconciled(
   return { id, entry, contentVersion };
 }
 
+function handoff(conclusion: string, extra: Record<string, unknown> = {}): string {
+  return [
+    "```swarmflow-handoff",
+    JSON.stringify({ conclusion, ...extra }),
+    "```",
+  ].join("\n");
+}
+
+function turnEnd(id: string, status: string, turnIndex = 1): ReconciledConversationEntry {
+  return reconciled(id, {
+    id,
+    kind: "status",
+    text: "",
+    elapsedMs: 1200,
+    meta: { turnEndStatus: status, turnIndex },
+  });
+}
+
 describe("OpenTUI presentation transform", () => {
+  it("strips a handoff and emits one tips entry at the completed turn boundary", () => {
+    const result = presentationTransform([
+      reconciled("asst", {
+        id: "asst",
+        kind: "assistant",
+        text: `answer\n\n${handoff("stage summary")}`,
+      }),
+      turnEnd("end", "completed", 1),
+    ], [], false, null);
+
+    expect(result[0]).toMatchObject({ kind: "assistant", assistantText: "answer" });
+    expect(result[1]).toMatchObject({ kind: "tips", tipsText: "stage summary" });
+    expect(result[2]).toMatchObject({ kind: "turn_summary" });
+    expect(result.filter((entry) => entry.kind === "tips")).toHaveLength(1);
+  });
+
+  it("keeps one tips per turn and uses the last valid conclusion", () => {
+    const result = presentationTransform([
+      reconciled("asst-1", {
+        id: "asst-1",
+        kind: "assistant",
+        text: handoff("first"),
+      }),
+      reconciled("asst-2", {
+        id: "asst-2",
+        kind: "assistant",
+        text: `final prose\n\n${handoff("last")}`,
+      }),
+      turnEnd("work-end", "completed", 7),
+      turnEnd("turn-end", "completed", 7),
+    ], [], false, null);
+
+    expect(result.filter((entry) => entry.kind === "tips")).toHaveLength(1);
+    expect(result.find((entry) => entry.kind === "tips")?.tipsText).toBe("last");
+  });
+
+  it("hides a streaming handoff without emitting tips before the turn ends", () => {
+    const result = presentationTransform([
+      reconciled("asst", {
+        id: "asst",
+        kind: "assistant",
+        text: `answer\n\n${handoff("not yet")}`,
+      }),
+    ], [], true, "asst");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ kind: "assistant", assistantText: "answer" });
+    expect(result.some((entry) => entry.kind === "tips")).toBe(false);
+  });
+
+  it("does not emit tips on failed or interrupted turns", () => {
+    for (const status of ["error", "interrupted"]) {
+      const result = presentationTransform([
+        reconciled("asst", {
+          id: "asst",
+          kind: "assistant",
+          text: handoff("should not show"),
+        }),
+        turnEnd(`end-${status}`, status),
+      ], [], false, null);
+
+      expect(result.some((entry) => entry.kind === "tips"), status).toBe(false);
+      expect(result.some((entry) => entry.kind === "assistant"), status).toBe(false);
+      expect(JSON.stringify(result), status).not.toContain("should not show");
+    }
+  });
+
+  it("does not emit tips in child-session transcripts", () => {
+    const result = presentationTransform([
+      reconciled("asst", {
+        id: "asst",
+        kind: "assistant",
+        text: `child prose\n\n${handoff("child summary")}`,
+      }),
+      turnEnd("end", "completed"),
+    ], [], false, null, false);
+
+    expect(result[0]).toMatchObject({ kind: "assistant", assistantText: "child prose" });
+    expect(result.some((entry) => entry.kind === "tips")).toBe(false);
+  });
+
+  it("strips handoff blocks from agent result previews and full text", () => {
+    const result = presentationTransform([
+      reconciled("ar", {
+        id: "ar",
+        kind: "agent_result",
+        text: `child prose\n\n${handoff("child conclusion")}`,
+        fullText: `child prose\n\n${handoff("child conclusion")}`,
+        meta: { agentId: "scout-1", outcome: "completed", elapsedMs: 1000 },
+      }),
+    ], [], false, null);
+
+    expect(result[0]).toMatchObject({
+      kind: "tool_operation",
+      toolInlineResult: { text: "child prose" },
+      toolResultFullText: "child prose",
+    });
+  });
+
+  it("places the single tips entry after all visible work in the request", () => {
+    const result = presentationTransform([
+      reconciled("asst", {
+        id: "asst",
+        kind: "assistant",
+        text: `answer\n\n${handoff("final summary")}`,
+      }),
+      reconciled("tc", {
+        id: "tc",
+        kind: "tool_call",
+        text: "bash",
+        meta: {
+          toolName: "bash",
+          toolCallId: "call-1",
+          toolArgs: { command: "npm test" },
+          toolExecState: "completed",
+          toolStreamState: "closed",
+        },
+      }),
+      reconciled("tr", {
+        id: "tr",
+        kind: "tool_result",
+        text: "ok",
+        meta: { toolName: "bash", toolCallId: "call-1", isError: false },
+      }),
+      turnEnd("end", "completed"),
+    ], [], false, null);
+
+    const kinds = result.map((entry) => entry.kind);
+    expect(kinds).toEqual(["assistant", "tool_operation", "tips", "turn_summary"]);
+    expect(result[2]?.tipsText).toBe("final summary");
+  });
+
+  it("drops an agent result preview that consists only of a handoff", () => {
+    const result = presentationTransform([
+      reconciled("ar", {
+        id: "ar",
+        kind: "agent_result",
+        text: handoff("child conclusion"),
+        fullText: handoff("child conclusion"),
+        meta: { agentId: "scout-1", outcome: "completed", elapsedMs: 1000 },
+      }),
+    ], [], false, null);
+
+    expect(result[0]).toMatchObject({
+      kind: "tool_operation",
+      toolInlineResult: null,
+      toolResultFullText: "",
+    });
+  });
+
+  it("does not require open_questions in a root handoff", () => {
+    const result = presentationTransform([
+      reconciled("asst", {
+        id: "asst",
+        kind: "assistant",
+        text: handoff("root summary only"),
+      }),
+      turnEnd("end", "completed"),
+    ], [], false, null);
+
+    expect(result.find((entry) => entry.kind === "tips")?.tipsText).toBe("root summary only");
+  });
+
   it("keeps failed turn summaries out of the normal Worked state", () => {
     const result = presentationTransform([
       reconciled("work-error", {

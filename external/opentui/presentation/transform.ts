@@ -5,6 +5,7 @@ import type {
   InlineResultData,
 } from "./types.js";
 import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
+import { splitTaskHandoffForDisplay } from "../../../src/swarm/task-handoff.js";
 import { getToolProfile, HIDDEN_TOOLS } from "./tool-profiles.js";
 import { formatDuration } from "../display/utils/format.js";
 
@@ -115,14 +116,29 @@ function transformThinking(entry: ReconciledConversationEntry, state: Presentati
 function transformAssistant(
   entry: ReconciledConversationEntry,
   streaming: boolean,
+  text = entry.entry.text,
 ): PresentationEntry {
   return {
     id: entry.id,
     contentVersion: entry.contentVersion,
     kind: "assistant",
     state: streaming ? "active" : "done",
-    assistantText: entry.entry.text,
+    assistantText: text,
     assistantStreaming: streaming,
+  };
+}
+
+function buildTipsEntry(
+  turnEnd: ReconciledConversationEntry,
+  conclusion: string,
+  contentVersion: number,
+): PresentationEntry {
+  return {
+    id: `tips:${turnEnd.id}`,
+    contentVersion,
+    kind: "tips",
+    state: "done",
+    tipsText: conclusion,
   };
 }
 
@@ -178,8 +194,10 @@ function transformAgentResult(entry: ReconciledConversationEntry): PresentationE
     : "sub-agent";
   const outcome = typeof meta.outcome === "string" ? meta.outcome : "completed";
   const elapsedMs = typeof meta.elapsedMs === "number" ? meta.elapsedMs : 0;
-  const preview = entry.entry.text;
-  const fullText = entry.entry.fullText ?? preview;
+  const rawFullText = entry.entry.fullText ?? entry.entry.text;
+  // 子代理结果可能把 handoff 块带进预览/详情；展示层只保留正文。
+  const preview = splitTaskHandoffForDisplay(entry.entry.text).displayText;
+  const fullText = splitTaskHandoffForDisplay(rawFullText).displayText;
   const previewTruncated = meta.tuiPreviewTruncated === true;
 
   const state: PresentationState = outcome === "failed" ? "error" : "done";
@@ -476,12 +494,15 @@ export function presentationTransform(
   previousOutput: PresentationEntry[],
   processing: boolean,
   activeEntryId: string | null = null,
+  showTips = true,
 ): PresentationEntry[] {
   const result: PresentationEntry[] = [];
   const prevById = new Map<string, PresentationEntry>();
   for (const pe of previousOutput) {
     prevById.set(pe.id, pe);
   }
+  let pendingTips: { conclusion: string; contentVersion: number } | null = null;
+  const emittedTipsTurns = new Set<string | number>();
 
   // Pre-build a toolCallId → tool_result index. Pairing by id (not adjacency)
   // is necessary because entries like agent_result may appear between a
@@ -544,6 +565,8 @@ export function presentationTransform(
     // 2. Route by kind
     switch (kind) {
       case "user": {
+        // 新用户请求开始时丢弃没有吃到 turn_end 的残留结论。
+        if (!entry.entry.queued) pendingTips = null;
         result.push(transformUser(entry));
         i++;
         break;
@@ -574,9 +597,16 @@ export function presentationTransform(
         const isLastAssistant = processing && !entries.slice(i + 1).some(
           (e) => e.entry.kind === "assistant" || e.entry.kind === "tool_call" || e.entry.kind === "reasoning",
         );
-        // active log id 会随每个流式文本 chunk 更新；即使 React 的 processing
-        // 状态晚一帧，也要保持该条目处于流式状态。
-        result.push(transformAssistant(entry, isLastAssistant || activeEntryId === entry.id));
+        const split = splitTaskHandoffForDisplay(entry.entry.text);
+        if (split.displayText.trim().length > 0) {
+          // active log id 会随每个流式文本 chunk 更新；即使 React 的 processing
+          // 状态晚一帧，也要保持该条目处于流式状态。
+          result.push(transformAssistant(entry, isLastAssistant || activeEntryId === entry.id, split.displayText));
+        }
+        if (showTips && split.conclusion) {
+          // 同一 turn 内多个块以最后一个有效结论为准；实际 Tips 在 turn_end 才出现。
+          pendingTips = { conclusion: split.conclusion, contentVersion: entry.contentVersion };
+        }
         i++;
         break;
       }
@@ -614,8 +644,21 @@ export function presentationTransform(
 
       default: {
         if (isTurnEndEntry(entry)) {
-          const turnIndex = getMeta(entry).turnIndex;
+          const meta = getMeta(entry);
+          const turnIndex = meta.turnIndex;
+          const turnKey = typeof turnIndex === "number" ? turnIndex : entry.id;
+          const status = meta.turnEndStatus;
           const merged = typeof turnIndex === "number" ? mergedErrorByTurn.get(turnIndex) : undefined;
+          if (
+            showTips
+            && status === "completed"
+            && pendingTips
+            && !emittedTipsTurns.has(turnKey)
+          ) {
+            result.push(buildTipsEntry(entry, pendingTips.conclusion, pendingTips.contentVersion));
+            emittedTipsTurns.add(turnKey);
+          }
+          pendingTips = null;
           result.push(transformTurnEnd(entry, merged?.text));
         } else {
           result.push(transformSystem(entry));

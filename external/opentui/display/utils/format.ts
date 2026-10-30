@@ -54,6 +54,76 @@ export function shortenPath(fullPath: string): string {
   return fullPath;
 }
 
+/** 按显示列宽换行，并在超过 maxLines 时截断补省略号。 */
+export function wrapToLines(
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+): { lines: string[]; truncated: boolean } {
+  const widthLimit = Math.max(1, Math.floor(maxWidth));
+  const lineLimit = Math.max(1, Math.floor(maxLines));
+  const chars = Array.from(text);
+  const lines: string[] = [];
+  let current = "";
+  let currentWidth = 0;
+  let index = 0;
+  let truncated = false;
+
+  while (index < chars.length) {
+    if (lines.length >= lineLimit) {
+      truncated = true;
+      break;
+    }
+    const ch = chars[index]!;
+    if (ch === "\n") {
+      lines.push(current.trimEnd());
+      current = "";
+      currentWidth = 0;
+      index++;
+      continue;
+    }
+    const chWidth = Math.max(1, stringWidth(ch));
+    if (currentWidth + chWidth > widthLimit && current.length > 0) {
+      lines.push(current.trimEnd());
+      current = "";
+      currentWidth = 0;
+      if (ch === " ") {
+        index++;
+        continue;
+      }
+      continue;
+    }
+    if (ch === " " && current.length === 0) {
+      index++;
+      continue;
+    }
+    current += ch;
+    currentWidth += chWidth;
+    index++;
+  }
+
+  if (current.length > 0) {
+    if (lines.length < lineLimit) lines.push(current.trimEnd());
+    else truncated = true;
+  }
+
+  if (truncated && lines.length > 0) {
+    const last = lines[lines.length - 1]!;
+    const ellipsisWidth = Math.max(1, stringWidth("…"));
+    let clipped = "";
+    let width = 0;
+    for (const ch of last) {
+      const chWidth = Math.max(1, stringWidth(ch));
+      if (width + chWidth + ellipsisWidth > widthLimit) break;
+      clipped += ch;
+      width += chWidth;
+    }
+    lines[lines.length - 1] = `${clipped}…`;
+  }
+
+  return { lines, truncated };
+}
+
 export function truncateToWidth(text: string, maxWidth: number): string {
   const textWidth = stringWidth(text);
   if (textWidth <= maxWidth) return text;

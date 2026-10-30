@@ -89,7 +89,7 @@ Block until a runtime event arrives. Events: a child agent completing or failing
 `send(to, content)` — hand a message to a persistent child agent and return immediately. The child handles it on its next activation; expect a confirmation from this call, not a reply. Available once a persistent child exists. Use it to steer an agent that is already running; spawn a new agent when there is no existing one to talk to.
 
 ### `ask`
-Ask the user one structured question set when a concrete decision has a small number of alternatives. Up to 4 questions per call, 4 options each; the user always sees a free-text field, so options are suggestions rather than a closed set. Use it to unblock an assumption you cannot resolve from the codebase. Do NOT use it for open-ended exploration, for questions the repository already answers, or to confirm a plan the user already stated — ask in plain conversation instead.
+Ask the user one structured question set when a concrete decision has a small number of alternatives. Up to 4 questions per call, 4 options each; the user always sees a free-text field, so options are suggestions rather than a closed set. Use it to unblock an assumption you cannot resolve from the codebase, including an `open_questions` entry reported by a child agent that requires a user decision. Do NOT use it for open-ended exploration, for questions the repository already answers, or to confirm a plan the user already stated — ask in plain conversation instead. Never put user questions in Queen's own handoff.
 
 ## MCP tools
 

@@ -47,6 +47,49 @@ export function stripTaskHandoffBlock(output: string): string {
   return output.replace(HANDOFF_BLOCK_PATTERN, "").trim();
 }
 
+export interface TaskHandoffDisplaySplit {
+  displayText: string;
+  conclusion?: string;
+  hadBlock: boolean;
+}
+
+/**
+ * 展示层拆分：移除所有 handoff 块（含流式未闭合块），只取最后一个有效
+ * conclusion。这里刻意宽松，只要求 conclusion，根 Queen 可以省略
+ * open_questions；子代理的机器交接仍走严格 parseTaskHandoff。
+ */
+export function splitTaskHandoffForDisplay(output: string): TaskHandoffDisplaySplit {
+  const source = output.replace(/^\uFEFF+/, "");
+  const pattern = /```swarmflow-handoff\s*\r?\n([\s\S]*?)\r?\n```/gi;
+  let conclusion: string | undefined;
+  let hadBlock = false;
+
+  for (const match of source.matchAll(pattern)) {
+    hadBlock = true;
+    try {
+      const payload = JSON.parse(match[1]!) as Record<string, unknown>;
+      if (typeof payload["conclusion"] === "string") {
+        const normalized = payload["conclusion"].replace(/\s+/g, " ").trim();
+        if (normalized) conclusion = normalized;
+      }
+    } catch {
+      // 无效块也隐藏，但不产生 conclusion。
+    }
+  }
+
+  let displayText = source.replace(pattern, "");
+  const openIndex = displayText.lastIndexOf("```swarmflow-handoff");
+  if (!hadBlock && openIndex < 0) {
+    return { displayText: source, hadBlock: false };
+  }
+  if (openIndex >= 0) {
+    displayText = displayText.slice(0, openIndex);
+  }
+  // 块被移除后可能留下多余空行；只保留段落间的一个空行。
+  displayText = displayText.replace(/\n{3,}/g, "\n\n").trim();
+  return { displayText, conclusion, hadBlock: true };
+}
+
 function truncateForContext(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   if (maxChars <= 0) return "";

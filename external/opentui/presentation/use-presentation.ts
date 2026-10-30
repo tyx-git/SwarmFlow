@@ -24,10 +24,16 @@ export function usePresentationEntries(
   const activeEntryId = session.activeLogEntryId ?? null;
 
   const presentationItems = useMemo(() => {
-    const result = presentationTransform(reconciledItems, previousRef.current, processing, activeEntryId);
+    const result = presentationTransform(
+      reconciledItems,
+      previousRef.current,
+      processing,
+      activeEntryId,
+      selectedChildId === null,
+    );
     previousRef.current = result;
     return result;
-  }, [reconciledItems, processing, activeEntryId]);
+  }, [reconciledItems, processing, activeEntryId, selectedChildId]);
 
   return presentationItems;
 }

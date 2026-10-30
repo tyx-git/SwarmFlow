@@ -57,6 +57,7 @@ describe("template type validation", () => {
     expect(toolsPrompt).not.toContain("`show_context`");
     expect(toolsPrompt).not.toContain("`summarize_context`");
     expect(toolsPrompt).toContain("Never reply that you cannot search");
+    expect(toolsPrompt).toContain("Never put user questions in Queen's own handoff");
   });
 
   it("keeps role tool boundaries aligned with the six built-in templates", () => {
@@ -111,7 +112,11 @@ describe("template type validation", () => {
     expect(templates.queen?.systemPrompt).toContain("external or web research");
     expect(templates.queen?.systemPrompt).toContain("Never answer that you cannot search");
     expect(templates.queen?.systemPrompt).toContain("Scout has `web_search` and `web_fetch`");
+    expect(templates.queen?.systemPrompt).toContain("root Queen handoff omits `open_questions`");
+    expect(templates.queen?.systemPrompt).toContain("the final handoff is not a question channel");
     expect(templates.scout?.systemPrompt).toContain("Run read-only inspection, reproduction, test, and verification commands");
+    expect(templates.scout?.systemPrompt).toContain('"open_questions"');
+    expect(templates.worker?.systemPrompt).toContain('"open_questions"');
     expect(templates.scout?.systemPrompt).toContain("For web research");
     expect(templates.worker?.systemPrompt).toContain("`web_search` / `web_fetch`");
     expect(templates.merger?.systemPrompt).toContain("focused, non-destructive verification command");

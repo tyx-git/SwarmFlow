@@ -50,7 +50,8 @@ function PresentationPanelInner(
           const isVisible = entry.kind !== "turn_summary"
             || entry.turnSummaryInterrupted === true
             || entry.turnSummaryError === true;
-          const needsGap = isVisible && previousVisible;
+          // Tips 是上一条消息的附属总结，不额外留空行。
+          const needsGap = isVisible && previousVisible && entry.kind !== "tips";
           previousVisible ||= isVisible;
           return (
             <React.Fragment key={entry.id}>

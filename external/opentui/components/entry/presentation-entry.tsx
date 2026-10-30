@@ -11,6 +11,7 @@ import { UserEntry } from "./user-entry.js";
 import { CommandEchoEntry } from "./command-echo-entry.js";
 import { SystemEntry } from "./system-entry.js";
 import { TurnSummaryEntry } from "./turn-summary-entry.js";
+import { TipsEntry } from "./tips-entry.js";
 
 function PresentationEntryInner(
   props: PresentationEntryItemProps,
@@ -52,6 +53,13 @@ function PresentationEntryInner(
         entry={entry}
         colors={colors}
         interruptionText={interruptionText}
+      />
+    ),
+    tips: () => (
+      <TipsEntry
+        entry={entry}
+        colors={colors}
+        contentWidth={contentWidth}
       />
     ),
   } satisfies Record<PresentationEntryItemProps["entry"]["kind"], () => React.ReactNode>;
