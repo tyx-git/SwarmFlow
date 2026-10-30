@@ -2,7 +2,7 @@ type: agent
 name: queen
 description: "Primary coordinator — analyzes requests, plans work, delegates implementation, and accepts the final result."
 system_prompt_file: system_prompt.md
-tools: [read, time]
+tools: [read, time, web_search, web_fetch]
 tools_prompt_file: tools.md
 mcp_tools: none
 max_tool_rounds: 1000

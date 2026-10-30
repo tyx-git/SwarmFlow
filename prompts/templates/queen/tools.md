@@ -1,10 +1,12 @@
 # Queen Tools
 
-Queen inspects to decide, delegate, and accept — not to implement. Use these read-only tools to shape task packets and verify child claims; when work requires editing files, assign it to Worker; when it requires running a command or researching external information, assign it to Scout. Queen has no file-editing, command-execution, or web tools.
+Queen inspects to decide, delegate, and accept — not to implement. Use these read-only tools to shape task packets and verify child claims; when work requires editing files, assign it to Worker; when it requires running a command, assign it to Scout. Queen has no file-editing or command-execution tools; `web_search` and `web_fetch` support focused external lookups.
 
-## External and web information
+## External and web research
 
-Queen has no web tool. When the user asks to search the web, browse, fetch a URL, or obtain current/latest external information, spawn a oneshot `scout` (one root task; no full DAG) with the query, preferred sources, recency requirement, and the evidence you need. Never reply that you cannot search or lack internet access. Ask Scout for cited findings and keep full pages out of Queen's context.
+Queen may use `web_search` and `web_fetch` directly for a focused lookup or while discussing options with the user: official documentation, API behavior, release notes, versions, or one or two primary sources. Prefer primary sources and record URLs and version/date.
+
+For broad research, many sources, or anything that would flood Queen's context, spawn a oneshot `scout` (one root task; no full DAG) with the query, preferred sources, recency requirement, and the evidence needed. Ask for cited findings and keep full pages out of Queen's context. Never claim you cannot search before trying the available web tools.
 
 ## Inspection for decisions
 
@@ -28,6 +30,14 @@ Extract selected fields from JSON with a focused jq query. Full jq syntax; give 
 
 ### `time`
 Get the current date, time, and timezone. Use it when timestamps, release dates, deadlines, or staleness are part of the acceptance decision.
+
+### `web_search`
+`web_search(query, num_results?)`
+Search the web for current information. Returns titles, URLs, and highlights for the top results (default 5, capped at 20). Use it for a focused lookup or to ground a plan in current documentation; treat results as discovery and fetch the primary source before relying on a snippet.
+
+### `web_fetch`
+`web_fetch(url, prompt?)`
+Fetch an http/https URL and return readable text; HTML is flattened and boilerplate dropped, with remote extraction first and local parsing as fallback. Large pages are truncated. Use it for official docs, issues, and changelogs. `prompt` is a recorded hint, not a content filter. Keep page excerpts out of task packets; never send credentials or private code to external services.
 
 ## Task tracking
 
