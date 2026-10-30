@@ -5,6 +5,8 @@
  * 以及思考级别的验证。
  */
 
+import { createHash } from "node:crypto";
+
 import { hasOAuthTokens } from "../auth/openai/token-store.js";
 import { hasGitHubTokens } from "../auth/github-copilot-oauth.js";
 import {
@@ -157,11 +159,15 @@ export function parseProviderModelTarget(target: string): { provider: string; mo
  * 生成运行时模型名称。
  */
 export function runtimeModelName(provider: string, model: string): string {
-  const slug = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
+  const slug = (s: string) => {
+    const normalized = s.normalize("NFKC").toLowerCase();
+    const ascii = normalized.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (/^[\x00-\x7F]*$/.test(normalized)) return ascii;
+    // 中文等非 ASCII 名称会被 ASCII slug 抹空，不同名称会撞成同一个 runtime
+    // 名。保留可用的 ASCII 部分并附加短哈希，保证名称唯一且路径安全。
+    const digest = createHash("sha256").update(normalized).digest("hex").slice(0, 8);
+    return ascii ? `${ascii}-${digest}` : `x-${digest}`;
+  };
   return `runtime-${slug(provider)}-${slug(model)}`;
 }
 

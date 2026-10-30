@@ -15,6 +15,7 @@ import {
   fmtTokens,
   normalizeEndpointUrl,
   registerCustomModel,
+  resolveUniqueProviderId,
   slugifyProviderId,
   testEndpoint,
 } from "./endpoint.js";
@@ -142,11 +143,11 @@ export async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?
   const label = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "displayName"]) }))?.trim();
   if (!label) return false;
   const existingProviders = loadGlobalSettings(ctx.swarmflowHomeDir).providers ?? {};
-  const baseId = slugifyProviderId(label);
-  let providerId = baseId;
-  for (let i = 2; existingProviders[providerId] || config.modelNames.some((m: string) => m.startsWith(providerId + ":")); i++) {
-    providerId = `${baseId}-${i}`;
-  }
+  const providerId = resolveUniqueProviderId(
+    slugifyProviderId(label),
+    (id) => Boolean(existingProviders[id])
+      || config.modelNames.some((m: string) => m.startsWith(id + ":")),
+  );
 
   // 2. 先确定协议，再按协议解释和规范化用户输入的 URL。
   let protocol: StoredProviderProtocol | undefined;

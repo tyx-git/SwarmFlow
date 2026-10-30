@@ -13,8 +13,27 @@ export function fmtTokens(n: number): string {
   return `${Math.round(n / 1000)}K`;
 }
 
+/**
+ * 从用户输入的显示名称派生 provider id。
+ *
+ * 中文等 Unicode 文字/数字是合法的 id 字符：provider id 只作为 settings 键、
+ * 模型配置名前缀和内部寻址使用，JSON 键与 `provider:model` 解析都支持它们。
+ * 只把标点/空白折叠成 "-"；完全不含文字或数字的名称才回落到 "custom"。
+ */
 export function slugifyProviderId(label: string): string {
-  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom";
+  return label
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "") || "custom";
+}
+
+/** 在 `<baseId>` 已被占用时依次尝试 `<baseId>_2`、`<baseId>_3`。 */
+export function resolveUniqueProviderId(baseId: string, isTaken: (id: string) => boolean): string {
+  let id = baseId;
+  for (let i = 2; isTaken(id); i++) id = `${baseId}_${i}`;
+  return id;
 }
 
 /**

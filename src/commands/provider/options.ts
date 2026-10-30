@@ -76,7 +76,7 @@ export function providerOptions(ctx: CommandOptionsContext, homeDir?: string): C
       label: t.get(["Commands", "/provider", "manageProviders"]),
       value: "__custom__",
       children: allProviders.map(([id, entry]) => ({
-        label: entry.label ? `${entry.label} (${id})` : id,
+        label: entry.label && entry.label !== id ? `${entry.label} (${id})` : (entry.label || id),
         value: `manage:${id}`,
         detail: t.get(["Commands", "/provider", "modelCount"], { count: entry.models?.length ?? 0 }),
       })),

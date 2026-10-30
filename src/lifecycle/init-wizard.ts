@@ -24,7 +24,11 @@ import {
 import type { SwarmflowSettings, ProviderEntry } from "../config/settings/types.js";
 import { saveSettings, globalSettingsPath, loadGlobalSettings } from "../config/settings/io.js";
 import { customProviderEnvVar } from "../providers/credential-flow.js";
-import { normalizeEndpointUrl } from "../commands/provider/endpoint.js";
+import {
+  normalizeEndpointUrl,
+  resolveUniqueProviderId,
+  slugifyProviderId,
+} from "../commands/provider/endpoint.js";
 
 // ------------------------------------------------------------------
 // 向导结果
@@ -275,7 +279,11 @@ async function stageCustomProvider(homeDir: string, run: WizardRuntime): Promise
   const ctxLen = parseInt(ctxLenStr, 10) || 128000;
 
   // 组装 provider 条目（id 由显示名称派生，显示时用原始大小写 label）
-  const baseId = displayLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom";
+  const settings = loadGlobalSettings(homeDir);
+  const providerId = resolveUniqueProviderId(
+    slugifyProviderId(displayLabel),
+    (id) => Boolean(settings.providers?.[id]),
+  );
   const entry: ProviderEntry = {
     custom: true,
     label: displayLabel,
@@ -285,13 +293,12 @@ async function stageCustomProvider(homeDir: string, run: WizardRuntime): Promise
   };
 
   if (apiKey.trim()) {
-    const envVar = customProviderEnvVar(baseId);
+    const envVar = customProviderEnvVar(providerId);
     setDotenvKey(envVar, apiKey.trim(), homeDir);
     entry.api_key = `\${${envVar}}`;
   }
 
-  const settings = loadGlobalSettings(homeDir);
-  const providers = { ...(settings.providers ?? {}), [baseId]: entry };
+  const providers = { ...(settings.providers ?? {}), [providerId]: entry };
   saveSettings({ ...settings, providers }, globalSettingsPath(homeDir));
 
   console.log(t.get(["Init", "provider", "added"], { label: displayLabel, model: modelId.trim() }));

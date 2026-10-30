@@ -1,4 +1,6 @@
-﻿import { setDotenvKey, unsetDotenvKey } from "../lifecycle/dotenv.js";
+﻿import { createHash } from "node:crypto";
+
+import { setDotenvKey, unsetDotenvKey } from "../lifecycle/dotenv.js";
 import {
   type DetectedCredentialCandidate,
   detectManagedCredentialCandidates,
@@ -52,7 +54,16 @@ export interface CredentialSlot {
 
 /** 自定义提供者用于存储密钥的确定性 env 变量名。 */
 export function customProviderEnvVar(providerId: string): string {
-  return `SWARMFLOW_CUSTOM_${providerId.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_KEY`;
+  const ascii = providerId.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  // 纯 ASCII id 沿用历史变量名，保证已保存的密钥继续可用。
+  if (/^[\x20-\x7E]*$/.test(providerId)) {
+    return `SWARMFLOW_CUSTOM_${ascii}_KEY`;
+  }
+  // 中文等非 ASCII 字符会被上面的替换抹成同一串下划线，不同供应商会共用
+  // 同一个密钥槽。附加 U_ 前缀的短哈希，让每个名称拥有独立的 env 变量。
+  const digest = createHash("sha256").update(providerId).digest("hex").slice(0, 8).toUpperCase();
+  const segment = ascii.replace(/^_+|_+$/g, "");
+  return `SWARMFLOW_CUSTOM_${segment ? `${segment}_` : ""}U_${digest}_KEY`;
 }
 
 function providerLabel(providerId: string): string {

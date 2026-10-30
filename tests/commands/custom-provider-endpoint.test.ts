@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -49,15 +49,20 @@ afterEach(() => {
   for (const home of createdHomes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
-async function addProvider(protocol: string, endpoint: string, label = "Test Relay") {
-  const home = mkdtempSync(join(tmpdir(), "swarmflow-custom-provider-"));
-  createdHomes.push(home);
+async function addProvider(
+  protocol: string,
+  endpoint: string,
+  label = "Test Relay",
+  opts?: { home?: string; apiKey?: string },
+) {
+  const home = opts?.home ?? mkdtempSync(join(tmpdir(), "swarmflow-custom-provider-"));
+  if (!opts?.home) createdHomes.push(home);
   const registry = buildDefaultRegistry();
   const command = registry.lookup("/provider")!;
   const promptSecret = vi.fn()
     .mockResolvedValueOnce(label)
     .mockResolvedValueOnce(endpoint)
-    .mockResolvedValueOnce("")
+    .mockResolvedValueOnce(opts?.apiKey ?? "")
     .mockResolvedValueOnce("test-model");
   const promptSelect = vi.fn()
     .mockResolvedValueOnce(protocol)
@@ -114,6 +119,36 @@ describe("custom provider endpoint persistence", () => {
   it.each(endpoints)("stores the normalized $name base URL", async ({ protocol, base, expected }) => {
     const { home } = await addProvider(protocol, base);
     expect(loadGlobalSettings(home).providers?.["test-relay"]?.base_url).toBe(expected);
+  });
+
+  it("keeps a Chinese provider name as the settings key", async () => {
+    const { home, config } = await addProvider("openai-chat-completions", "https://chat.example/v1", "我的供应商");
+    const providers = loadGlobalSettings(home).providers ?? {};
+    expect(providers["我的供应商"]?.label).toBe("我的供应商");
+    expect(providers["custom"]).toBeUndefined();
+    expect(config.modelNames).toContain("我的供应商:test-model");
+  });
+
+  it("falls back to custom and increments custom_2 for repeated invalid names", async () => {
+    const first = await addProvider("openai-chat-completions", "https://chat.example/v1", "!!!");
+    await addProvider("openai-chat-completions", "https://chat.example/v1", "###", { home: first.home });
+    const providers = loadGlobalSettings(first.home).providers ?? {};
+    expect(Object.keys(providers).sort()).toEqual(["custom", "custom_2"]);
+    expect(providers["custom"]?.label).toBe("!!!");
+    expect(providers["custom_2"]?.label).toBe("###");
+  });
+
+  it("gives different Chinese providers different key slots", async () => {
+    const first = await addProvider("openai-chat-completions", "https://chat.example/v1", "我的供应商", { apiKey: "sk-first" });
+    await addProvider("openai-chat-completions", "https://chat.example/v1", "另一个供应商", {
+      home: first.home,
+      apiKey: "sk-second",
+    });
+    const providers = loadGlobalSettings(first.home).providers ?? {};
+    expect(providers["我的供应商"]?.api_key).not.toBe(providers["另一个供应商"]?.api_key);
+    const env = readFileSync(join(first.home, ".env"), "utf-8");
+    expect(env).toContain("sk-first");
+    expect(env).toContain("sk-second");
   });
 
   it("normalizes the retained historical full Responses URL when the new endpoint is left empty", async () => {
