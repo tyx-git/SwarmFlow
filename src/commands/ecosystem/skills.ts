@@ -50,7 +50,7 @@ async function applySkillState(
   reRegisterSkillCommands(ctx.commandRegistry, oldSkills, ctx.session.skills);
 }
 
-async function persistSkillAvailability(ctx: CommandContext, name: string, enabled: boolean): Promise<void> {
+async function persistSkillAvailability(ctx: CommandContext, name: string, enabled: boolean): Promise<boolean> {
   const session = ctx.session;
   const oldSkills = session.skills;
   session.setSkillEnabled(name, enabled);
@@ -64,6 +64,14 @@ async function persistSkillAvailability(ctx: CommandContext, name: string, enabl
   );
   // /skills 是用户显式操作：立即重扫并让当前会话使用新列表，不再等待 /reload。
   await applySkillState(ctx, oldSkills);
+  return enabled;
+}
+
+function skillStatusText(t: UiText, name: string, enabled: boolean): string {
+  return t.get(["Commands", "/skills", "status"], {
+    name,
+    state: t.get(["Commands", "/skills", enabled ? "statusEnabled" : "statusDisabled"]),
+  });
 }
 
 /** 进入 /skills 时先重扫磁盘，让运行中新增的 skill 立即可见、可用。 */
@@ -86,10 +94,8 @@ export async function cmdSkills(ctx: CommandContext, args: string): Promise<void
       ctx.showMessage(t.get(["Commands", "/skills", "unknown"], { name }));
       return;
     }
-    await persistSkillAvailability(ctx, name, !skill.enabled);
-    (ctx.showHint ?? ctx.showMessage)(
-      `${name}: ${skill.enabled ? t.get(["Commands", "/skills", "disabled"]) : t.get(["Commands", "/skills", "enabled"])}.`,
-    );
+    const enabled = await persistSkillAvailability(ctx, name, !skill.enabled);
+    ctx.showMessage(skillStatusText(t, name, enabled));
     return;
   }
 
@@ -113,7 +119,8 @@ export async function cmdSkills(ctx: CommandContext, args: string): Promise<void
       if (!picked) return;
       const selected = session.getAllSkillNames().find((item: { name: string }) => item.name === picked.value);
       if (!selected) return;
-      await persistSkillAvailability(ctx, selected.name, !selected.enabled);
+      const enabled = await persistSkillAvailability(ctx, selected.name, !selected.enabled);
+      ctx.showMessage(skillStatusText(t, selected.name, enabled));
     }
   }
 

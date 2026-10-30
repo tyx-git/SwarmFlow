@@ -1944,7 +1944,8 @@ export function OpenTuiApp({
       // "供应商切换为 protocol:..." 会把中间参数误认为最终结果。
       // 成功/失败信息由 provider 命令流程自己显示。
       // /permission 要等选择结果落定后再回显本地化模式名，不能先按原始参数回显。
-      const deferredEcho = cmdName === "/rename" || cmdName === "/compact" || cmdName === "/provider" || cmdName === "/permission";
+      // /skills 由命令自身输出“技能 X 已启用/已关闭”，不走通用切换回显。
+      const deferredEcho = cmdName === "/rename" || cmdName === "/compact" || cmdName === "/provider" || cmdName === "/permission" || cmdName === "/skills";
       if (!deferredEcho) {
         const echo = resolveCommandEchoDisplay(input, uiText.language);
         if (session.appendCommandEcho) {

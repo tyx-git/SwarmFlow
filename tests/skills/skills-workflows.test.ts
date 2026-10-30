@@ -11,6 +11,7 @@ describe("skills workflows", () => {
   it("registers the unified entry point and protected workflow commands", () => {
     const registry = buildDefaultRegistry();
     expect(registry.lookup("/skills")?.picker?.mode).toBe("toggle");
+    expect(registry.lookup("/skills")?.pickerFlow).toBe("handler");
     expect(registry.lookup("/skills-creater")).toBeTruthy();
     expect(registry.lookup("/skills-manager")).toBeUndefined();
     expect(registry.lookup("/custom-template")).toBeUndefined();
@@ -194,7 +195,19 @@ describe("skills workflows", () => {
       expect(harness.internals._skills.has("alpha")).toBe(false);
       expect(registry.lookup("/alpha")).toBeUndefined();
       expect(harness.internals._cachedSystemPrompt).not.toContain("- alpha: Alpha skill");
-      expect(messages.at(-1)).not.toContain("/reload");
+      expect(messages.at(-1)).toBe("技能 alpha 已关闭");
+      expect(messages.join("\n")).not.toContain("/reload");
+
+      let pickerCalls = 0;
+      ctx.promptCommandPicker = async () => {
+        pickerCalls += 1;
+        return pickerCalls === 1 ? { value: "alpha" } : undefined;
+      };
+      await command!.handler(ctx, "");
+
+      expect(harness.internals._skills.has("alpha")).toBe(true);
+      expect(registry.lookup("/alpha")).toBeTruthy();
+      expect(messages.at(-1)).toBe("技能 alpha 已启用");
     } finally {
       harness.dispose();
       rmSync(root, { recursive: true, force: true });

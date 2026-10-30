@@ -86,7 +86,11 @@ describe("command echo display", () => {
   });
 
   it("keeps every argument (not just the first token)", () => {
-    expect(resolveCommandEchoDisplay("/skills a b c", "zh")).toBe("技能切换为 a b c");
+    expect(resolveCommandEchoDisplay("/theme a b c", "zh")).toBe("主题切换为 a b c");
+  });
+
+  it("does not use the generic switch echo for /skills", () => {
+    expect(resolveCommandEchoDisplay("/skills reverse-engineer-anything", "zh")).toBeNull();
   });
 
   it("localizes the /permission mode argument", () => {
