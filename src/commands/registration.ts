@@ -53,7 +53,7 @@ export function buildDefaultRegistry(): CommandRegistry {
 
   registerBuiltin(registry, { name: "/compact", handler: cmdCompact, executionMode: "queued", category: "Context" });
   registerBuiltin(registry, { name: "/clear", handler: cmdClear, executionMode: "always", category: "Context" });
-  registerBuiltin(registry, { name: "/fork", handler: cmdFork, category: "Context" });
+  registerBuiltin(registry, { name: "/fork", handler: cmdFork, executionMode: "whenBusy", category: "Context" });
   registerBuiltin(registry, { name: "/ps", handler: cmdShells, executionMode: "always", category: "Context" });
   registerBuiltin(registry, { name: "/ask", handler: cmdAsk, category: "Context" });
 
@@ -64,15 +64,20 @@ export function buildDefaultRegistry(): CommandRegistry {
   registerBuiltin(registry, { name: "/reviewer", handler: cmdReviewer, options: reviewOptions, picker: { title: "Reviewer", inputArea: true }, category: "Workflow" });
   registerBuiltin(registry, { name: "/diff", handler: cmdDiff, executionMode: "whenBusy", category: "Workflow" });
 
-  registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, category: "Provider and Model" });
+  // 切换类命令按副作用分档：只影响后续回合的配置（/agents、/permission、
+  // /hooks）与自带回合守卫的 /fork 可在执行中直达；会把选择器交给命令自身
+  // 处理且需要回合边界的（/provider、/skills、/mcp）排到回合结束后执行。
+  // /model 无参数时依赖 UI 选择器入口，排队路径直接调 handler 会失去选择器，
+  // 因此保持阻塞，不做排队。
+  registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, executionMode: "queued", category: "Provider and Model" });
   registerBuiltin(registry, { name: "/model", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
-  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentRoleOptions, picker: { inputArea: true, mode: "single" }, pickerFlow: "handler", category: "Provider and Model" });
-  registerBuiltin(registry, { name: "/permission", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentRoleOptions, picker: { inputArea: true, mode: "single" }, pickerFlow: "handler", executionMode: "whenBusy", category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/permission", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, executionMode: "whenBusy", category: "Provider and Model" });
 
-  registerBuiltin(registry, { name: "/skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, pickerFlow: "handler", category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/skills", handler: cmdSkills, options: skillsOptions, picker: { title: "Skills", inputArea: true, mode: "toggle" }, pickerFlow: "handler", executionMode: "queued", category: "Ecosystem" });
   registerBuiltin(registry, { name: "/skills-creater", handler: cmdSkillsCreater, category: "Ecosystem" });
-  registerBuiltin(registry, { name: "/mcp", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, category: "Ecosystem" });
-  registerBuiltin(registry, { name: "/hooks", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/mcp", handler: cmdMcp, options: mcpOptions, picker: { title: "MCP Servers", inputArea: true }, executionMode: "queued", category: "Ecosystem" });
+  registerBuiltin(registry, { name: "/hooks", handler: cmdHooks, options: hooksOptions, picker: { title: "Hooks", inputArea: true }, executionMode: "whenBusy", category: "Ecosystem" });
   registerBuiltin(registry, { name: "/memory", handler: cmdMemory, executionMode: "always", category: "Ecosystem" });
   registerBuiltin(registry, { name: "/reload", handler: cmdReload, executionMode: "queued", category: "Project Configuration" });
   registerBuiltin(registry, { name: "/theme", handler: cmdTheme, options: themeModeOptions, picker: { inputArea: true }, executionMode: "whenBusy", category: "UI" });
