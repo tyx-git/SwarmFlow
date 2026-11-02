@@ -144,7 +144,6 @@ export async function cmdReload(ctx: CommandContext, _args: string): Promise<voi
   ctx.showMessage(
     hadPendingSkillChanges ? `${report}\nPending skill changes applied.` : report,
   );
-  (ctx.showHint ?? ctx.showMessage)("Reloaded. The next request uses the new tools/system prefix.");
 }
 
 // ------------------------------------------------------------------

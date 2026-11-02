@@ -58,6 +58,27 @@ describe("slash command chain", () => {
     expect(onManualCompactRequested).toHaveBeenCalledWith("preserve deployment notes");
   });
 
+  it("/reload reports the reload output once with no trailing hint", async () => {
+    const registry = buildDefaultRegistry();
+    const cmd = registry.lookup("/reload");
+    expect(cmd).toBeTruthy();
+
+    const showHint = vi.fn();
+    const ctx: CommandContext = {
+      ...baseContext(registry),
+      showHint,
+      session: {
+        reloadConfigurationFromCommand: async () => "Skills: 1 loaded\nMCP: 0 loaded",
+      },
+    };
+
+    await cmd!.handler(ctx, "");
+
+    expect(ctx.showMessage).toHaveBeenCalledWith("Skills: 1 loaded\nMCP: 0 loaded");
+    expect(ctx.showMessage).toHaveBeenCalledTimes(1);
+    expect(showHint).not.toHaveBeenCalled();
+  });
+
   it("/new delegates to runtime restart when available", async () => {
     const registry = buildDefaultRegistry();
     const cmd = registry.lookup("/new");

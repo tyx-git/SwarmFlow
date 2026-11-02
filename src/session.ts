@@ -3304,7 +3304,7 @@ export class Session implements SessionLike {
   private async _execReload(): Promise<string> {
     const report: string[] = [];
 
-    // 1. 重载技能与 system prompt
+    // 1. 重载技能
     const skillResult = this.reloadSkills();
     report.push(
       `Skills: ${skillResult.total} loaded` +
@@ -3312,21 +3312,24 @@ export class Session implements SessionLike {
       (skillResult.removed.length ? `, -${skillResult.removed.join(", ")}` : ""),
     );
 
-    // 2. 重建 system prompt
+    // 2. 重建 system prompt（内部动作，不占报告行）
     this._rebuildSystemPrompt();
-    report.push("System prompt: rebuilt");
 
-    // 3. 重载 MCP
+    // 3. 重载 MCP；报告只说加载了几台服务器，连接与工具明细走可用性通知。
     const mcpBefore = this._snapshotMcpAvailability();
+    let mcpError: string | null = null;
     try {
-      report.push(await this.reloadMcp({
+      await this.reloadMcp({
         notice: false,
         reason: "the /reload command refreshed MCP configuration",
-      }));
+      });
     } catch (err) {
-      report.push(`MCP: reload failed —${err instanceof Error ? err.message : String(err)}`);
+      mcpError = err instanceof Error ? err.message : String(err);
     }
     const mcpAfter = this._snapshotMcpAvailability();
+    report.push(mcpError === null
+      ? `MCP: ${mcpAfter.servers.length} loaded`
+      : `MCP: reload failed —${mcpError}`);
     const mcpServerDiff = this._diffNames(mcpBefore.servers, mcpAfter.servers);
     const mcpToolDiff = this._diffNames(mcpBefore.tools, mcpAfter.tools);
 
