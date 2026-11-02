@@ -179,8 +179,10 @@ export async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?
   const baseUrl = norm.baseUrl;
   if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl }));
 
-  // 4. API密钥（可选）
-  const apiKey = (await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "apiKey"], { label }), allowEmpty: true }))?.trim();
+  // 4. API密钥（可留空表示不使用；Esc 取消则丢弃整份草稿）
+  const apiKeyRaw = await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "apiKey"], { label }), allowEmpty: true });
+  if (apiKeyRaw === undefined) return false;
+  const apiKey = apiKeyRaw.trim();
 
   // 5–6. 发现并添加模型（多模型循环，添加一个后不关闭）。
   const added = await addModelsInteractive(ctx, { label, baseUrl, protocol, apiKey });
@@ -234,18 +236,30 @@ export async function cmdManageCustomProvider(ctx: CommandContext, providerId: s
 
   if (action === "edit") {
     const protocolChoice = WIRE_PROTOCOL_CHOICES.find((choice) => choice.value === wireProtocolFromStored(protocol))!;
-    const newUrl = (await ctx.promptSecret!({
+    // 取消（Esc/Ctrl+C → undefined）与留空（→ ""）不同：取消要丢弃整份草稿，
+    // 磁盘一次都不碰；留空才表示“该项保持不变”。
+    const newUrlRaw = await ctx.promptSecret!({
       message: t.get(["Commands", "/provider", "manage", "newEndpoint"], {
         label,
         current: normalizeEndpointUrl(entry.base_url ?? "", protocol).baseUrl,
         protocol: t.get(["Commands", "/provider", "protocol", protocolChoice.key]),
       }),
       allowEmpty: true,
-    }))?.trim();
-    const newKey = (await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "manage", "newApiKey"], { label }), allowEmpty: true }))?.trim();
+    });
+    if (newUrlRaw === undefined) return;
+    const newKeyRaw = await ctx.promptSecret!({ message: t.get(["Commands", "/provider", "manage", "newApiKey"], { label }), allowEmpty: true });
+    if (newKeyRaw === undefined) return;
+    const newUrl = newUrlRaw.trim();
+    const newKey = newKeyRaw.trim();
     const retainedUrl = newUrl || entry.base_url || "";
     const norm = normalizeEndpointUrl(retainedUrl, protocol);
     const newBaseUrl = norm.baseUrl;
+    // 只有真的改动才落盘：新密钥，或规范化后的 base_url 与存的不一致
+    // （历史里写成完整端点的值就是靠这一步纠正的）。
+    if (!newKey && newBaseUrl === (entry.base_url ?? "")) {
+      ctx.showMessage(t.get(["Commands", "/provider", "manage", "nothingChanged"]));
+      return;
+    }
     if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl: newBaseUrl }));
     let apiKeyField = entry.api_key;
     if (newKey) {
