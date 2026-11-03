@@ -177,7 +177,6 @@ export async function cmdAddCustomProvider(ctx: CommandContext, initialProtocol?
   if (!rawUrl) return false;
   const norm = normalizeEndpointUrl(rawUrl, protocol);
   const baseUrl = norm.baseUrl;
-  if (norm.changed) ctx.showMessage(t.get(["Commands", "/provider", "custom", "usingBaseUrl"], { baseUrl }));
 
   // 4. API密钥（可留空表示不使用；Esc 取消则丢弃整份草稿）
   const apiKeyRaw = await ctx.promptSecret({ message: t.get(["Commands", "/provider", "custom", "apiKey"], { label }), allowEmpty: true });

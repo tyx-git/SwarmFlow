@@ -73,9 +73,10 @@ async function addProvider(
     .mockResolvedValueOnce("__done__");
   const config = new Config({});
   const upsertModelRaw = vi.spyOn(config, "upsertModelRaw");
+  const showMessage = vi.fn();
   const context = {
     session: { config },
-    showMessage: vi.fn(),
+    showMessage,
     autoSave: vi.fn(),
     resetUiState: vi.fn(),
     commandRegistry: registry,
@@ -86,7 +87,7 @@ async function addProvider(
   } as unknown as CommandContext;
 
   await command.handler(context, "__add_provider__");
-  return { home, promptSecret, promptSelect, config, upsertModelRaw };
+  return { home, promptSecret, promptSelect, config, upsertModelRaw, showMessage };
 }
 
 describe("custom provider endpoint persistence", () => {
@@ -98,6 +99,12 @@ describe("custom provider endpoint persistence", () => {
       : protocol === "openai-responses" ? "Responses API"
         : protocol === "anthropic-messages" ? "Anthropic Messages" : "Gemini generateContent";
     expect(promptSecret.mock.calls[1]?.[0].message).toContain(protocolLabel);
+  });
+
+  it.each(endpoints)("stays quiet about the rewritten base URL when adding via $name", async ({ protocol, full }) => {
+    const { showMessage } = await addProvider(protocol, full);
+    const messages = showMessage.mock.calls.map(([text]) => String(text));
+    expect(messages.filter((text) => /基础地址|base URL/i.test(text))).toEqual([]);
   });
 
   it("marks dynamically registered DeepSeek models custom and dispatches by protocol", async () => {
