@@ -39,6 +39,7 @@ import { type ToolCallTuiVisibility, type ToolLoopOptions, type ToolLoopResult, 
 const COMPACT_ASK_DENY_MESSAGE =
   "ERROR: Tool approvals are unavailable during compaction; respond with the continuation prompt only.";
 import { createReasoning, createAssistantText, createToolCall, createToolResult as createToolResultEntry } from "../../context/entry/factories.js";
+import { splitDisplayLines } from "../../lib/line-window.js";
 import type { ThinkingArtifact } from "../../thinking/artifact.js";
 import type { AskRequest } from "../../ask.js";
 import {
@@ -558,8 +559,8 @@ export async function asyncRunToolLoop(
         hunks.push({
           startLine: probe.startLine,
           contextBefore: probe.contextBefore ?? [],
-          deletions: oldSection?.text ? oldSection.text.split("\n") : [],
-          additions: newSection?.text ? newSection.text.split("\n") : [],
+          deletions: oldSection?.text ? splitDisplayLines(oldSection.text) : [],
+          additions: newSection?.text ? splitDisplayLines(newSection.text) : [],
           contextAfter: probe.contextAfter ?? [],
         });
       }

@@ -4,6 +4,7 @@ import React, { useMemo } from "react";
 
 import { RGBA, StyledText, type TextChunk } from "@opentui/core";
 import type { InlineResultData } from "../../presentation/types.js";
+import { splitDisplayLines } from "../../../../src/lib/line-window.js";
 import type { ConversationPalette } from "../conversation-types.js";
 import { buildToolResultArtifacts, type ToolResultLineArtifact } from "../tool-result-artifacts.js";
 import { SelectableRow } from "../../display/primitives/selectable-row.js";
@@ -175,7 +176,7 @@ function InlineResultInner(
   // 命令和源码输出预览需要绕过通用 metadata/diff 分支，
   // 否则工具结果的弱化样式会覆盖语法高亮文本。
   if (language || syntaxMode) {
-    const lines = text.split("\n");
+    const lines = splitDisplayLines(text);
     const visibleLines = lines.slice(0, lineLimit);
     const hiddenCount = Math.max(0, lines.length - visibleLines.length);
     const hasRemainder = hiddenCount > 0 || unknownRemainder;
@@ -402,7 +403,7 @@ function InlineResultInner(
   // Plain text inline result (no toolMetadata) — result body uses the
   // two-tier dim palette (darker than tool call args).
   const textColor = data.dim ? colors.dim : colors.toolResultBody;
-  const lines = text.split("\n");
+  const lines = splitDisplayLines(text);
 
   if (!displayExpanded && data.maxLines <= 1 && lines.length > 0) {
     const firstLine = lines[0] || "";

@@ -16,6 +16,7 @@ import {
   buildAppendDisplayData,
 } from "../patches/hunk.js";
 import { withFileWriteLock, atomicWriteTextFile } from "./file-write.js";
+import { splitDisplayLines } from "../lib/line-window.js";
 import {
   FileVersionSnapshot,
   getFileVersionSnapshot,
@@ -286,7 +287,7 @@ export async function toolEditFileMulti(
         startLine: appendStartLine,
         contextBefore: [],
         deletions: [],
-        additions: appendStr.split("\n"),
+        additions: splitDisplayLines(appendStr),
         contextAfter: [],
       });
     }

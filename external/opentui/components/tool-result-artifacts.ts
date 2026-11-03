@@ -4,6 +4,7 @@ import { RGBA, type TextChunk } from "@opentui/core";
 import { highlightToChunks } from "./syntax-highlighter.js";
 
 import type { ConversationEntry } from "../../../src/ui/contracts.js";
+import { splitDisplayLines } from "../../../src/lib/line-window.js";
 import type { ConversationPalette } from "./conversation-types.js";
 import {
   LANGUAGE_BY_EXTENSION,
@@ -96,7 +97,7 @@ function buildPlainToolResultArtifacts(
 ): ToolResultLineArtifact[] {
   // Result body uses two-tier dim palette (darker than tool call args).
   const fg = RGBA.fromHex(dim ? colors.dim : colors.toolResultBody);
-  return text.split("\n").flatMap((line) =>
+  return splitDisplayLines(text).flatMap((line) =>
     wrapStandaloneChunks([createChunk(line || " ", { fg })], wrapWidth),
   );
 }
@@ -195,7 +196,7 @@ function buildDiffLineArtifact(
  */
 function extractNewContentLines(text: string): string[] {
   const codeLines: string[] = [];
-  for (const line of text.split("\n")) {
+  for (const line of splitDisplayLines(text)) {
     const { raw } = parsePreviewLine(line);
     if (raw.startsWith("+++ ") || raw.startsWith("--- ")) continue;
     if (raw.startsWith("@@")) continue;
@@ -229,7 +230,7 @@ function buildCodePreviewArtifacts(
       ? writeLines.join("\n")
       : undefined;
   const codeLines = typeof newContent === "string"
-    ? newContent.split("\n")
+    ? splitDisplayLines(newContent)
     : extractNewContentLines(text);
 
   if (codeLines.length === 0) {
@@ -254,7 +255,7 @@ function buildCodePreviewArtifacts(
 function buildDiffToolResultArtifacts(
   { text, colors, toolMetadata, wrapWidth }: Pick<ToolResultArtifactOptions, "text" | "colors" | "toolMetadata" | "wrapWidth">,
 ): ToolResultLineArtifact[] {
-  const lines = text.split("\n");
+  const lines = splitDisplayLines(text);
   const language = inferDiffLanguage(toolMetadata);
 
   return lines

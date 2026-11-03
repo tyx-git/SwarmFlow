@@ -1,11 +1,11 @@
 /**
- * 流式文件行窗口读取。
+ * 行切分与流式文件行窗口读取。
  *
  * read_file 只需要一个行窗口（start/end、tail 或前 1000 行），但还必须知道
  * 总行数用于头部与翻页提示。这里用 readline 逐行消费文件：
  * - 选中行最多 maxLines 条，tail 使用同大小的环形缓冲；
  * - 总行数边读边计数，不把整个文件或全部行数组留在内存里；
- * - 行尾 \r\n 由 readline 统一处理，语义与 text.split(/\r?\n/) 一致。
+ * - 行尾 \r\n 由 readline 统一处理，语义与 splitDisplayLines 一致。
  *
  * 不用于图片或投影文档；投影文档已经是内存中的文本，走 FromText 入口复用
  * 同一套窗口选择逻辑。
@@ -13,6 +13,22 @@
 
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
+
+/**
+ * 把一段文本切成展示行。
+ *
+ * 终端渲染器把 \r 当作换行：CRLF 文本按 "\n" 切开后，每行尾部残留的 \r
+ * 会在该行之后多渲染出一条空行。这里按行尾约定切分并丢弃行尾 CR；
+ * 真正的空行（连续换行）保留为空串元素，绝不过滤——空行是内容的一部分。
+ */
+export function splitDisplayLines(text: string): string[] {
+  return text.split(/\r?\n/);
+}
+
+/** 已经按 LF 切好的行：只去掉行尾残留的 CR。 */
+export function stripDisplayLineCr(line: string): string {
+  return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
 
 export interface LineWindowOptions {
   /** 起始行，从 1 开始。默认 1。 */
@@ -129,7 +145,7 @@ export async function readLineWindowFromText(
   text: string,
   options: LineWindowOptions,
 ): Promise<LineWindowResult> {
-  const lines = text.split(/\r?\n/);
+  const lines = splitDisplayLines(text);
   // 与 readline 对齐：末尾换行不产生额外空行，但真实的末尾空行会保留。
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
   return selectLineWindow(arrayLines(lines), options);

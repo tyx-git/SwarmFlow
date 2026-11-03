@@ -10,6 +10,8 @@
 
 import { extname } from "node:path";
 
+import { splitDisplayLines, stripDisplayLineCr } from "../lib/line-window.js";
+
 // ------------------------------------------------------------------
 // 类型定义
 // ------------------------------------------------------------------
@@ -112,7 +114,7 @@ export function computeContextBefore(
     if (lineEnd < 0) break; // 已到达文件开头
   }
   lines.reverse();
-  return lines;
+  return lines.map(stripDisplayLineCr);
 }
 
 /**
@@ -141,7 +143,7 @@ export function computeContextAfter(
     lines.push(content.slice(lineStart, lineEnd));
     lineStart = lineEnd + 1;
   }
-  return lines;
+  return lines.map(stripDisplayLineCr);
 }
 
 /**
@@ -180,8 +182,8 @@ export function buildHunkFromMatch(
   return {
     startLine,
     contextBefore,
-    deletions: oldStr.split("\n"),
-    additions: newStr.split("\n"),
+    deletions: splitDisplayLines(oldStr),
+    additions: splitDisplayLines(newStr),
     contextAfter,
   };
 }
@@ -265,7 +267,7 @@ export function buildAppendDisplayData(
       startLine: appendStartLine,
       contextBefore: [],
       deletions: [],
-      additions: appendStr.split("\n"),
+      additions: splitDisplayLines(appendStr),
       contextAfter: [],
     }],
   };
@@ -285,6 +287,6 @@ export function buildWriteDisplayData(
     mode: "write",
     totalLineCount: originalTotalLineCount,
     hunks: [],
-    writeLines: newContent.split("\n"),
+    writeLines: splitDisplayLines(newContent),
   };
 }
