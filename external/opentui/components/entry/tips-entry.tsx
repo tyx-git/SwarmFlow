@@ -8,10 +8,13 @@ import { wrapToLines } from "../../display/utils/format.js";
 import type { PresentationEntry } from "../../presentation/types.js";
 import type { ConversationPalette } from "../conversation-types.js";
 
-export const TIPS_PREFIX = " └ Tips: ";
+/** Tips 整行顶格：它是回合级说明，不跟随工具体 `└` 的缩进。 */
+export const TIPS_PREFIX = "└ Tips: ";
 export const TIPS_MAX_CHARS = 600;
 export const TIPS_MAX_LINES = 4;
 
+// 终端单元格定宽、没有字号，标签只能靠粗体和斜体正文拉开层级。
+const ATTRS_LABEL = createTextAttributes({ bold: true });
 const ATTRS_ITALIC = createTextAttributes({ italic: true });
 const PREFIX_WIDTH = stringWidth(TIPS_PREFIX);
 
@@ -43,7 +46,7 @@ export function TipsEntry({ entry, colors, contentWidth }: TipsEntryProps): Reac
     <box flexDirection="row" width="100%" flexShrink={0}>
       <text
         fg={colors.tips}
-        attributes={ATTRS_ITALIC}
+        attributes={ATTRS_LABEL}
         content={TIPS_PREFIX}
         flexShrink={0}
       />

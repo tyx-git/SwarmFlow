@@ -4,7 +4,7 @@ import { createRoot, flushSync } from "@opentui/react";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createTextAttributes, RGBA } from "@opentui/core";
 
-import { TipsEntry, TIPS_MAX_LINES } from "../../external/opentui/components/entry/tips-entry.js";
+import { TipsEntry, TIPS_MAX_LINES, TIPS_PREFIX } from "../../external/opentui/components/entry/tips-entry.js";
 import { PresentationPanel } from "../../external/opentui/components/entry/presentation-panel.js";
 import { wrapToLines } from "../../external/opentui/display/utils/format.js";
 import { createDisplayTheme } from "../../external/opentui/display/theme/default-theme.js";
@@ -27,7 +27,7 @@ describe("tips entry", () => {
     }
   });
 
-  it("renders the `└ Tips:` prefix and italic summary", async () => {
+  it("puts the bold `└ Tips:` label at column 0 and keeps the summary italic", async () => {
     const theme = createDisplayTheme("dark");
     const setup = await createTestRenderer({ width: 80, height: 10, useThread: false, consoleMode: "disabled" });
     const root = createRoot(setup.renderer);
@@ -40,12 +40,14 @@ describe("tips entry", () => {
       await setup.flush({ maxPasses: 100 });
 
       const frame = setup.captureCharFrame();
-      expect(frame).toContain("└ Tips: stage summary");
+      const tipsLine = frame.split("\n").find((line) => line.includes("Tips:")) ?? "";
+      expect(TIPS_PREFIX.startsWith("└")).toBe(true);
+      expect(tipsLine.startsWith("└ Tips: stage summary")).toBe(true);
 
       const spans = setup.captureSpans().lines.flatMap((line) => line.spans);
       const prefix = spans.find((span) => span.text.includes("Tips:"));
       const summary = spans.find((span) => span.text.includes("stage summary"));
-      expect(prefix?.attributes).toBe(createTextAttributes({ italic: true }));
+      expect(prefix?.attributes).toBe(createTextAttributes({ bold: true }));
       expect(summary?.attributes).toBe(createTextAttributes({ italic: true }));
       expect(prefix?.fg?.toString()).toBe(RGBA.fromHex(theme.colors.tips).toString());
       expect(summary?.fg?.toString()).toBe(RGBA.fromHex(theme.colors.tips).toString());
