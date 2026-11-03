@@ -113,8 +113,12 @@ export class SessionStore {
     throw new Error("Failed to allocate a unique session directory.");
   }
 
-  /** 创建新的会话目录结构，返回会话目录路径 */
-  createSession(): string {
+  /**
+   * 分配会话目录路径——预测与创建共用的唯一入口。
+   * 预测过的路径优先兑现（同一项目目录、尚未被占用）；`materialize` 为 true 时
+   * 同时把会话目录与 artifacts 建出来，false 时只算路径不动磁盘。
+   */
+  private _allocateSessionDir(materialize: boolean): string {
     const errors: string[] = [];
 
     for (const baseDir of this._candidateBaseDirs()) {
@@ -122,21 +126,21 @@ export class SessionStore {
       try {
         mkdirSync(projectDir, { recursive: true });
         this._ensureProjectMetadata(projectDir);
-        let sessionDir = this._predictedSessionDir;
-        if (!sessionDir || dirname(sessionDir) !== projectDir || existsSync(sessionDir)) {
-          sessionDir = SessionStore._findUniqueSessionDir(projectDir);
+        const predicted = this._predictedSessionDir;
+        const sessionDir = predicted && dirname(predicted) === projectDir && !existsSync(predicted)
+          ? predicted
+          : SessionStore._findUniqueSessionDir(projectDir);
+        if (materialize) {
+          mkdirSync(sessionDir, { recursive: true });
+          mkdirSync(join(sessionDir, "artifacts"), { recursive: true });
         }
-        mkdirSync(sessionDir, { recursive: true });
-        mkdirSync(join(sessionDir, "artifacts"), { recursive: true });
         // 新目录是刚分配的唯一 id，不存在并发写者；单写者锁由第一次 turn
         // 之前的异步 claim 获取（见 Session._claimSessionWriter）。
 
         this._activeBaseDir = baseDir;
         this._projectDir = projectDir;
-        this._sessionDir = sessionDir;
-        this._predictedSessionDir = undefined;
 
-        if (baseDir !== this._preferredBaseDir) {
+        if (materialize && baseDir !== this._preferredBaseDir) {
           console.warn(
             `SessionStore fallback active: preferred '${this._preferredBaseDir}' not writable, using '${baseDir}'`,
           );
@@ -149,7 +153,15 @@ export class SessionStore {
     }
 
     const detail = errors.length > 0 ? errors.join(" | ") : "no candidate paths available";
-    throw new Error(`Unable to create session storage directory. Tried: ${detail}`);
+    throw new Error(`Unable to allocate a session storage directory. Tried: ${detail}`);
+  }
+
+  /** 创建新的会话目录结构，返回会话目录路径 */
+  createSession(): string {
+    const sessionDir = this._allocateSessionDir(true);
+    this._sessionDir = sessionDir;
+    this._predictedSessionDir = undefined;
+    return sessionDir;
   }
 
   /** 清除当前会话目录（用于 /new 延迟创建）；同时释放本 store 持有的锁。 */
@@ -295,26 +307,12 @@ export class SessionStore {
   /** 预测下一个会话目录路径（不创建，仅预测） */
   predictNextSessionDir(): string {
     if (this._sessionDir) return this._sessionDir;
-    if (this._predictedSessionDir) return this._predictedSessionDir;
-
-    const errors: string[] = [];
-    for (const baseDir of this._candidateBaseDirs()) {
-      const projectDir = join(baseDir, "projects", this._projectSlug);
-      try {
-        mkdirSync(projectDir, { recursive: true });
-        this._ensureProjectMetadata(projectDir);
-        const sessionDir = SessionStore._findUniqueSessionDir(projectDir);
-        this._activeBaseDir = baseDir;
-        this._projectDir = projectDir;
-        this._predictedSessionDir = sessionDir;
-        return sessionDir;
-      } catch (exc) {
-        errors.push(`${baseDir}: ${exc}`);
-      }
+    const predicted = this._predictedSessionDir;
+    if (predicted && dirname(predicted) === this._projectDir && !existsSync(predicted)) {
+      return predicted;
     }
-
-    const detail = errors.length > 0 ? errors.join(" | ") : "no candidate paths available";
-    throw new Error(`Unable to predict session storage directory. Tried: ${detail}`);
+    this._predictedSessionDir = this._allocateSessionDir(false);
+    return this._predictedSessionDir;
   }
 
   /** 预测下一个工件目录路径 */

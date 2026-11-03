@@ -11,8 +11,13 @@ import { basename, join } from "node:path";
 import { type CommandContext } from "../types.js";
 
 export function getSessionId(ctx: CommandContext): string {
-  const dir = ctx.store?.sessionDir;
-  return dir ? basename(dir) : "current";
+  const store = ctx.store;
+  if (!store) {
+    throw new Error("Session storage is unavailable; cannot resolve this session's id.");
+  }
+  // 会话目录还没落盘时用预测目录：createSession() 会复用同一个路径，
+  // 避免退化成所有会话共享的 "current" 目录、把计划文件写两份。
+  return basename(store.sessionDir ?? store.predictNextSessionDir());
 }
 
 function ensureSwarmflowSessionDir(ctx: CommandContext, section: "plan" | "reviewer"): string {
