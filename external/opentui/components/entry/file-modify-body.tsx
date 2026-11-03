@@ -270,14 +270,36 @@ function buildReplaceDescriptors(
   return descriptors;
 }
 
+/**
+ * 新增行描述：行号 + `+`，整行绿色底。append 与 write 共用同一套样式；
+ * firstLine 为 null 表示不显示行号（append 到空文件）。
+ */
+function buildAdditionDescriptors(
+  lines: readonly string[],
+  firstLine: number | null,
+  numW: number,
+  language: string | undefined,
+  colors: ConversationPalette,
+): LineDescriptor[] {
+  const dimFg = RGBA.fromHex(colors.dim);
+  const lineFg = RGBA.fromHex(colors.text);
+  return lines.map((line, idx) => ({
+    prefixChunks: [
+      createChunk(firstLine === null ? "" : `${lineNumStr(firstLine + idx, numW)} `, { fg: dimFg }),
+      createChunk("+", { fg: lineFg }),
+    ],
+    payloadText: line,
+    payloadFallbackFg: lineFg,
+    payloadBrightness: DIFF_BRIGHTNESS_ADDITION,
+    language,
+    rowBackgroundColor: colors.diffAdditionBg,
+  }));
+}
+
 function buildAppendDescriptors(
   data: FileModifyDisplayData,
   colors: ConversationPalette,
 ): LineDescriptor[] {
-  const dimFg = RGBA.fromHex(colors.dim);
-  const greenFg = RGBA.fromHex(colors.text);
-  const language = data.language;
-
   if (data.hunks.length === 0) return [];
   const hunk = data.hunks[0];
 
@@ -286,52 +308,25 @@ function buildAppendDescriptors(
   const maxLineNo = startLine + lines.length - 1;
   const numW = startLine > 0 ? Math.max(String(maxLineNo).length, 2) : 0;
 
-  const descriptors: LineDescriptor[] = [];
-
-  // ⋮ top: always (there's existing file content above)
-  descriptors.push(ellipsisDescriptor(numW, dimFg));
-
-  for (let idx = 0; idx < lines.length; idx++) {
-    const ln = startLine && numW ? `${lineNumStr(startLine + idx, numW)} ` : "";
-    descriptors.push({
-      prefixChunks: [
-        createChunk(ln, { fg: dimFg }),
-        createChunk("+", { fg: greenFg }),
-      ],
-      payloadText: lines[idx],
-      payloadFallbackFg: greenFg,
-      payloadBrightness: DIFF_BRIGHTNESS_ADDITION,
-      language,
-      rowBackgroundColor: colors.diffAdditionBg,
-    });
-  }
-
-  // No ⋮ bottom — append content IS the end of the file
-
-  return descriptors;
+  // 顶部恒有 ⋮（文件后面还有内容），底部没有——append 的内容就是文件末尾。
+  return [
+    ellipsisDescriptor(numW, RGBA.fromHex(colors.dim)),
+    ...buildAdditionDescriptors(lines, startLine && numW ? startLine : null, numW, data.language, colors),
+  ];
 }
 
 function buildWriteDescriptors(
   data: FileModifyDisplayData,
   colors: ConversationPalette,
 ): LineDescriptor[] {
-  const textFg = RGBA.fromHex(colors.text);
-  const dimFg = RGBA.fromHex(colors.dim);
-  const language = data.language;
-
   const lines = data.writeLines ?? [];
   if (lines.length === 0) return [];
 
   const numW = Math.max(String(lines.length).length, 2);
 
-  // No ⋮ — write shows the full file content
-  // No brightness boost — this is neutral file content, not a diff addition
-  return lines.map((line, idx) => ({
-    prefixChunks: [createChunk(`${lineNumStr(idx + 1, numW)} `, { fg: dimFg })],
-    payloadText: line,
-    payloadFallbackFg: textFg,
-    language,
-  }));
+  // 无 ⋮ —— write 展示整份文件；每一行都按新增行渲染（绿底 + `+`），
+  // 与 edit 的 additions 保持同一视觉语言。
+  return buildAdditionDescriptors(lines, 1, numW, data.language, colors);
 }
 
 /** Cheap structural pass — turns display data into row descriptors (no highlighting). */

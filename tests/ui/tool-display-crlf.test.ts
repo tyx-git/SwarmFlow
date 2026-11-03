@@ -75,17 +75,19 @@ describe("file-modify display data", () => {
   it("renders a CRLF write without phantom rows", async () => {
     const rows = await renderWriteBody("a\r\nb\r\nc");
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toContain("1 a");
-    expect(rows[1]).toContain("2 b");
-    expect(rows[2]).toContain("3 c");
+    expect(rows[0]).toContain("a");
+    expect(rows[1]).toContain("b");
+    expect(rows[2]).toContain("c");
   });
 
   it("renders a real blank line as exactly one row", async () => {
     const rows = await renderWriteBody("a\n\nb");
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toContain("1 a");
-    expect(rows[1].trim()).toBe("2");
-    expect(rows[2]).toContain("3 b");
+    expect(rows[0]).toContain("a");
+    expect(rows[1]).toContain("2");
+    expect(rows[1]).not.toContain("a");
+    expect(rows[1]).not.toContain("b");
+    expect(rows[2]).toContain("b");
   });
 
   it("leaves the on-disk CRLF convention alone", async () => {
