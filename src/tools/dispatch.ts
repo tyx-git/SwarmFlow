@@ -41,7 +41,7 @@ import {
 import { scopedPath, toolRoot } from "./path-scoping.js";
 import { toolReadFile } from "./file-read.js";
 import { toolListDir } from "./file-list.js";
-import { toolEditFileAppend, toolEditFileMulti } from "./file-edit.js";
+import { toolEditFileAppend, toolEditFileMulti, editFileNotFoundMessage } from "./file-edit.js";
 import { toolWriteFile } from "./file-write.js";
 import {
   splitCompoundBash,
@@ -203,6 +203,10 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         // 编辑（可与追加组合）
         return toolEditFileMulti(filePath, edits, expectedMtimeMs, appendStr || undefined);
       } catch (e) {
+        // 路径不存在时补一句怎么纠正，避免模型拿同一个路径反复重试。
+        if (e instanceof SafePathError && e.code === "PATH_NOT_FOUND") {
+          return editFileNotFoundMessage(e.details.requestedPath || e.details.resolvedPath);
+        }
         return formatToolError("edit_file", e);
       }
     },

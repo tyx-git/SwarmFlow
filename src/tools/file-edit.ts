@@ -26,6 +26,20 @@ import {
 import { buildUnifiedDiffPreview, simpleUnifiedDiff } from "./bash.js";
 import { buildFileMutation } from "./mutations.js";
 
+/**
+ * edit_file 打在不存在的路径上时的统一结果。
+ *
+ * 模型看到“找不到”后最常见的反应是原样重试，所以这里直接给出
+ * 可执行的下一步：先确认真实路径；要新建文件就换 write_file。
+ */
+export function editFileNotFoundMessage(filePath: string): string {
+  return [
+    `ERROR: File not found: ${filePath}`,
+    "edit_file only edits existing files. Do not retry the same path unchanged — confirm the real path with list_dir (or glob) first.",
+    "If you meant to create a new file, use write_file instead.",
+  ].join("\n");
+}
+
 export async function toolEditFileAppend(
   filePath: string,
   appendStr: string,
@@ -33,7 +47,7 @@ export async function toolEditFileAppend(
 ): Promise<string | ToolResult> {
   return withFileWriteLock(filePath, async () => {
     if (!existsSync(filePath)) {
-      return `ERROR: File not found: ${filePath}`;
+      return editFileNotFoundMessage(filePath);
     }
 
     let initialVersion: FileVersionSnapshot;
@@ -176,7 +190,7 @@ export async function toolEditFileMulti(
 ): Promise<string | ToolResult> {
   return withFileWriteLock(filePath, async () => {
     if (!existsSync(filePath)) {
-      return `ERROR: File not found: ${filePath}`;
+      return editFileNotFoundMessage(filePath);
     }
 
     let initialVersion: FileVersionSnapshot;
