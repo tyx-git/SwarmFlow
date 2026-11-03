@@ -91,7 +91,8 @@ function getPhaseSpinnerConfig(phase: ActivityPhase): { frames: readonly string[
 }
 
 function getPhaseColor(phase: ActivityPhase, colors: ConversationPalette): string {
-  if (phase === "Asking") return colors.dim;
+  // 等待回答用 waitingStatus —— 与子代理行的“卡在 ask”同色，一问一色。
+  if (phase === "Asking") return colors.waitingStatus;
   if (phase === "Compacting") return WORKED_STATUS_COLOR;
   if (phase === "Working") return WORKING_STATUS_COLOR;
   return colors.workingStatus;

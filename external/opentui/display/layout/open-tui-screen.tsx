@@ -413,30 +413,38 @@ export function OpenTuiScreen({
     </>
   );
 
+  // Ask 面板挂在页脚（见 footerStatusBlock），不再进滚动区：问题在等答案时
+  // 必须一直可见，而不是跟着转录滚走或被 detail tab 隐藏。
+  const askPanelBlock = pendingAsk ? (
+    <AskPanelView
+      ask={pendingAsk}
+      error={askError}
+      selectedIndex={askSelectionIndex}
+      currentQuestionIndex={currentQuestionIndex}
+      totalQuestions={pendingAsk.kind === "agent_question" ? getAskQuestions().length : 1}
+      questionAnswers={questionAnswers}
+      customInputMode={customInputMode}
+      noteInputMode={noteInputMode}
+      reviewMode={reviewMode}
+      inlineValue={askInputValue}
+      optionNotes={optionNotes}
+      inputRef={askInputRef}
+      onInput={onAskInput}
+      onSubmit={onAskSubmit}
+      theme={theme}
+      terminalHeight={terminalHeight}
+      contentWidth={inputContentWidth}
+    />
+  ) : null;
+
+  /** Tasks/Agents 的页脚位：ask 挂起期间被问题面板临时借走，答完即还原。 */
+  const footerStatusBlock = pendingAsk ? (
+    <box flexDirection="column" flexShrink={0} paddingTop={1}>{askPanelBlock}</box>
+  ) : (!memoryPanel ? statusPanel : null);
+
   // Shared non-command overlays block
   const overlaysBlock = (
     <>
-      {pendingAsk ? (
-        <AskPanelView
-          ask={pendingAsk}
-          error={askError}
-          selectedIndex={askSelectionIndex}
-          currentQuestionIndex={currentQuestionIndex}
-          totalQuestions={pendingAsk.kind === "agent_question" ? getAskQuestions().length : 1}
-          questionAnswers={questionAnswers}
-          customInputMode={customInputMode}
-          noteInputMode={noteInputMode}
-          reviewMode={reviewMode}
-          inlineValue={askInputValue}
-          optionNotes={optionNotes}
-          inputRef={askInputRef}
-          onInput={onAskInput}
-          onSubmit={onAskSubmit}
-          theme={theme}
-          terminalHeight={terminalHeight}
-          contentWidth={Math.max(20, conversationColumnWidth - effectiveSidebarWidth)}
-        />
-      ) : null}
       <PromptSelectView
         prompt={promptSelect?.inputArea ? null : promptSelect}
         theme={theme}
@@ -576,7 +584,7 @@ export function OpenTuiScreen({
         Lifted out of the main scrollbox so it stays at the bottom.
       */}
       {!memoryPanel ? pendingMessages : null}
-      {!memoryPanel ? statusPanel : null}
+      {footerStatusBlock}
       {!memoryPanel ? commandOverlayBlock : null}
       {!memoryPanel ? inputAreaElement : null}
 
