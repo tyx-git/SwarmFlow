@@ -21,6 +21,7 @@ export const READ: ToolDef = {
     "Returns up to 1000 lines / 80,000 characters per call; " +
     "individual lines longer than 5000 chars are truncated by default (raise max_line_chars when you need a long line in full). " +
     "PDF, DOCX, XLSX, and similar formats are returned as auto-extracted Markdown. " +
+    "Legacy 97-2003 .doc/.xls/.ppt cannot be extracted; the call fails with a hint to convert them to the modern OOXML format first. " +
     "Image files are returned as visual content blocks when the model supports multimodal input. " +
     "Returns file metadata (including mtime_ms) for optional optimistic concurrency checks. " +
     "Use start_line+end_line (inclusive range) or offset+limit (offset = first line, limit = number of lines) to navigate large files across multiple calls. " +

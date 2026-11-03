@@ -3,7 +3,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-import { loadProjectedDocumentView, projectedDocumentLabel } from "../context/document/view.js";
+import { isLegacyBinaryDocumentPath, legacyBinaryDocumentMessage, loadProjectedDocumentView, projectedDocumentLabel } from "../context/document/view.js";
 import type { FileInfo } from "./types.js";
 import {
   CODE_EXTENSIONS,
@@ -96,6 +96,20 @@ export async function readAndSummarize(
     });
   }
   const size = stat.size;
+
+  // ── 97-2003 二进制 Office 文档 ──
+  // 解不开也不该继续往下走：落到文本分支只会把 OLE 字节按 UTF-8 硬读成乱码。
+  // 97-2003 的 OLE 文档不是 zip+XML，投影不出来；报错也别回落到文本分支。
+  if (isLegacyBinaryDocumentPath(filePath)) {
+    return makeFileInfo({
+      originalRef: ref,
+      path: filePath,
+      exists: true,
+      isBinary: true,
+      sizeBytes: size,
+      error: legacyBinaryDocumentMessage(filePath),
+    });
+  }
 
   // ── 图片 ──
   if (isImage) {

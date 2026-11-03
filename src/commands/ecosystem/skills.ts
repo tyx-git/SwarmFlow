@@ -180,6 +180,8 @@ export function registerSkillCommands(
       name: cmdName,
       description: captured.description,
       category: "User Custom" as CommandCategory,
+      // 注入回合写出 displayText 那条用户行，UI 不能再预回显一次。
+      selfEcho: true,
       handler: async (ctx: CommandContext, args: string) => {
         const content = resolveSkillContent(captured, args);
         const tagged = `[SKILL: ${captured.name}]\n\n${content}`;

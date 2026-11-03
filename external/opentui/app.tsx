@@ -19,6 +19,7 @@ import { projectQueuedInputs } from "../../src/context/projection/tui.js";
 import { enqueueDeferredCommand, takeReadyDeferredCommand, type DeferredCommand } from "../../src/ui/deferred-command.js";
 import { ProgressReporter, type ProgressEvent } from "../../src/logging/progress.js";
 import { getLocalizedCommandDescription } from "../../src/commands/registry.js";
+import { resolveTypedCommandEcho } from "../../src/commands/echo.js";
 import { scanCandidates } from "../../src/attachments/scanner.js";
 import { classifyPastedText, TurnPasteCounter } from "../../src/ui/input/paste.js";
 import { readClipboardImage } from "../../src/attachments/clipboard-image.js";
@@ -1940,18 +1941,14 @@ export function OpenTuiApp({
         session.appendErrorMessage?.(t.get(["Error", "unknownCommand"], { command: cmdName }), "command");
         return;
       }
-      // Provider 是多步配置流程；在流程入口回显
-      // "供应商切换为 protocol:..." 会把中间参数误认为最终结果。
-      // 成功/失败信息由 provider 命令流程自己显示。
-      // /permission 要等选择结果落定后再回显本地化模式名，不能先按原始参数回显。
-      // /skills 由命令自身输出“技能 X 已启用/已关闭”，不走通用切换回显。
-      const deferredEcho = cmdName === "/rename" || cmdName === "/compact" || cmdName === "/provider" || cmdName === "/permission" || cmdName === "/skills";
-      if (!deferredEcho) {
-        const echo = resolveCommandEchoDisplay(input, uiText.language);
+      // 是否回显由命令自己声明：selfEcho 的流程（切换结果落定后回显、
+      // 注入回合写出的 user_message）已经有这一行，预回显会显示成两个 /plan。
+      const echo = resolveTypedCommandEcho(command, input, uiText.language);
+      if (echo) {
         if (session.appendCommandEcho) {
-          session.appendCommandEcho(echo ?? input, echo ? "switch" : "injected");
+          session.appendCommandEcho(echo.text, echo.style);
         } else {
-          session.appendUserInputDisplay?.(echo ?? input);
+          session.appendUserInputDisplay?.(echo.text);
         }
       }
       try {
@@ -1992,14 +1989,16 @@ export function OpenTuiApp({
       queuedCommandRef.current = null;
       setQueuedCommand(null);
       const cmdToken = command.split(/\s/, 1)[0] ?? "";
-      const handler = commandRegistry.lookup(cmdToken)?.handler;
-      if (!handler) return;
+      const slashCommand = commandRegistry.lookup(cmdToken);
+      if (!slashCommand?.handler) return;
       const args = command.slice(cmdToken.length).trim();
-      const echo = resolveCommandEchoDisplay(command, uiText.language);
-      if (session.appendCommandEcho) session.appendCommandEcho(echo ?? command, echo ? "switch" : "injected");
-      else session.appendUserInputDisplay?.(echo ?? command);
+      const echo = resolveTypedCommandEcho(slashCommand, command, uiText.language);
+      if (echo) {
+        if (session.appendCommandEcho) session.appendCommandEcho(echo.text, echo.style);
+        else session.appendUserInputDisplay?.(echo.text);
+      }
       void Promise.resolve()
-        .then(() => handler(buildCommandContext(), args))
+        .then(() => slashCommand.handler(buildCommandContext(), args))
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
           session.appendErrorMessage?.(uiText.get(["Error", "commandFailed"], { command: cmdToken, message }), "command");

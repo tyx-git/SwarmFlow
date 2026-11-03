@@ -86,15 +86,23 @@ function patchNodeRuntimePackages() {
   writeFileSync(reconcilerPackagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
+// esbuild 是独立的原生进程，往刚被 rmSync 清空的 release 树里写会被 Windows 的
+// 写信任拦下（同一路径 Node 自己写却成功）。所以先打进工作区的 dist/opentui-bundle，
+// 再由 Node 拷进发布树——和 tsc --outDir、cpSync 那几步走同一条落盘路径。
+const tuiStagingDir = join(root, "dist", "opentui-bundle");
+
 async function buildOpenTuiEntry() {
   const entry = join(root, "external", "opentui", "main.tsx");
-  const output = join(runtimeRoot, "external", "opentui", "main.js");
+  const runtimeTuiDir = join(runtimeRoot, "external", "opentui");
+
+  rmSync(tuiStagingDir, { recursive: true, force: true });
+  mkdirSync(tuiStagingDir, { recursive: true });
 
   console.log("Compiling OpenTUI entry for the Node runtime...");
   await buildWithEsbuild({
     absWorkingDir: root,
     entryPoints: [entry],
-    outfile: output,
+    outfile: join(tuiStagingDir, "main.js"),
     bundle: true,
     format: "esm",
     platform: "node",
@@ -123,6 +131,9 @@ async function buildOpenTuiEntry() {
     sourcemap: false,
     logLevel: "error",
   });
+
+  // 整目录搬迁：main.js 里的 ./assets/... 引用和 assets/ 子目录的相对位置不变。
+  cpSync(tuiStagingDir, runtimeTuiDir, { recursive: true, force: true });
 }
 
 if (process.platform !== "win32" || process.arch !== "x64") {

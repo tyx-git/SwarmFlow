@@ -11,7 +11,7 @@ For broad research, many sources, or anything that would flood Queen's context, 
 ## Inspection for decisions
 
 ### `read_file`
-Read a text file (max 50 MB) or an image (max 20 MB); PDF/DOCX/XLSX-like files are returned as auto-extracted Markdown. Each call returns at most 1000 lines and 80,000 characters, with individual lines over 5000 chars truncated unless you raise `max_line_chars`. Read the cited range rather than whole files: use `start_line`/`end_line` (inclusive; `end_line: -1` reads to EOF) or `offset`/`limit`, and `tail_lines` for the end of a log (capped at the latest 1000 lines). Prefer several targeted reads in parallel over one broad read.
+Read a text file (max 50 MB) or an image (max 20 MB); PDF/DOCX/XLSX-like files are returned as auto-extracted Markdown, while legacy 97-2003 `.doc`/`.xls`/`.ppt` are refused with a convert-first hint. Each call returns at most 1000 lines and 80,000 characters, with individual lines over 5000 chars truncated unless you raise `max_line_chars`. Read the cited range rather than whole files: use `start_line`/`end_line` (inclusive; `end_line: -1` reads to EOF) or `offset`/`limit`, and `tail_lines` for the end of a log (capped at the latest 1000 lines). Prefer several targeted reads in parallel over one broad read.
 
 ### `list_dir`
 List a directory tree with bounded depth and entries (defaults: depth 2, 200 entries; caps 6 and 2,000). Common build/cache directories are skipped unless passed explicitly as `path`; a cap hit is marked `(truncated)`. Use it to confirm layout and scope, not to inventory the repository.

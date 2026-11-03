@@ -12,7 +12,7 @@ import { ToolResult } from "../providers/response.js";
 import { safePath } from "../security/path.js";
 import { getSensitiveFileReadReason } from "../security/sensitive-files.js";
 
-import { isProjectedDocumentPath, loadProjectedDocumentView, projectedDocumentLabel } from "../context/document/view.js";
+import { isLegacyBinaryDocumentPath, isProjectedDocumentPath, legacyBinaryDocumentMessage, loadProjectedDocumentView, projectedDocumentLabel } from "../context/document/view.js";
 import { classifyFile, IMAGE_MEDIA_TYPES } from "../attachments/file-kinds.js";
 import { readLineWindowFromFile, readLineWindowFromText, type LineWindowResult } from "../lib/line-window.js";
 
@@ -56,6 +56,11 @@ export async function toolReadFile(
 
   if (!stat.isFile()) {
     return `ERROR: Not a file: ${filePath}`;
+  }
+
+  // 97-2003 的 OLE 文档解不开，别让它继续走到按 UTF-8 硬读的文本分支。
+  if (isLegacyBinaryDocumentPath(filePath)) {
+    return `ERROR: ${legacyBinaryDocumentMessage(filePath)}`;
   }
 
   // --- 图片文件处理 ---

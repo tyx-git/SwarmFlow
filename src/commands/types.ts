@@ -171,6 +171,12 @@ export interface SlashCommand {
   pickerFlow?: "handler";
   /** 命令分流：查看类命令始终直达；部分命令在工作中直达或等工作结束后执行。 */
   executionMode?: "always" | "whenBusy" | "queued";
+  /**
+   * 命令流程自己会在主界面写出这条用户行，UI 不做通用预回显。
+   * 两种来源：切换结果落定后回显的（/provider、/compact 等），以及注入回合
+   * 写出的 user_message（/plan 等）——预回显会让同一行出现两次。
+   */
+  selfEcho?: true;
 }
 
 export type CommandCategory = "Session" | "Context" | "Workflow" | "Document Processing" | "Provider and Model" | "Ecosystem" | "Project Configuration" | "User Custom" | "UI";
