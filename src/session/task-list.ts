@@ -16,6 +16,7 @@ import { decideChildResume, describeResumeReason, type ChildOutcome, type Resume
 import type { SessionCapabilities } from "./capabilities.js";
 import type { ChildSessionManager } from "./children/manager.js";
 import { TaskStore, taskStorePath } from "../tasks/store.js";
+import { normalizeTaskStatusInput } from "../tasks/normalize.js";
 import type { Task, TaskResumeHint, TaskUpdateFields } from "../tasks/types.js";
 import { ensureTaskTools } from "../tools/runtime.js";
 import { argOptionalString, argRequiredString } from "../tools/arg-validation.js";
@@ -161,7 +162,7 @@ export function resumeChildSession(
 export function argTaskMetadata(raw: unknown): Record<string, unknown> | undefined | ToolResult {
   if (raw === undefined || raw === null) return undefined;
   if (typeof raw !== "object" || Array.isArray(raw)) {
-    return new ToolResult({ content: "Error: 'metadata' must be an object." });
+    return ToolResult.error("Error: 'metadata' must be an object.");
   }
   return { ...(raw as Record<string, unknown>) };
 }
@@ -180,7 +181,7 @@ export function execTaskCreate(host: TaskListHost, args: Record<string, unknown>
   const role = argOptionalString("task_create", args, "role");
   if (role instanceof ToolResult) return role;
   if (role && !isAgentRoleId(role.trim())) {
-    return new ToolResult({ content: "Error: 'role' must be queen, scout, worker, reviewer, guard, or merger." });
+    return ToolResult.error("Error: 'role' must be queen, scout, worker, reviewer, guard, or merger.");
   }
   const metadata = argTaskMetadata(args["metadata"]);
   if (metadata instanceof ToolResult) return metadata;
@@ -227,12 +228,14 @@ export function execTaskList(host: TaskListHost): ToolResult {
       }
     }
 
-    if (task.status === "pending") {
+    if (task.status !== "completed") {
       const hint = readResumeHint(task);
       if (hint) {
         line += hint.resumable
           ? ` [interrupted — resumable via task_resume (${hint.toolCalls} tool calls, ${hint.tokensIn} input tokens)]`
           : ` [interrupted — re-dispatch with a new agent id: ${describeResumeReason(hint.reason as ResumeReason)}]`;
+      } else if (typeof task.metadata["interruptedAt"] === "number") {
+        line += " [interrupted — no live executor]";
       }
     }
     const childOpenTasks = task.metadata["childOpenTasks"];
@@ -252,7 +255,7 @@ export function execTaskGet(host: TaskListHost, args: Record<string, unknown>): 
 
   const store = ensureTaskStore(host);
   const task = store.get(taskId.trim());
-  if (!task) return new ToolResult({ content: `Task #${taskId} not found` });
+  if (!task) return ToolResult.error(`Task #${taskId} not found`);
 
   const lines: string[] = [`Task #${task.id}: ${task.subject}`, `Status: ${task.status}`];
   if (task.role) lines.push(`Role: ${task.role}`);
@@ -307,12 +310,13 @@ export function execTaskUpdate(host: TaskListHost, args: Record<string, unknown>
 
   const status = args["status"];
   if (status !== undefined) {
-    if (status !== "pending" && status !== "in_progress" && status !== "completed" && status !== "deleted") {
-      return new ToolResult({
-        content: "Error: 'status' must be one of pending, in_progress, completed, deleted.",
-      });
+    const normalizedStatus = normalizeTaskStatusInput(status);
+    if (normalizedStatus === null) {
+      return ToolResult.error(
+        "Error: 'status' must be one of pending, in_progress, completed, deleted.",
+      );
     }
-    fields.status = status;
+    fields.status = normalizedStatus;
   }
 
   const textFields: Array<[string, "subject" | "description" | "activeForm" | "owner" | "role"]> = [
@@ -328,7 +332,7 @@ export function execTaskUpdate(host: TaskListHost, args: Record<string, unknown>
     if (value !== undefined) fields[field] = value;
   }
   if (fields.role && !isAgentRoleId(fields.role.trim())) {
-    return new ToolResult({ content: "Error: 'role' must be queen, scout, worker, reviewer, guard, or merger." });
+    return ToolResult.error("Error: 'role' must be queen, scout, worker, reviewer, guard, or merger.");
   }
   if (fields.role) fields.role = fields.role.trim();
 
@@ -344,21 +348,33 @@ export function execTaskUpdate(host: TaskListHost, args: Record<string, unknown>
     const raw = args[key];
     if (raw === undefined) continue;
     if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string" || item.length === 0)) {
-      return new ToolResult({ content: `Error: '${key}' must be an array of task ids.` });
+      return ToolResult.error(`Error: '${key}' must be an array of task ids.`);
     }
     fields[field] = [...(raw as string[])];
   }
 
   const result = ensureTaskStore(host).update(id, fields);
   if (!result.task && !result.changedFields.includes("deleted")) {
-    return new ToolResult({ content: `Task #${id} not found` });
+    return ToolResult.error(`Task #${id} not found`);
   }
-  notifyTaskListeners(host);
+
+  const taskChanged = result.changedFields.length > 0;
+  if (taskChanged) notifyTaskListeners(host);
+
+  const taskStatus = fields.status ?? result.task?.status;
+  const resultMeta = { taskStatus, taskChanged };
+  if (!taskChanged) {
+    const detail = fields.status !== undefined ? `already ${fields.status}` : "unchanged";
+    return new ToolResult({ content: `Task #${id} ${detail}.`, metadata: resultMeta });
+  }
 
   let message = `Updated task #${id} ${result.changedFields.join(", ")}`;
+  if (result.changedFields.includes("status") && fields.status !== "deleted") {
+    message += ` -> ${fields.status}`;
+  }
   if (result.warnings.length > 0) message += ` (warning: ${result.warnings.join("; ")})`;
   if (result.saveError) message += `\nwarning: ${result.saveError}`;
-  return new ToolResult({ content: message });
+  return new ToolResult({ content: message, metadata: resultMeta });
 }
 
 export function execTaskResume(host: TaskListHost, args: Record<string, unknown>): ToolResult {
@@ -368,20 +384,20 @@ export function execTaskResume(host: TaskListHost, args: Record<string, unknown>
 
   const store = ensureTaskStore(host);
   const task = store.get(id);
-  if (!task) return new ToolResult({ content: `Task #${id} not found` });
+  if (!task) return ToolResult.error(`Task #${id} not found`);
 
   const hint = readResumeHint(task);
   if (!hint) {
-    return new ToolResult({
-      content: `Task #${id} has no interrupted run to resume. Use task_update to change its status, or spawn a new agent for it.`,
-    });
+    return ToolResult.error(
+      `Task #${id} has no interrupted run to resume. Use task_update to change its status, or spawn a new agent for it.`,
+    );
   }
 
   const begun = store.beginResume(id);
   if (!begun.ok || !begun.task) {
-    return new ToolResult({
-      content: `Cannot resume task #${id}: ${resumeRefusalText(begun.reason ?? "not_resumable")}`,
-    });
+    return ToolResult.error(
+      `Cannot resume task #${id}: ${resumeRefusalText(begun.reason ?? "not_resumable")}`,
+    );
   }
 
   const note = argOptionalString("task_resume", args, "note");
@@ -393,9 +409,9 @@ export function execTaskResume(host: TaskListHost, args: Record<string, unknown>
     // 回滚状态；尝试次数保留（防止调用方反复重试同一个不可用子代理）。
     store.update(id, { status: "pending" });
     notifyTaskListeners(host);
-    return new ToolResult({
-      content: `Failed to resume task #${id}: ${resumed.reason ?? "unknown"} (child ${hint.childId}). Re-dispatch it with spawn instead.`,
-    });
+    return ToolResult.error(
+      `Failed to resume task #${id}: ${resumed.reason ?? "unknown"} (child ${hint.childId}). Re-dispatch it with spawn instead.`,
+    );
   }
 
   notifyTaskListeners(host);
@@ -450,7 +466,9 @@ export function onChildSettled(host: TaskListHost, info: {
  * 顺序要求：必须在子日志加载完成（`commitPreparedChildren`）之后调用 ——
  * 阈值指标（toolCalls / tokensIn）由恢复出的子会话从日志重算。
  *
- * 天然幂等：对账后不再有 `in_progress` 任务，重复调用是空操作。
+ * 天然幂等：对账只补缺失的中断标记，重复调用是空操作。
+ * 按用户要求保留 `in_progress` 状态（面板继续转圈），但必须让模型知道
+ * 旧执行体已经全部终止。
  */
 export function reconcileTaskListAfterRestore(host: TaskListHost, opts: { fork?: boolean } = {}): { warnings: string[]; notice?: string } {
   const warnings: string[] = [];
@@ -495,7 +513,12 @@ export function reconcileTaskListAfterRestore(host: TaskListHost, opts: { fork?:
   for (const task of tasks) {
     if (task.status !== "in_progress") continue;
     const agentId = typeof task.metadata["agentId"] === "string" ? (task.metadata["agentId"] as string) : undefined;
-    if (!agentId) continue;
+    if (!agentId) {
+      lines.push(
+        `#${task.id} ${task.subject} — no child owner; re-dispatch with spawn or update its status`,
+      );
+      continue;
+    }
 
     const signal = signals.get(agentId);
     const failure = failures.get(agentId);
@@ -549,14 +572,14 @@ export function reconcileTaskListAfterRestore(host: TaskListHost, opts: { fork?:
   if (changed.length === 0) return { warnings };
   notifyTaskListeners(host);
 
-  warnings.push(`重启对账：${changed.length} 个进行中的任务已降级为 pending（子代理已全部终止）`);
+  warnings.push(`重启对账：${changed.length} 个进行中的任务已保留 in_progress 并标记中断（子代理已全部终止）`);
   for (const line of lines) warnings.push(`  ${line}`);
 
   const notice = [
     "<task-reconciliation>",
-    "This session was restarted, so every sub-agent from the previous run is terminated. The tasks below were in progress and have been returned to `pending`:",
+    "This session was restarted, so every sub-agent from the previous run is terminated. The tasks below were in progress; their status is kept as `in_progress` so the board keeps showing them, but no executor is alive:",
     ...lines.map((line) => `- ${line}`),
-    "For each task, either call `task_resume` to continue the interrupted run from its own context, or re-dispatch it with `spawn` using a NEW agent id (re-dispatching clears the stale resume hint). Do not mention this message to the user unless they ask about the restart.",
+    "For each task, call `task_resume` to continue the interrupted run from its own context. If it cannot be resumed, re-dispatch it with `spawn` using a NEW agent id, or update its status manually. Treat `in_progress` here as interrupted until you do. Do not mention this message to the user unless they ask about the restart.",
     "</task-reconciliation>",
   ].join("\n");
 

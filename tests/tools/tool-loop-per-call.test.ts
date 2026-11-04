@@ -4,7 +4,7 @@ import { asyncRunToolLoop } from "../../src/agents/tool-loop/run.js";
 import { createEphemeralLogState } from "../../src/context/ephemeral-log.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
 import { BaseProvider } from "../../src/providers/base.js";
-import { ProviderResponse, Usage } from "../../src/providers/response.js";
+import { ProviderResponse, ToolResult, Usage } from "../../src/providers/response.js";
 import type { ToolCall, ToolDef } from "../../src/providers/types.js";
 
 const WRITE_PLAN_TOOL = {
@@ -102,6 +102,60 @@ describe("tool-loop per-call lifecycle", () => {
     const toolResult = runtime.entries.find((entry) => entry.type === "tool_result");
     expect((toolResult?.content as { content?: string } | undefined)?.content).toContain("Failed to parse");
     expect(result.text).toBe("done");
+  });
+
+  it("uses the structured ToolResult.isError flag instead of the content prefix", async () => {
+    const runtime = createEphemeralLogState([
+      { role: "system", content: "prompt" },
+      { role: "user", content: "hi" },
+    ]);
+
+    class RejectProvider extends BaseProvider {
+      private _calls = 0;
+
+      async sendMessage(
+        _messages: any[],
+        _tools?: any[],
+        options?: {
+          onToolCallPartial?: (callId: string, name: string, rawArguments: string) => void;
+          onToolCallClosed?: (call: ToolCall) => void;
+        },
+      ): Promise<ProviderResponse> {
+        this._calls += 1;
+        if (this._calls === 1) {
+          options?.onToolCallPartial?.("reject-1", "reject_tool", "{}");
+          options?.onToolCallClosed?.({
+            id: "reject-1",
+            name: "reject_tool",
+            rawArguments: "{}",
+            arguments: {},
+            parseError: null,
+          });
+          return new ProviderResponse({ usage: new Usage(1, 1) });
+        }
+        return new ProviderResponse({ text: "done", usage: new Usage(1, 1) });
+      }
+    }
+
+    await asyncRunToolLoop({
+      provider: new RejectProvider(),
+      getMessages: runtime.getMessages,
+      appendEntry: runtime.appendEntry,
+      allocId: runtime.allocId,
+      turnIndex: 0,
+      toolExecutors: {
+        reject_tool: async () => ToolResult.error("Error: rejected"),
+      },
+      maxRounds: 2,
+      onToolCallPartial: () => {},
+      updateEntry: createUpdateEntry(runtime.entries),
+    });
+
+    const toolResult = runtime.entries.find((entry) => entry.type === "tool_result");
+    expect(toolResult?.meta["isError"]).toBe(true);
+    expect((toolResult?.content as { content?: string } | undefined)?.content).toBe("Error: rejected");
+    const toolCall = runtime.entries.find((entry) => entry.type === "tool_call");
+    expect(toolCall?.meta["toolExecState"]).toBe("failed");
   });
 
   it("continues to the next round when streamed tool calls are missing from the provider final response", async () => {

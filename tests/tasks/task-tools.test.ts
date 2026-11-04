@@ -200,6 +200,16 @@ describe("task tool drift guards", () => {
     }
   });
 
+  it("normalizes task_update aliases and marks no-op updates in the display row", async () => {
+    const { getToolProfile } = await import("../../external/opentui/presentation/tool-profiles.js");
+    const profile = getToolProfile("task_update");
+    expect(profile.text({ task_id: "1", status: "in_process" })).toBe("#1 -> in_progress");
+    expect(profile.text({ task_id: "1", status: "In Progress" })).toBe("#1 -> in_progress");
+    expect(profile.text({ task_id: "1", status: "weird" })).toBe("#1 -> weird");
+    expect(profile.suffix?.({ taskChanged: false })).toBe("(no-op)");
+    expect(profile.suffix?.({ taskChanged: true })).toBe("");
+  });
+
   it("keeps the capability split: children get the list tools but no control tools", () => {
     expect(ROOT_SESSION_CAPABILITIES.includeTaskTools).toBe(true);
     expect(ROOT_SESSION_CAPABILITIES.includeTaskControl).toBe(true);

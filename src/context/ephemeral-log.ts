@@ -201,7 +201,8 @@ export function createEphemeralLogState(
           toolSummary: String(msg["tool_summary"] ?? msg["tool_name"] ?? ""),
         },
         {
-          isError: content.startsWith("ERROR:"),
+          // 历史 API 消息没有结构化标志，这里是唯一的导入边界解码。
+          isError: content.startsWith("ERROR:") || content.startsWith("Error:"),
           contextId: trackContextId(msg["_context_id"]),
         },
       ));

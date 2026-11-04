@@ -88,10 +88,10 @@ export const TASK_LIST_TOOL: ToolDef = {
     "One line per task: `#id [status] [role] subject`, plus the owner and any unfinished blockers.\n" +
     "Read it together with `task_get`, which returns the full description and dependency edges.\n\n" +
     "## Reading the status\n" +
-    "- `pending` — not started. A `pending` task tagged `interrupted` had a run cut short (crash, user stop,\n" +
-    "  or a failed resume); `task_get` on it returns a `resumeHint` explaining why and whether it can be\n" +
-    "  continued with `task_resume`.\n" +
-    "- `in_progress` — something is working on it right now (you, or a sub-agent in `owner`).\n" +
+    "- `pending` — not started.\n" +
+    "- `in_progress` — something is working on it right now (you, or a sub-agent in `owner`). After a\n" +
+    "  restart a task may stay `in_progress` with an `interrupted` marker and a `resumeHint`; treat it as\n" +
+    "  interrupted rather than live, and use `task_get` to decide whether to resume or re-dispatch.\n" +
     "- `completed` — done. Prefer working on the lowest id first; earlier tasks set up context.\n\n" +
     "This is the **session-local task list**, not runtime agent status — use `check_status` for sub-agent and\n" +
     "background-shell state. When a child ends, unfinished local tasks are returned to Queen; Queen decides whether to add root tasks and re-dispatch.",
@@ -157,9 +157,9 @@ export const TASK_UPDATE_TOOL: ToolDef = {
     "Edges are maintained in both directions. Queen owns cross-role/root dependencies; a child may only connect its own local steps. Self-dependencies, references to missing tasks and\n" +
     "mutual blocks are reported as warnings in the result — resolve them rather than ignoring them.\n\n" +
     "## Resume bookkeeping\n" +
-    "A task left `pending` with `interrupted` and a `resumeHint` after a restart can be continued with\n" +
-    "`task_resume`, or re-dispatched with `spawn` using a **new** agent id. Re-dispatching means\n" +
-    "setting `metadata.agentId` to the new id, which invalidates the old hint.\n\n" +
+    "A task left `in_progress` with an `interrupted` marker and a `resumeHint` after a restart can be\n" +
+    "continued with `task_resume`, or re-dispatched with `spawn` using a **new** agent id. Re-dispatching\n" +
+    "means setting `metadata.agentId` to the new id, which invalidates the old hint.\n\n" +
     "## Staleness\n" +
     "Read the task with `task_get` before updating it, so you are not acting on a stale view.",
   parameters: {
@@ -226,7 +226,7 @@ export const TASK_RESUME_TOOL: ToolDef = {
   description:
     "Continue a task whose sub-agent was interrupted, instead of re-dispatching it from scratch.\n\n" +
     "## When to use\n" +
-    "- After a restart, when `task_list` shows a `pending` task carrying `resumeHint.resumable: true`\n" +
+    "- After a restart, when `task_list` shows an `in_progress` task carrying `resumeHint.resumable: true`\n" +
     "- The interrupted sub-agent already did real work; its conversation is on disk, so continuing it\n" +
     "  replays that context instead of redoing the work\n" +
     "- The task's `resumeHint.reason` is `too_early`, `failed`, `user_stopped`, or `superseded`:\n" +

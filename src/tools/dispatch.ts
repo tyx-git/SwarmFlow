@@ -543,7 +543,7 @@ export async function executeTool(
 ): Promise<ToolResult> {
   const fn = createDispatch(ctx)[name];
   if (!fn) {
-    return new ToolResult({ content: `ERROR: Unknown tool '${name}'` });
+    return ToolResult.error(`ERROR: Unknown tool '${name}'`);
   }
   try {
     const raw = await fn(args, { signal: ctx?.signal });
@@ -552,8 +552,8 @@ export async function executeTool(
     }
     return new ToolResult({ content: raw });
   } catch (e) {
-    return new ToolResult({
-      content: `ERROR executing ${name}: ${e instanceof Error ? e.message : String(e)}`,
-    });
+    return ToolResult.error(
+      `ERROR: executing ${name}: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }

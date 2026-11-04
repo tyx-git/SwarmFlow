@@ -1,6 +1,25 @@
 /** 任务字段的容错解析与载入修复：磁盘记录可能来自旧版本、被手改或写中断。 */
 
-import type { Task } from "./types.js";
+import type { Task, TaskStatus } from "./types.js";
+
+// ------------------------------------------------------------------
+// 状态归一化
+// ------------------------------------------------------------------
+
+/**
+ * 把模型输入/磁盘记录里的状态拼写折叠到规范值。
+ * `in_process`、`in-progress`、`In Progress`、`inprogress` 都视作 `in_progress`；
+ * 未知值返回 null，由调用方决定报错或回退。
+ */
+export function normalizeTaskStatusInput(value: unknown): TaskStatus | "deleted" | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (key === "in_process" || key === "inprogress") return "in_progress";
+  if (key === "pending" || key === "in_progress" || key === "completed" || key === "deleted") {
+    return key;
+  }
+  return null;
+}
 
 // ------------------------------------------------------------------
 // 载入修复
@@ -45,7 +64,7 @@ export function normalizeTask(raw: unknown): Task | undefined {
   if (!id || !subject) return undefined;
 
   const now = Date.now();
-  const status = record["status"];
+  const status = normalizeTaskStatusInput(record["status"]);
   const normalized: Task = {
     id,
     subject,

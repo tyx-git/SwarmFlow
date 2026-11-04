@@ -113,21 +113,17 @@ export function execSkill(host: SkillsHost,
 ): ToolResult {
   const name = ((args["name"] as string) ?? "").replace(/\uFEFF/g, "").trim();
   if (!name) {
-    return new ToolResult({ content: "Error: 'name' parameter is required." });
+    return ToolResult.error("Error: 'name' parameter is required.");
   }
 
   const skill = host._skills.get(name);
   if (!skill) {
     const available = [...host._skills.keys()].join(", ");
-    return new ToolResult({
-      content: `Error: Unknown skill "${name}". Available: ${available || "(none)"}`,
-    });
+    return ToolResult.error(`Error: Unknown skill "${name}". Available: ${available || "(none)"}`);
   }
 
   if (skill.disableModelInvocation) {
-    return new ToolResult({
-      content: `Error: Skill "${name}" can only be invoked by the user via /${name}.`,
-    });
+    return ToolResult.error(`Error: Skill "${name}" can only be invoked by the user via /${name}.`);
   }
 
   const skillArgs = ((args["arguments"] as string) ?? "").trim();

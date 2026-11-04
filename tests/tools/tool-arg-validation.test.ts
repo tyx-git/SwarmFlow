@@ -117,8 +117,10 @@ describe("Phase 2 tool validation and grep limits", () => {
     // path. Bare-string→array repair is covered in arg-repair.test.ts.
     const killBad = Session.prototype["_execKillAgent"].call(fake, { ids: 5 });
     expect(killBad.content).toContain("invalid arguments for kill_agent");
+    expect(killBad.isError).toBe(true);
 
     const askBad = Session.prototype["_execAsk"].call(fake, { questions: "bad" });
     expect(askBad.content).toContain("Error: 'questions' must be an array of 1-4 items.");
+    expect(askBad.isError).toBe(true);
   });
 });

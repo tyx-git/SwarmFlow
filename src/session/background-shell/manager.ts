@@ -342,11 +342,10 @@ export class BackgroundShellManager {
     let archivedLogPath: string | null = null;
     if (existing) {
       if (existing.status === "running") {
-        return new ToolResult({
-          content:
-            `Error: shell '${shellId}' is already tracked and running. ` +
-            `Kill it first with kill_shell, or pass a different id.`,
-        });
+        return ToolResult.error(
+          `Error: shell '${shellId}' is already tracked and running. ` +
+          `Kill it first with kill_shell, or pass a different id.`,
+        );
       }
       archivedLogPath = this._archiveDeadShellLog(existing);
       this._activeShells.delete(shellId);
@@ -371,7 +370,7 @@ export class BackgroundShellManager {
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (e) {
-      return new ToolResult({ content: `Error: failed to start background shell: ${e}` });
+      return ToolResult.error(`Error: failed to start background shell: ${e}`);
     }
 
     const entry: BackgroundShellEntry = {
@@ -636,9 +635,7 @@ export class BackgroundShellManager {
         }).safePath!;
       } catch (inner) {
         if (inner instanceof SafePathError) {
-          return new ToolResult({
-            content: `Error: invalid arguments for ${toolName}: cwd must stay within the project root or SESSION_ARTIFACTS.`,
-          });
+          return ToolResult.error(`Error: invalid arguments for ${toolName}: cwd must stay within the project root or SESSION_ARTIFACTS.`);
         }
         throw inner;
       }

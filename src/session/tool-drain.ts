@@ -227,18 +227,17 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
           // 这里保持 toolExecState 为 "running"——_completeMissingToolResultsFromLog
           // 靠它区分“跑了但被中断”（可能有部分副作用）和“从未执行”。
           if (signal?.aborted) return { kind: "interrupted" };
-          if (typeof result === "string") {
-            resultContent = result;
-          } else if (result instanceof ToolResult) {
-            resultContent = result.content;
-            toolMetadata = { ...result.metadata };
-            if (result.contentBlocks) {
-              toolMetadata._contentBlocks = result.contentBlocks;
-            }
-          } else {
-            resultContent = String(result);
+          const resolved = typeof result === "string"
+            ? new ToolResult({ content: result })
+            : result instanceof ToolResult
+              ? result
+              : new ToolResult({ content: String(result) });
+          resultContent = resolved.content;
+          toolMetadata = { ...resolved.metadata };
+          if (resolved.contentBlocks) {
+            toolMetadata._contentBlocks = resolved.contentBlocks;
           }
-          isError = resultContent.startsWith("ERROR:");
+          isError = resolved.isError;
         }
       } catch (e) {
         if (signal?.aborted) {

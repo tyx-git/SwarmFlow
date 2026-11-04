@@ -112,7 +112,7 @@ describe("TaskStore CRUD", () => {
 });
 
 describe("TaskStore reconcile support", () => {
-  it("downgrades every in_progress task and attaches a hint by agent id", () => {
+  it("keeps every in_progress task and attaches a hint by agent id", () => {
     const store = TaskStore.memory();
     const dispatched = store.create("Dispatched", "d").task;
     const own = store.create("Own work", "d").task;
@@ -125,16 +125,21 @@ describe("TaskStore reconcile support", () => {
 
     expect(result.changed.sort()).toEqual([dispatched.id, own.id].sort());
     const upgraded = store.get(dispatched.id);
-    expect(upgraded?.status).toBe("pending");
+    expect(upgraded?.status).toBe("in_progress");
     expect(upgraded?.metadata["interruptedAt"]).toBe(1_700_000_000_000);
     expect(upgraded?.metadata["resumeHint"]).toEqual(hint());
     expect(upgraded?.metadata["agentId"]).toBe("scout-1");
 
     const ownTask = store.get(own.id);
-    expect(ownTask?.status).toBe("pending");
+    expect(ownTask?.status).toBe("in_progress");
     expect(ownTask?.metadata["interruptedAt"]).toBe(1_700_000_000_000);
     expect(ownTask?.metadata["resumeHint"]).toBeUndefined();
     expect(store.get(done.id)?.status).toBe("completed");
+
+    // 重复对账只补缺失字段：时间戳与 hint 保持先到先得。
+    const repeated = store.markInterrupted({ "scout-1": hint() }, 1_700_000_999_999);
+    expect(repeated.changed).toEqual([]);
+    expect(store.get(dispatched.id)?.metadata["interruptedAt"]).toBe(1_700_000_000_000);
   });
 
   it("does not touch tasks that are not in progress", () => {
@@ -296,6 +301,12 @@ describe("normalizeTask", () => {
     expect(normalizeTask(null)).toBeUndefined();
     expect(normalizeTask("nope")).toBeUndefined();
   });
+
+  it("normalizes in_process spellings to in_progress on load", () => {
+    expect(normalizeTask({ id: "1", subject: "S", status: "in_process" })?.status).toBe("in_progress");
+    expect(normalizeTask({ id: "2", subject: "S", status: "In Progress" })?.status).toBe("in_progress");
+    expect(normalizeTask({ id: "3", subject: "S", status: "bogus" })?.status).toBe("pending");
+  });
 });
 
 describe("isWorthResuming", () => {
@@ -317,16 +328,16 @@ describe("formatTaskSnapshot", () => {
     const second = store.create("Running", "d").task;
     const third = store.create("Waiting", "d").task;
     store.update(first.id, { status: "completed" });
-    // third 由子代理推进 → 重启对账后降级为 pending 并带续跑提示
+    // third 由子代理推进 → 重启对账后保留 in_progress 并带续跑提示
     store.update(third.id, { status: "in_progress", metadata: { agentId: "scout-1" } });
     store.markInterrupted({ "scout-1": hint() });
-    // second 是本轮新开始的工作（对账之后），应保持 in_progress
+    // second 是本轮新开始的工作（对账之后），同样保持 in_progress
     store.update(second.id, { status: "in_progress", metadata: { agentId: "worker-1" } });
 
     const snapshot = formatTaskSnapshot(store.list());
     expect(snapshot.startsWith("[Current Tasks]")).toBe(true);
     expect(snapshot).toContain(`- #${second.id} [in_progress] Running (owner: worker-1)`);
-    expect(snapshot).toContain(`- #${third.id} [pending] Waiting (owner: scout-1) (interrupted — resumable via task_resume)`);
+    expect(snapshot).toContain(`- #${third.id} [in_progress] Waiting (owner: scout-1) (interrupted — resumable via task_resume)`);
     expect(snapshot).toContain(`- #${first.id} [completed] Finished`);
     // 未完成项在已完成项之前
     expect(snapshot.indexOf("Running")).toBeLessThan(snapshot.indexOf("Finished"));
@@ -362,6 +373,16 @@ describe("formatTaskSnapshot", () => {
     store.update(task.id, { status: "in_progress", metadata: { agentId: "scout-9" } });
     store.markInterrupted({ "scout-9": hint({ childId: "scout-9", resumable: false, reason: "too_early" }) });
     expect(formatTaskSnapshot(store.list())).toContain("(interrupted — needs re-dispatch)");
+  });
+
+  it("marks an interrupted task without a hint as having no live executor", () => {
+    const store = TaskStore.memory();
+    const task = store.create("Own work", "d").task;
+    store.update(task.id, { status: "in_progress" });
+    store.markInterrupted({});
+    expect(formatTaskSnapshot(store.list())).toContain(
+      `- #${task.id} [in_progress] Own work (interrupted — no live executor)`,
+    );
   });
 });
 

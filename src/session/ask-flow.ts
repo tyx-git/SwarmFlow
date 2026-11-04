@@ -246,31 +246,23 @@ export function execAsk(host: AskHost, args: Record<string, unknown>): ToolResul
   // 校验参数
   const questions = args["questions"];
   if (!Array.isArray(questions) || questions.length === 0 || questions.length > 4) {
-    return new ToolResult({
-      content: "Error: 'questions' must be an array of 1-4 items.",
-    });
+    return ToolResult.error("Error: 'questions' must be an array of 1-4 items.");
   }
   const parsedQuestions: AgentQuestionItem[] = [];
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i] as Record<string, unknown>;
     if (!q || typeof q["question"] !== "string") {
-      return new ToolResult({
-        content: `Error: questions[${i}].question must be a string.`,
-      });
+      return ToolResult.error(`Error: questions[${i}].question must be a string.`);
     }
     const opts = q["options"];
     if (!Array.isArray(opts) || opts.length === 0 || opts.length > 4) {
-      return new ToolResult({
-        content: `Error: questions[${i}].options must be an array of 1-4 items.`,
-      });
+      return ToolResult.error(`Error: questions[${i}].options must be an array of 1-4 items.`);
     }
     const parsedOpts = [];
     for (let j = 0; j < opts.length; j++) {
       const o = opts[j] as Record<string, unknown>;
       if (!o || typeof o["label"] !== "string") {
-        return new ToolResult({
-          content: `Error: questions[${i}].options[${j}].label must be a string.`,
-        });
+        return ToolResult.error(`Error: questions[${i}].options[${j}].label must be a string.`);
       }
       parsedOpts.push({
         label: o["label"] as string,

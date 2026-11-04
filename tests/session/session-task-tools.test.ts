@@ -13,13 +13,32 @@ afterEach(() => {
 });
 
 /** 通过会话私有的执行器字典调用任务工具（与真实工具调用走同一条路径）。 */
-async function exec(name: string, args: Record<string, unknown>): Promise<string> {
+async function execResult(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ content: string; isError: boolean; metadata: Record<string, unknown> }> {
   const executors = harness!.internals._toolExecutors as Record<
     string,
-    (a: Record<string, unknown>) => Promise<{ content?: unknown }> | { content?: unknown }
+    (a: Record<string, unknown>) => Promise<{
+      content?: unknown;
+      isError?: boolean;
+      metadata?: Record<string, unknown>;
+    }> | {
+      content?: unknown;
+      isError?: boolean;
+      metadata?: Record<string, unknown>;
+    }
   >;
   const result = await executors[name](args);
-  return String(result.content ?? "");
+  return {
+    content: String(result.content ?? ""),
+    isError: result.isError === true,
+    metadata: result.metadata ?? {},
+  };
+}
+
+async function exec(name: string, args: Record<string, unknown>): Promise<string> {
+  return (await execResult(name, args)).content;
 }
 
 describe("session task wiring", () => {
@@ -62,8 +81,9 @@ describe("session task wiring", () => {
     expect(got).toContain("Task #1: Wire the task layer");
     expect(got).toContain("Description: Make the task tools callable.");
 
-    const updated = await exec("task_update", { task_id: "1", status: "in_progress" });
-    expect(updated).toContain("Updated task #1 status");
+    const updated = await execResult("task_update", { task_id: "1", status: "in_progress" });
+    expect(updated.content).toContain("Updated task #1 status -> in_progress");
+    expect(updated.isError).toBe(false);
     expect(harness.session.getTaskState()[0].status).toBe("in_progress");
 
     // 依赖边双向维护 + 告警透出
@@ -79,14 +99,63 @@ describe("session task wiring", () => {
 
   it("reports argument errors without touching the store", async () => {
     harness = makeScriptedSession();
-    expect(await exec("task_create", { subject: "no description" })).toContain("Error:");
+    const badCreate = await execResult("task_create", { subject: "no description" });
+    expect(badCreate.content).toContain("Error:");
+    expect(badCreate.isError).toBe(true);
+
     expect(await exec("task_get", { task_id: "9" })).toContain("Task #9 not found");
-    expect(await exec("task_update", { task_id: "1", status: "bogus" })).toContain("Error: 'status' must be one of");
+
+    const badStatus = await execResult("task_update", { task_id: "1", status: "bogus" });
+    expect(badStatus.content).toContain("Error: 'status' must be one of");
+    expect(badStatus.isError).toBe(true);
     expect(harness.session.getTaskState()).toEqual([]);
 
     await exec("task_create", { subject: "A", description: "d" });
     const noHint = await exec("task_resume", { task_id: "1" });
     expect(noHint).toContain("has no interrupted run to resume");
+  });
+
+  it("accepts in_process spellings and stores canonical in_progress", async () => {
+    harness = makeScriptedSession();
+    await exec("task_create", { subject: "Alias work", description: "d" });
+
+    const alias = await execResult("task_update", { task_id: "1", status: "in_process" });
+    expect(alias.content).toContain("Updated task #1 status -> in_progress");
+    expect(alias.isError).toBe(false);
+    expect(alias.metadata["taskStatus"]).toBe("in_progress");
+    expect(harness.session.getTaskState()[0].status).toBe("in_progress");
+
+    const artifactsDir = harness.internals._getArtifactsDirIfAvailable() as string;
+    const onDisk = JSON.parse(readFileSync(join(artifactsDir, "tasks.json"), "utf-8")) as {
+      tasks: Array<{ status: string }>;
+    };
+    expect(onDisk.tasks[0]?.status).toBe("in_progress");
+
+    const noop = await execResult("task_update", { task_id: "1", status: "In Progress" });
+    expect(noop.content).toContain("Task #1 already in_progress.");
+    expect(noop.isError).toBe(false);
+    expect(noop.metadata).toMatchObject({ taskStatus: "in_progress", taskChanged: false });
+  });
+
+  it("does not notify or bump updatedAt when the status is unchanged", async () => {
+    harness = makeScriptedSession();
+    await exec("task_create", { subject: "Idempotent", description: "d" });
+    await exec("task_update", { task_id: "1", status: "in_progress" });
+
+    const before = harness.session.getTaskState()[0]!.updatedAt;
+    let notifications = 0;
+    const unsubscribe = harness.session.subscribeTaskState(() => {
+      notifications += 1;
+    });
+    try {
+      const again = await execResult("task_update", { task_id: "1", status: "in_progress" });
+      expect(again.content).toContain("Task #1 already in_progress.");
+      expect(again.metadata["taskChanged"]).toBe(false);
+      expect(notifications).toBe(0);
+      expect(harness.session.getTaskState()[0]!.updatedAt).toBe(before);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("notifies subscribers on every mutation", async () => {
@@ -104,7 +173,7 @@ describe("session task wiring", () => {
 });
 
 describe("session restart reconciliation", () => {
-  it("downgrades in-progress tasks and records an interrupted marker", async () => {
+  it("keeps in-progress tasks and records an interrupted marker", async () => {
     harness = makeScriptedSession();
     await exec("task_create", { subject: "Dispatched work", description: "d", metadata: { agentId: "scout-1" } });
     await exec("task_update", { task_id: "1", status: "in_progress" });
@@ -114,16 +183,22 @@ describe("session restart reconciliation", () => {
     const result = harness.session.reconcileTaskListAfterRestore();
 
     const tasks = harness.session.getTaskState();
-    expect(tasks.map((task) => task.status)).toEqual(["pending", "pending"]);
+    expect(tasks.map((task) => task.status)).toEqual(["in_progress", "in_progress"]);
     expect(typeof tasks[0].metadata["interruptedAt"]).toBe("number");
     // 该子代理并没有恢复出来的会话 → 判定为不可续，并给出原因
     expect(tasks[0].metadata["resumeHint"]).toMatchObject({ childId: "scout-1", resumable: false, reason: "log_unavailable" });
-    // 父自己推进的任务只降级，不给续跑建议
+    // 父自己推进的任务保留状态，只打中断标记
+    expect(tasks[1].metadata["interruptedAt"]).toBeTypeOf("number");
     expect(tasks[1].metadata["resumeHint"]).toBeUndefined();
 
-    expect(result.warnings.join("\n")).toContain("重启对账");
+    expect(result.warnings.join("\n")).toContain("保留 in_progress");
     expect(result.notice).toContain("<task-reconciliation>");
     expect(result.notice).toContain("#1 Dispatched work");
+    expect(result.notice).toContain("#2 Own work");
+
+    const listed = await exec("task_list", {});
+    expect(listed).toContain("#1 [in_progress] Dispatched work");
+    expect(listed).toContain("[interrupted");
   });
 
   it("is a no-op when nothing is in progress and on repeated calls", async () => {

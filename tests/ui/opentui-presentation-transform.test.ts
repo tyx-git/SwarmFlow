@@ -30,6 +30,37 @@ function turnEnd(id: string, status: string, turnIndex = 1): ReconciledConversat
 }
 
 describe("OpenTUI presentation transform", () => {
+  it("renders a failed task_update as an error row with its message", () => {
+    const result = presentationTransform([
+      reconciled("call", {
+        id: "call",
+        kind: "tool_call",
+        text: "task_update",
+        meta: {
+          toolCallId: "call-1",
+          toolName: "task_update",
+          toolArgs: { task_id: "1", status: "in_process" },
+          toolExecState: "failed",
+        },
+      }),
+      reconciled("result", {
+        id: "result",
+        kind: "tool_result",
+        text: "Error: 'status' must be one of pending, in_progress, completed, deleted.",
+        meta: {
+          toolCallId: "call-1",
+          toolName: "task_update",
+          isError: true,
+        },
+      }),
+    ], [], false, null);
+
+    const operation = result.find((entry) => entry.kind === "tool_operation")!;
+    expect(operation.state).toBe("error");
+    expect(operation.toolText).toBe("#1 -> in_progress");
+    expect(operation.toolInlineResult?.text).toContain("Error: 'status' must be one of");
+  });
+
   it("strips a handoff and emits one tips entry at the completed turn boundary", () => {
     const result = presentationTransform([
       reconciled("asst", {

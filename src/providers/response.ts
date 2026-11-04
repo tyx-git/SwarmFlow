@@ -77,9 +77,25 @@ export class ProviderResponse {
   }
 }
 
+/** 工具执行结果的可选字段。 */
+export interface ToolResultOptions {
+  content: string;
+  /**
+   * 显式错误标志；省略时仅对 legacy `ERROR:` 前缀做一次兼容识别。
+   * 运行期错误状态以该字段为准，内容前缀只作文案。
+   */
+  isError?: boolean;
+  actionHint?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  contentBlocks?: Array<Record<string, unknown>>;
+}
+
 /** 带可选元数据的扩展工具执行结果。 */
 export class ToolResult {
   content: string;
+  /** 运行期唯一的错误信号；前缀不再参与分类。 */
+  readonly isError: boolean;
   actionHint?: string;
   tags: string[];
   metadata: Record<string, unknown>;
@@ -91,18 +107,21 @@ export class ToolResult {
    */
   contentBlocks?: Array<Record<string, unknown>>;
 
-  constructor(opts: {
-    content: string;
-    actionHint?: string;
-    tags?: string[];
-    metadata?: Record<string, unknown>;
-    contentBlocks?: Array<Record<string, unknown>>;
-  }) {
+  constructor(opts: ToolResultOptions) {
     this.content = opts.content;
+    this.isError = opts.isError ?? opts.content.startsWith("ERROR:");
     this.actionHint = opts.actionHint;
     this.tags = opts.tags ?? [];
     this.metadata = opts.metadata ?? {};
     this.contentBlocks = opts.contentBlocks;
+  }
+
+  /** 显式错误结果：新代码与小写 `Error:` 文案统一走这里。 */
+  static error(
+    content: string,
+    opts: Omit<ToolResultOptions, "content" | "isError"> = {},
+  ): ToolResult {
+    return new ToolResult({ ...opts, content, isError: true });
   }
 
   toString(): string {

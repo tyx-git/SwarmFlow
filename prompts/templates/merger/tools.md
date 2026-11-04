@@ -59,6 +59,8 @@ Block until a tracked background shell exits or a message arrives; returns immed
 
 `task_create(subject, description, active_form?, metadata?)` · `task_list()` · `task_get(task_id)` · `task_update(task_id, status?, owner?, metadata?, add_blocks?, add_blocked_by?, …)`
 
-Track only this synthesis's open conflicts and missing evidence. This list is session-local and memory-only. Queen owns the root DAG; never edit or recreate its tasks. Leave unresolved items open and report them to Queen rather than dispatching work or resolving them by preference.
+Track only this synthesis's open conflicts and missing evidence. Use only the canonical statuses `pending`, `in_progress`, `completed`, and `deleted`, and do not retry an update to the status the task already has. This list is session-local and memory-only. Queen owns the root DAG; never edit or recreate its tasks. Leave unresolved items open and report them to Queen rather than dispatching work or resolving them by preference.
 
 Preserve the source role and evidence for each conclusion, distinguish agreement from conflict, and mark a missing dependency result as missing evidence — never as success.
+
+MCP tools are disabled for this role. Do not assume an external tool is available.

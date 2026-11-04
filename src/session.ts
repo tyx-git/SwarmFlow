@@ -3572,7 +3572,8 @@ export class Session implements SessionLike {
    * 顺序要求：必须在子日志加载完成（`commitPreparedChildren`）之后调用 ——
    * 阈值指标（toolCalls / tokensIn）由恢复出的子会话从日志重算。
    *
-   * 天然幂等：对账后不再有 `in_progress` 任务，重复调用是空操作。
+   * 天然幂等：对账只补缺失的中断标记；`in_progress` 按用户要求保留，
+   * 重复调用不会改写状态或时间戳。
    */
   reconcileTaskListAfterRestore(opts: { fork?: boolean } = {}): { warnings: string[]; notice?: string } {
     return reconcileTaskListAfterRestore(this, opts);
@@ -5039,10 +5040,10 @@ export class Session implements SessionLike {
     const templatePath = (templatePathArg ?? "").trim();
 
     if (!template && !templatePath) {
-      return new ToolResult({ content: "Error: must specify either 'template' or 'template_path'." });
+      return ToolResult.error("Error: must specify either 'template' or 'template_path'.");
     }
     if (template && templatePath) {
-      return new ToolResult({ content: "Error: cannot specify both 'template' and 'template_path'." });
+      return ToolResult.error("Error: cannot specify both 'template' and 'template_path'.");
     }
 
     const spec: Record<string, unknown> = { id: idArg.trim(), task: taskArg.trim(), mode: modeArg.trim() };
@@ -5077,7 +5078,7 @@ export class Session implements SessionLike {
     const to = ((args["to"] as string) ?? "").trim();
     const content = ((args["content"] as string) ?? "").trim();
     if (!to || !content) {
-      return new ToolResult({ content: "Error: 'to' and 'content' are required." });
+      return ToolResult.error("Error: 'to' and 'content' are required.");
     }
 
     return this._childSessionManagerInstance.sendOrRevive(to, content);

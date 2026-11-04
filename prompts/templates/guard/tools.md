@@ -59,6 +59,8 @@ Block until a tracked background shell exits or a message arrives; returns immed
 
 `task_create(subject, description, active_form?, metadata?)` · `task_list()` · `task_get(task_id)` · `task_update(task_id, status?, owner?, metadata?, add_blocks?, add_blocked_by?, …)`
 
-Keep one item per trust boundary or recovery path you must verify. Mark it `completed` only with concrete evidence; leave missing checks open and report them in the handoff so Queen can assign Worker. This list is session-local and memory-only. Queen owns the root DAG; never edit or recreate its tasks. These bookkeeping tools do not authorize workspace changes or side effects.
+Keep one item per trust boundary or recovery path you must verify. Use only the canonical statuses `pending`, `in_progress`, `completed`, and `deleted`, and do not retry an update to the status the task already has. Mark it `completed` only with concrete evidence; leave missing checks open and report them in the handoff so Queen can assign Worker. This list is session-local and memory-only. Queen owns the root DAG; never edit or recreate its tasks. These bookkeeping tools do not authorize workspace changes or side effects.
 
 Report only findings with a reachable trigger and concrete impact. Separate confirmed risk, plausible risk, and missing evidence; do not reject a change on a vague hypothetical.
+
+MCP tools are disabled for this role. Do not assume an external tool is available.

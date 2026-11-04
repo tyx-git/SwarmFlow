@@ -251,10 +251,18 @@ describe("requiredStringList", () => {
 });
 
 describe("ToolResult-returning adapters", () => {
-  it("toolArgError builds the exact legacy message", () => {
+  it("toolArgError builds the canonical message and sets the error flag", () => {
     const result = toolArgError("read_file", "'path' must be a string.");
     expect(result).toBeInstanceOf(ToolResult);
     expect(result.content).toBe("Error: invalid arguments for read_file: 'path' must be a string.");
+    expect(result.isError).toBe(true);
+  });
+
+  it("decodes the legacy ERROR: prefix once in the ToolResult constructor", () => {
+    expect(new ToolResult({ content: "ERROR: legacy failure" }).isError).toBe(true);
+    expect(new ToolResult({ content: "Error: lower-case failure" }).isError).toBe(false);
+    expect(new ToolResult({ content: "ERROR: explicit success", isError: false }).isError).toBe(false);
+    expect(ToolResult.error("Error: explicit failure").isError).toBe(true);
   });
 
   it("argOptionalString mirrors optionalStringArg, including null semantics", () => {

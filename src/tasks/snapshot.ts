@@ -40,6 +40,8 @@ export function formatTaskSnapshot(tasks: readonly Task[]): string {
     const hint = readResumeHint(task);
     if (hint && task.status !== "completed") {
       line += hint.resumable ? " (interrupted — resumable via task_resume)" : " (interrupted — needs re-dispatch)";
+    } else if (typeof task.metadata["interruptedAt"] === "number" && task.status !== "completed") {
+      line += " (interrupted — no live executor)";
     }
     const childOpenTasks = task.metadata["childOpenTasks"];
     if (Array.isArray(childOpenTasks) && childOpenTasks.length > 0) {

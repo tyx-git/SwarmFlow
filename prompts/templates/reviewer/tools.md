@@ -59,6 +59,8 @@ Block until a tracked background shell exits or a message arrives; returns immed
 
 `task_create(subject, description, active_form?, metadata?)` · `task_list()` · `task_get(task_id)` · `task_update(task_id, status?, owner?, metadata?, add_blocks?, add_blocked_by?, …)`
 
-Keep one task per claim, file, or risk you intend to verify; mark it `completed` only with concrete evidence (exact file:line, supplied command output, or a failing check). Findings belong in the review report, not task text. The list is session-local and memory-only. Queen owns the root DAG; never edit or recreate its tasks. Leave unfinished checks open and state them in the handoff.
+Keep one task per claim, file, or risk you intend to verify; use only the canonical statuses `pending`, `in_progress`, `completed`, and `deleted`, and do not retry an update to the status the task already has. Mark it `completed` only with concrete evidence (exact file:line, supplied command output, or a failing check). Findings belong in the review report, not task text. The list is session-local and memory-only. Queen owns the root DAG; never edit or recreate its tasks. Leave unfinished checks open and state them in the handoff.
 
 Use `no_ignore` only when the review specifically requires ignored files; otherwise keep generated and vendored trees out of the evidence.
+
+MCP tools are disabled for this role. Do not assume an external tool is available.

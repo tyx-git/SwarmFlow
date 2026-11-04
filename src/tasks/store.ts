@@ -281,7 +281,7 @@ export class TaskStore {
       return { changedFields: ["deleted"], warnings, saveError: this._save() };
     }
 
-    if (fields.status !== undefined) {
+    if (fields.status !== undefined && task.status !== fields.status) {
       task.status = fields.status;
       changedFields.push("status");
     }
@@ -423,11 +423,11 @@ export class TaskStore {
   // -- 启动对账 -----------------------------------------------------
 
   /**
-   * 重启对账：把所有 `in_progress` 任务降级为 `pending` 并打上中断标记。
+   * 重启对账：保留 `in_progress` 状态，只补 `interruptedAt` 与 `resumeHint`。
    *
-   * 依据「重启后没有任何执行体是活的」这一不变量 —— 无论任务原本由父自己推进
-   * 还是由子代理推进，`in_progress` 在此时都是错误信号（面板会显示在跑，
-   * 但 `activeTaskIds` 已随进程清空）。
+   * 重启后没有活执行体，但用户要求面板继续显示进行中；因此状态不降级，
+   * 用 metadata 标记“本次中断”并给出续跑建议。重复对账只补缺失字段，
+   * 已存在的 `interruptedAt`/`resumeHint` 保持先到先得，保证幂等。
    *
    * `hints` 以 **子代理 id** 为键；命中时写入 `metadata.resumeHint`（建议，不是执行）。
    */
@@ -435,11 +435,22 @@ export class TaskStore {
     const changed: string[] = [];
     for (const task of this._tasks.values()) {
       if (task.status !== "in_progress") continue;
-      task.status = "pending";
-      const metadata: Record<string, unknown> = { ...task.metadata, interruptedAt: now };
+      const metadata: Record<string, unknown> = { ...task.metadata };
+      let dirty = false;
+
+      if (typeof metadata["interruptedAt"] !== "number") {
+        metadata["interruptedAt"] = now;
+        dirty = true;
+      }
+
       const agentId = asOptionalString(task.metadata["agentId"]);
       const hint = agentId ? hints[agentId] : undefined;
-      if (hint) metadata.resumeHint = { ...hint };
+      if (hint && !asResumeHint(metadata["resumeHint"])) {
+        metadata["resumeHint"] = { ...hint };
+        dirty = true;
+      }
+
+      if (!dirty) continue;
       task.metadata = metadata;
       task.updatedAt = now;
       changed.push(task.id);

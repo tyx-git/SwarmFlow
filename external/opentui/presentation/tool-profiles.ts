@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { normalizeTaskStatusInput } from "../../../src/tasks/normalize.js";
 import type { ToolCategory } from "./types.js";
 
 const CWD = process.cwd();
@@ -139,9 +140,11 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     displayName: "TaskUpdate",
     text: (args) => {
       const id = str(args.task_id);
-      const status = str(args.status);
+      const rawStatus = str(args.status);
+      const status = normalizeTaskStatusInput(rawStatus) ?? rawStatus;
       return status ? `#${id} -> ${status}` : `#${id}`;
     },
+    suffix: (meta) => meta?.taskChanged === false ? "(no-op)" : "",
     inlineResult: false,
   },
   task_resume: {

@@ -46,7 +46,7 @@ Cite the URL and version/date when external documentation drives the change. Kee
 `edit()`
 Apply a codex-style file patch. Call this tool with **no arguments** and put the raw patch in the same assistant message, between `*** Begin Patch` and `*** End Patch`. Do not wrap the patch in JSON and do not put it in tool arguments.
 
-Supported markers: `*** Add File: path` (create or overwrite; parent directories are created), `*** Delete File: path`, `*** Update File: path` with optional `*** Move to: path`, `@@` / `@@ anchor` chunk separators, context lines prefixed with one space, removals prefixed with `-`, additions prefixed with `+`, and optional `*** End of File`. A chunk with only `+` lines appends to the end of the file. Hunks apply in order; identical context takes the first match after the previous hunk, so include enough context lines or an `@@` anchor. Multiple files are applied in order; a later failure leaves earlier changes in place and the result lists them. Add always ends the file with a newline. Editing an existing file larger than 50 MB or a binary file is refused. Stay inside the paths Queen assigned; if the packet names none, change only what the task requires and report what you touched.
+Supported markers: `*** Add File: path` (create or overwrite; parent directories are created), `*** Delete File: path`, `*** Update File: path` with optional `*** Move to: path`, `@@` / `@@ anchor` chunk separators, context lines prefixed with one space, removals prefixed with `-`, additions prefixed with `+`, and optional `*** End of File`. A chunk with only `+` lines appends to the end of the file. Hunks apply in order; identical context takes the first match after the previous hunk, so include enough context lines or an `@@` anchor. Each path may appear in only one file-level hunk, and `Delete File` removes a file rather than a directory. Multiple files are applied in order; a later failure leaves earlier changes in place and the result lists them. Add always ends the file with a newline. Editing an existing file larger than 50 MB or a binary file is refused. Stay inside the paths Queen assigned; if the packet names none, change only what the task requires and report what you touched.
 
 ## Validation and shell lifecycle
 
@@ -68,4 +68,8 @@ Block until a tracked background shell exits or an incoming message arrives. Tak
 
 `task_create(subject, description, active_form?, metadata?)` · `task_list()` · `task_get(task_id)` · `task_update(task_id, status?, owner?, metadata?, add_blocks?, add_blocked_by?, …)`
 
-Break the assigned work into verifiable steps, mark each `in_progress` before starting and `completed` only after its check passes (`bash`, tests, or an inspected artifact). Express step ordering with `add_blocks` / `add_blocked_by`. This list is session-local and memory-only; never manage Queen's root tasks. The durable result is your handoff.
+Break the assigned work into verifiable steps, mark each `in_progress` before starting and `completed` only after its check passes (`bash`, tests, or an inspected artifact). Use only the canonical statuses `pending`, `in_progress`, `completed`, and `deleted`; updating a step to the status it already has is a no-op, so do not retry it. Express step ordering with `add_blocks` / `add_blocked_by`. This list is session-local and memory-only; never manage Queen's root tasks. The durable result is your handoff.
+
+## MCP tools
+
+MCP tools are disabled for this role. Do not assume an external tool is available.

@@ -575,7 +575,7 @@ export async function asyncRunToolLoop(
             ? externalizeContentBlocks(resolved.contentBlocks)
             : resolved.contentBlocks;
         }
-        const isError = resolved.content.startsWith("ERROR:");
+        const isError = resolved.isError;
         if (pending.tuiVisibility === "hide" && isError) {
           pending.tuiVisibility = "show";
           syncToolCallEntry(callId);
@@ -610,9 +610,9 @@ export async function asyncRunToolLoop(
         }
         appendEntry(toolResultEntry);
         if (onSaveCheckpoint) onSaveCheckpoint();
-        onToolResult?.(agentName, toolName, callId, resolved.content.startsWith("ERROR:"), summary);
+        onToolResult?.(agentName, toolName, callId, resolved.isError, summary);
 
-        pending.execPhase = resolved.content.startsWith("ERROR:") ? "failed" : "completed";
+        pending.execPhase = resolved.isError ? "failed" : "completed";
         pending.executionPayload = undefined;
         syncToolCallEntry(callId);
         releaseCompletedToolCallPayload(pending);

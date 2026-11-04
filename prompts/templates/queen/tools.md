@@ -50,15 +50,15 @@ Queen owns this root list and all cross-role dependency edges. Set each node's `
 Merger is blocked by Worker, Reviewer, and Guard. Dispatch a task only after its blockers are complete.
 
 ### `task_list`
-List every task with status, owner and unfinished blockers. Use `task_get` for the full description and dependency edges.
+List every task with status, owner, unfinished blockers, and restart-interruption markers. Use `task_get` for the full description and dependency edges. After a session restart, a task may still read `in_progress` even though no previous executor is alive; treat that row as interrupted and follow its `resumeHint`, not as proof of live work.
 
 ### `task_update`
 Change status (`pending` / `in_progress` / `completed` / `deleted`), wording, planned role, owner, metadata, or dependencies
 (`add_blocks` / `add_blocked_by`, maintained in both directions). Set a metadata key to `null` to delete it. Mark work `in_progress` before starting and `completed`
-only after its check passes.
+only after its check passes. A repeated update to the status the task already has is a no-op; do not retry it blindly.
 
 Before each `spawn`, choose a unique child ID and update the assigned root task with both `owner: <child-id>` and
-`metadata: {"agentId": "<child-id>}`. Wait for `task_update` to succeed, then pass that exact ID to `spawn`. The child
+`metadata: {"agentId": "<child-id>"}`. Wait for `task_update` to succeed, then pass that exact ID to `spawn`. The child
 starts during the `spawn` call and may finish quickly; the runtime uses `metadata.agentId` to attach its result and
 unfinished local tasks to the root task. Binding afterward can lose the handoff. If dispatch fails, keep the task open
 and correct the binding before retrying. Child task IDs belong only to that child's session; never use them in this root
@@ -66,7 +66,8 @@ graph. Only Queen updates root-task status. After a child ends, inspect its resu
 before deciding whether to complete the root task, add work, or re-dispatch it.
 
 ### `task_resume`
-Continue a task whose sub-agent was interrupted by a restart, when `task_list` reports
+Continue a task whose sub-agent was interrupted by a restart. Its status remains `in_progress` as the board's
+visual state even though the prior executor is gone; `task_list` reports an `interrupted` marker and
 `resumeHint.resumable: true`. Otherwise re-dispatch with `spawn` using a **new** agent id. This never applies to an agent you killed with `kill_agent`.
 
 ## Skill

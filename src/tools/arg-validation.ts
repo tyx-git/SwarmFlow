@@ -33,7 +33,7 @@ export function expectArgsObject(
 }
 
 export function toolArgError(toolName: string, message: string): ToolResult {
-  return new ToolResult({ content: `Error: invalid arguments for ${toolName}: ${message}` });
+  return ToolResult.error(`Error: invalid arguments for ${toolName}: ${message}`);
 }
 
 function asToolResult<T>(toolName: string, run: () => T): T | ToolResult {
