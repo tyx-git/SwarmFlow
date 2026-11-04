@@ -94,6 +94,10 @@ export class PermissionAdvisor implements GateAdvisor {
     }
 
     // 2. 文件工具的外部路径门控（yolo 绕过）
+    if (mode !== "yolo" && ctx.toolName === "edit" && ctx.patchPaths?.length) {
+      const editDecision = this._checkEditPaths(ctx, assessment);
+      if (editDecision) return editDecision;
+    }
     if (mode !== "yolo" && FILE_TOOLS_WITH_PATH.has(ctx.toolName)) {
       const externalDecision = this._checkExternalPath(ctx, assessment, mode);
       if (externalDecision) return externalDecision;
@@ -233,6 +237,64 @@ export class PermissionAdvisor implements GateAdvisor {
     return {
       kind: "ask",
       question: `${ctx.toolName} accesses external path: ${resolvedPath}`,
+      toolCallId: ctx.toolCallId,
+      offers,
+      assessment,
+    };
+  }
+
+  /**
+   * `edit` 的补丁路径外部门控。补丁路径由 preflight 解析后放在 ctx.patchPaths；
+   * 工作区内的路径继续走决策矩阵，外部路径需要持久目录规则。
+   */
+  private _checkEditPaths(
+    ctx: ToolPreflightContext,
+    assessment: InvocationAssessment,
+  ): GateDecision | null {
+    const paths = ctx.patchPaths ?? [];
+    const external = paths.filter((candidate) => {
+      const rel = path.relative(this._projectRoot, candidate);
+      return rel.startsWith("..") || path.isAbsolute(rel);
+    });
+    const uncovered = external.filter(
+      (candidate) => !this._ruleStore.findMatchingExternalPathRule(candidate, "write_reversible"),
+    );
+    if (uncovered.length === 0) return null;
+
+    const first = uncovered[0]!;
+    const dirPrefix = toPosixPath(path.dirname(first)) + "/";
+    assessment.externalPathPrefix = dirPrefix;
+
+    const listed = uncovered
+      .slice(0, 5)
+      .map((candidate) => path.relative(this._projectRoot, candidate) || candidate);
+    const suffix = uncovered.length > listed.length
+      ? ` (+${uncovered.length - listed.length} more)`
+      : "";
+    const question = `edit accesses files outside the workspace: ${listed.join(", ")}${suffix}`;
+
+    const shortDir = dirPrefix.length > 50 ? "..." + dirPrefix.slice(-47) : dirPrefix;
+    const offers: ApprovalOffer[] = [];
+    for (const scope of ["session", "project"] as const) {
+      const scopeLabel = scope === "session" ? "in this session" : "in this project";
+      const rule: Omit<ExternalPathRule, "id" | "createdAt"> = {
+        type: "external_path",
+        action: "allow",
+        accessKind: "write_reversible",
+        pathPrefix: dirPrefix,
+        scope,
+      };
+      offers.push({
+        type: "external_path",
+        label: `Allow read/write from ${shortDir} ${scopeLabel}`,
+        scope,
+        rule: rule as PermissionRule,
+      });
+    }
+
+    return {
+      kind: "ask",
+      question,
       toolCallId: ctx.toolCallId,
       offers,
       assessment,

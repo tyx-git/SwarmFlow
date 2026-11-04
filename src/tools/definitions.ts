@@ -190,6 +190,21 @@ export const WRITE: ToolDef = {
   tuiPolicy: { partialReveal: { completeArgs: ["path"] } },
 };
 
+/**
+ * codex 风格的正文补丁工具。工具调用本身零参数：补丁写在同一条
+ * assistant 消息正文里，避免 old_str/new_str 经过 JSON 二次转义。
+ */
+export const EDIT_PATCH: ToolDef = {
+  name: "edit",
+  description:
+    "Apply a codex-style file patch. Call this tool with NO arguments and put the raw patch in your normal assistant message text, between '*** Begin Patch' and '*** End Patch'. Do not wrap the patch in JSON and do not put it in tool arguments. " +
+    "Supported markers: '*** Add File: path' (create or overwrite; parent directories are created), '*** Delete File: path', '*** Update File: path' with optional '*** Move to: path', '@@' / '@@ anchor' chunk separators, context lines prefixed with one space, removals prefixed with '-', additions prefixed with '+', and optional '*** End of File'. " +
+    "A chunk with only '+' lines appends to the end of the file. Hunks apply in order; identical context takes the first match after the previous hunk, so include enough context lines or an '@@' anchor. Multiple files are applied in order; a later failure leaves earlier changes in place and the result lists them. Add always ends the file with a newline.",
+  parameters: { type: "object", properties: {}, required: [] },
+  summaryTemplate: "{agent} is applying a code patch",
+  tuiPolicy: { partialReveal: "immediate" },
+};
+
 // ------------------------------------------------------------------
 // Shell 感知的 bash 工具描述
 // ------------------------------------------------------------------
@@ -619,8 +634,7 @@ export const BASIC_TOOLS: ToolDef[] = [
   GREP,
   FIND_SYMBOL,
   JQ,
-  EDIT,
-  WRITE,
+  EDIT_PATCH,
   BASH,
   BASH_BACKGROUND_TOOL,
   KILL_SHELL_TOOL,
@@ -629,9 +643,16 @@ export const BASIC_TOOLS: ToolDef[] = [
   WEB_FETCH,
 ];
 
-export const BASIC_TOOLS_MAP: Record<string, ToolDef> = Object.fromEntries(
-  BASIC_TOOLS.map((t) => [t.name, t]),
-);
+/**
+ * 同版停用、下版删除的旧写工具。仍保留在 map 里，避免自定义 agent.yaml
+ * 立即报“未知工具”；默认工具目录不再暴露给模型。
+ */
+export const LEGACY_WRITE_TOOLS: ToolDef[] = [EDIT, WRITE];
+
+export const BASIC_TOOLS_MAP: Record<string, ToolDef> = {
+  ...Object.fromEntries(BASIC_TOOLS.map((t) => [t.name, t])),
+  ...Object.fromEntries(LEGACY_WRITE_TOOLS.map((t) => [t.name, t])),
+};
 
 // ======================================================================
 // 工具执行器

@@ -23,6 +23,11 @@ export interface ToolExecutorContext {
    * 仍会在其下一次自然退出时解除循环阻塞。
    */
   signal?: AbortSignal;
+  /**
+   * `edit` 的补丁正文。由 tool-loop 从同轮 assistant 文本解析后注入；
+   * 其他工具忽略。
+   */
+  patchPayload?: string;
 }
 
 /**

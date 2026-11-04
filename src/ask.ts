@@ -104,6 +104,8 @@ export interface ApprovalRequest extends AskBase {
     }>;
     /** 永久规则选项前显示的警告（灰色文字，不可选择）。 */
     persistentWarning?: string;
+    /** `edit` 涉及的绝对路径（最多 8 条），供审批界面展示。 */
+    files?: string[];
   };
   options: string[];
 }

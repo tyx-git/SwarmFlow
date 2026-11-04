@@ -20,7 +20,7 @@ export const READ_TOOLS = new Set([
 
 /** 可逆写工具集合 */
 export const WRITE_REVERSIBLE_TOOLS = new Set([
-  "write_file", "edit_file",
+  "write_file", "edit_file", "edit",
   // 任务清单写入仅改会话态，可逆且不触碰工作区文件
   "task_create", "task_update", "task_resume",
 ]);

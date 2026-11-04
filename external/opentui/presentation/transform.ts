@@ -6,6 +6,7 @@ import type {
 } from "./types.js";
 import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
 import { splitTaskHandoffForDisplay } from "../../../src/swarm/task-handoff.js";
+import { findPatchBlocks, removePatchBlocks } from "../../../src/patches/apply-patch/extract.js";
 import { getToolProfile, HIDDEN_TOOLS } from "./tool-profiles.js";
 import { formatDuration } from "../display/utils/format.js";
 
@@ -43,6 +44,29 @@ function getToolArgs(entry: ReconciledConversationEntry): Record<string, unknown
 
 function getToolName(entry: ReconciledConversationEntry): string {
   return (getMeta(entry).toolName as string) ?? "";
+}
+
+/** assistant 正文里的补丁块只有在同一轮紧跟 edit 调用时才从展示中剥离。 */
+function hasFollowingEditToolCall(
+  entries: readonly ReconciledConversationEntry[],
+  index: number,
+): boolean {
+  for (let cursor = index + 1; cursor < entries.length; cursor++) {
+    const candidate = entries[cursor]!;
+    if (
+      candidate.entry.kind === "assistant"
+      || candidate.entry.kind === "reasoning"
+      || candidate.entry.kind === "tool_result"
+      || candidate.entry.kind === "user"
+      || candidate.entry.kind === "status"
+    ) {
+      return false;
+    }
+    if (candidate.entry.kind === "tool_call" && getToolName(candidate) === "edit") {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getToolCallId(entry: ReconciledConversationEntry): string {
@@ -311,8 +335,16 @@ function buildToolOperation(
     ? ((resultEntry.entry.meta as Record<string, unknown>)?.toolMetadata as Record<string, unknown>) ?? undefined
     : undefined;
 
-  // Extract fileModifyData — tool_result (authoritative) takes priority over tool_call (streaming)
+  // Extract fileModifyData — tool_result (authoritative) takes priority over tool_call (streaming).
+  // `edit` supplies one display object per file in fileModifyDataList.
   let fileModifyData: FileModifyDisplayData | undefined;
+  let fileModifyDataList: FileModifyDisplayData[] | undefined;
+  const resultList = resultMeta?.fileModifyDataList;
+  if (Array.isArray(resultList)) {
+    fileModifyDataList = resultList.filter(
+      (item): item is FileModifyDisplayData => Boolean(item) && typeof item === "object",
+    );
+  }
   const resultFmd = resultMeta?.fileModifyData;
   if (resultFmd && typeof resultFmd === "object") {
     fileModifyData = resultFmd as FileModifyDisplayData;
@@ -322,26 +354,57 @@ function buildToolOperation(
       fileModifyData = callFmd as FileModifyDisplayData;
     }
   }
+  if (!fileModifyData && fileModifyDataList?.length === 1) {
+    fileModifyData = fileModifyDataList[0];
+  }
 
-  // Compute linesAdded/linesRemoved from fileModifyData hunks for suffix display
+  const rawPatchFiles = resultMeta?.patchFiles;
+  const patchFiles = Array.isArray(rawPatchFiles)
+    ? rawPatchFiles.filter((item) => {
+      if (!item || typeof item !== "object") return false;
+      const record = item as Record<string, unknown>;
+      return (record.kind === "A" || record.kind === "M" || record.kind === "D")
+        && typeof record.path === "string";
+    }) as Array<{ kind: "A" | "M" | "D"; path: string; from?: string }>
+    : undefined;
+
+  // Compute linesAdded/linesRemoved from file modify hunks for suffix display
+  const displayStats = fileModifyDataList ?? (fileModifyData ? [fileModifyData] : []);
   let suffixMeta = resultMeta;
-  if (fileModifyData && fileModifyData.hunks.length > 0 && resultMeta) {
+  if (displayStats.length > 0 && resultMeta) {
     let linesAdded = 0;
     let linesRemoved = 0;
-    for (const hunk of fileModifyData.hunks) {
-      linesAdded += hunk.additions.length;
-      linesRemoved += hunk.deletions.length;
+    for (const data of displayStats) {
+      if (data.mode === "write") {
+        linesAdded += data.writeLines?.length ?? 0;
+        continue;
+      }
+      for (const hunk of data.hunks) {
+        linesAdded += hunk.additions.length;
+        linesRemoved += hunk.deletions.length;
+      }
     }
-    suffixMeta = { ...resultMeta, linesAdded, linesRemoved };
+    suffixMeta = {
+      ...resultMeta,
+      linesAdded,
+      linesRemoved,
+      fileCount: patchFiles?.length ?? displayStats.length,
+    };
   }
 
   // Resolve dynamic display name for variants
-  let displayName = profile.displayName;
+  const displayName = profile.displayName;
   let noDiffBackground = false;
-  if (toolName === "write_file") {
-    if (resultMeta) {
-      noDiffBackground = true;
-    }
+  if (toolName === "write_file" && resultMeta) {
+    noDiffBackground = true;
+  }
+
+  // `edit` 的单文件路径直接显示在工具行；多文件或 Move 由卡片标题承载。
+  let toolText = profile.text(toolArgs);
+  if (toolName === "edit" && patchFiles) {
+    toolText = patchFiles.length === 1 && !patchFiles[0]!.from
+      ? patchFiles[0]!.path
+      : "";
   }
 
   let inlineResult: InlineResultData | null = null;
@@ -383,7 +446,7 @@ function buildToolOperation(
     state,
     toolDisplayName: displayName,
     toolCategory: profile.category,
-    toolText: profile.text(toolArgs),
+    toolText,
     toolSuffix: profile.suffix?.(suffixMeta) ?? "",
     toolInterrupted,
     toolAgentName,
@@ -398,6 +461,8 @@ function buildToolOperation(
     toolStreamLanguage: effectiveToolStreamLanguage,
     toolStreamMode,
     fileModifyData,
+    fileModifyDataList,
+    patchFiles,
   };
 }
 
@@ -598,10 +663,15 @@ export function presentationTransform(
           (e) => e.entry.kind === "assistant" || e.entry.kind === "tool_call" || e.entry.kind === "reasoning",
         );
         const split = splitTaskHandoffForDisplay(entry.entry.text);
-        if (split.displayText.trim().length > 0) {
+        let displayText = split.displayText;
+        if (hasFollowingEditToolCall(entries, i)) {
+          const blocks = findPatchBlocks(displayText).filter((block) => block.complete);
+          if (blocks.length > 0) displayText = removePatchBlocks(displayText, blocks);
+        }
+        if (displayText.trim().length > 0) {
           // active log id 会随每个流式文本 chunk 更新；即使 React 的 processing
           // 状态晚一帧，也要保持该条目处于流式状态。
-          result.push(transformAssistant(entry, isLastAssistant || activeEntryId === entry.id, split.displayText));
+          result.push(transformAssistant(entry, isLastAssistant || activeEntryId === entry.id, displayText));
         }
         if (showTips && split.conclusion) {
           // 同一 turn 内多个块以最后一个有效结论为准；实际 Tips 在 turn_end 才出现。

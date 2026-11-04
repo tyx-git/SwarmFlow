@@ -60,6 +60,24 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     },
     inlineResult: { maxLines: 1 },
   },
+  edit: {
+    category: "modify",
+    displayName: "Edit",
+    text: () => "",
+    suffix: (meta) => {
+      const added = meta?.linesAdded;
+      const removed = meta?.linesRemoved;
+      const files = meta?.fileCount;
+      const stats = typeof added === "number" || typeof removed === "number"
+        ? `+${added ?? 0} -${removed ?? 0}`
+        : "";
+      if (typeof files === "number" && files > 1) {
+        return stats ? `(${files} files, ${stats})` : `(${files} files)`;
+      }
+      return stats ? `(${stats})` : "";
+    },
+    inlineResult: false,
+  },
   edit_file: {
     category: "modify",
     displayName: "Edit",

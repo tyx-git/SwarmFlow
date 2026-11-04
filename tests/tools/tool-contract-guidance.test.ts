@@ -10,7 +10,8 @@ import { BASIC_TOOLS_MAP } from "../../src/tools/definitions.js";
  */
 describe("tool schema guidance", () => {
   const readParams = BASIC_TOOLS_MAP["read_file"].parameters as any;
-  const editDescription = BASIC_TOOLS_MAP["edit_file"].description ?? "";
+  const editDescription = BASIC_TOOLS_MAP["edit"].description ?? "";
+  const legacyEditDescription = BASIC_TOOLS_MAP["edit_file"].description ?? "";
   const readDescription = BASIC_TOOLS_MAP["read_file"].description ?? "";
 
   it("declares minimum 1 on every paging argument", () => {
@@ -26,20 +27,29 @@ describe("tool schema guidance", () => {
     expect(readDescription).toContain("omit it to read from line 1");
   });
 
-  it("spells out verbatim byte matching for old_str", () => {
-    expect(editDescription).toContain("byte-for-byte");
-    expect(editDescription).toContain("re-read that exact range");
+  it("spells out the zero-argument body patch contract for edit", () => {
+    expect(editDescription).toContain("NO arguments");
+    expect(editDescription).toContain("assistant message");
+    expect(editDescription).toContain("Do not wrap the patch in JSON");
+    expect((BASIC_TOOLS_MAP["edit"].parameters as any).properties).toEqual({});
+    expect((BASIC_TOOLS_MAP["edit"].parameters as any).required).toEqual([]);
   });
 
-  it("keeps the same rules in the role prompts", () => {
+  it("keeps the legacy edit_file description for compatibility", () => {
+    expect(legacyEditDescription).toContain("byte-for-byte");
+    expect(legacyEditDescription).toContain("re-read that exact range");
+  });
+
+  it("keeps the same read rules in the role prompts", () => {
     for (const role of ["guard", "merger", "queen", "reviewer", "scout", "worker"]) {
       const text = readFileSync(`prompts/templates/${role}/tools.md`, "utf8");
       expect(text, role).toContain("omit it to read from line 1");
       expect(text, role).toContain("all paging values must be >= 1");
     }
     const worker = readFileSync("prompts/templates/worker/tools.md", "utf8");
-    expect(worker).toContain("byte-for-byte");
-    expect(worker).toContain("old_str not found");
-    expect(worker).toContain("leaves the file untouched");
+    expect(worker).toContain("Call this tool with **no arguments**");
+    expect(worker).toContain("*** Begin Patch");
+    expect(worker).toContain("*** End Patch");
+    expect(worker).not.toContain("old_str");
   });
 });

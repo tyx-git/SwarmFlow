@@ -171,6 +171,10 @@ export function classifyTool(
   if (READ_TOOLS.has(toolName)) {
     return { permissionClass: "read", toolName };
   }
+  // 路径写在正文补丁里，按工具名记忆规则没有意义。
+  if (toolName === "edit") {
+    return { permissionClass: "write_reversible", toolName, canMemoize: false };
+  }
   if (WRITE_REVERSIBLE_TOOLS.has(toolName)) {
     return { permissionClass: "write_reversible", toolName, canMemoize: true };
   }

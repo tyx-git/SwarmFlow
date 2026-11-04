@@ -70,6 +70,13 @@ function applyFlags(entry: LogEntry, flags: EntryFlags | undefined): void {
     if (flags.fileMutationReverted) meta.fileMutationReverted = true;
     else delete meta.fileMutationReverted;
   }
+  if (flags.fileMutationRevertedIndices !== undefined) {
+    if (flags.fileMutationRevertedIndices.length > 0) {
+      meta.fileMutationRevertedIndices = [...flags.fileMutationRevertedIndices];
+    } else {
+      delete meta.fileMutationRevertedIndices;
+    }
+  }
   if (flags.bashMutationReverted !== undefined) {
     if (flags.bashMutationReverted) meta.bashMutationReverted = true;
     else delete meta.bashMutationReverted;
@@ -228,7 +235,7 @@ export class TuiHistoryPager {
         let changed = false;
         const flags = record.flags;
         if (flags) {
-          for (const key of ["discarded", "archived", "fileMutationReverted", "bashMutationReverted", "bashMutationRevertedIndices"] as const) {
+          for (const key of ["discarded", "archived", "fileMutationReverted", "fileMutationRevertedIndices", "bashMutationReverted", "bashMutationRevertedIndices"] as const) {
             const value = flags[key];
             if (value !== undefined && merged[key] === undefined) {
               (merged as Record<string, unknown>)[key] = value;

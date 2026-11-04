@@ -361,13 +361,63 @@ export async function runActivation(host: ActivationHost,
   };
 
   const agentName = host.primaryAgent.name;
+
+  /**
+   * 未完成/网络重试会重新请求同一个 round。把失败尝试已经流式写入的
+   * 文本与 reasoning 条目丢弃，避免下一轮请求回放“半截 + 完整”两份内容
+   * （对正文补丁尤其致命）。
+   */
+  const resetRoundStreamForRetry = (roundIndex: number | undefined): void => {
+    if (roundIndex === undefined || host._compactInProgress) return;
+
+    const staleText = streamedAssistantEntries.get(roundIndex);
+    if (staleText) {
+      if (
+        textAccumulator
+        && typeof staleText.content === "string"
+        && textAccumulator.text.endsWith(staleText.content)
+      ) {
+        textAccumulator.text = textAccumulator.text.slice(0, -staleText.content.length);
+      }
+      host._logStore.updateEntry(staleText.id, (target) => {
+        target.discarded = true;
+        target.tuiVisible = false;
+        target.displayKind = null;
+      });
+    }
+    streamedAssistantEntries.delete(roundIndex);
+    textBuffers.delete(roundIndex);
+
+    const staleReasoning = streamedReasoningEntries.get(roundIndex);
+    if (staleReasoning) {
+      if (
+        reasoningAccumulator
+        && typeof staleReasoning.content === "string"
+        && reasoningAccumulator.text.endsWith(staleReasoning.content)
+      ) {
+        reasoningAccumulator.text = reasoningAccumulator.text.slice(
+          0,
+          -staleReasoning.content.length,
+        );
+      }
+      host._logStore.updateEntry(staleReasoning.id, (target) => {
+        target.discarded = true;
+        target.tuiVisible = false;
+        target.displayKind = null;
+      });
+    }
+    streamedReasoningEntries.delete(roundIndex);
+  };
+
   const emitRetryAttempt = (
     attempt: number,
     max: number,
     delaySec: number,
     errMsg: string,
     kind: "network" | "incomplete" = "network",
+    roundIndex?: number,
   ) => {
+    resetRoundStreamForRetry(roundIndex);
     const label = kind === "incomplete" ? "Response retry" : "Network retry";
     if (!host._compactInProgress) {
       const entry = createStatus(

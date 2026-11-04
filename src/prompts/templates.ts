@@ -50,7 +50,7 @@ const MIN_TEMPLATE_MAX_TOOL_ROUNDS = 100;
  */
 export const TOOL_PACKS: Record<string, string[]> = {
   read: ["read_file", "list_dir", "glob", "grep", "find_symbol", "jq"],
-  edit: ["write_file", "edit_file"],
+  edit: ["edit"],
   shell: ["bash", "bash_background", "kill_shell"],
   util: ["time", "web_search", "web_fetch"],
 };

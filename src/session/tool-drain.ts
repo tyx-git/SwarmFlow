@@ -23,6 +23,8 @@ import type { DrainPendingToolCallsResult } from "./turn-types.js";
 import type { SessionLog } from "./log.js";
 
 import type { ProgressReporter } from "../logging/progress.js";
+import { resolvePayloadFromToolCallLog } from "../tools/patch-payload.js";
+import { formatParseError, parsePatch, ParseError } from "../patches/apply-patch/index.js";
 
 /** 工具排空所需的会话侧成员（B 策略下由 Session 公开）。 */
 export interface ToolDrainHost {
@@ -80,7 +82,7 @@ export interface ToolDrainHost {
   _findEarliestPendingToolCallLogIndex(): number;
   _finalizeDrainInterruptedWork(fromLogIndex: number): void;
   _drainPendingToolCalls(signal?: AbortSignal): Promise<DrainPendingToolCallsResult>;
-  _findNextPendingToolCall(): { toolCallId: string; toolName: string; toolArgs: Record<string, unknown>; turnIndex: number; roundIndex: number; agentName: string } | null;
+  _findNextPendingToolCall(): { toolCallId: string; toolName: string; toolArgs: Record<string, unknown>; patchPayload?: string; turnIndex: number; roundIndex: number; agentName: string } | null;
   _updateToolCallExecState(toolCallId: string, state: "not_started" | "running" | "completed" | "failed"): void;
   _isInsideArtifactsDir(rawPath: unknown): boolean;
 }
@@ -134,6 +136,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
       toolArgs: next.toolArgs,
       toolCallId: next.toolCallId,
       summary: `${next.agentName} is calling ${next.toolName}`,
+      toolPayload: next.patchPayload,
     };
 
     let denyMessage: string | undefined;
@@ -216,7 +219,10 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
           resultContent = `ERROR: No executor for tool '${next.toolName}'`;
           isError = true;
         } else {
-          const result = await executor(next.toolArgs, { signal });
+          const result = await executor(next.toolArgs, {
+            signal,
+            patchPayload: next.patchPayload,
+          });
           // 这里保持 toolExecState 为 "running"——_completeMissingToolResultsFromLog
           // 靠它区分“跑了但被中断”（可能有部分副作用）和“从未执行”。
           if (signal?.aborted) return { kind: "interrupted" };
@@ -240,6 +246,12 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
         resultContent = `ERROR: ${e instanceof Error ? e.message : String(e)}`;
         isError = true;
       }
+    }
+
+    // 执行（或拒绝）完成后补丁正文不再需要，避免内存/归档继续携带。
+    const executedEntry = host._logStore.findToolCallByCallId(next.toolCallId);
+    if (executedEntry && typeof executedEntry.content === "object" && executedEntry.content) {
+      delete (executedEntry.content as { executionPayload?: string }).executionPayload;
     }
 
     // 构造预览（与 tool-loop 的逻辑一致）
@@ -307,6 +319,7 @@ export function findNextPendingToolCall(host: ToolDrainHost): {
   toolCallId: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
+  patchPayload?: string;
   turnIndex: number;
   roundIndex: number;
   agentName: string;
@@ -315,11 +328,23 @@ export function findNextPendingToolCall(host: ToolDrainHost): {
   if (!found) return null;
   const entry = found.entry;
   const meta = entry.meta as Record<string, unknown>;
-  const content = entry.content as { name?: string; arguments?: Record<string, unknown> };
+  const content = entry.content as {
+    name?: string;
+    arguments?: Record<string, unknown>;
+    executionPayload?: unknown;
+  };
+  const toolName = String(content.name ?? meta["toolName"] ?? "");
+  let patchPayload = typeof content.executionPayload === "string"
+    ? content.executionPayload
+    : undefined;
+  if (!patchPayload && toolName === "edit") {
+    patchPayload = resolvePayloadFromToolCallLog(host._log, entry) ?? undefined;
+  }
   return {
     toolCallId: String(meta["toolCallId"] ?? ""),
-    toolName: String(content.name ?? meta["toolName"] ?? ""),
+    toolName,
     toolArgs: content.arguments ?? {},
+    ...(patchPayload !== undefined ? { patchPayload } : {}),
     turnIndex: entry.turnIndex,
     roundIndex: entry.roundIndex ?? 0,
     agentName: String(meta["agentName"] ?? host.primaryAgent.name),
@@ -354,15 +379,46 @@ export async function beforeToolExecute(
   host: ToolDrainHost,
   ctx: ToolPreflightContext,
 ): Promise<ToolPreflightDecision | void> {
+  // 0. 零参数 edit：先解析正文补丁并作用域路径，供 artifacts 旁路与 advisor 使用。
+  if (ctx.toolName === "edit") {
+    if (typeof ctx.toolPayload !== "string" || ctx.toolPayload.trim().length === 0) {
+      return {
+        kind: "deny",
+        message: "edit requires the patch block in the assistant message body ('*** Begin Patch' ... '*** End Patch').",
+      };
+    }
+    try {
+      const hunks = parsePatch(ctx.toolPayload);
+      const rawPaths: string[] = [];
+      for (const hunk of hunks) {
+        rawPaths.push(hunk.path);
+        if (hunk.kind === "update" && hunk.movePath !== null) {
+          rawPaths.push(hunk.movePath);
+        }
+      }
+      ctx.patchPaths = rawPaths.map((rawPath) => (
+        isAbsolute(rawPath) ? resolve(rawPath) : resolve(host._projectRoot, rawPath)
+      ));
+    } catch (error) {
+      return {
+        kind: "deny",
+        message: error instanceof ParseError ? formatParseError(error) : String(error),
+      };
+    }
+  }
+
   // 0a. artifacts 目录放行：文件类工具（read/write/edit/list/glob/grep）
   //    在会话 artifacts/ 内操作无需审批（这是 agent 自己的草稿区）。
   //    Bash 除外——它的 cwd 跟踪是另一套闸门。
   const ARTIFACTS_BYPASS_TOOLS = new Set([
-    "read_file", "write_file", "edit_file", "list_dir", "glob", "grep",
+    "read_file", "write_file", "edit_file", "edit", "list_dir", "glob", "grep",
   ]);
+  const insideArtifacts = ctx.toolName === "edit"
+    ? (ctx.patchPaths?.length ?? 0) > 0
+      && ctx.patchPaths!.every((path) => host._isInsideArtifactsDir(path))
+    : host._isInsideArtifactsDir((ctx.toolArgs as Record<string, unknown>)["path"]);
   const skipPermissionGate =
-    ARTIFACTS_BYPASS_TOOLS.has(ctx.toolName) &&
-    host._isInsideArtifactsDir((ctx.toolArgs as Record<string, unknown>)["path"]);
+    ARTIFACTS_BYPASS_TOOLS.has(ctx.toolName) && insideArtifacts;
 
   // 1. 权限闸门检查（artifacts 目录内的文件操作跳过）
   if (!skipPermissionGate) {
@@ -400,6 +456,9 @@ export async function beforeToolExecute(
               rule: o.rule as Record<string, unknown> | undefined,
             })),
             persistentWarning,
+            ...(ctx.toolName === "edit" && ctx.patchPaths?.length
+              ? { files: ctx.patchPaths.slice(0, 8) }
+              : {}),
           },
           options,
         };

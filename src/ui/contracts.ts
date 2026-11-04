@@ -32,6 +32,10 @@ export interface RewindPathMutation {
   entryId: string;
   turnIndex: number;
   reversePatch: string;
+  /** 同一 tool_result 的 fileMutations 数组下标；旧条目缺省为 0。 */
+  fileMutationIndex?: number;
+  /** 正向变更类型：created 回退后可能删除文件，deleted 回退后重建文件。 */
+  kind?: "created" | "modified" | "deleted";
 }
 
 export interface RewindPlanApplicable {
@@ -47,7 +51,7 @@ export interface RewindPlanWarning {
 
 export interface RewindPlanConflict {
   path: string;
-  reason: "patch_failed" | "untracked" | "file_deleted" | "file_not_readable";
+  reason: "patch_failed" | "untracked" | "file_deleted" | "file_not_readable" | "file_recreated";
 }
 
 // Bash 变更回滚类型

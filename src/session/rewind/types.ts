@@ -40,6 +40,7 @@ export interface RewindPreimage {
 
 export interface RewindAppliedMutation {
   entryId: string;
+  fileMutationIndex?: number;
   bashEntryIndex?: number;
 }
 

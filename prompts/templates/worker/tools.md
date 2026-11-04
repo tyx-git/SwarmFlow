@@ -42,13 +42,11 @@ Cite the URL and version/date when external documentation drives the change. Kee
 
 ## Editing
 
-### `write_file`
-`write_file(path, content, expected_mtime_ms?)`
-Create or replace a file inside the project. Parent directories are created automatically. Overwriting an existing file larger than 50 MB is refused. Prefer this over echoing a full file into `edit_file`; report every changed path in the handoff.
+### `edit`
+`edit()`
+Apply a codex-style file patch. Call this tool with **no arguments** and put the raw patch in the same assistant message, between `*** Begin Patch` and `*** End Patch`. Do not wrap the patch in JSON and do not put it in tool arguments.
 
-### `edit_file`
-`edit_file(path, edits, expected_mtime_ms?)`
-Apply anchored, atomic replacements. All edits are validated against the original file before anything is written, so one failed edit leaves the file untouched. `old_str` must match the file byte-for-byte after newline normalization: copy it verbatim from `read_file` — same indentation, spaces/tabs, quotes, and backslash count, without re-escaping — and include the trailing newline only when you also replace it. If a call reports `old_str not found`, re-read that exact range and rebuild the string instead of retrying the same bytes. `old_str` must occur exactly once unless `replace_all` is true; `append_str` adds content at the end after all edits. Editing an existing file larger than 50 MB is refused. Stay inside the paths Queen assigned; if the packet names none, change only what the task requires and report what you touched.
+Supported markers: `*** Add File: path` (create or overwrite; parent directories are created), `*** Delete File: path`, `*** Update File: path` with optional `*** Move to: path`, `@@` / `@@ anchor` chunk separators, context lines prefixed with one space, removals prefixed with `-`, additions prefixed with `+`, and optional `*** End of File`. A chunk with only `+` lines appends to the end of the file. Hunks apply in order; identical context takes the first match after the previous hunk, so include enough context lines or an `@@` anchor. Multiple files are applied in order; a later failure leaves earlier changes in place and the result lists them. Add always ends the file with a newline. Editing an existing file larger than 50 MB or a binary file is refused. Stay inside the paths Queen assigned; if the packet names none, change only what the task requires and report what you touched.
 
 ## Validation and shell lifecycle
 

@@ -220,16 +220,42 @@ export function buildTurnIndex(
     if (entry.type !== "tool_result" || entry.discarded) continue;
     const meta = entry.meta as Record<string, unknown>;
     const toolMeta = meta["toolMetadata"] as Record<string, unknown> | undefined;
-    const live = toolMeta?.fileMutation as { path?: unknown; additions?: unknown; deletions?: unknown } | undefined;
-    const archived = archivedMutations?.get(entry.id);
-    const path = typeof live?.path === "string" ? live.path : archived?.path;
-    if (!path) continue;
+    const single = toolMeta?.fileMutation as { path?: unknown; additions?: unknown; deletions?: unknown } | undefined;
+    const list = Array.isArray(toolMeta?.fileMutations)
+      ? toolMeta!.fileMutations as Array<{ path?: unknown; additions?: unknown; deletions?: unknown }>
+      : single
+        ? [single]
+        : [];
+    const archived = list.length === 0 ? archivedMutations?.get(entry.id) : undefined;
+    if (list.length > 0) {
+      const revertedIndices = new Set(
+        Array.isArray(meta["fileMutationRevertedIndices"])
+          ? meta["fileMutationRevertedIndices"] as number[]
+          : meta["fileMutationReverted"] === true
+            ? list.map((_, index) => index)
+            : [],
+      );
+      for (let index = 0; index < list.length; index++) {
+        const live = list[index]!;
+        if (typeof live?.path !== "string") continue;
+        mutations.push({
+          entryId: entry.id,
+          turnIndex: entry.turnIndex,
+          path: live.path,
+          additions: typeof live.additions === "number" ? live.additions : 0,
+          deletions: typeof live.deletions === "number" ? live.deletions : 0,
+          reverted: revertedIndices.has(index),
+        });
+      }
+      continue;
+    }
+    if (!archived?.path) continue;
     mutations.push({
       entryId: entry.id,
       turnIndex: entry.turnIndex,
-      path,
-      additions: typeof live?.additions === "number" ? live.additions : archived?.additions ?? 0,
-      deletions: typeof live?.deletions === "number" ? live.deletions : archived?.deletions ?? 0,
+      path: archived.path,
+      additions: archived.additions ?? 0,
+      deletions: archived.deletions ?? 0,
       reverted: meta["fileMutationReverted"] === true,
     });
   }

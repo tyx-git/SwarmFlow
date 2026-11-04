@@ -88,7 +88,14 @@ export function capPersistedEntry(entry: LogEntry, opts: CapPersistedEntryOption
   };
   const meta = cloned.meta as Record<string, unknown>;
 
-  const content = entry.content;
+  let content = entry.content;
+  // 零参数 edit 的正文补丁只服务执行/恢复，不写进日志。
+  if (isPlainObject(content) && "executionPayload" in content) {
+    const stripped = { ...content };
+    delete stripped["executionPayload"];
+    cloned.content = stripped;
+    content = stripped;
+  }
   if (isPlainObject(content) && typeof content.content === "string") {
     const truncated = truncateToolOutput(content.content, entry.id, opts.sessionDir);
     if (truncated) {

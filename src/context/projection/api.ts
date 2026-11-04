@@ -356,8 +356,12 @@ function buildAssistantMessage(
     }
   }
 
-  // 提取 assistant 文本
-  const text = roundEntries.find((e) => e.type === "assistant_text");
+  // 提取 assistant 文本。reasoning/text 交错或重试可能把同一轮拆成多条，
+  // 必须按顺序拼接，否则后半段（例如正文补丁）会在重放时丢失。
+  const textEntries = roundEntries.filter((e) => e.type === "assistant_text");
+  const textContent = textEntries.length > 0
+    ? textEntries.map((entry) => String(entry.content ?? "")).join("")
+    : null;
 
   // 提取工具调用
   const toolCalls = roundEntries
@@ -380,13 +384,13 @@ function buildAssistantMessage(
 
   if (toolCalls.length > 0) {
     msg.tool_calls = toolCalls;
-    if (text) {
-      msg.text = text.content;
+    if (textContent !== null) {
+      msg.text = textContent;
     }
   } else if (noReply) {
     msg.content = noReply.content;
-  } else if (text) {
-    msg.content = text.content;
+  } else if (textContent !== null) {
+    msg.content = textContent;
   }
 
   // 保留第一个具有 _context_id 的条目的值

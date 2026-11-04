@@ -57,6 +57,8 @@ export interface PendingToolCallState {
   closedCall: ToolCall | null;
   sections: ToolStreamSection[];
   executionPromise: Promise<{ suspendedAsk?: { ask: AskRequest; toolCallId: string; roundIndex: number } } | null> | null;
+  /** 零参数 edit 的补丁正文；执行后立即清除。 */
+  executionPayload?: string;
   streamPhase: PendingToolStreamPhase;
   execPhase: PendingToolExecPhase;
   tuiVisibility: ToolCallTuiVisibility;

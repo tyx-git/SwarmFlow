@@ -43,6 +43,7 @@ import { toolReadFile } from "./file-read.js";
 import { toolListDir } from "./file-list.js";
 import { toolEditFileAppend, toolEditFileMulti, editFileNotFoundMessage } from "./file-edit.js";
 import { toolWriteFile } from "./file-write.js";
+import { toolPatchEdit } from "./patch-edit.js";
 import {
   splitCompoundBash,
   BashPreExecState,
@@ -58,6 +59,8 @@ export interface ExecuteToolContext {
   sessionArtifactsDir?: string;
   supportsMultimodal?: boolean;
   signal?: AbortSignal;
+  /** `edit` 的补丁正文；由 tool-loop 从同轮 assistant 文本注入。 */
+  patchPayload?: string;
   /**
    * 当存在时，超时的同步 bash 命令会被移动到
    * 被追踪的后台 shell，而不是被杀死。
@@ -149,6 +152,20 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         return await toolListDir(dirPath, { maxDepth, maxEntries, includeHidden });
       } catch (e) {
         return formatToolError("list_dir", e);
+      }
+    },
+    edit: async (args) => {
+      try {
+        const a = expectArgsObject("edit", args);
+        if (Object.keys(a).length > 0) {
+          return "ERROR: edit takes no arguments; put the patch in the assistant message body between '*** Begin Patch' and '*** End Patch'.";
+        }
+        if (typeof ctx?.patchPayload !== "string" || ctx.patchPayload.trim().length === 0) {
+          return "ERROR: edit requires a patch in the assistant message body ('*** Begin Patch' ... '*** End Patch') and no tool arguments.";
+        }
+        return await toolPatchEdit(ctx.patchPayload, ctx);
+      } catch (e) {
+        return formatToolError("edit", e);
       }
     },
     edit_file: (args) => {

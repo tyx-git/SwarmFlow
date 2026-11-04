@@ -314,6 +314,13 @@ export class SessionLog {
       if (flags.fileMutationReverted) meta.fileMutationReverted = true;
       else delete meta.fileMutationReverted;
     }
+    if (flags.fileMutationRevertedIndices !== undefined) {
+      if (flags.fileMutationRevertedIndices.length > 0) {
+        meta.fileMutationRevertedIndices = [...flags.fileMutationRevertedIndices];
+      } else {
+        delete meta.fileMutationRevertedIndices;
+      }
+    }
     if (flags.bashMutationReverted !== undefined) {
       if (flags.bashMutationReverted) meta.bashMutationReverted = true;
       else delete meta.bashMutationReverted;

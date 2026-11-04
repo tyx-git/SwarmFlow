@@ -24,6 +24,7 @@ import {
   ASK_TOOL,
 } from "../tools/comm.js";
 import { executeTool } from "../tools/dispatch.js";
+import { ToolResult } from "../providers/response.js";
 import { KILL_SHELL_TOOL } from "../tools/definitions.js";
 import type { AdoptShellFn } from "../tools/bash.js";
 import type { SessionCapabilities } from "../session/capabilities.js";
@@ -208,6 +209,7 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
       signal: rtCtx?.signal,
       adoptShell,
       hasTools,
+      patchPayload: rtCtx?.patchPayload,
     });
 
   const writeFileWithReload: ToolExecutor = (args, rtCtx) => {
@@ -219,6 +221,19 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     return result;
   };
 
+  const editPatchWithReload: ToolExecutor = async (args, rtCtx) => {
+    const result = await scopedBuiltin("edit")(args, rtCtx);
+    if (result instanceof ToolResult) {
+      const changedPaths = result.metadata["changedPaths"];
+      if (Array.isArray(changedPaths) && onFileWrite) {
+        for (const filePath of changedPaths) {
+          if (typeof filePath === "string") onFileWrite(filePath);
+        }
+      }
+    }
+    return result;
+  };
+
   return {
     read_file: scopedBuiltin("read_file"),
     list_dir: scopedBuiltin("list_dir"),
@@ -226,6 +241,7 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     grep: scopedBuiltin("grep"),
     find_symbol: scopedBuiltin("find_symbol"),
     jq: scopedBuiltin("jq"),
+    edit: editPatchWithReload,
     edit_file: scopedBuiltin("edit_file"),
     write_file: writeFileWithReload,
     web_search: (args, rtCtx) => executeTool("web_search", args, { signal: rtCtx?.signal }),

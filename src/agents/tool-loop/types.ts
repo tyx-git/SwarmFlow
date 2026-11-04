@@ -89,6 +89,10 @@ export interface ToolPreflightContext {
   toolArgs: Record<string, unknown>;
   toolCallId: string;
   summary: string;
+  /** 零参数 `edit` 的补丁正文。 */
+  toolPayload?: string;
+  /** `edit` 涉及的绝对路径（预检阶段解析，供权限闸门使用）。 */
+  patchPaths?: string[];
 }
 
 /** 工具预检决定：放行、拒绝、或暂停询问用户。 */
@@ -214,7 +218,7 @@ export interface ToolLoopOptions {
   /** 为 true 时，流式 text/reasoning 回调拥有对应的日志条目。 */
   streamCallbacksOwnEntries?: boolean;
   /** 检测到可重试错误时调用。 */
-  onRetryAttempt?: (attempt: number, maxRetries: number, delaySec: number, errMsg: string, kind?: RetryKind) => void;
+  onRetryAttempt?: (attempt: number, maxRetries: number, delaySec: number, errMsg: string, kind?: RetryKind, roundIndex?: number) => void;
   /** 重试的调用成功时调用。 */
   onRetrySuccess?: (attempt: number) => void;
   /** 所有重试耗尽时调用。 */

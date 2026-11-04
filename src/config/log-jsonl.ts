@@ -43,6 +43,7 @@ export interface EntryFlags {
   discarded?: boolean;
   archived?: boolean;
   fileMutationReverted?: boolean;
+  fileMutationRevertedIndices?: number[];
   bashMutationReverted?: boolean;
   bashMutationRevertedIndices?: number[];
 }
@@ -147,6 +148,7 @@ const ALLOWED_FLAGS = new Set([
   "discarded",
   "archived",
   "fileMutationReverted",
+  "fileMutationRevertedIndices",
   "bashMutationReverted",
   "bashMutationRevertedIndices",
 ]);
@@ -163,9 +165,9 @@ function validateFlags(value: unknown): void {
   if (!isPlainObject(value)) invalid("flags must be an object");
   for (const [key, flag] of Object.entries(value)) {
     if (!ALLOWED_FLAGS.has(key)) invalid(`unknown flag '${key}'`);
-    if (key === "bashMutationRevertedIndices") {
+    if (key === "bashMutationRevertedIndices" || key === "fileMutationRevertedIndices") {
       if (!Array.isArray(flag) || !flag.every((item) => Number.isInteger(item) && item >= 0)) {
-        invalid("bashMutationRevertedIndices must be a non-negative integer array");
+        invalid(`${key} must be a non-negative integer array`);
       }
       continue;
     }
@@ -478,6 +480,13 @@ function applyPatch(entry: LogEntry, flags?: EntryFlags, dropPresentation?: true
     if (flags.fileMutationReverted !== undefined) {
       if (flags.fileMutationReverted) meta.fileMutationReverted = true;
       else delete meta.fileMutationReverted;
+    }
+    if (flags.fileMutationRevertedIndices !== undefined) {
+      if (flags.fileMutationRevertedIndices.length > 0) {
+        meta.fileMutationRevertedIndices = [...flags.fileMutationRevertedIndices];
+      } else {
+        delete meta.fileMutationRevertedIndices;
+      }
     }
     if (flags.bashMutationReverted !== undefined) {
       if (flags.bashMutationReverted) meta.bashMutationReverted = true;

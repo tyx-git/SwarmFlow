@@ -2081,10 +2081,43 @@ export class Session implements SessionLike {
       const meta = entry.meta as Record<string, unknown>;
       const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
       const liveMutation = toolMeta?.fileMutation as FileMutation | undefined;
-      const archivedMutation = liveMutation ? undefined : archivedMutations?.get(entry.id);
-      const mutationPath = liveMutation?.path ?? archivedMutation?.path;
-      if (!mutationPath) continue;
+      const liveList = Array.isArray(toolMeta?.fileMutations)
+        ? toolMeta!.fileMutations as FileMutation[]
+        : liveMutation
+          ? [liveMutation]
+          : [];
+      const archivedMutation = liveList.length === 0 ? archivedMutations?.get(entry.id) : undefined;
+
       let cur = perTurn.get(entry.turnIndex);
+
+      if (liveList.length > 0) {
+        const revertedIndices = new Set(
+          Array.isArray(meta.fileMutationRevertedIndices)
+            ? meta.fileMutationRevertedIndices as number[]
+            : meta.fileMutationReverted
+              ? liveList.map((_, index) => index)
+              : [],
+        );
+        for (let index = 0; index < liveList.length; index++) {
+          const mutation = liveList[index]!;
+          if (!mutation.path) continue;
+          if (!cur) {
+            cur = { livePaths: new Set(), revertedPaths: new Set(), additions: 0, deletions: 0 };
+            perTurn.set(entry.turnIndex, cur);
+          }
+          if (revertedIndices.has(index)) {
+            cur.revertedPaths.add(mutation.path);
+          } else {
+            cur.livePaths.add(mutation.path);
+            cur.additions += mutation.additions ?? 0;
+            cur.deletions += mutation.deletions ?? 0;
+          }
+        }
+        continue;
+      }
+
+      const mutationPath = archivedMutation?.path;
+      if (!mutationPath) continue;
       if (!cur) {
         cur = { livePaths: new Set(), revertedPaths: new Set(), additions: 0, deletions: 0 };
         perTurn.set(entry.turnIndex, cur);
@@ -2093,8 +2126,8 @@ export class Session implements SessionLike {
         cur.revertedPaths.add(mutationPath);
       } else {
         cur.livePaths.add(mutationPath);
-        cur.additions += liveMutation?.additions ?? archivedMutation?.additions ?? 0;
-        cur.deletions += liveMutation?.deletions ?? archivedMutation?.deletions ?? 0;
+        cur.additions += archivedMutation.additions ?? 0;
+        cur.deletions += archivedMutation.deletions ?? 0;
       }
     }
     return perTurn;
@@ -2254,6 +2287,34 @@ export class Session implements SessionLike {
               ops.push({ v: TURN_INDEX_VERSION, op: "drop-mutation", entryId: id });
             }
           }
+          const revertedIndices = record.flags?.fileMutationRevertedIndices;
+          if (revertedIndices !== undefined && entry.type === "tool_result") {
+            const meta = entry.meta as Record<string, unknown>;
+            const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
+            const single = toolMeta?.fileMutation as FileMutation | undefined;
+            const list = Array.isArray(toolMeta?.fileMutations)
+              ? toolMeta!.fileMutations as FileMutation[]
+              : single
+                ? [single]
+                : [];
+            ops.push({ v: TURN_INDEX_VERSION, op: "drop-mutation", entryId: id });
+            for (let index = 0; index < list.length; index++) {
+              const live = list[index]!;
+              if (typeof live.path !== "string") continue;
+              ops.push({
+                v: TURN_INDEX_VERSION,
+                op: "mutation",
+                mutation: {
+                  entryId: id,
+                  turnIndex: entry.turnIndex,
+                  path: live.path,
+                  additions: typeof live.additions === "number" ? live.additions : 0,
+                  deletions: typeof live.deletions === "number" ? live.deletions : 0,
+                  reverted: revertedIndices.includes(index),
+                },
+              });
+            }
+          }
           const reverted = record.flags?.fileMutationReverted;
           if (reverted !== undefined && entry.type === "tool_result") {
             ops.push({ v: TURN_INDEX_VERSION, op: "set-revert", entryId: id, reverted });
@@ -2304,20 +2365,36 @@ export class Session implements SessionLike {
         }
         const meta = entry.meta as Record<string, unknown>;
         const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
-        const live = toolMeta?.fileMutation as { path?: unknown; additions?: unknown; deletions?: unknown } | undefined;
-        if (typeof live?.path === "string") {
-          ops.push({
-            v: TURN_INDEX_VERSION,
-            op: "mutation",
-            mutation: {
-              entryId: entry.id,
-              turnIndex: entry.turnIndex,
-              path: live.path,
-              additions: typeof live.additions === "number" ? live.additions : 0,
-              deletions: typeof live.deletions === "number" ? live.deletions : 0,
-              reverted: meta.fileMutationReverted === true,
-            },
-          });
+        const single = toolMeta?.fileMutation as FileMutation | undefined;
+        const list = Array.isArray(toolMeta?.fileMutations)
+          ? toolMeta!.fileMutations as FileMutation[]
+          : single
+            ? [single]
+            : [];
+        if (list.length > 0) {
+          const revertedIndices = new Set(
+            Array.isArray(meta.fileMutationRevertedIndices)
+              ? meta.fileMutationRevertedIndices as number[]
+              : meta.fileMutationReverted
+                ? list.map((_, index) => index)
+                : [],
+          );
+          for (let index = 0; index < list.length; index++) {
+            const live = list[index]!;
+            if (typeof live.path !== "string") continue;
+            ops.push({
+              v: TURN_INDEX_VERSION,
+              op: "mutation",
+              mutation: {
+                entryId: entry.id,
+                turnIndex: entry.turnIndex,
+                path: live.path,
+                additions: typeof live.additions === "number" ? live.additions : 0,
+                deletions: typeof live.deletions === "number" ? live.deletions : 0,
+                reverted: revertedIndices.has(index),
+              },
+            });
+          }
         } else if (meta.fileMutationReverted === true) {
           ops.push({ v: TURN_INDEX_VERSION, op: "set-revert", entryId: entry.id, reverted: true });
         }
@@ -2421,16 +2498,32 @@ export class Session implements SessionLike {
       if (entry.type !== "tool_result" || entry.discarded || entry.turnIndex !== turnIndex) continue;
       const meta = entry.meta as Record<string, unknown>;
       const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
-      const live = toolMeta?.fileMutation as { path?: unknown; additions?: unknown; deletions?: unknown } | undefined;
-      if (typeof live?.path !== "string") continue;
-      mutations.push({
-        entryId: entry.id,
-        turnIndex,
-        path: live.path,
-        additions: typeof live.additions === "number" ? live.additions : 0,
-        deletions: typeof live.deletions === "number" ? live.deletions : 0,
-        reverted: meta.fileMutationReverted === true,
-      });
+      const single = toolMeta?.fileMutation as FileMutation | undefined;
+      const list = Array.isArray(toolMeta?.fileMutations)
+        ? toolMeta!.fileMutations as FileMutation[]
+        : single
+          ? [single]
+          : [];
+      if (list.length === 0) continue;
+      const revertedIndices = new Set(
+        Array.isArray(meta.fileMutationRevertedIndices)
+          ? meta.fileMutationRevertedIndices as number[]
+          : meta.fileMutationReverted
+            ? list.map((_, index) => index)
+            : [],
+      );
+      for (let index = 0; index < list.length; index++) {
+        const live = list[index]!;
+        if (!live.path) continue;
+        mutations.push({
+          entryId: entry.id,
+          turnIndex,
+          path: live.path,
+          additions: typeof live.additions === "number" ? live.additions : 0,
+          deletions: typeof live.deletions === "number" ? live.deletions : 0,
+          reverted: revertedIndices.has(index),
+        });
+      }
     }
     return mutations;
   }

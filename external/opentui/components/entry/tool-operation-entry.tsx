@@ -87,6 +87,13 @@ interface ToolOperationEntryProps {
   onAgentClick?: (agentId: string) => void;
 }
 
+function formatPatchFileLabel(
+  info: { kind: "A" | "M" | "D"; path: string; from?: string },
+): string {
+  if (info.from) return `${info.kind} ${info.from} -> ${info.path}`;
+  return `${info.kind} ${info.path}`;
+}
+
 function ToolOperationEntryInner(
   { entry, colors, theme, contentWidth, diffDisplayMode, onAgentClick }: ToolOperationEntryProps,
 ): React.ReactNode {
@@ -123,11 +130,12 @@ function ToolOperationEntryInner(
   const suffix = entry.toolSuffix ?? "";
   const streamSections = entry.toolStreamSections ?? [];
 
-  // File-modify tools use FileModifyBody with unified FileModifyDisplayData
-  const fmd = entry.fileModifyData;
-  const showFileModify = fmd
-    && (fmd.hunks.length > 0 || (fmd.writeLines && fmd.writeLines.length > 0))
-    && entry.state !== "error";
+  // File-modify tools use FileModifyBody. `edit` may carry one object per file.
+  const fmdList = entry.fileModifyDataList
+    ?? (entry.fileModifyData ? [entry.fileModifyData] : []);
+  const showFileModify = fmdList.some((data) => (
+    data.hunks.length > 0 || (data.writeLines?.length ?? 0) > 0
+  )) && entry.state !== "error";
 
   // Fallback: legacy streaming body for non-file-modify tools
   // (file-modify tools should never show raw section labels — they use FileModifyBody or InlineResult)
@@ -205,15 +213,33 @@ function ToolOperationEntryInner(
             gap={0}
           >
             {showFileModify ? (
-              <FileModifyBody
-                data={fmd!}
-                colors={colors}
-                contentWidth={contentWidth - 6}
-                streaming={entry.state === "active"}
-                maxVisibleLines={diffDisplayMode === "full" ? Infinity : undefined}
-                expanded={expanded}
-                onToggleExpand={toggleExpanded}
-              />
+              <box flexDirection="column" gap={0}>
+                {fmdList.map((data, index) => {
+                  const fileInfo = entry.patchFiles?.[index];
+                  const label = fileInfo ? formatPatchFileLabel(fileInfo) : null;
+                  return (
+                    <box
+                      key={`${data.filePath}:${index}`}
+                      flexDirection="column"
+                      gap={0}
+                      paddingBottom={index < fmdList.length - 1 ? 1 : 0}
+                    >
+                      {label ? (
+                        <text fg={colors.dim} content={label} wrapMode="char" />
+                      ) : null}
+                      <FileModifyBody
+                        data={data}
+                        colors={colors}
+                        contentWidth={contentWidth - 6}
+                        streaming={entry.state === "active"}
+                        maxVisibleLines={diffDisplayMode === "full" ? Infinity : undefined}
+                        expanded={expanded}
+                        onToggleExpand={toggleExpanded}
+                      />
+                    </box>
+                  );
+                })}
+              </box>
             ) : showStreamBody ? (
               <box flexDirection="column" gap={0}>
                 {streamSections.map((section) => {

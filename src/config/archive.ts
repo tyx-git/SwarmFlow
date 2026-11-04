@@ -206,6 +206,7 @@ export const RETAINED_ARCHIVED_META_KEYS: ReadonlySet<string> = new Set([
   "contextId",
   "providerRoundId",
   "fileMutationReverted",
+  "fileMutationRevertedIndices",
   "bashMutationReverted",
   "bashMutationRevertedIndices",
 ]);

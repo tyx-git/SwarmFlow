@@ -80,9 +80,11 @@ describe("template type validation", () => {
     for (const role of ["scout", "worker", "reviewer", "guard", "merger"]) {
       expect(names(role), role).toContain("bash");
     }
-    expect(names("worker")).toContain("write_file");
-    expect(names("worker")).toContain("edit_file");
+    expect(names("worker")).toContain("edit");
+    expect(names("worker")).not.toContain("write_file");
+    expect(names("worker")).not.toContain("edit_file");
     for (const role of ["scout", "merger", "reviewer", "guard"]) {
+      expect(names(role), role).not.toContain("edit");
       expect(names(role), role).not.toContain("write_file");
       expect(names(role), role).not.toContain("edit_file");
     }

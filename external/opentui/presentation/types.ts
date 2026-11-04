@@ -113,4 +113,8 @@ export interface PresentationEntry {
 
   // Unified file-modify display data (replaces toolStreamSections for file-modify tools)
   fileModifyData?: FileModifyDisplayData;
+  /** 一次 `edit` 补丁按文件拆分的展示数据；多文件时优先于 fileModifyData。 */
+  fileModifyDataList?: FileModifyDisplayData[];
+  /** `edit` 的 A/M/D 文件清单（与 fileModifyDataList 同序）。 */
+  patchFiles?: Array<{ kind: "A" | "M" | "D"; path: string; from?: string }>;
 }

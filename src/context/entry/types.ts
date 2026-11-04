@@ -130,5 +130,10 @@ export interface ToolCallLogContent {
   arguments: Record<string, unknown>;
   /** 参数解析错误信息 */
   parseError?: string | null;
+  /**
+   * 零参数 `edit` 的正文补丁。只用于执行/恢复，不投影给模型；
+   * 落盘前由 log-write-policy 剥离。
+   */
+  executionPayload?: string;
 }
 

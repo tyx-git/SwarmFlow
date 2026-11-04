@@ -537,6 +537,45 @@ describe("projectToApiMessages", () => {
     expect(toolResult.content).toBe("file content");
   });
 
+  it("joins every assistant_text entry in a round and keeps edit arguments empty", () => {
+    const patch = "*** Begin Patch\n*** Add File: a.txt\n+alpha\n*** End Patch";
+    const entries: LogEntry[] = [
+      createSystemPrompt("sys-001", "prompt"),
+      createUserMessage("user-001", 1, "do it", "do it", "c1"),
+      createAssistantText("asst-001", 1, 0, patch.slice(0, 24), patch.slice(0, 24), "r1"),
+      createAssistantText("asst-002", 1, 0, patch.slice(24), patch.slice(24), "r1"),
+      createToolCall(
+        "tc-edit",
+        1,
+        0,
+        "edit",
+        {
+          id: "call_edit",
+          name: "edit",
+          arguments: {},
+          executionPayload: patch,
+        } as never,
+        { toolCallId: "call_edit", toolName: "edit", agentName: "agent", contextId: "r1" },
+        "assistant",
+      ),
+      createToolResult(
+        "tr-edit",
+        1,
+        0,
+        { toolCallId: "call_edit", toolName: "edit", content: "Success.", toolSummary: "edit" },
+        { isError: false, contextId: "r1" },
+      ),
+    ];
+    const msgs = projectToApiMessages(entries);
+    const assistantMsg = msgs.find((message) => message.role === "assistant"
+      && Array.isArray((message as any).tool_calls));
+    expect(assistantMsg?.text).toBe(patch);
+    expect((assistantMsg as any).tool_calls).toEqual([
+      { id: "call_edit", name: "edit", arguments: {} },
+    ]);
+    expect(JSON.stringify(assistantMsg)).not.toContain("executionPayload");
+  });
+
   it("handles reasoning in assistant messages", () => {
     const entries: LogEntry[] = [
       createSystemPrompt("sys-001", "prompt"),

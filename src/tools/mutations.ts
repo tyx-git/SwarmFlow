@@ -24,7 +24,7 @@ import { hashFilesystemPath } from "../lib/filesystem-hash.js";
 
 export interface FileMutation {
   path: string;
-  kind: "created" | "modified";
+  kind: "created" | "modified" | "deleted";
   reversePatch: string | null;
   postImageSha: string;
   additions: number;
@@ -370,6 +370,22 @@ export function buildFileMutation(
     kind: fileExistedBefore ? "modified" : "created",
     reversePatch,
     postImageSha,
+    additions,
+    deletions,
+  };
+}
+
+/** 删除文件的 mutation：回退时从空内容反向 patch 恢复原文。 */
+export function buildDeletedFileMutation(
+  filePath: string,
+  beforeContent: string,
+): FileMutation {
+  const { additions, deletions } = countDiffLines(beforeContent, "");
+  return {
+    path: filePath,
+    kind: "deleted",
+    reversePatch: createPatch(filePath, "", beforeContent),
+    postImageSha: computeSha256(""),
     additions,
     deletions,
   };

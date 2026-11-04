@@ -39,6 +39,7 @@ import { type ToolCallTuiVisibility, type ToolLoopOptions, type ToolLoopResult, 
 const COMPACT_ASK_DENY_MESSAGE =
   "ERROR: Tool approvals are unavailable during compaction; respond with the continuation prompt only.";
 import { createReasoning, createAssistantText, createToolCall, createToolResult as createToolResultEntry } from "../../context/entry/factories.js";
+import { resolveRoundPayloads } from "../../tools/patch-payload.js";
 import { splitDisplayLines } from "../../lib/line-window.js";
 import type { ThinkingArtifact } from "../../thinking/artifact.js";
 import type { AskRequest } from "../../ask.js";
@@ -371,6 +372,9 @@ export async function asyncRunToolLoop(
       rawArguments: pending.closedCall?.rawArguments ?? pending.rawArguments,
       arguments: getToolArgsForEntry(pending) ?? {},
       parseError: pending.closedCall?.parseError ?? null,
+      ...(pending.executionPayload !== undefined
+        ? { executionPayload: pending.executionPayload }
+        : {}),
     });
 
     const releaseCompletedToolCallPayload = (pending: PendingToolCallState): void => {
@@ -384,6 +388,7 @@ export async function asyncRunToolLoop(
       pending.cachedTotalLineCount = undefined;
       pending.editProbes = undefined;
       pending.appendStartLine = undefined;
+      pending.executionPayload = undefined;
     };
 
     /**
@@ -660,6 +665,7 @@ export async function asyncRunToolLoop(
               toolArgs: args,
               toolCallId: callId,
               summary,
+              toolPayload: pending.executionPayload,
             });
           }
 
@@ -685,9 +691,15 @@ export async function asyncRunToolLoop(
               content: `ERROR: ${preflight.message}`,
             });
           } else if (toolName in toolExecutors) {
-            toolOutput = await toolExecutors[toolName](args, { signal });
+            toolOutput = await toolExecutors[toolName](args, {
+              signal,
+              patchPayload: pending.executionPayload,
+            });
           } else if (builtinExecutor) {
-            toolOutput = await builtinExecutor(toolName, args, { signal });
+            toolOutput = await builtinExecutor(toolName, args, {
+              signal,
+              patchPayload: pending.executionPayload,
+            });
           } else {
             toolOutput = new ToolResultClass({
               content: `ERROR: No executor found for tool '${toolName}'`,
@@ -797,6 +809,7 @@ export async function asyncRunToolLoop(
         onToolResult?.(agentName, toolName, callId, resolved.content.startsWith("ERROR:"), summary);
 
         pending.execPhase = resolved.content.startsWith("ERROR:") ? "failed" : "completed";
+        pending.executionPayload = undefined;
         syncToolCallEntry(callId);
         releaseCompletedToolCallPayload(pending);
         return null;
@@ -913,12 +926,18 @@ export async function asyncRunToolLoop(
           }
         }
         pendingToolCalls.clear();
+        // 重试是一次全新的响应：上一尝试的流式标志必须复位，
+        // 否则新响应的文本回退（非流式 provider）会被误判为“已流式处理”。
+        providerStreamedText = false;
+        providerStreamedReasoning = false;
+        textHandledViaCallback = false;
+        reasoningHandledViaCallback = false;
         const errMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
         const delay = isIncomplete
           ? computeIncompleteRetryDelay(failedCount)
           : computeRetryDelay(failedCount);
         const delaySec = Math.round(delay / 1000);
-        onRetryAttempt?.(attempt, maxRetries, delaySec, errMsg, isIncomplete ? "incomplete" : "network");
+        onRetryAttempt?.(attempt, maxRetries, delaySec, errMsg, isIncomplete ? "incomplete" : "network", roundIdx);
         await retrySleep(delay, signal);
       }
     }
@@ -1028,6 +1047,24 @@ export async function asyncRunToolLoop(
         resp.text,
         lastRoundId,
       ));
+    }
+
+    // 零参数 edit：把正文里的补丁块按调用顺序绑定到 executionPayload。
+    // 先给全部已闭合调用赋值，再执行，保证 ask 挂起后的孤儿调用也能直接取到。
+    const editCallIds = [...pendingToolCalls.entries()]
+      .filter(([, pending]) => Boolean(pending.closedCall) && pending.name === "edit")
+      .map(([callId]) => callId);
+    if (editCallIds.length > 0) {
+      const payloads = resolveRoundPayloads(
+        editCallIds.map((callId) => ({ id: callId, name: "edit" })),
+        resp.text ?? "",
+      );
+      for (const callId of editCallIds) {
+        const pending = pendingToolCalls.get(callId);
+        if (!pending) continue;
+        pending.executionPayload = payloads.get(callId);
+        syncToolCallEntry(callId);
+      }
     }
 
     // 顺序排出：按发射顺序执行已提交的 tool call。

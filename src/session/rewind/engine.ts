@@ -48,7 +48,7 @@ export class RewindEngine {
    */
   async planRewind(fromTurnIndex: number): Promise<RewindPlan> {
     const mutations = this._collectLiveFileMutations(fromTurnIndex);
-    const byPath = new Map<string, Array<{ entryId: string; turnIndex: number; logIndex: number; mutation: FileMutation }>>();
+    const byPath = new Map<string, Array<{ entryId: string; turnIndex: number; logIndex: number; mutationIndex: number; mutation: FileMutation }>>();
     for (const m of mutations) {
       const arr = byPath.get(m.mutation.path) ?? [];
       arr.push(m);
@@ -74,27 +74,39 @@ export class RewindEngine {
 
       // 读取磁盘当前状态
       let diskContent: string;
+      let diskExists = true;
       try {
         diskContent = readFileSync(filePath, { encoding: "utf-8" });
       } catch (e: unknown) {
         const code = (e as NodeJS.ErrnoException).code;
-        if (code === "ENOENT") {
+        if (code === "ENOENT" && muts[0]!.mutation.kind === "deleted") {
+          diskContent = "";
+          diskExists = false;
+        } else if (code === "ENOENT") {
           conflicts.push({ path: filePath, reason: "file_deleted" });
+          continue;
         } else {
           conflicts.push({ path: filePath, reason: "file_not_readable" });
+          continue;
         }
+      }
+      if (diskExists && muts[0]!.mutation.kind === "deleted") {
+        // 文件删除后又被外部重建：反向补丁链不再可信。
+        conflicts.push({ path: filePath, reason: "file_recreated" });
         continue;
       }
 
       const diskSha = createHash("sha256").update(diskContent, "utf-8").digest("hex");
       const latestPostSha = muts[0].mutation.postImageSha;
-      const isDiskModified = diskSha !== latestPostSha;
+      const isDiskModified = diskExists && diskSha !== latestPostSha;
 
       // 尝试应用反向 patch 链
       const pathMutations: RewindPathMutation[] = muts.map(m => ({
         entryId: m.entryId,
         turnIndex: m.turnIndex,
         reversePatch: m.mutation.reversePatch!,
+        fileMutationIndex: m.mutationIndex,
+        kind: m.mutation.kind,
       }));
 
       let current: string | false = diskContent;
@@ -214,10 +226,21 @@ export class RewindEngine {
           }
         } else {
           const entry = op.entry;
+          const newestKind = entry.mutations[0]?.kind;
           let content: string;
+          let diskExists = true;
           try {
             content = readFileSync(entry.path, { encoding: "utf-8" });
-          } catch {
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT" && newestKind === "deleted") {
+              content = "";
+              diskExists = false;
+            } else {
+              conflictPaths.push(entry.path);
+              continue;
+            }
+          }
+          if (diskExists && newestKind === "deleted") {
             conflictPaths.push(entry.path);
             continue;
           }
@@ -232,8 +255,11 @@ export class RewindEngine {
             continue;
           }
           const earliestMut = entry.mutations[entry.mutations.length - 1];
-          const createdFile = this._isMutationFileCreation(earliestMut.entryId);
-          const mutationRefs = entry.mutations.map((mutation) => ({ entryId: mutation.entryId }));
+          const createdFile = earliestMut?.kind === "created";
+          const mutationRefs = entry.mutations.map((mutation) => ({
+            entryId: mutation.entryId,
+            fileMutationIndex: mutation.fileMutationIndex ?? 0,
+          }));
           this._beginJournalOperation(journal, mutationRefs);
           if (content === "" && createdFile) {
             try {
@@ -247,7 +273,7 @@ export class RewindEngine {
           revertedPaths.push(entry.path);
 
           for (const mutation of entry.mutations) {
-            this._markMutationReverted(mutation.entryId);
+            this._markMutationReverted(mutation.entryId, mutation.fileMutationIndex ?? 0);
           }
           for (const mutation of mutationRefs) {
             this._recordJournalApplied(journal, mutation);
@@ -408,22 +434,37 @@ export class RewindEngine {
     return Object.keys(live).length > 0 ? { ...archived, ...live } : archived;
   }
 
-  /** 收集 fromTurnIndex 之后所有未回退的文件 mutations。 */
+  /** 收集 fromTurnIndex 之后所有未回退的文件 mutations（支持单条目多文件）。 */
   private _collectLiveFileMutations(
     fromTurnIndex: number,
-  ): Array<{ entryId: string; turnIndex: number; logIndex: number; mutation: FileMutation }> {
+  ): Array<{ entryId: string; turnIndex: number; logIndex: number; mutationIndex: number; mutation: FileMutation }> {
     const log = this.deps.getLog();
-    const results: Array<{ entryId: string; turnIndex: number; logIndex: number; mutation: FileMutation }> = [];
+    const results: Array<{ entryId: string; turnIndex: number; logIndex: number; mutationIndex: number; mutation: FileMutation }> = [];
     for (let li = 0; li < log.length; li++) {
       const entry = log[li]!;
       if (entry.turnIndex < fromTurnIndex) continue;
       if (entry.type !== "tool_result" || entry.discarded) continue;
       const meta = this._entryMeta(entry);
-      if (meta.fileMutationReverted) continue;
       const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
-      const fm = toolMeta?.fileMutation as FileMutation | undefined;
-      if (!fm) continue;
-      results.push({ entryId: entry.id, turnIndex: entry.turnIndex, logIndex: li, mutation: fm });
+      const single = toolMeta?.fileMutation as FileMutation | undefined;
+      const list = Array.isArray(toolMeta?.fileMutations)
+        ? toolMeta!.fileMutations as FileMutation[]
+        : single
+          ? [single]
+          : [];
+      if (list.length === 0) continue;
+
+      const revertedIndices = Array.isArray(meta.fileMutationRevertedIndices)
+        ? new Set(meta.fileMutationRevertedIndices as number[])
+        : meta.fileMutationReverted === true
+          ? new Set(list.map((_, index) => index))
+          : new Set<number>();
+
+      for (let index = 0; index < list.length; index++) {
+        if (revertedIndices.has(index)) continue;
+        const mutation = list[index]!;
+        results.push({ entryId: entry.id, turnIndex: entry.turnIndex, logIndex: li, mutationIndex: index, mutation });
+      }
     }
     return results;
   }
@@ -588,17 +629,26 @@ export class RewindEngine {
     return this.deps.getLog().findIndex(e => e.id === entryId);
   }
 
-  private _isMutationFileCreation(entryId: string): boolean {
+  private _markMutationReverted(entryId: string, mutationIndex: number): void {
     const entry = this.deps.getLog().find(e => e.id === entryId);
-    if (!entry) return false;
-    const meta = this._entryMeta(entry);
+    if (!entry) return;
+    const meta = entry.meta as Record<string, unknown>;
     const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
-    const fm = toolMeta?.fileMutation as FileMutation | undefined;
-    return fm?.kind === "created";
-  }
-
-  private _markMutationReverted(entryId: string): void {
-    this.deps.patchFlags([entryId], { fileMutationReverted: true });
+    const list = Array.isArray(toolMeta?.fileMutations)
+      ? toolMeta!.fileMutations as unknown[]
+      : [toolMeta?.fileMutation];
+    const total = Math.max(1, list.length);
+    const indices = new Set(
+      Array.isArray(meta.fileMutationRevertedIndices)
+        ? meta.fileMutationRevertedIndices as number[]
+        : [],
+    );
+    indices.add(mutationIndex);
+    const all = indices.size >= total;
+    this.deps.patchFlags([entryId], {
+      fileMutationRevertedIndices: [...indices].sort((a, b) => a - b),
+      ...(all ? { fileMutationReverted: true } : {}),
+    });
   }
 
   private _getRewindJournalPath(): string {
@@ -747,18 +797,26 @@ export class RewindEngine {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
     const mutation = value as Record<string, unknown>;
     return typeof mutation.entryId === "string" && mutation.entryId.length > 0 &&
+      (mutation.fileMutationIndex === undefined ||
+        (typeof mutation.fileMutationIndex === "number"
+          && Number.isInteger(mutation.fileMutationIndex)
+          && mutation.fileMutationIndex >= 0)) &&
       (mutation.bashEntryIndex === undefined ||
         (typeof mutation.bashEntryIndex === "number" && Number.isInteger(mutation.bashEntryIndex) && mutation.bashEntryIndex >= 0));
   }
 
   private _recordJournalApplied(journal: RewindJournal, mutation: RewindAppliedMutation): void {
     const exists = journal.applied.some((item) =>
-      item.entryId === mutation.entryId && item.bashEntryIndex === mutation.bashEntryIndex,
+      item.entryId === mutation.entryId
+      && item.fileMutationIndex === mutation.fileMutationIndex
+      && item.bashEntryIndex === mutation.bashEntryIndex,
     );
     if (exists) return;
     journal.applied.push(mutation);
     journal.pending = journal.pending.filter((item) =>
-      item.entryId !== mutation.entryId || item.bashEntryIndex !== mutation.bashEntryIndex,
+      item.entryId !== mutation.entryId
+      || item.fileMutationIndex !== mutation.fileMutationIndex
+      || item.bashEntryIndex !== mutation.bashEntryIndex,
     );
     this._writeJournalFile(journal.filePath, journal);
   }
@@ -766,7 +824,9 @@ export class RewindEngine {
   private _beginJournalOperation(journal: RewindJournal, mutations: RewindAppliedMutation[]): void {
     for (const mutation of mutations) {
       if (!journal.pending.some((item) =>
-        item.entryId === mutation.entryId && item.bashEntryIndex === mutation.bashEntryIndex,
+        item.entryId === mutation.entryId
+        && item.fileMutationIndex === mutation.fileMutationIndex
+        && item.bashEntryIndex === mutation.bashEntryIndex,
       )) journal.pending.push(mutation);
     }
     this._writeJournalFile(journal.filePath, journal);
@@ -778,6 +838,11 @@ export class RewindEngine {
       const entry = this.deps.getLog().find((candidate) => candidate.id === mutation.entryId);
       if (!entry) return true;
       const meta = entry.meta as Record<string, unknown>;
+      if (mutation.fileMutationIndex !== undefined) {
+        if (meta.fileMutationReverted === true) return true;
+        const indices = meta.fileMutationRevertedIndices;
+        return Array.isArray(indices) && indices.includes(mutation.fileMutationIndex);
+      }
       if (mutation.bashEntryIndex === undefined) return meta.fileMutationReverted === true;
       if (meta.bashMutationReverted === true) return true;
       const indices = meta.bashMutationRevertedIndices;
@@ -814,6 +879,22 @@ export class RewindEngine {
       const entry = this.deps.getLog().find((candidate) => candidate.id === mutation.entryId);
       if (!entry) continue;
       const meta = entry.meta as Record<string, unknown>;
+      if (mutation.fileMutationIndex !== undefined) {
+        const indices = Array.isArray(meta.fileMutationRevertedIndices)
+          ? (meta.fileMutationRevertedIndices as number[]).filter(
+            (value) => value !== mutation.fileMutationIndex,
+          )
+          : [];
+        const toolMeta = meta.toolMetadata as Record<string, unknown> | undefined;
+        const total = Array.isArray(toolMeta?.fileMutations)
+          ? toolMeta!.fileMutations.length
+          : 1;
+        this.deps.patchFlags([entry.id], {
+          fileMutationRevertedIndices: indices,
+          fileMutationReverted: indices.length >= total,
+        });
+        continue;
+      }
       if (mutation.bashEntryIndex === undefined) {
         this.deps.patchFlags([entry.id], { fileMutationReverted: false });
         continue;
