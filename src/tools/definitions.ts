@@ -27,7 +27,7 @@ export const READ: ToolDef = {
     "Use start_line+end_line (inclusive range) or offset+limit (offset = first line, limit = number of lines) to navigate large files across multiple calls. " +
     "Each call returns at most 2000 lines; when the file is longer, the result ends with the start_line to use next. " +
     "Use tail_lines to read the end of a file when you do not know how many lines it has — logs especially. " +
-    "tail_lines is also capped at the latest 2000 lines. " +
+    "tail_lines must be >= 1 and is also capped at the latest 2000 lines; omit it to read from line 1. " +
     "If you know there are several files to read, prefer issuing multiple read_file calls in parallel.",
   parameters: {
     type: "object",
@@ -38,6 +38,7 @@ export const READ: ToolDef = {
       },
       start_line: {
         type: "integer",
+        minimum: 1,
         description: "First line to read (1-indexed, inclusive). Defaults to 1. Alias: offset.",
       },
       end_line: {
@@ -47,10 +48,12 @@ export const READ: ToolDef = {
       },
       offset: {
         type: "integer",
+        minimum: 1,
         description: "Alias for start_line (1-indexed first line). Must be >= 1.",
       },
       limit: {
         type: "integer",
+        minimum: 1,
         description:
           "Number of lines to read starting at start_line/offset (NOT an alias for end_line). " +
           "For example, offset=50, limit=100 reads lines 50-149. Must be >= 1.",
@@ -63,9 +66,10 @@ export const READ: ToolDef = {
       },
       tail_lines: {
         type: "integer",
+        minimum: 1,
         description:
-          "Read only the last N lines (max 2000). For logs and other files whose length you do not know. " +
-          "Overrides start_line/end_line/offset/limit.",
+          "Read only the last N lines (N >= 1, max 2000). For logs and other files whose length you do not know. " +
+          "Overrides start_line/end_line/offset/limit. Omit it to read from line 1.",
       },
     },
     required: ["path"],
@@ -116,7 +120,9 @@ export const EDIT: ToolDef = {
   name: "edit_file",
   description:
     "Apply a patch to an existing file. Each edit replaces an `old_str` with a `new_str`; " +
-    "by default `old_str` must appear exactly once in the file (or the call fails with the line numbers of all matches so you can disambiguate). " +
+    "`old_str` is matched byte-for-byte after newline normalization: copy it verbatim from read_file — same indentation, quotes, and backslash count, without re-escaping — and include the trailing newline only when you mean to replace it. " +
+    "If an edit reports `old_str not found`, re-read that exact range and rebuild the string instead of retrying it unchanged. " +
+    "By default `old_str` must appear exactly once in the file (or the call fails with the line numbers of all matches so you can disambiguate). " +
     "Set `replace_all: true` on an edit to replace every occurrence —useful for renames. " +
     "Multiple edits in one call are applied atomically and must not overlap. " +
     "Use `append_str` to add content at the end of the file (can be combined with edits —appends run last). " +

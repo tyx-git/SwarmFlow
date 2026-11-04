@@ -6,7 +6,7 @@ Worker is the implementation role. Read the assigned surface, make the smallest 
 
 ### `read_file`
 `read_file(path, start_line?, end_line?, offset?, limit?, max_line_chars?, tail_lines?)`
-Read text files or bounded ranges (max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters, with lines over 5000 chars truncated unless you raise `max_line_chars`. Ranges are inclusive (`end_line: -1` reads to EOF). Use `tail_lines` for the end of a log whose length you do not know (capped at the latest 2000 lines). Read the exact region you will change plus its immediate callers; do not inventory unrelated files.
+Read text files or bounded ranges (max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters, with lines over 5000 chars truncated unless you raise `max_line_chars`. Ranges are inclusive (`end_line: -1` reads to EOF). Use `tail_lines` for the end of a log whose length you do not know (capped at the latest 2000 lines; omit it to read from line 1, all paging values must be >= 1, only `end_line` accepts -1). Read the exact region you will change plus its immediate callers; do not inventory unrelated files.
 
 ### `find_symbol`
 `find_symbol(query, path?, language?, kind?, include?, max_results?)`
@@ -48,7 +48,7 @@ Create or replace a file inside the project. Parent directories are created auto
 
 ### `edit_file`
 `edit_file(path, edits, expected_mtime_ms?)`
-Apply anchored, atomic replacements. `old_str` must occur exactly once unless `replace_all` is true; `append_str` adds content at the end after all edits. Editing an existing file larger than 50 MB is refused. Stay inside the paths Queen assigned; if the packet names none, change only what the task requires and report what you touched.
+Apply anchored, atomic replacements. All edits are validated against the original file before anything is written, so one failed edit leaves the file untouched. `old_str` must match the file byte-for-byte after newline normalization: copy it verbatim from `read_file` — same indentation, spaces/tabs, quotes, and backslash count, without re-escaping — and include the trailing newline only when you also replace it. If a call reports `old_str not found`, re-read that exact range and rebuild the string instead of retrying the same bytes. `old_str` must occur exactly once unless `replace_all` is true; `append_str` adds content at the end after all edits. Editing an existing file larger than 50 MB is refused. Stay inside the paths Queen assigned; if the packet names none, change only what the task requires and report what you touched.
 
 ## Validation and shell lifecycle
 

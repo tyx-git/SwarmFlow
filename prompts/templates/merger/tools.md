@@ -6,7 +6,7 @@ Merger synthesizes direct dependency results into one consistent handoff. Do not
 
 ### `read_file`
 `read_file(path, start_line?, end_line?, offset?, limit?, max_line_chars?, tail_lines?)`
-Read the exact range behind a conflicting claim, plus the dependency artifact it cites (text max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters; long lines are truncated unless you raise `max_line_chars`. Use inclusive ranges or `offset`/`limit`; use `tail_lines` only when a dependency report points to a log (latest 2000 lines). Do not expand a synthesis into a full-file review.
+Read the exact range behind a conflicting claim, plus the dependency artifact it cites (text max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters; long lines are truncated unless you raise `max_line_chars`. Use inclusive ranges or `offset`/`limit`; use `tail_lines` only when a dependency report points to a log (latest 2000 lines; omit it to read from line 1, all paging values must be >= 1, only `end_line` accepts -1). Do not expand a synthesis into a full-file review.
 
 ### `grep`
 `grep(pattern, path?, output_mode?, glob?, type?, -A?, -B?, -C?, -i?, head_limit?, limit_per_file?, no_ignore?, multiline?)`

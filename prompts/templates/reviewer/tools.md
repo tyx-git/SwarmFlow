@@ -6,7 +6,7 @@ Reviewer verifies a supplied change and its claims with fresh eyes. Do not edit 
 
 ### `read_file`
 `read_file(path, start_line?, end_line?, offset?, limit?, max_line_chars?, tail_lines?)`
-Read the exact changed range and the callers or tests that determine its behavior (text max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters; lines over 5000 chars are truncated unless you raise `max_line_chars`. Use inclusive `start_line`/`end_line` (`-1` reads to EOF) or `offset`/`limit`; use `tail_lines` for a log edge (latest 2000 lines). Cite exact file:line evidence rather than paraphrasing a whole file.
+Read the exact changed range and the callers or tests that determine its behavior (text max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters; lines over 5000 chars are truncated unless you raise `max_line_chars`. Use inclusive `start_line`/`end_line` (`-1` reads to EOF) or `offset`/`limit`; use `tail_lines` for a log edge (latest 2000 lines; omit it to read from line 1, all paging values must be >= 1, only `end_line` accepts -1). Cite exact file:line evidence rather than paraphrasing a whole file.
 
 ### `grep`
 `grep(pattern, path?, output_mode?, glob?, type?, -A?, -B?, -C?, -i?, head_limit?, limit_per_file?, no_ignore?, multiline?)`
