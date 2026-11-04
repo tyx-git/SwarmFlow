@@ -258,11 +258,11 @@ describe("OpenTUI presentation transform", () => {
       reconciled("tc-new", {
         id: "tc-new",
         kind: "tool_call",
-        text: "write_file /tmp/demo.txt",
+        text: "edit",
         meta: {
-          toolName: "write_file",
+          toolName: "edit",
           toolCallId: "call-new",
-          toolArgs: { path: "/tmp/demo.txt", content: "hello" },
+          toolArgs: {},
           toolExecState: "running",
           toolStreamState: "closed",
         },
@@ -279,7 +279,7 @@ describe("OpenTUI presentation transform", () => {
     });
     expect(result[1]).toMatchObject({
       kind: "tool_operation",
-      toolDisplayName: "Write",
+      toolDisplayName: "Edit",
       state: "active",
     });
   });

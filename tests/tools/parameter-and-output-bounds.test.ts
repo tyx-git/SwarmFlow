@@ -4,7 +4,6 @@
  *  - list_dir:   max_depth, max_entries, skipped-default dirs, file size suffix
  *  - glob:       auto `**\/` prefix, limit cap
  *  - grep:       multi-pattern OR, smart-case, per-file limit, output cap
- *  - edit_file:  replace_all, no-op rejection, line-number disambiguation
  *  - bash:       spill-to-file when output exceeds the cap
  *  - web_fetch:  middle-cut truncation (covered indirectly via shared util)
  */
@@ -253,70 +252,6 @@ describe("grep improvements", () => {
         { projectRoot: root },
       );
       expect(r.content).toContain("more matches in this file");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("edit_file improvements", () => {
-  it("rejects no-op edits where old_str === new_str", async () => {
-    const root = makeTempDir("swarmflow-edit-noop-");
-    try {
-      writeFileSync(join(root, "a.txt"), "hello\n", "utf-8");
-      const r = await executeTool(
-        "edit_file",
-        { path: "a.txt", edits: [{ old_str: "hello", new_str: "hello" }] },
-        { projectRoot: root },
-      );
-      expect(r.content).toContain("no-op");
-      expect(readFileSync(join(root, "a.txt"), "utf-8")).toBe("hello\n");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("reports line numbers of every match when old_str is ambiguous", async () => {
-    const root = makeTempDir("swarmflow-edit-ambig-");
-    try {
-      writeFileSync(
-        join(root, "a.txt"),
-        "alpha\nfoo\nbeta\nfoo\ngamma\nfoo\n",
-        "utf-8",
-      );
-      const r = await executeTool(
-        "edit_file",
-        { path: "a.txt", edits: [{ old_str: "foo", new_str: "bar" }] },
-        { projectRoot: root },
-      );
-      expect(r.content).toContain("appears 3 times");
-      // Lines 2, 4, 6 in 1-indexed
-      expect(r.content).toMatch(/at lines 2, 4, 6/);
-      expect(r.content).toContain("replace_all: true");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("replace_all: true rewrites every occurrence", async () => {
-    const root = makeTempDir("swarmflow-edit-replace-all-");
-    try {
-      writeFileSync(
-        join(root, "a.txt"),
-        "alpha\nfoo\nbeta\nfoo\ngamma\nfoo\n",
-        "utf-8",
-      );
-      const r = await executeTool(
-        "edit_file",
-        {
-          path: "a.txt",
-          edits: [{ old_str: "foo", new_str: "BAR", replace_all: true }],
-        },
-        { projectRoot: root },
-      );
-      expect(r.content).toContain("edits applied");
-      const after = readFileSync(join(root, "a.txt"), "utf-8");
-      expect(after).toBe("alpha\nBAR\nbeta\nBAR\ngamma\nBAR\n");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

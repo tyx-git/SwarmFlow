@@ -1,22 +1,18 @@
 /** @jsxImportSource @opentui/react */
 
 /**
- * Unified file-modify body — renders identically during streaming and after completion.
+ * Unified file-modify body for `edit` results.
  *
- * Input: FileModifyDisplayData (shared type from src/lib/diff-hunk.ts)
+ * Input: FileModifyDisplayData (shared type from src/patches/hunk.ts)
  *
  * Modes:
  *   replace — DiffHunk[]: contextBefore + red lines + green lines + contextAfter, with ⋮
- *   append  — DiffHunk[]: ⋮ top + green lines (no ⋮ bottom)
  *   write   — writeLines: syntax-highlighted code lines with line numbers (no ⋮)
  *
  * Two-pass rendering (perf): a cheap structural pass turns the data into
  * `LineDescriptor[]` (line numbers, signs, ellipsis, raw payload text — NO
  * syntax highlighting), and an expensive `materializeDescriptor` pass builds
- * the highlighted `StyledText` only for the lines actually displayed. The
- * virtualized renderer drives a scroll-window so a 400-line streaming write
- * only highlights + reconciles the ~viewport rows instead of the whole file
- * on every streamed delta. Inline previews materialize only the visible window.
+ * the highlighted `StyledText` only for the lines actually displayed.
  */
 
 import React, { useMemo } from "react";
@@ -165,7 +161,7 @@ function buildReplaceDescriptors(
     const afterStart = hunk.startLine + hunk.deletions.length;
     const endLine = afterStart + hunk.contextAfter.length;
     if (endLine > maxLineNo) maxLineNo = endLine;
-    // Additions can extend beyond deletions (e.g. append hunks)
+    // Additions can extend beyond deletions (e.g. add-file hunks)
     const addEnd = hunk.startLine + hunk.additions.length;
     if (addEnd > maxLineNo) maxLineNo = addEnd;
   }
@@ -271,8 +267,8 @@ function buildReplaceDescriptors(
 }
 
 /**
- * 新增行描述：行号 + `+`，整行绿色底。append 与 write 共用同一套样式；
- * firstLine 为 null 表示不显示行号（append 到空文件）。
+ * 新增行描述：行号 + `+`，整行绿色底。write（Add File）使用；
+ * firstLine 为 null 表示不显示行号。
  */
 function buildAdditionDescriptors(
   lines: readonly string[],
@@ -296,25 +292,6 @@ function buildAdditionDescriptors(
   }));
 }
 
-function buildAppendDescriptors(
-  data: FileModifyDisplayData,
-  colors: ConversationPalette,
-): LineDescriptor[] {
-  if (data.hunks.length === 0) return [];
-  const hunk = data.hunks[0];
-
-  const lines = hunk.additions;
-  const startLine = hunk.startLine;
-  const maxLineNo = startLine + lines.length - 1;
-  const numW = startLine > 0 ? Math.max(String(maxLineNo).length, 2) : 0;
-
-  // 顶部恒有 ⋮（文件后面还有内容），底部没有——append 的内容就是文件末尾。
-  return [
-    ellipsisDescriptor(numW, RGBA.fromHex(colors.dim)),
-    ...buildAdditionDescriptors(lines, startLine && numW ? startLine : null, numW, data.language, colors),
-  ];
-}
-
 function buildWriteDescriptors(
   data: FileModifyDisplayData,
   colors: ConversationPalette,
@@ -336,7 +313,6 @@ export function buildLineDescriptors(
 ): LineDescriptor[] {
   switch (data.mode) {
     case "replace": return buildReplaceDescriptors(data, colors);
-    case "append": return buildAppendDescriptors(data, colors);
     case "write": return buildWriteDescriptors(data, colors);
   }
 }
@@ -355,28 +331,6 @@ export function materializeDescriptor(
   return { content: new StyledText(chunks), rowBackgroundColor: desc.rowBackgroundColor };
 }
 
-/**
- * Full materialize (all rows) — used by tests as the equivalence oracle for
- * the windowed render: `materializeRange(descs, a, b)` must byte-match
- * `materializeAll(descs).slice(a, b)`.
- */
-export function materializeDescriptors(
-  descriptors: LineDescriptor[],
-  colors: ConversationPalette,
-  contentWidth: number,
-  start = 0,
-  end = descriptors.length,
-): ToolResultLineArtifact[] {
-  const dimFg = RGBA.fromHex(colors.dim);
-  const lo = Math.max(0, Math.min(start, descriptors.length));
-  const hi = Math.max(lo, Math.min(end, descriptors.length));
-  const out: ToolResultLineArtifact[] = [];
-  for (let i = lo; i < hi; i++) {
-    out.push(materializeDescriptor(descriptors[i], contentWidth, dimFg));
-  }
-  return out;
-}
-
 // ------------------------------------------------------------------
 // Component
 // ------------------------------------------------------------------
@@ -385,11 +339,8 @@ interface FileModifyBodyProps {
   data: FileModifyDisplayData;
   colors: ConversationPalette;
   contentWidth: number;
-  streaming: boolean;
   /** Inline preview row count before the user expands this result. */
   maxVisibleLines?: number;
-  /** Virtualized mode: render only rows in `[start, end)` with spacer boxes. */
-  window?: { start: number; end: number };
   expanded?: boolean;
   onToggleExpand?: () => void;
 }
@@ -399,7 +350,6 @@ function FileModifyBodyInner({
   colors,
   contentWidth,
   maxVisibleLines = DEFAULT_MAX_VISIBLE,
-  window,
   expanded = false,
   onToggleExpand,
 }: FileModifyBodyProps): React.ReactNode {
@@ -407,17 +357,12 @@ function FileModifyBodyInner({
   const dimFg = useMemo(() => RGBA.fromHex(colors.dim), [colors.dim]);
   const total = descriptors.length;
 
-  const virtualized = window != null;
   const inlineLimit = Math.min(INLINE_EXPANSION_MAX_LINES, Math.max(1, maxVisibleLines));
   const visibleCount = Math.min(total, expanded ? INLINE_EXPANSION_MAX_LINES : inlineLimit);
-  const start = virtualized
-    ? Math.max(0, Math.min(window.start, total))
-    : expanded || maxVisibleLines === Number.POSITIVE_INFINITY
-      ? 0
-      : Math.max(0, total - visibleCount);
-  const end = virtualized
-    ? Math.max(start, Math.min(window.end, total))
-    : Math.min(total, start + visibleCount);
+  const start = expanded || maxVisibleLines === Number.POSITIVE_INFINITY
+    ? 0
+    : Math.max(0, total - visibleCount);
+  const end = Math.min(total, start + visibleCount);
 
   const visible = useMemo(
     () => {
@@ -440,18 +385,6 @@ function FileModifyBodyInner({
       <text content={artifact.content} wrapMode="none" />
     </box>
   ));
-
-  if (virtualized) {
-    const topSpacer = start;
-    const bottomSpacer = total - end;
-    return (
-      <box flexDirection="column" gap={0}>
-        {topSpacer > 0 ? <box height={topSpacer} flexShrink={0} /> : null}
-        {rows}
-        {bottomSpacer > 0 ? <box height={bottomSpacer} flexShrink={0} /> : null}
-      </box>
-    );
-  }
 
   const overflowCount = start;
   const trailingOverflow = end < total;
@@ -488,10 +421,7 @@ export const FileModifyBody = React.memo(
     prev.data === next.data
     && prev.colors === next.colors
     && prev.contentWidth === next.contentWidth
-    && prev.streaming === next.streaming
     && prev.maxVisibleLines === next.maxVisibleLines
     && prev.expanded === next.expanded
-    && prev.onToggleExpand === next.onToggleExpand
-    && prev.window?.start === next.window?.start
-    && prev.window?.end === next.window?.end,
+    && prev.onToggleExpand === next.onToggleExpand,
 );

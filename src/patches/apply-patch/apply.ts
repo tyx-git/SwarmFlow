@@ -58,7 +58,6 @@ export interface AppliedPatchChange {
 
 export interface AppliedPatchDelta {
   changes: AppliedPatchChange[];
-  exact: boolean;
 }
 
 export class ApplyPatchFailure extends Error {
@@ -129,7 +128,7 @@ export async function applyHunks(
 ): Promise<{ delta: AppliedPatchDelta; affected: AffectedPaths; summary: string }> {
   const resolvePath = options.resolvePath ?? ((patchPath: string) => resolve(options.cwd, patchPath));
   const affected: AffectedPaths = { added: [], modified: [], deleted: [] };
-  const delta: AppliedPatchDelta = { changes: [], exact: true };
+  const delta: AppliedPatchDelta = { changes: [] };
 
   if (hunks.length === 0) {
     throw new ApplyPatchFailure("No files were modified.", delta);
@@ -158,8 +157,7 @@ export async function applyHunks(
     }
   }
 
-  const fail = (message: string, exact = true): never => {
-    if (!exact) delta.exact = false;
+  const fail = (message: string): never => {
     throw new ApplyPatchFailure(message, delta);
   };
 
@@ -179,7 +177,7 @@ export async function applyHunks(
         try {
           await options.io.writeText(path, hunk.contents);
         } catch (error) {
-          fail(`Failed to write file ${path}: ${errorText(error)}`, false);
+          fail(`Failed to write file ${path}: ${errorText(error)}`);
         }
         delta.changes.push({
           path,
@@ -203,7 +201,7 @@ export async function applyHunks(
         try {
           await options.io.remove(path);
         } catch (error) {
-          fail(`Failed to delete file ${path}: ${errorText(error)}`, false);
+          fail(`Failed to delete file ${path}: ${errorText(error)}`);
         }
         if (deletedContent !== null) {
           delta.changes.push({
@@ -253,7 +251,7 @@ export async function applyHunks(
         try {
           await options.io.writeText(destination, newContents);
         } catch (error) {
-          fail(`Failed to write file ${destination}: ${errorText(error)}`, false);
+          fail(`Failed to write file ${destination}: ${errorText(error)}`);
         }
         const destinationChangeIndex = delta.changes.length;
         delta.changes.push({
@@ -277,7 +275,7 @@ export async function applyHunks(
         try {
           await options.io.remove(path);
         } catch (error) {
-          fail(`Failed to remove original ${path}: ${errorText(error)}`, false);
+          fail(`Failed to remove original ${path}: ${errorText(error)}`);
         }
         delta.changes[destinationChangeIndex] = {
           path,
@@ -296,7 +294,7 @@ export async function applyHunks(
       try {
         await options.io.writeText(path, newContents);
       } catch (error) {
-        fail(`Failed to write file ${path}: ${errorText(error)}`, false);
+        fail(`Failed to write file ${path}: ${errorText(error)}`);
       }
       delta.changes.push({
         path,

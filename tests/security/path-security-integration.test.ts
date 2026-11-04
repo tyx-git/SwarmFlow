@@ -79,22 +79,23 @@ describe("path security integration", () => {
       );
       expect(outsideGrep.content).toContain("outside.txt");
 
-      const deniedWrites: Array<[string, Record<string, unknown>]> = [
-        ["edit_file", { path: outsideFile, edits: [{ old_str: "outside", new_str: "edited" }] }],
-        ["write_file", { path: join(externalRoot, "new.txt"), content: "x" }],
+      const wrap = (body: string): string => `*** Begin Patch\n${body}\n*** End Patch`;
+      const deniedPatches = [
+        wrap(`*** Update File: ${outsideFile}\n@@\n-outside\n+edited`),
+        wrap(`*** Add File: ${join(externalRoot, "new.txt")}\n+x`),
       ];
 
-      for (const [toolName, args] of deniedWrites) {
-        const result = await executeTool(toolName, args, { projectRoot });
+      for (const patchPayload of deniedPatches) {
+        const result = await executeTool("edit", {}, { projectRoot, patchPayload });
         expect(result.content).toContain("project root boundary");
       }
 
-      const allowedWrite = await executeTool(
-        "write_file",
-        { path: join(externalRoot, "new.txt"), content: "x" },
-        { projectRoot, externalPathAllowlist: [externalRoot] },
-      );
-      expect(allowedWrite.content).toContain("OK: Wrote");
+      const allowedWrite = await executeTool("edit", {}, {
+        projectRoot,
+        externalPathAllowlist: [externalRoot],
+        patchPayload: wrap(`*** Add File: ${join(externalRoot, "new.txt")}\n+x`),
+      });
+      expect(allowedWrite.content).toContain("Success. Updated the following files");
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
       rmSync(externalRoot, { recursive: true, force: true });

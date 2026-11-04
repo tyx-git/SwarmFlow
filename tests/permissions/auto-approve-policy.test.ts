@@ -178,16 +178,11 @@ describe("auto-approve policy: workspace boundary", () => {
     }
   });
 
-  it("asks for file tools outside the workspace", async () => {
+  it("asks for read tools outside the workspace", async () => {
     const fixture = makeFixture();
     try {
       const read = await decide(fixture.advisor, "read_file", { path: fixture.outsideFile });
-      const write = await decide(fixture.advisor, "write_file", {
-        path: fixture.outsideFile,
-        content: "x",
-      });
       expect(read.kind).toBe("ask");
-      expect(write.kind).toBe("ask");
     } finally {
       cleanup(fixture);
     }

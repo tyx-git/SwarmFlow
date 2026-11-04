@@ -68,7 +68,7 @@ function makeParentWithChild(childRounds: Array<{ text?: string; toolCalls?: Arr
   childProvider.rounds = childRounds;
   const childAgent = makeScriptedAgentObject(childProvider, {
     name: "worker-1",
-    tools: [testToolDef("write_file"), testToolDef("slow_tool")],
+    tools: [testToolDef("slow_tool")],
   });
   const handle = h.internals._instantiateChildSession("worker-1", "scout", "persistent", childAgent);
   h.internals._childSessions.set("worker-1", handle);
@@ -78,11 +78,12 @@ function makeParentWithChild(childRounds: Array<{ text?: string; toolCalls?: Arr
 /** Child suspends on an approval mid-turn and its handle goes "blocked". */
 async function makeBlockedChild(): Promise<ChildSetup & { holder: { ask: ApprovalRequest | null } }> {
   const setup = makeParentWithChild([
-    { toolCalls: [{ id: "call-w1", name: "write_file", arguments: { path: "out.txt", content: "data" } }] },
+    { toolCalls: [{ id: "call-w1", name: "slow_tool", arguments: {} }] },
     { text: "done after approval" },
   ]);
-  const holder = stageApprovalOnChild(setup.handle.session, "worker-1", "write_file");
-  const sent = await setup.h.internals._execSend({ to: "worker-1", content: "please write the file" });
+  (setup.handle.session as any)._toolExecutors["slow_tool"] = async () => "ok";
+  const holder = stageApprovalOnChild(setup.handle.session, "worker-1", "slow_tool");
+  const sent = await setup.h.internals._execSend({ to: "worker-1", content: "please run the slow tool" });
   if (!String(sent.content).includes("sent")) throw new Error(`send failed: ${sent.content}`);
   await waitFor(() => setup.handle.lifecycle === "blocked");
   return { ...setup, holder };

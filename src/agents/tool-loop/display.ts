@@ -50,7 +50,7 @@ function compactDisplayValue(value: unknown): string {
 
 /**
  * 为工具调用生成 TUI 显示行。
- * 根据工具名和参数生成简短可读字符串，如 "edit_file src/cli.ts"。
+ * 根据工具名和参数生成简短可读字符串，如 "read_file src/cli.ts"。
  */
 export function generateToolCallDisplay(
   toolName: string,
@@ -69,8 +69,6 @@ export function generateToolCallDisplay(
   switch (toolName) {
     case "read_file":
     case "list_dir":
-    case "edit_file":
-    case "write_file":
       return path ? `${toolName} ${path}` : toolName;
     case "glob":
       return pattern ? `${toolName} ${pattern}` : toolName;
@@ -118,12 +116,30 @@ export function extractToolPreview(metadata: Record<string, unknown>): { text: s
   return { text, dim };
 }
 
+/**
+ * 工具结果预览：显式 tui_preview 优先；成功结果按 20 行兜底，
+ * 错误结果不生成兜底预览（避免把错误全文塞进日志 display）。
+ */
+export function buildToolResultPreview(
+  metadata: Record<string, unknown>,
+  content: string,
+  isError: boolean,
+): { text?: string; dim?: boolean } {
+  const preview = extractToolPreview(metadata);
+  if (preview) return preview;
+  if (isError) return {};
+  const lines = content.split("\n");
+  return {
+    text: lines.length > 20
+      ? lines.slice(0, 20).join("\n") + `\n... (${lines.length - 20} more lines)`
+      : content,
+    dim: true,
+  };
+}
+
 // ------------------------------------------------------------------
 // 流式 / 部分工具调用跟踪
 //
 // Provider 将工具调用参数作为部分 JSON 片段流式传输。
-// 我们逐步解析（parsePartialFlatObject）以：
-//   1. 提取完整参数用于早期可见性决策
-//   2. 为 TUI 差异渲染构建 StreamableToolCall（edit_file、write_file）
-//   3. 探测编辑上下文：在 old_str 仍处于流式状态时读取目标文件以解析行号
+// 我们逐步解析（parsePartialFlatObject）以提取完整参数，用于早期可见性决策。
 // ------------------------------------------------------------------

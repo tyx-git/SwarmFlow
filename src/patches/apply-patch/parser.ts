@@ -5,16 +5,11 @@
  */
 
 import {
-  ADD_FILE_MARKER,
   BEGIN_PATCH_MARKER,
-  CHANGE_CONTEXT_MARKER,
-  DELETE_FILE_MARKER,
-  EMPTY_CHANGE_CONTEXT_MARKER,
   END_PATCH_MARKER,
   ENVIRONMENT_ID_MARKER,
   EOF_MARKER,
-  MOVE_TO_MARKER,
-  UPDATE_FILE_MARKER,
+  splitPatchLines,
 } from "./markers.js";
 
 export interface UpdateFileChunk {
@@ -58,6 +53,88 @@ export function formatParseError(error: ParseError): string {
   return `Invalid patch hunk on line ${error.lineNumber ?? 0}: ${error.message}`;
 }
 
+interface HunkHeader {
+  kind: "add" | "delete" | "update";
+  path: string;
+}
+
+const HUNK_HEADER_RE = /^\*\*\* (Add|Delete|Update) File:[ \t]+(.+)$/;
+const MOVE_TO_RE = /^\*\*\* Move to:[ \t]+(.+)$/;
+const ANCHOR_RE = /^@@(?:[ \t]+(.*))?$/;
+
+/** 模型可能把标记后的空格写成多个空格或 tab；路径取首个非空白后的内容。 */
+function matchHunkHeader(trimmed: string): HunkHeader | null {
+  const match = HUNK_HEADER_RE.exec(trimmed);
+  if (!match) return null;
+  return {
+    kind: match[1] === "Add" ? "add" : match[1] === "Delete" ? "delete" : "update",
+    path: match[2]!,
+  };
+}
+
+function isAnchorLine(line: string): boolean {
+  return ANCHOR_RE.test(line);
+}
+
+function isFormattingBlank(line: string): boolean {
+  // 单个空格是“空 context 行”的显式写法；其余纯空白按格式空行处理。
+  return line.trim() === "" && line !== " ";
+}
+
+function nextNonBlank(lines: readonly string[], from: number): string | undefined {
+  for (let index = from; index < lines.length; index++) {
+    if (!isFormattingBlank(lines[index]!)) return lines[index];
+  }
+  return undefined;
+}
+
+/**
+ * 模型常在 hunk 之间、`@@` 前后或 `*** End Patch` 前插入空行。
+ * 这些位置的空行不可能是有效内容；删掉它们。Update chunk 内部
+ * 两条内容行之间的空行仍保留为 empty context。
+ */
+function stripSeparatorBlankLines(lines: readonly string[]): string[] {
+  type BlockMode = "started" | "add" | "delete" | "update" | "ended";
+  const result: string[] = [];
+  let mode: BlockMode = "started";
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
+    if (isFormattingBlank(line)) {
+      const previous = result.length > 0 ? result[result.length - 1] : undefined;
+      const next = nextNonBlank(lines, index + 1);
+      const headerOf = (value: string | undefined): boolean => (
+        value !== undefined
+        && matchHunkHeader(mode === "update" ? value : value.trim()) !== null
+      );
+      const nextIsMarker = next !== undefined && (
+        headerOf(next)
+        || (mode === "update" && isAnchorLine(next))
+        || next.trim() === END_PATCH_MARKER
+        || next.trim() === EOF_MARKER
+      );
+      const previousIsChunkStart = previous === undefined
+        || headerOf(previous)
+        || (mode === "update" && isAnchorLine(previous));
+      if (mode !== "update" || nextIsMarker || previousIsChunkStart) {
+        continue;
+      }
+    }
+
+    result.push(line);
+    if (line.trim() === END_PATCH_MARKER) {
+      mode = "ended";
+      continue;
+    }
+    const header = matchHunkHeader(mode === "update" ? line : line.trim());
+    if (header) {
+      mode = header.kind;
+    }
+  }
+
+  return result;
+}
+
 function invalidPatch(message: string): ParseError {
   return new ParseError("invalid_patch", message);
 }
@@ -82,10 +159,6 @@ class ParserState {
   private readonly hunks: Hunk[] = [];
   private lineNumber = 0;
   private environmentId: string | null = null;
-
-  getEnvironmentId(): string | null {
-    return this.environmentId;
-  }
 
   process(line: string): void {
     this.lineNumber += 1;
@@ -227,40 +300,28 @@ class ParserState {
       return true;
     }
 
-    if (trimmed.startsWith(ADD_FILE_MARKER)) {
+    const header = matchHunkHeader(trimmed);
+    if (header) {
       this.ensureUpdateHunkIsNotEmpty(trimmed);
-      this.hunks.push({
-        kind: "add",
-        path: trimmed.slice(ADD_FILE_MARKER.length),
-        contents: "",
-      });
-      this.mode = { type: "add_file", hunkIndex: this.hunks.length - 1 };
-      return true;
-    }
-
-    if (trimmed.startsWith(DELETE_FILE_MARKER)) {
-      this.ensureUpdateHunkIsNotEmpty(trimmed);
-      this.hunks.push({
-        kind: "delete",
-        path: trimmed.slice(DELETE_FILE_MARKER.length),
-      });
-      this.mode = { type: "delete_file", hunkIndex: this.hunks.length - 1 };
-      return true;
-    }
-
-    if (trimmed.startsWith(UPDATE_FILE_MARKER)) {
-      this.ensureUpdateHunkIsNotEmpty(trimmed);
-      this.hunks.push({
-        kind: "update",
-        path: trimmed.slice(UPDATE_FILE_MARKER.length),
-        movePath: null,
-        chunks: [],
-      });
-      this.mode = {
-        type: "update_file",
-        hunkIndex: this.hunks.length - 1,
-        hunkLineNumber: this.lineNumber,
-      };
+      if (header.kind === "add") {
+        this.hunks.push({ kind: "add", path: header.path, contents: "" });
+        this.mode = { type: "add_file", hunkIndex: this.hunks.length - 1 };
+      } else if (header.kind === "delete") {
+        this.hunks.push({ kind: "delete", path: header.path });
+        this.mode = { type: "delete_file", hunkIndex: this.hunks.length - 1 };
+      } else {
+        this.hunks.push({
+          kind: "update",
+          path: header.path,
+          movePath: null,
+          chunks: [],
+        });
+        this.mode = {
+          type: "update_file",
+          hunkIndex: this.hunks.length - 1,
+          hunkLineNumber: this.lineNumber,
+        };
+      }
       return true;
     }
 
@@ -279,12 +340,10 @@ class ParserState {
     if (!hunk || hunk.kind !== "update") return;
 
     const lastChunk = hunk.chunks[hunk.chunks.length - 1];
+    const anchor = ANCHOR_RE.exec(updateLine);
     if (lastChunk?.isEndOfFile) {
       if (updateLine === "") return;
-      if (
-        updateLine !== EMPTY_CHANGE_CONTEXT_MARKER &&
-        !updateLine.startsWith(CHANGE_CONTEXT_MARKER)
-      ) {
+      if (!anchor) {
         throw invalidHunk(
           `Expected update hunk to start with a @@ context marker, got: '${line}'`,
           this.lineNumber,
@@ -292,19 +351,15 @@ class ParserState {
       }
     }
 
-    if (
-      hunk.chunks.length === 0 &&
-      hunk.movePath === null &&
-      updateLine.startsWith(MOVE_TO_MARKER)
-    ) {
-      hunk.movePath = updateLine.slice(MOVE_TO_MARKER.length);
+    const moveTo = MOVE_TO_RE.exec(updateLine);
+    if (hunk.chunks.length === 0 && hunk.movePath === null && moveTo) {
+      hunk.movePath = moveTo[1]!;
       this.mode = mode;
       return;
     }
 
     if (
-      (updateLine === EMPTY_CHANGE_CONTEXT_MARKER ||
-        updateLine.startsWith(CHANGE_CONTEXT_MARKER)) &&
+      anchor &&
       lastChunk &&
       lastChunk.oldLines.length === 0 &&
       lastChunk.newLines.length === 0
@@ -315,16 +370,8 @@ class ParserState {
       );
     }
 
-    if (updateLine === EMPTY_CHANGE_CONTEXT_MARKER) {
-      hunk.chunks.push(newChunk());
-      this.mode = mode;
-      return;
-    }
-
-    if (updateLine.startsWith(CHANGE_CONTEXT_MARKER)) {
-      hunk.chunks.push(
-        newChunk(updateLine.slice(CHANGE_CONTEXT_MARKER.length)),
-      );
+    if (anchor) {
+      hunk.chunks.push(newChunk(anchor[1] ?? null));
       this.mode = mode;
       return;
     }
@@ -406,21 +453,13 @@ function pushContextLine(chunk: UpdateFileChunk, line: string): void {
   chunk.newLines.push(line);
 }
 
-function splitPatchLines(patch: string): string[] {
-  const trimmed = patch.trim();
-  if (trimmed === "") return [];
-  return trimmed.split("\n").map((line) =>
-    line.endsWith("\r") ? line.slice(0, -1) : line
-  );
-}
-
 /** 解析完整补丁；错误以 ParseError 抛出，文案与 codex 保持一致。 */
 export function parsePatch(patch: string): Hunk[] {
-  const lines = splitPatchLines(patch);
-  const first = lines[0]?.trim();
-  const last = lines[lines.length - 1]?.trim();
+  const rawLines = splitPatchLines(patch);
+  const first = rawLines[0]?.trim();
+  const last = rawLines[rawLines.length - 1]?.trim();
 
-  if (lines.length === 0) {
+  if (rawLines.length === 0) {
     throw invalidPatch(
       `The last line of the patch must be '${END_PATCH_MARKER}'`,
     );
@@ -436,6 +475,7 @@ export function parsePatch(patch: string): Hunk[] {
     );
   }
 
+  const lines = stripSeparatorBlankLines(rawLines);
   const parser = new ParserState();
   for (const line of lines.slice(0, -1)) parser.process(line);
   return parser.finishLastLine(lines[lines.length - 1]!);

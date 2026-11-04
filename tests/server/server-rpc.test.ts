@@ -129,14 +129,14 @@ describe("turn lifecycle over RPC", () => {
   it("turn parking on an ask → turn.ended(waiting) + ask.pending", async () => {
     const h = makeScriptedSession({
       rounds: [
-        { toolCalls: [{ id: "call-1", name: "write_file", arguments: {} }] },
+        { toolCalls: [{ id: "call-1", name: "edit", arguments: {} }] },
         { text: "done" },
       ],
-      tools: [testToolDef("write_file")],
+      tools: [testToolDef("edit")],
     });
     const { rpc, dispose } = bind(h);
     try {
-      stageApprovalGate(h, "write_file");
+      stageApprovalGate(h, "edit");
       await rpc.call("session.submitTurn", { input: "write it" });
       await waitFor(() => rpc.eventsOf("turn.ended").length > 0);
       expect(rpc.eventsOf("turn.ended")[0]).toMatchObject({ status: "waiting" });
@@ -195,18 +195,18 @@ describe("ask events over RPC", () => {
     try {
       const childProvider = new ScriptedProvider();
       childProvider.rounds = [
-        { toolCalls: [{ id: "call-c1", name: "write_file", arguments: {} }] },
+        { toolCalls: [{ id: "call-c1", name: "edit", arguments: {} }] },
         { text: "done" },
       ];
       const childAgent = makeScriptedAgentObject(childProvider, {
         name: "worker-1",
-        tools: [testToolDef("write_file")],
+        tools: [testToolDef("edit")],
       });
       const handle = h.internals._instantiateChildSession("worker-1", "scout", "persistent", childAgent);
       h.internals._childSessions.set("worker-1", handle);
       let fired = false;
       handle.session._beforeToolExecute = async (ctx: { toolName: string }) => {
-        if (ctx.toolName !== "write_file" || fired) return undefined;
+        if (ctx.toolName !== "edit" || fired) return undefined;
         fired = true;
         return {
           kind: "ask",
@@ -215,12 +215,12 @@ describe("ask events over RPC", () => {
             kind: "approval",
             createdAt: new Date().toISOString(),
             source: { agentId: "worker-1", agentName: "worker-1" },
-            summary: "Allow write_file?",
+            summary: "Allow edit?",
             roundIndex: undefined,
             payload: {
               toolCallId: "",
-              toolName: "write_file",
-              toolSummary: "worker-1 is calling write_file",
+              toolName: "edit",
+              toolSummary: "worker-1 is calling edit",
               permissionClass: "write",
               offers: [{ type: "tool_once", label: "Allow once" }],
             },
@@ -241,14 +241,14 @@ describe("ask events over RPC", () => {
   it("resolving an ask emits ask.resolved", async () => {
     const h = makeScriptedSession({
       rounds: [
-        { toolCalls: [{ id: "call-1", name: "write_file", arguments: {} }] },
+        { toolCalls: [{ id: "call-1", name: "edit", arguments: {} }] },
         { text: "done" },
       ],
-      tools: [testToolDef("write_file")],
+      tools: [testToolDef("edit")],
     });
     const { rpc, dispose } = bind(h);
     try {
-      stageApprovalGate(h, "write_file");
+      stageApprovalGate(h, "edit");
       await rpc.call("session.submitTurn", { input: "write it" });
       await waitFor(() => rpc.eventsOf("ask.pending").length > 0);
       h.session.resolveApprovalAsk("approval-test-1", 0);

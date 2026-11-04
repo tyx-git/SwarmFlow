@@ -16,11 +16,8 @@ import { ClickablePath } from "./clickable-path.js";
 import type { DisplayTheme } from "../../display/theme/index.js";
 import { ErrorMessage } from "../../display/primitives/error-message.js";
 import { CommandText } from "./command-text.js";
-import { SelectableRow } from "../../display/primitives/selectable-row.js";
-import { INLINE_EXPANSION_ELLIPSIS, INLINE_EXPANSION_MAX_LINES } from "./inline-expansion.js";
 
-const TOOL_STREAM_MAX_LINES = 10;
-const PATH_TOOL_NAMES = new Set(["Read", "Edit", "Write", "List"]);
+const PATH_TOOL_NAMES = new Set(["Read", "Edit", "List"]);
 
 /** A sub-agent name element with hover highlight and click-to-open-tab. */
 function ClickableAgentName(
@@ -49,18 +46,6 @@ function ClickableAgentName(
   );
 }
 
-function buildSectionPreview(text: string, maxLines: number): { text: string; truncated: boolean } {
-  const lines = text.split("\n");
-  if (lines.length <= maxLines) {
-    return { text, truncated: false };
-  }
-  return {
-    text: lines.slice(0, maxLines).join("\n"),
-    truncated: true,
-  };
-}
-
-/** Live elapsed seconds since a start timestamp (updates every second). Returns 0 when inactive. */
 function useElapsedSince(startMs: number | undefined, active: boolean): number {
   const [elapsed, setElapsed] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -128,32 +113,19 @@ function ToolOperationEntryInner(
   const awaitElapsed = useElapsedSince(entry.toolStartedAt, active && isAwaitEvent);
   const toolText = entry.toolText ?? "";
   const suffix = entry.toolSuffix ?? "";
-  const streamSections = entry.toolStreamSections ?? [];
 
-  // File-modify tools use FileModifyBody. `edit` may carry one object per file.
-  const fmdList = entry.fileModifyDataList
-    ?? (entry.fileModifyData ? [entry.fileModifyData] : []);
+  // File-modify cards are produced by `edit` as one display object per file.
+  const fmdList = entry.fileModifyDataList ?? [];
   const showFileModify = fmdList.some((data) => (
     data.hunks.length > 0 || (data.writeLines?.length ?? 0) > 0
   )) && entry.state !== "error";
 
-  // Fallback: legacy streaming body for non-file-modify tools
-  // (file-modify tools should never show raw section labels — they use FileModifyBody or InlineResult)
-  const isFileModifyTool = entry.toolStreamMode === "replace"
-    || entry.toolStreamMode === "append"
-    || entry.toolStreamMode === "write";
-  const showStreamBody = !showFileModify
-    && !isFileModifyTool
-    && streamSections.length > 0
-    && !entry.toolInlineResult;
-
   // Fallback: InlineResult for non-file-modify tools after completion
   const showInlineResult = !showFileModify
-    && !showStreamBody
     && entry.toolInlineResult
     && entry.state !== "active";
 
-  const hasBody = showFileModify || showStreamBody || showInlineResult;
+  const hasBody = showFileModify || showInlineResult;
 
   return (
     <box flexDirection="column" width="100%" gap={0}>
@@ -231,7 +203,6 @@ function ToolOperationEntryInner(
                         data={data}
                         colors={colors}
                         contentWidth={contentWidth - 6}
-                        streaming={entry.state === "active"}
                         maxVisibleLines={diffDisplayMode === "full" ? Infinity : undefined}
                         expanded={expanded}
                         onToggleExpand={toggleExpanded}
@@ -239,39 +210,6 @@ function ToolOperationEntryInner(
                     </box>
                   );
                 })}
-              </box>
-            ) : showStreamBody ? (
-              <box flexDirection="column" gap={0}>
-                {streamSections.map((section) => {
-                  const maxLines = expanded ? INLINE_EXPANSION_MAX_LINES : TOOL_STREAM_MAX_LINES;
-                  const preview = buildSectionPreview(section.text, maxLines);
-                  const hiddenCount = section.text.split("\n").length - preview.text.split("\n").length;
-                  return (
-                    <box key={section.key} flexDirection="column" width="100%" paddingBottom={1}>
-                      <text fg={colors.dim} content={`${section.label}${section.complete ? "" : " (streaming)"}`} />
-                      <CommandText
-                        text={preview.text}
-                        colors={colors}
-                        mode="output"
-                        language={entry.toolStreamLanguage}
-                        wrapMode="char"
-                      />
-                      {preview.truncated && !expanded ? (
-                        <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpanded}>
-                          <text fg={colors.dim} content={`... (${hiddenCount} more lines, click to expand)`} />
-                        </SelectableRow>
-                      ) : null}
-                    </box>
-                  );
-                })}
-                {entry.toolRepairedFromPartial ? (
-                  <text fg={colors.dim} content="(repaired from partial stream)" />
-                ) : null}
-                {expanded ? (
-                  <SelectableRow hoverBackgroundColor={colors.border} onPress={toggleExpanded}>
-                    <text fg={colors.dim} content={`${INLINE_EXPANSION_ELLIPSIS} (click to collapse)`} />
-                  </SelectableRow>
-                ) : null}
               </box>
             ) : showInlineResult ? (
               entry.state === "error" ? (

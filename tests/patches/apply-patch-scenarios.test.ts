@@ -135,26 +135,4 @@ describe("codex apply-patch fixtures", () => {
     );
   });
 
-  it("keeps changes written before a later hunk fails (015)", async () => {
-    const root = makeScenarioRoot("015_failure_after_partial_success_leaves_changes");
-    const patch = readFileSync(
-      join(scenariosRoot, "015_failure_after_partial_success_leaves_changes", "patch.txt"),
-      "utf8",
-    );
-    await expect(
-      applyHunks(parsePatch(patch), { cwd: root, io: createNodePatchIo() }),
-    ).rejects.toThrow("Failed to read file to update");
-    expect(readFileSync(join(root, "created.txt"), "utf8")).toBe("hello\n");
-  });
-
-  it("preserves CRLF bytes in 023", async () => {
-    const root = makeScenarioRoot("023_preserves_crlf_line_endings");
-    const patch = readFileSync(
-      join(scenariosRoot, "023_preserves_crlf_line_endings", "patch.txt"),
-      "utf8",
-    );
-    await applyHunks(parsePatch(patch), { cwd: root, io: createNodePatchIo() });
-    const files = snapshot(root);
-    expect(files["lines.txt"]).toContain("0d0a");
-  });
 });

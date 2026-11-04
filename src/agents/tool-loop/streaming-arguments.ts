@@ -1,5 +1,4 @@
 import type { AskRequest } from "../../ask.js";
-import { type EditProbeState, inferLanguageByExt } from "../../patches/hunk.js";
 
 /**
  * Agent 共享的 tool loop 逻辑。
@@ -12,7 +11,7 @@ import { type EditProbeState, inferLanguageByExt } from "../../patches/hunk.js";
  *
  * 核心概念：
  * - PendingToolCallState：跟踪每个进行中的 tool call（参数流式传输、
- *   执行状态、TUI 可见性、edit-file 上下文探测）
+ *   执行状态、TUI 可见性）
  * - 顺序排出：已提交的 tool call 按发射顺序执行；挂起的 ask 暂停排出，
  *   以保证审批语义正确
  * - Compact：可在任意 provider 调用后触发中途压缩，返回 compactNeeded=true
@@ -21,26 +20,6 @@ import { type EditProbeState, inferLanguageByExt } from "../../patches/hunk.js";
 import type { ToolCall } from "../../providers/types.js";
 
 import { type ToolCallTuiVisibility } from "./types.js";
-
-export interface ToolStreamSection {
-  key: string;
-  label: string;
-  text: string;
-  complete: boolean;
-  contextBefore?: string;
-  contextAfter?: string;
-  contextResolved?: boolean;
-  startLineNumber?: number;
-}
-
-type StreamMode = "replace" | "append" | "write";
-
-export interface StreamableToolCall {
-  canonicalArgs: Record<string, unknown>;
-  sections: ToolStreamSection[];
-  language?: string;
-  streamMode?: StreamMode;
-}
 
 /** 工具调用流式阶段：隐藏部分 -> 可见部分 -> 关闭 */
 type PendingToolStreamPhase = "hidden_partial" | "visible_partial" | "closed";
@@ -53,24 +32,13 @@ export interface PendingToolCallState {
   rawArguments: string;
   entryId: string | null;
   completeTopLevelArgs: Record<string, unknown>;
-  canonicalArgs: Record<string, unknown> | null;
   closedCall: ToolCall | null;
-  sections: ToolStreamSection[];
   executionPromise: Promise<{ suspendedAsk?: { ask: AskRequest; toolCallId: string; roundIndex: number } } | null> | null;
   /** 零参数 edit 的补丁正文；执行后立即清除。 */
   executionPayload?: string;
   streamPhase: PendingToolStreamPhase;
   execPhase: PendingToolExecPhase;
   tuiVisibility: ToolCallTuiVisibility;
-  // 上下文探测（edit_file replace / append 模式）
-  cachedFileContent?: string;
-  cachedTotalLineCount?: number;
-  /** 每个编辑的探测状态（单编辑=1个元素，多编辑=N个元素）。 */
-  editProbes?: EditProbeState[];
-  appendStartLine?: number;
-  // 流式显示提示
-  streamLanguage?: string;
-  streamMode?: StreamMode;
   contextId?: string;
   /** 上次解析/同步流式参数的时间；用于把每 chunk 的重建压到 ~100ms 一次。 */
   lastPartialParseAt?: number;
@@ -245,190 +213,4 @@ export function extractCompleteFlatArgs(
     args[key] = field.value;
   }
   return args;
-}
-
-/** 提取可选参数的已完成字段。 */
-function extractCompleteOptionalArgs(
-  fields: Record<string, ParsedPartialField>,
-): Record<string, unknown> {
-  const optional: Record<string, unknown> = {};
-  const maybeAssign = (key: string): void => {
-    const field = fields[key];
-    if (!field || !field.complete) return;
-    optional[key] = field.value;
-  };
-  maybeAssign("expected_mtime_ms");
-  maybeAssign("intent");
-  return optional;
-}
-
-// ------------------------------------------------------------------
-// 部分 edits 数组解析器（支持多编辑流式传输）
-// ------------------------------------------------------------------
-
-interface ParsedEditItem {
-  old_str: ParsedPartialField | null;
-  new_str: ParsedPartialField | null;
-  complete: boolean;
-}
-
-/** 解析 edits 数组（可能为多编辑）。 */
-function parseEditsArray(
-  input: string,
-  startCursor: number,
-): { edits: ParsedEditItem[]; arrayComplete: boolean } {
-  const edits: ParsedEditItem[] = [];
-  let cursor = startCursor;
-  if (input[cursor] !== "[") return { edits, arrayComplete: false };
-  cursor += 1;
-
-  while (cursor < input.length) {
-    cursor = skipWhitespace(input, cursor);
-    if (cursor >= input.length) break;
-    if (input[cursor] === "]") return { edits, arrayComplete: true };
-    if (input[cursor] === ",") { cursor += 1; continue; }
-    if (input[cursor] !== "{") break;
-
-    // 解析单个 { old_str: "...", new_str: "..." } 对象
-    const innerFields = parsePartialFlatObject(input.slice(cursor));
-    // 找到闭合 } 以判断编辑项是否完整
-    let depth = 0;
-    let objEnd = cursor;
-    let objComplete = false;
-    for (let k = cursor; k < input.length; k++) {
-      if (input[k] === "{") depth++;
-      else if (input[k] === "}") {
-        depth--;
-        if (depth === 0) { objEnd = k + 1; objComplete = true; break; }
-      }
-    }
-    if (!objComplete) objEnd = input.length;
-
-    edits.push({
-      old_str: innerFields["old_str"] ?? null,
-      new_str: innerFields["new_str"] ?? null,
-      complete: objComplete,
-    });
-
-    cursor = objEnd;
-  }
-
-  return { edits, arrayComplete: false };
-}
-
-/**
- * 从原始参数缓冲区构建 StreamableToolCall。
- * 仅处理 write_file 和 edit_file，返回 null 表示不适用。
- */
-export function buildStreamableToolCall(
-  toolName: string,
-  rawArgsBuffer: string,
-): StreamableToolCall | null {
-  const fields = parsePartialFlatObject(rawArgsBuffer);
-  const pathField = fields["path"];
-  if (!pathField || pathField.kind !== "string" || !pathField.complete) {
-    return null;
-  }
-  const path = pathField.value as string;
-  const optional = extractCompleteOptionalArgs(fields);
-
-  const language = inferLanguageByExt(path);
-
-  if (toolName === "write_file") {
-    const contentField = fields["content"];
-    if (!contentField || contentField.kind !== "string") return null;
-    return {
-      canonicalArgs: {
-        path,
-        content: contentField.value,
-        ...optional,
-      },
-      sections: [{
-        key: "content",
-        label: "Content",
-        text: String(contentField.value ?? ""),
-        complete: contentField.complete,
-      }],
-      language,
-      streamMode: "write" as StreamMode,
-    };
-  }
-
-  if (toolName === "edit_file") {
-    const appendField = fields["append_str"];
-    const hasAppend = appendField && appendField.kind === "string";
-
-    // edits 数组（可能与 append 组合）
-    const editsStart = rawArgsBuffer.indexOf('"edits"');
-    if (editsStart !== -1) {
-      const arrayStart = rawArgsBuffer.indexOf("[", editsStart);
-      if (arrayStart !== -1) {
-        const parsed = parseEditsArray(rawArgsBuffer, arrayStart);
-        const sections: ToolStreamSection[] = [];
-        const canonicalEdits: Array<{ old_str: unknown; new_str: unknown }> = [];
-        const isSingle = parsed.edits.length === 1;
-        for (const [idx, edit] of parsed.edits.entries()) {
-          if (edit.old_str) {
-            sections.push({
-              key: `old_str_${idx}`,
-              label: isSingle ? "Before" : `Before #${idx + 1}`,
-              text: String(edit.old_str.value ?? ""),
-              complete: edit.old_str.complete,
-            });
-          }
-          if (edit.new_str) {
-            sections.push({
-              key: `new_str_${idx}`,
-              label: isSingle ? "After" : `After #${idx + 1}`,
-              text: String(edit.new_str.value ?? ""),
-              complete: edit.new_str.complete,
-            });
-          }
-          canonicalEdits.push({
-            old_str: edit.old_str?.value ?? "",
-            new_str: edit.new_str?.value ?? "",
-          });
-        }
-        if (hasAppend) {
-          sections.push({
-            key: "append_str",
-            label: "Append",
-            text: String(appendField!.value ?? ""),
-            complete: appendField!.complete,
-          });
-        }
-        if (sections.length === 0) return null;
-        return {
-          canonicalArgs: {
-            path,
-            edits: canonicalEdits,
-            ...(hasAppend ? { append_str: appendField!.value } : {}),
-            ...optional,
-          },
-          sections,
-          language,
-          streamMode: "replace" as StreamMode,
-        };
-      }
-    }
-
-    // 仅 append（无 edits 数组）
-    if (hasAppend) {
-      return {
-        canonicalArgs: { path, append_str: appendField!.value, ...optional },
-        sections: [{
-          key: "append_str",
-          label: "Append",
-          text: String(appendField!.value ?? ""),
-          complete: appendField!.complete,
-        }],
-        language,
-        streamMode: "append" as StreamMode,
-      };
-    }
-
-    return null;
-  }
-
-  return null;
 }

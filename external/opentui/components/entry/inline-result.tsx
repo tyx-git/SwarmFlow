@@ -37,7 +37,6 @@ interface InlineResultProps {
   onToggleExpand?: () => void;
 }
 
-const LINE_PREFIX = "";
 const MAX_LINES_PER_HUNK = 20;
 const CONTEXT_LINES = 3;
 const ELLIPSIS = "\u2026";
@@ -158,11 +157,10 @@ function InlineResultInner(
         toolMetadata: data.toolMetadata,
         wrapWidth: Math.max(8, contentWidth - 8),
         colors,
-        codePreviewOnly: data.noDiffBackground,
       });
     }
     return null;
-  }, [text, data.dim, data.toolMetadata, data.noDiffBackground, contentWidth, colors]);
+  }, [text, data.dim, data.toolMetadata, contentWidth, colors]);
 
   // Memoized: for a large diff this rebuilds a 1000+ element structure, and
   // without the memo it ran on every re-render of the transcript.
@@ -198,7 +196,7 @@ function InlineResultInner(
             text={displayExpanded
               ? collapseText
               : hiddenCount > 0
-                ? `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+                ? `... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
                 : `${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to expand)" : ""}`}
             colors={colors}
             onClick={onToggleExpand}
@@ -216,7 +214,6 @@ function InlineResultInner(
           <box flexDirection="column" gap={0}>
             {visibleArtifacts.map((artifact, idx) => (
               <box key={idx} flexDirection="row" width="100%" backgroundColor={artifact.rowBackgroundColor}>
-                <text fg={colors.dim} content={LINE_PREFIX} />
                 <text content={artifact.content} wrapMode="none" />
               </box>
             ))}
@@ -234,7 +231,7 @@ function InlineResultInner(
       const pushSeparator = () => {
         elements.push(
           <box key={`sep-${elementKey++}`} flexDirection="row" width="100%">
-            <text fg={colors.dim} content={`${LINE_PREFIX}⋮`} />
+            <text fg={colors.dim} content={`⋮`} />
           </box>,
         );
       };
@@ -247,7 +244,6 @@ function InlineResultInner(
             width="100%"
             backgroundColor={artifact.rowBackgroundColor}
           >
-            <text fg={colors.dim} content={LINE_PREFIX} />
             <text content={artifact.content} wrapMode="none" />
           </box>,
         );
@@ -299,7 +295,7 @@ function InlineResultInner(
           elements.push(
             <FoldIndicator
               key={`fold-${elementKey++}`}
-              text={`${LINE_PREFIX}... (${hidden} more changed lines${clickSuffix})`}
+              text={`... (${hidden} more changed lines${clickSuffix})`}
               colors={colors}
               onClick={onToggleExpand}
             />,
@@ -342,8 +338,8 @@ function InlineResultInner(
       const moreCount = artifacts.length - 1;
       const hasMore = moreCount > 0 || wasTruncated || unknownRemainder;
       const foldText = moreCount > 0
-        ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
-        : `${LINE_PREFIX}...${onToggleExpand ? " (click to expand)" : ""}`;
+        ? `... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
+        : `...${onToggleExpand ? " (click to expand)" : ""}`;
 
       return (
         <box flexDirection="column" gap={0}>
@@ -352,7 +348,6 @@ function InlineResultInner(
             width="100%"
             backgroundColor={first.rowBackgroundColor}
           >
-            <text fg={colors.dim} content={LINE_PREFIX} />
             <text content={truncated} wrapMode="none" />
           </box>
           {hasMore && (
@@ -370,7 +365,7 @@ function InlineResultInner(
     const artifactHiddenCount = Math.max(0, artifacts.length - visibleArtifacts.length);
     const hasHiddenArtifacts = artifactHiddenCount > 0 || unknownRemainder;
     const artifactFoldText = artifactHiddenCount > 0
-      ? `${LINE_PREFIX}... (${artifactHiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+      ? `... (${artifactHiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
       : `${INLINE_EXPANSION_ELLIPSIS}${onToggleExpand ? " (click to expand)" : ""}`;
 
     return (
@@ -382,10 +377,6 @@ function InlineResultInner(
             width="100%"
             backgroundColor={artifact.rowBackgroundColor}
           >
-            <text
-              fg={colors.dim}
-              content={LINE_PREFIX}
-            />
             <text content={artifact.content} wrapMode="none" />
           </box>
         ))}
@@ -413,13 +404,12 @@ function InlineResultInner(
     const moreCount = lines.length - 1;
     const hasMore = moreCount > 0 || wasTruncated || unknownRemainder;
     const foldText = moreCount > 0
-      ? `${LINE_PREFIX}... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
-      : `${LINE_PREFIX}...${onToggleExpand ? " (click to expand)" : ""}`;
+      ? `... (${moreCount} more ${moreCount === 1 ? "line" : "lines"}${onToggleExpand ? ", CLICK to expand" : ""})`
+      : `...${onToggleExpand ? " (click to expand)" : ""}`;
 
     return (
       <box flexDirection="column" gap={0}>
         <box flexDirection="row" width="100%">
-          <text fg={colors.dim} content={LINE_PREFIX} />
           <text fg={textColor} content={truncated} wrapMode="none" />
         </box>
         {hasMore && (
@@ -437,17 +427,13 @@ function InlineResultInner(
   const hiddenCount = Math.max(0, lines.length - visibleLines.length);
   const hasHiddenLines = hiddenCount > 0 || unknownRemainder;
   const foldText = hiddenCount > 0
-    ? `${LINE_PREFIX}... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
-    : `${LINE_PREFIX}...${onToggleExpand ? " (click to expand)" : ""}`;
+    ? `... (${hiddenCount} more lines${onToggleExpand ? ", CLICK to expand" : ""})`
+    : `...${onToggleExpand ? " (click to expand)" : ""}`;
 
   return (
     <box flexDirection="column" gap={0}>
       {visibleLines.map((line, idx) => (
         <box key={idx} flexDirection="row" width="100%">
-          <text
-            fg={colors.dim}
-            content={LINE_PREFIX}
-          />
           <text fg={textColor} content={line} wrapMode="none" />
         </box>
       ))}

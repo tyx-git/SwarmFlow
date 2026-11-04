@@ -1,6 +1,5 @@
 ﻿/** 文件与 bash 变更追踪：记录可回滚的文件 mutation，解析 mkdir/cp/mv/cd 供文件还原使用。 */
 
-import fs from "node:fs/promises";
 import {
   existsSync,
   statSync,
@@ -12,8 +11,6 @@ import {
 import { randomUUID, createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
-
-import { shell } from "../platform/index.js";
 
 import { createPatch } from "diff";
 import { hashFilesystemPath } from "../lib/filesystem-hash.js";
@@ -145,15 +142,6 @@ export function parseTrackableBashMutation(segment: string): TrackableBashParsed
   }
 
   return { cmd: cmd as "mkdir" | "cp" | "mv", flags, args };
-}
-
-/**
- * 检查 bash 片段是否是可以准确记录用于回滚的可追踪变更。
- * 由权限分类器使用以强制执行契约：如果不可追踪，
- * 则该命令不得被分类为 write_reversible。
- */
-export function isTrackableBashMutation(segment: string): boolean {
-  return parseTrackableBashMutation(segment) !== null;
 }
 
 export function prepareBashPreExec(

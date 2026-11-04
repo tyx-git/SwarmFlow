@@ -1,9 +1,9 @@
 /**
  * 大参数流式更新的合并契约。
  *
- * write_file/edit_file 的 rawArguments 会随 chunk 增长；每个 chunk 都重建
- * sections/fileModifyData 是 O(n²)。期望：超过 4KB 的参数在 100ms 窗口内
- * 合并更新，close 时无条件补齐最终状态；小参数仍逐 chunk 更新。
+ * rawArguments 会随 chunk 增长；每个 chunk 都重建参数视图是 O(n²)。期望：
+ * 超过 4KB 的参数在 100ms 窗口内合并更新，close 时无条件补齐最终状态；
+ * 小参数仍逐 chunk 更新。
  */
 
 import { describe, expect, it } from "vitest";
@@ -13,8 +13,16 @@ import { createEphemeralLogState } from "../../src/context/ephemeral-log.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
 import { BaseProvider } from "../../src/providers/base.js";
 import { ProviderResponse, Usage } from "../../src/providers/response.js";
-import type { ToolCall } from "../../src/providers/types.js";
-import { BASIC_TOOLS_MAP } from "../../src/tools/definitions.js";
+import type { ToolCall, ToolDef } from "../../src/providers/types.js";
+
+const BIG_TOOL = {
+  name: "big_tool",
+  description: "test tool with a large payload",
+  parameters: {
+    type: "object",
+    properties: { payload: { type: "string" } },
+  },
+} as ToolDef;
 
 function createUpdateEntry(entries: LogEntry[]) {
   return (entryId: string, patch: {
@@ -36,19 +44,25 @@ function createUpdateEntry(entries: LogEntry[]) {
   };
 }
 
+function currentPayload(entries: LogEntry[]): string {
+  const entry = entries.find((candidate) => candidate.type === "tool_call");
+  const args = (entry?.content as { arguments?: Record<string, unknown> } | undefined)?.arguments;
+  return typeof args?.["payload"] === "string" ? args["payload"] : "";
+}
+
 describe("流式参数合并", () => {
   it("大参数在同一 tick 内的后续 chunk 不重复更新，close 时补齐最终值", async () => {
     const runtime = createEphemeralLogState([
       { role: "system", content: "prompt" },
       { role: "user", content: "hi" },
     ]);
-    const contentA = "line\n".repeat(1000); // > 4KB，进入节流路径
-    const contentB = contentA + "tail\n";
-    const rawA = JSON.stringify({ path: "big.txt", content: contentA });
-    const rawB = JSON.stringify({ path: "big.txt", content: contentB });
-    const contentSnapshots: string[] = [];
+    const payloadA = "line\n".repeat(1000); // > 4KB，进入节流路径
+    const payloadB = payloadA + "tail\n";
+    const rawA = JSON.stringify({ payload: payloadA });
+    const rawB = JSON.stringify({ payload: payloadB });
+    const payloadSnapshots: string[] = [];
 
-    class BigWriteProvider extends BaseProvider {
+    class BigPayloadProvider extends BaseProvider {
       private _calls = 0;
 
       async sendMessage(
@@ -61,16 +75,16 @@ describe("流式参数合并", () => {
       ): Promise<ProviderResponse> {
         this._calls += 1;
         if (this._calls === 1) {
-          options?.onToolCallPartial?.("big-1", "write_file", rawA);
-          contentSnapshots.push(currentContent(runtime.entries));
+          options?.onToolCallPartial?.("big-1", "big_tool", rawA);
+          payloadSnapshots.push(currentPayload(runtime.entries));
           // 同一 tick：距上次解析 < 100ms，应被合并掉。
-          options?.onToolCallPartial?.("big-1", "write_file", rawB);
-          contentSnapshots.push(currentContent(runtime.entries));
+          options?.onToolCallPartial?.("big-1", "big_tool", rawB);
+          payloadSnapshots.push(currentPayload(runtime.entries));
           options?.onToolCallClosed?.({
             id: "big-1",
-            name: "write_file",
+            name: "big_tool",
             rawArguments: rawB,
-            arguments: { path: "big.txt", content: contentB },
+            arguments: { payload: payloadB },
             parseError: null,
           });
           return new ProviderResponse({ usage: new Usage(1, 1) });
@@ -80,31 +94,25 @@ describe("流式参数合并", () => {
     }
 
     const result = await asyncRunToolLoop({
-      provider: new BigWriteProvider(),
+      provider: new BigPayloadProvider(),
       getMessages: runtime.getMessages,
       appendEntry: runtime.appendEntry,
       allocId: runtime.allocId,
       turnIndex: 0,
-      tools: [BASIC_TOOLS_MAP["write_file"]],
+      tools: [BIG_TOOL],
       toolExecutors: {
-        write_file: async () => "OK",
+        big_tool: async () => "OK",
       },
       maxRounds: 2,
       onToolCallPartial: () => {},
       updateEntry: createUpdateEntry(runtime.entries),
     });
 
-    expect(contentSnapshots[0]).toBe(contentA);
+    expect(payloadSnapshots[0]).toBe(payloadA);
     // 第二次 partial 被 100ms 窗口合并，快照仍是 A。
-    expect(contentSnapshots[1]).toBe(contentA);
+    expect(payloadSnapshots[1]).toBe(payloadA);
     // close 无条件同步最终值。
-    expect(currentContent(runtime.entries)).toBe(contentB);
+    expect(currentPayload(runtime.entries)).toBe(payloadB);
     expect(result.text).toBe("done");
   });
 });
-
-function currentContent(entries: LogEntry[]): string {
-  const entry = entries.find((candidate) => candidate.type === "tool_call");
-  const args = (entry?.content as { arguments?: Record<string, unknown> } | undefined)?.arguments;
-  return typeof args?.["content"] === "string" ? args["content"] : "";
-}

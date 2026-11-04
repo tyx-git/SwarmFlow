@@ -7,7 +7,7 @@ import type {
 import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
 import { splitTaskHandoffForDisplay } from "../../../src/swarm/task-handoff.js";
 import { findPatchBlocks, removePatchBlocks } from "../../../src/patches/apply-patch/extract.js";
-import { getToolProfile, HIDDEN_TOOLS } from "./tool-profiles.js";
+import { getToolProfile } from "./tool-profiles.js";
 import { formatDuration } from "../display/utils/format.js";
 
 // ------------------------------------------------------------------
@@ -15,23 +15,12 @@ import { formatDuration } from "../display/utils/format.js";
 // ------------------------------------------------------------------
 
 const QUEUED_PREFIX = "[Queued user message]\n";
-const ATTACHMENT_REGEX = /--- Begin content of (.+?) ---/g;
 
 function extractUserText(raw: string): { text: string; queued: boolean } {
   if (raw.startsWith(QUEUED_PREFIX)) {
     return { text: raw.slice(QUEUED_PREFIX.length), queued: true };
   }
   return { text: raw, queued: false };
-}
-
-function extractAttachments(raw: string): string[] {
-  const attachments: string[] = [];
-  let match: RegExpExecArray | null;
-  ATTACHMENT_REGEX.lastIndex = 0;
-  while ((match = ATTACHMENT_REGEX.exec(raw)) !== null) {
-    attachments.push(match[1]);
-  }
-  return attachments;
 }
 
 function getMeta(entry: ReconciledConversationEntry): Record<string, unknown> {
@@ -103,7 +92,6 @@ function transformUser(entry: ReconciledConversationEntry): PresentationEntry {
   }
 
   const { text, queued } = extractUserText(entry.entry.text);
-  const attachments = extractAttachments(entry.entry.text);
 
   return {
     id: entry.id,
@@ -112,7 +100,6 @@ function transformUser(entry: ReconciledConversationEntry): PresentationEntry {
     state: "done",
     userText: text,
     userQueued: queued || entry.entry.queued || false,
-    userAttachments: attachments.length > 0 ? attachments : undefined,
   };
 }
 
@@ -285,22 +272,12 @@ function buildToolOperation(
   const toolArgs = getToolArgs(callEntry);
   const profile = getToolProfile(toolName);
   const callMeta = getMeta(callEntry);
-  const toolStreamSections = Array.isArray(callMeta.toolStreamSections)
-    ? callMeta.toolStreamSections as PresentationEntry["toolStreamSections"]
-    : undefined;
   const toolExecState = typeof callMeta.toolExecState === "string"
     ? callMeta.toolExecState
     : undefined;
   const toolStreamState = typeof callMeta.toolStreamState === "string"
     ? callMeta.toolStreamState
     : undefined;
-  const toolRepairedFromPartial = callMeta.repairedFromPartial === true;
-  const toolStreamLanguage = typeof callMeta.toolStreamLanguage === "string"
-    ? callMeta.toolStreamLanguage : undefined;
-  const effectiveToolStreamLanguage = toolStreamLanguage
-    ?? (toolName === "bash" || toolName === "bash_background" ? "bash" : undefined);
-  const toolStreamMode = typeof callMeta.toolStreamMode === "string"
-    ? callMeta.toolStreamMode as PresentationEntry["toolStreamMode"] : undefined;
   const execFinished = toolExecState === "completed" || toolExecState === "failed";
   const toolStillWorking =
     !resultEntry && !execFinished && (
@@ -335,27 +312,13 @@ function buildToolOperation(
     ? ((resultEntry.entry.meta as Record<string, unknown>)?.toolMetadata as Record<string, unknown>) ?? undefined
     : undefined;
 
-  // Extract fileModifyData — tool_result (authoritative) takes priority over tool_call (streaming).
   // `edit` supplies one display object per file in fileModifyDataList.
-  let fileModifyData: FileModifyDisplayData | undefined;
   let fileModifyDataList: FileModifyDisplayData[] | undefined;
   const resultList = resultMeta?.fileModifyDataList;
   if (Array.isArray(resultList)) {
     fileModifyDataList = resultList.filter(
       (item): item is FileModifyDisplayData => Boolean(item) && typeof item === "object",
     );
-  }
-  const resultFmd = resultMeta?.fileModifyData;
-  if (resultFmd && typeof resultFmd === "object") {
-    fileModifyData = resultFmd as FileModifyDisplayData;
-  } else {
-    const callFmd = callMeta.fileModifyData;
-    if (callFmd && typeof callFmd === "object") {
-      fileModifyData = callFmd as FileModifyDisplayData;
-    }
-  }
-  if (!fileModifyData && fileModifyDataList?.length === 1) {
-    fileModifyData = fileModifyDataList[0];
   }
 
   const rawPatchFiles = resultMeta?.patchFiles;
@@ -369,7 +332,7 @@ function buildToolOperation(
     : undefined;
 
   // Compute linesAdded/linesRemoved from file modify hunks for suffix display
-  const displayStats = fileModifyDataList ?? (fileModifyData ? [fileModifyData] : []);
+  const displayStats = fileModifyDataList ?? [];
   let suffixMeta = resultMeta;
   if (displayStats.length > 0 && resultMeta) {
     let linesAdded = 0;
@@ -394,10 +357,6 @@ function buildToolOperation(
 
   // Resolve dynamic display name for variants
   const displayName = profile.displayName;
-  let noDiffBackground = false;
-  if (toolName === "write_file" && resultMeta) {
-    noDiffBackground = true;
-  }
 
   // `edit` 的单文件路径直接显示在工具行；多文件或 Move 由卡片标题承载。
   let toolText = profile.text(toolArgs);
@@ -422,8 +381,7 @@ function buildToolOperation(
         dim: resultEntry.entry.dim ?? false,
         maxLines,
         toolMetadata: resultMeta,
-        noDiffBackground: noDiffBackground || undefined,
-        language: effectiveToolStreamLanguage,
+        language: toolName === "bash" || toolName === "bash_background" ? "bash" : undefined,
         syntaxMode: toolName === "bash"
           || toolName === "bash_background"
           ? "output"
@@ -451,16 +409,8 @@ function buildToolOperation(
     toolInterrupted,
     toolAgentName,
     toolStartedAt: callEntry.entry.startedAt,
-    toolElapsedMs: callEntry.entry.elapsedMs,
     toolInlineResult: inlineResult,
     toolResultFullText: resultEntry?.entry.fullText ?? resultEntry?.entry.text,
-    toolStreamSections,
-    toolRepairedFromPartial,
-    toolExecState,
-    toolStreamState,
-    toolStreamLanguage: effectiveToolStreamLanguage,
-    toolStreamMode,
-    fileModifyData,
     fileModifyDataList,
     patchFiles,
   };
@@ -618,16 +568,7 @@ export function presentationTransform(
       continue;
     }
 
-    // 1. Skip hidden tools
-    if (kind === "tool_call") {
-      const toolName = getToolName(entry);
-      if (HIDDEN_TOOLS.has(toolName)) {
-        i++;
-        continue;
-      }
-    }
-
-    // 2. Route by kind
+    // Route by kind
     switch (kind) {
       case "user": {
         // 新用户请求开始时丢弃没有吃到 turn_end 的残留结论。
@@ -739,10 +680,10 @@ export function presentationTransform(
     }
   }
 
-  // 3. Explore grouping — collapse consecutive file-read tool_operations into tool_group entries.
+  // Explore grouping — collapse consecutive file-read tool_operations into tool_group entries.
   collapseExploreGroups(result);
 
-  // 4. Memo optimization: reuse previous PresentationEntry by id+contentVersion
+  // Memo optimization: reuse previous PresentationEntry by id+contentVersion
   for (let j = 0; j < result.length; j++) {
     const pe = result[j];
     const prev = prevById.get(pe.id);

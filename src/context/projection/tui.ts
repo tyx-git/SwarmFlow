@@ -259,8 +259,6 @@ function toConversationEntry(
       if (typeof toolCallId === "string") ce.meta.toolCallId = toolCallId;
       if (typeof toolName === "string") ce.meta.toolName = toolName;
       if (toolArgs && typeof toolArgs === "object") ce.meta.toolArgs = toolArgs;
-      const streamSections = entry.meta["toolStreamSections"];
-      if (Array.isArray(streamSections)) ce.meta.toolStreamSections = streamSections;
       const streamState = entry.meta["toolStreamState"];
       if (typeof streamState === "string") ce.meta.toolStreamState = streamState;
       const execState = entry.meta["toolExecState"];
@@ -269,15 +267,7 @@ function toConversationEntry(
       if (typeof parseError === "string") ce.meta.toolParseError = parseError;
       const rawArguments = content?.rawArguments;
       if (typeof rawArguments === "string") ce.meta.rawArguments = rawArguments;
-      const streamLanguage = entry.meta["toolStreamLanguage"];
-      if (typeof streamLanguage === "string") ce.meta.toolStreamLanguage = streamLanguage;
-      const streamMode = entry.meta["toolStreamMode"];
-      if (typeof streamMode === "string") ce.meta.toolStreamMode = streamMode;
-      const fmd = entry.meta["fileModifyData"];
-      if (fmd && typeof fmd === "object") ce.meta.fileModifyData = fmd;
-      // 透传 toolMetadata，让 TUI 在流式期间就能把针对 plan 文件的 write/edit
-      // 改标为 "Update Todos"，不必等携带同样标记的 tool_result 落地。
-      // 否则 tool-loop 在调用侧设的标记会在这里丢失，先闪出 "Write" 和 diff。
+      // 透传 toolMetadata（工具结果侧的展示数据）。
       const toolMetadata = entry.meta["toolMetadata"];
       if (toolMetadata && typeof toolMetadata === "object") ce.meta.toolMetadata = toolMetadata;
     }
@@ -310,14 +300,6 @@ function toConversationEntry(
     if (typeof isError === "boolean") {
       ce.meta ??= {};
       ce.meta.isError = isError;
-    }
-    // 透传 tool_result 元数据中的 fileModifyData
-    if (toolMetadata && typeof toolMetadata === "object") {
-      const fmd = (toolMetadata as Record<string, unknown>)["fileModifyData"];
-      if (fmd && typeof fmd === "object") {
-        ce.meta ??= {};
-        ce.meta.fileModifyData = fmd;
-      }
     }
   }
 

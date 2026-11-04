@@ -52,15 +52,15 @@ describe("projectToTuiEntries", () => {
         "tc-001",
         1,
         1,
-        "edit_file src/a.ts",
-        { id: "call_1", name: "edit_file", arguments: { path: "src/a.ts" } },
-        { toolCallId: "call_1", toolName: "edit_file", agentName: "agent", contextId: "c9" },
+        "edit src/a.ts",
+        { id: "call_1", name: "edit", arguments: {} },
+        { toolCallId: "call_1", toolName: "edit", agentName: "agent", contextId: "c9" },
       ),
       createToolResult(
         "tr-001",
         1,
         1,
-        { toolCallId: "call_1", toolName: "edit_file", content: "OK", toolSummary: "edit" },
+        { toolCallId: "call_1", toolName: "edit", content: "OK", toolSummary: "edit" },
         {
           isError: false,
           toolMetadata: {
@@ -72,7 +72,7 @@ describe("projectToTuiEntries", () => {
     ];
 
     const tui = projectToTuiEntries(entries);
-    expect(tui[2]).toMatchObject({ kind: "tool_call", text: "edit_file src/a.ts", id: "tc-001" });
+    expect(tui[2]).toMatchObject({ kind: "tool_call", text: "edit src/a.ts", id: "tc-001" });
     expect(tui[3]).toMatchObject({ kind: "tool_result", text: "@@ -1 +1 @@\n-old\n+new", id: "tr-001" });
   });
 

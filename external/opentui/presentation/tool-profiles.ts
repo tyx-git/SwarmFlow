@@ -78,30 +78,6 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     },
     inlineResult: false,
   },
-  edit_file: {
-    category: "modify",
-    displayName: "Edit",
-    text: (args) => shortenPath(str(args.path)),
-    suffix: (meta) => {
-      const added = meta?.linesAdded;
-      const removed = meta?.linesRemoved;
-      if (typeof added === "number" || typeof removed === "number") {
-        return `(+${added ?? 0} -${removed ?? 0})`;
-      }
-      return "";
-    },
-    inlineResult: { maxLines: 20 },
-  },
-  write_file: {
-    category: "modify",
-    displayName: "Write",
-    text: (args) => shortenPath(str(args.path)),
-    suffix: (meta) => {
-      const lines = meta?.lineCount;
-      return typeof lines === "number" ? `(${lines} lines)` : "";
-    },
-    inlineResult: { maxLines: 20 },
-  },
   bash: {
     category: "modify",
     displayName: "Run",
@@ -231,8 +207,6 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     inlineResult: false,
   },
 };
-
-export const HIDDEN_TOOLS = new Set<string>();
 
 export function getToolProfile(toolName: string): ToolDisplayProfile {
   return TOOL_PROFILES[toolName] ?? {

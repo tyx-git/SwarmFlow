@@ -25,24 +25,10 @@ export interface InlineResultData {
   /** Text is a preview of a longer full result; render a detail affordance even when preview line count fits. */
   truncated?: boolean;
   toolMetadata?: Record<string, unknown>;
-  /** When true, diff lines are rendered without red/green background (for Create/Overwrite). */
-  noDiffBackground?: boolean;
   /** 命令或文件输出的可选语言提示。 */
   language?: string;
   /** 存在语言提示时按源码或命令文本渲染普通输出。 */
   syntaxMode?: "command" | "output";
-}
-
-export interface ToolStreamSectionData {
-  key: string;
-  label: string;
-  text: string;
-  complete: boolean;
-  contextBefore?: string;
-  contextAfter?: string;
-  contextResolved?: boolean;
-  /** 1-indexed starting line number for this section (from file content probing). */
-  startLineNumber?: number;
 }
 
 export interface PresentationEntry {
@@ -54,7 +40,6 @@ export interface PresentationEntry {
   // kind=user
   userText?: string;
   userQueued?: boolean;
-  userAttachments?: string[];
 
   // kind=command_echo
   commandEchoText?: string;
@@ -72,15 +57,8 @@ export interface PresentationEntry {
   /** When set, the toolText represents a sub-agent id — clickable to open that agent's tab. */
   toolAgentName?: string;
   toolStartedAt?: number;
-  toolElapsedMs?: number;
   toolInlineResult?: InlineResultData | null;
   toolResultFullText?: string;
-  toolStreamSections?: ToolStreamSectionData[];
-  toolRepairedFromPartial?: boolean;
-  toolExecState?: string;
-  toolStreamState?: string;
-  toolStreamLanguage?: string;
-  toolStreamMode?: "replace" | "append" | "write";
 
   // kind=tool_group
   /** Individual tool entries within this group. */
@@ -111,9 +89,8 @@ export interface PresentationEntry {
   // kind=tips
   tipsText?: string;
 
-  // Unified file-modify display data (replaces toolStreamSections for file-modify tools)
-  fileModifyData?: FileModifyDisplayData;
-  /** 一次 `edit` 补丁按文件拆分的展示数据；多文件时优先于 fileModifyData。 */
+  // Unified file-modify display data (edit tool result)
+  /** 一次 `edit` 补丁按文件拆分的展示数据。 */
   fileModifyDataList?: FileModifyDisplayData[];
   /** `edit` 的 A/M/D 文件清单（与 fileModifyDataList 同序）。 */
   patchFiles?: Array<{ kind: "A" | "M" | "D"; path: string; from?: string }>;

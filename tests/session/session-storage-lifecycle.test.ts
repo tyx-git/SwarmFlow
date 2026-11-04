@@ -1004,12 +1004,12 @@ describe("session storage lifecycle", () => {
         kind: "approval",
         createdAt: new Date().toISOString(),
         source: { agentId: "Primary" },
-        summary: "Allow edit_file?",
+        summary: "Allow edit?",
         roundIndex: 0,
         payload: {
           toolCallId: "approval-call",
-          toolName: "edit_file",
-          toolSummary: "edit_file src/a.ts",
+          toolName: "edit",
+          toolSummary: "edit src/a.ts",
           permissionClass: "write_potent",
           offers: [],
         },
@@ -1130,9 +1130,9 @@ describe("session storage lifecycle", () => {
         "tc-001",
         1,
         0,
-        "edit_file src/a.ts",
-        { id: "call-1", name: "edit_file", arguments: { path: "src/a.ts" } },
-        { toolCallId: "call-1", toolName: "edit_file", agentName: "Primary", contextId: "ctx-edit" },
+        "edit src/a.ts",
+        { id: "call-1", name: "edit", arguments: {} },
+        { toolCallId: "call-1", toolName: "edit", agentName: "Primary", contextId: "ctx-edit" },
       ));
 
       const ask = {
@@ -1140,11 +1140,11 @@ describe("session storage lifecycle", () => {
         kind: "approval",
         createdAt: new Date(0).toISOString(),
         source: { agentId: "Primary" },
-        summary: "Allow edit_file?",
+        summary: "Allow edit?",
         payload: {
           toolCallId: "call-1",
-          toolName: "edit_file",
-          toolSummary: "Primary is calling edit_file",
+          toolName: "edit",
+          toolSummary: "Primary is calling edit",
           permissionClass: "write_potent",
           offers: [{ type: "tool_once", label: "Allow once" }],
         },
@@ -1152,7 +1152,7 @@ describe("session storage lifecycle", () => {
       };
       (session as any)._beforeToolExecute = vi.fn(async () => ({ kind: "ask", ask }));
       (session as any)._toolExecutors = {
-        edit_file: vi.fn(async () => "should not execute while asking"),
+        edit: vi.fn(async () => "should not execute while asking"),
       };
       (session as any)._runTurnActivationLoop = vi.fn(async () => {
         throw new Error("activation loop should not run while suspended");
@@ -1185,9 +1185,9 @@ describe("session storage lifecycle", () => {
           "tc-001",
           1,
           0,
-          "edit_file src/a.ts",
-          { id: "call-1", name: "edit_file", arguments: { path: "src/a.ts" } },
-          { toolCallId: "call-1", toolName: "edit_file", agentName: "Primary", contextId: "ctx-a" },
+          "edit src/a.ts",
+          { id: "call-1", name: "edit", arguments: {} },
+          { toolCallId: "call-1", toolName: "edit", agentName: "Primary", contextId: "ctx-a" },
         ),
         createReasoning("rs-001", 1, 1, "thinking", "thinking", undefined, "ctx-r"),
         createAssistantText("as-001", 1, 1, "partial", "partial", "ctx-r"),
@@ -1208,7 +1208,7 @@ describe("session storage lifecycle", () => {
 
       const interruptedToolResult = log.find((e) => e.type === "tool_result" && e.meta?.toolCallId === "call-1");
       expect(interruptedToolResult).toBeTruthy();
-      expect(interruptedToolResult.content.content).toContain("Tool `edit_file` was not executed.");
+      expect(interruptedToolResult.content.content).toContain("Tool `edit` was not executed.");
       expect(interruptedToolResult.content.content).toContain("<system-message>");
       expect(interruptedToolResult.tuiVisible).toBe(true);
 
@@ -1274,9 +1274,9 @@ describe("session storage lifecycle", () => {
           "tc-partial",
           1,
           0,
-          "edit_file partial",
-          { id: "partial-1", name: "edit_file", rawArguments: "{\"path\":", parseError: "Incomplete arguments" },
-          { toolCallId: "partial-1", toolName: "edit_file", agentName: "Primary", contextId: "ctx-partial" },
+          "read partial",
+          { id: "partial-1", name: "read_file", rawArguments: "{\"path\":", parseError: "Incomplete arguments" },
+          { toolCallId: "partial-1", toolName: "read_file", agentName: "Primary", contextId: "ctx-partial" },
           null,
         ),
       ];
@@ -1377,9 +1377,9 @@ describe("session storage lifecycle", () => {
           "tc-approval",
           1,
           0,
-          "edit_file src/a.ts",
-          { id: "approval-call", name: "edit_file", arguments: { path: "src/a.ts" } },
-          { toolCallId: "approval-call", toolName: "edit_file", agentName: "Primary", contextId: "ctx-a" },
+          "edit src/a.ts",
+          { id: "approval-call", name: "edit", arguments: {} },
+          { toolCallId: "approval-call", toolName: "edit", agentName: "Primary", contextId: "ctx-a" },
         ),
         createToolCall(
           "tc-bash",
@@ -1398,13 +1398,13 @@ describe("session storage lifecycle", () => {
         id: "approval-ask",
         kind: "approval",
         createdAt: new Date().toISOString(),
-        source: { agentId: "primary", agentName: "Primary", toolName: "edit_file" },
-        summary: "Approve edit_file",
+        source: { agentId: "primary", agentName: "Primary", toolName: "edit" },
+        summary: "Approve edit",
         roundIndex: 0,
         payload: {
           toolCallId: "approval-call",
-          toolName: "edit_file",
-          toolSummary: "edit_file src/a.ts",
+          toolName: "edit",
+          toolSummary: "edit src/a.ts",
           permissionClass: "write_potent",
           offers: [],
         },
@@ -1493,9 +1493,9 @@ describe("session storage lifecycle", () => {
           "tc-001",
           1,
           0,
-          "edit_file src/a.ts",
-          { id: "edit-1", name: "edit_file", arguments: { path: "src/a.ts" } },
-          { toolCallId: "edit-1", toolName: "edit_file", agentName: "Primary", contextId: "ctx-edit" },
+          "edit src/a.ts",
+          { id: "edit-1", name: "edit", arguments: {} },
+          { toolCallId: "edit-1", toolName: "edit", agentName: "Primary", contextId: "ctx-edit" },
         ),
       ];
       ((session as any)._log[1].meta as Record<string, unknown>).toolExecState = "running";
@@ -1527,9 +1527,9 @@ describe("session storage lifecycle", () => {
           "tc-partial",
           1,
           0,
-          "edit_file partial",
-          { id: "partial-1", name: "edit_file", rawArguments: "{\"path\":", parseError: "Incomplete arguments" },
-          { toolCallId: "partial-1", toolName: "edit_file", agentName: "Primary", contextId: "ctx-partial" },
+          "read partial",
+          { id: "partial-1", name: "read_file", rawArguments: "{\"path\":", parseError: "Incomplete arguments" },
+          { toolCallId: "partial-1", toolName: "read_file", agentName: "Primary", contextId: "ctx-partial" },
           null,
         ),
       ];

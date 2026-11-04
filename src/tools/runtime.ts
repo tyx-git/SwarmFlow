@@ -212,15 +212,6 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
       patchPayload: rtCtx?.patchPayload,
     });
 
-  const writeFileWithReload: ToolExecutor = (args, rtCtx) => {
-    const result = scopedBuiltin("write_file")(args, rtCtx);
-    const filePath = String((args as Record<string, unknown>)["path"] ?? "");
-    if (filePath && onFileWrite) {
-      onFileWrite(filePath);
-    }
-    return result;
-  };
-
   const editPatchWithReload: ToolExecutor = async (args, rtCtx) => {
     const result = await scopedBuiltin("edit")(args, rtCtx);
     if (result instanceof ToolResult) {
@@ -242,8 +233,6 @@ export function buildToolExecutors(deps: ExecutorDeps): Record<string, ToolExecu
     find_symbol: scopedBuiltin("find_symbol"),
     jq: scopedBuiltin("jq"),
     edit: editPatchWithReload,
-    edit_file: scopedBuiltin("edit_file"),
-    write_file: writeFileWithReload,
     web_search: (args, rtCtx) => executeTool("web_search", args, { signal: rtCtx?.signal }),
     web_fetch: (args, rtCtx) => executeTool("web_fetch", args, { signal: rtCtx?.signal }),
     bash: (args, rtCtx) => executeTool("bash", args, {

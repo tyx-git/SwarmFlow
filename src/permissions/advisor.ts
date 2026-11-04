@@ -28,9 +28,9 @@ import type {
 } from "./types.js";
 import { effectiveMode } from "./types.js";
 
-// 需要检查外部访问的 `path` 参数的文件工具
+// 需要检查外部访问的 `path` 参数的只读文件工具
 const FILE_TOOLS_WITH_PATH = new Set([
-  "read_file", "write_file", "edit_file", "list_dir", "glob", "grep", "find_symbol", "jq",
+  "read_file", "list_dir", "glob", "grep", "find_symbol", "jq",
 ]);
 
 // ------------------------------------------------------------------
@@ -188,9 +188,8 @@ export class PermissionAdvisor implements GateAdvisor {
     const isExternal = rel.startsWith("..") || path.isAbsolute(rel);
     if (!isExternal) return null;
 
-    // 根据工具确定访问类型
-    const isWrite = ctx.toolName === "write_file" || ctx.toolName === "edit_file";
-    const accessKind = isWrite ? "write_reversible" as const : "read" as const;
+    // 仍保留 path 参数的均为只读工具；写类工具走各自的审批分支。
+    const accessKind = "read" as const;
 
     // 计算目录前缀：目录使用自身，文件使用父目录。
     // 规范化为正斜杠形式，这样在 Windows 上创建的规则
@@ -209,12 +208,11 @@ export class PermissionAdvisor implements GateAdvisor {
     const matchingRule = this._ruleStore.findMatchingExternalPathRule(resolvedPath, accessKind);
     if (matchingRule) return null; // 规则允许，继续正常流程
 
-    // 构建外部路径选项 — 无 "Allow once"（执行器需要持久化规则用于写入；
-    // 对于读取，session 作用域足够窄）。无 mode_upgrade（外部路径规则是正确的机制，而不是模式切换）。
+    // 构建外部路径选项 — 无 "Allow once"。
     assessment.externalPathPrefix = dirPrefix;
     const offers: ApprovalOffer[] = [];
 
-    const kindLabel = isWrite ? "read/write" : "read";
+    const kindLabel = "read";
     const shortDir = dirPrefix.length > 50 ? "..." + dirPrefix.slice(-47) : dirPrefix;
 
     for (const scope of ["session", "project"] as const) {
@@ -444,7 +442,7 @@ export class PermissionAdvisor implements GateAdvisor {
         });
       }
     } else if (assessment.canMemoize) {
-      // 无模式但可记忆化（如 write_file, edit_file）
+      // 无模式但可记忆化
       const tool = assessment.toolName;
       for (const scope of ["session", "project", "global"] as const) {
         const rule: Omit<ToolPatternRule, "id" | "createdAt"> = {

@@ -222,7 +222,7 @@ describe("Factory functions", () => {
   it("createToolResult with preview", () => {
     const e = createToolResult(
       "tr-002", 1, 0,
-      { toolCallId: "call_2", toolName: "edit_file", content: "OK", toolSummary: "edit" },
+      { toolCallId: "call_2", toolName: "edit", content: "OK", toolSummary: "edit" },
       {
         isError: false,
         toolMetadata: {

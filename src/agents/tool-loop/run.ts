@@ -9,13 +9,11 @@
  *
  * 核心概念：
  * - PendingToolCallState：跟踪每个进行中的 tool call（参数流式传输、
- *   执行状态、TUI 可见性、edit-file 上下文探测）
+ *   执行状态与 TUI 可见性）
  * - 顺序排出：已提交的 tool call 按发射顺序执行；挂起的 ask 暂停排出，
  *   以保证审批语义正确
  * - Compact：可在任意 provider 调用后触发中途压缩，返回 compactNeeded=true
  */
-
-import { readFileSync, existsSync } from "node:fs";
 
 import type { ProviderResponse, ToolResult } from "../../providers/response.js";
 import type { ToolCall, ToolDef } from "../../providers/types.js";
@@ -31,8 +29,8 @@ import {
   TurnIncompleteError,
 } from "../../network/retry.js";
 
-import { extractToolPreview, generateToolCallDisplay, generateToolSummary } from "./display.js";
-import { type PendingToolCallState, type StreamableToolCall, type ToolStreamSection, buildStreamableToolCall, extractCompleteFlatArgs, parsePartialFlatObject } from "./streaming-arguments.js";
+import { buildToolResultPreview, generateToolCallDisplay, generateToolSummary } from "./display.js";
+import { type PendingToolCallState, extractCompleteFlatArgs, parsePartialFlatObject } from "./streaming-arguments.js";
 import { type ToolCallTuiVisibility, type ToolLoopOptions, type ToolLoopResult, type ToolPreflightDecision } from "./types.js";
 
 /** 压缩阶段（suppressAsks）把审批/挂起类工具调用就地降级为该 ERROR 结果。 */
@@ -40,20 +38,8 @@ const COMPACT_ASK_DENY_MESSAGE =
   "ERROR: Tool approvals are unavailable during compaction; respond with the continuation prompt only.";
 import { createReasoning, createAssistantText, createToolCall, createToolResult as createToolResultEntry } from "../../context/entry/factories.js";
 import { resolveRoundPayloads } from "../../tools/patch-payload.js";
-import { splitDisplayLines } from "../../lib/line-window.js";
 import type { ThinkingArtifact } from "../../thinking/artifact.js";
 import type { AskRequest } from "../../ask.js";
-import {
-  type DiffHunk,
-  type FileModifyDisplayData,
-  type EditProbeState,
-  inferLanguageByExt,
-  computeContextBefore,
-  computeContextAfter,
-  countFileLines,
-  buildAppendDisplayData,
-  buildWriteDisplayData,
-} from "../../patches/hunk.js";
 
 // ------------------------------------------------------------------
 // 工具执行器类型
@@ -291,9 +277,7 @@ export async function asyncRunToolLoop(
           rawArguments: "",
           entryId: null,
           completeTopLevelArgs: {},
-          canonicalArgs: null,
           closedCall: null,
-          sections: [],
           executionPromise: null,
           streamPhase: "hidden_partial",
           execPhase: "not_started",
@@ -306,9 +290,9 @@ export async function asyncRunToolLoop(
       return pending;
     };
 
-    /** 从 pending 状态获取工具参数（优先 closedCall > canonicalArgs > completeTopLevelArgs）。 */
-    const getToolArgsForEntry = (pending: PendingToolCallState): Record<string, unknown> | null => {
-      return pending.closedCall?.arguments ?? pending.canonicalArgs ?? pending.completeTopLevelArgs ?? {};
+    /** 从 pending 状态获取工具参数（优先 closedCall > completeTopLevelArgs）。 */
+    const getToolArgsForEntry = (pending: PendingToolCallState): Record<string, unknown> => {
+      return pending.closedCall?.arguments ?? pending.completeTopLevelArgs;
     };
 
     /** 解析 pending tool call 的 TUI 可见性。 */
@@ -319,7 +303,7 @@ export async function asyncRunToolLoop(
       if (pending.tuiVisibility === "show" || pending.tuiVisibility === "hide") {
         return pending.tuiVisibility;
       }
-      const toolArgs = getToolArgsForEntry(pending) ?? {};
+      const toolArgs = getToolArgsForEntry(pending);
       const toolDef = toolsMap?.[pending.name];
       const defaultDecision = resolveDefaultToolCallTuiVisibility(toolDef, toolArgs, isClosed);
       const override = resolveToolCallVisibility?.({
@@ -332,27 +316,6 @@ export async function asyncRunToolLoop(
         defaultDecision,
       });
       return override ?? defaultDecision;
-    };
-
-    /** 从 pending 状态派生 ToolStreamSection 数组。 */
-    const deriveSectionsForState = (
-      toolName: string,
-      pending: PendingToolCallState,
-    ): ToolStreamSection[] => {
-      if (pending.sections.length > 0) return pending.sections;
-      const args = getToolArgsForEntry(pending);
-      if (!args && !pending.rawArguments) return [];
-      const streamable = buildStreamableToolCall(
-        toolName,
-        pending.rawArguments || JSON.stringify(args ?? {}),
-      );
-      if (!streamable) return [];
-      // 当 provider 一次性发送完整参数而没有流式增量时，回填语言/模式
-      if (!pending.streamLanguage && streamable.language) pending.streamLanguage = streamable.language;
-      if (!pending.streamMode && streamable.streamMode) pending.streamMode = streamable.streamMode;
-      pending.sections = streamable.sections;
-      probeEditContext(pending, streamable);
-      return pending.sections;
     };
 
     /** 从 pending 状态派生流式状态字符串。 */
@@ -370,7 +333,7 @@ export async function asyncRunToolLoop(
       id: callId,
       name: pending.name,
       rawArguments: pending.closedCall?.rawArguments ?? pending.rawArguments,
-      arguments: getToolArgsForEntry(pending) ?? {},
+      arguments: getToolArgsForEntry(pending),
       parseError: pending.closedCall?.parseError ?? null,
       ...(pending.executionPayload !== undefined
         ? { executionPayload: pending.executionPayload }
@@ -380,14 +343,8 @@ export async function asyncRunToolLoop(
     const releaseCompletedToolCallPayload = (pending: PendingToolCallState): void => {
       pending.rawArguments = "";
       pending.completeTopLevelArgs = {};
-      pending.canonicalArgs = null;
       pending.closedCall = null;
-      pending.sections = [];
       pending.executionPromise = null;
-      pending.cachedFileContent = undefined;
-      pending.cachedTotalLineCount = undefined;
-      pending.editProbes = undefined;
-      pending.appendStartLine = undefined;
       pending.executionPayload = undefined;
     };
 
@@ -399,27 +356,17 @@ export async function asyncRunToolLoop(
       const pending = pendingToolCalls.get(callId);
       if (!pending) return;
       if (pending.tuiVisibility === "defer") return;
-      const args = getToolArgsForEntry(pending) ?? {};
-
-      // 工具完成后，参数流式副本与 call 侧 diff 不再需要；
-      // result 侧的 fileModifyData/tui_preview 是 TUI 权威。
-      const finalized = pending.execPhase === "completed" || pending.execPhase === "failed";
-      const sections = finalized ? [] : deriveSectionsForState(pending.name, pending);
+      const args = getToolArgsForEntry(pending);
       if (!pending.contextId && toolContextIdAllocator) {
         pending.contextId = toolContextIdAllocator();
       }
       const contextId = pending.contextId ?? ensureRoundContextId();
       const display = generateToolCallDisplay(pending.name, args);
-      const fmd = finalized ? undefined : buildFileModifyData(pending);
       const meta = buildToolCallMeta(
         { toolCallId: callId, toolName: pending.name, agentName, contextId },
         {
           toolStreamState: deriveToolStreamState(pending),
           toolExecState: pending.execPhase,
-          toolStreamSections: sections.length > 0 ? sections : undefined,
-          toolStreamLanguage: finalized ? undefined : pending.streamLanguage,
-          toolStreamMode: finalized ? undefined : pending.streamMode,
-          fileModifyData: fmd,
         },
       );
       const entryTuiVisible = pending.tuiVisibility === "show";
@@ -454,136 +401,8 @@ export async function asyncRunToolLoop(
     };
 
     /**
-     * 探测 edit_file 上下文：在流式传输 old_str 时读取目标文件，
-     * 解析匹配位置以提供"修改前"视图的上下文（行号、周围代码）。
-     */
-    const probeEditContext = (
-      pending: PendingToolCallState,
-      streamable: StreamableToolCall,
-    ): void => {
-      if (streamable.streamMode !== "replace" && streamable.streamMode !== "append") return;
-
-      const filePath = streamable.canonicalArgs.path as string | undefined;
-      if (!filePath) return;
-
-      // 读取并缓存文件内容（replace 和 append 共用）
-      if (pending.cachedFileContent === undefined) {
-        try {
-          if (existsSync(filePath)) {
-            pending.cachedFileContent = readFileSync(filePath, "utf-8");
-            pending.cachedTotalLineCount = countFileLines(pending.cachedFileContent);
-          }
-        } catch { /* skip */ }
-        if (pending.cachedFileContent === undefined) {
-          pending.cachedFileContent = ""; // 标记为已尝试
-          return;
-        }
-      }
-      if (!pending.cachedFileContent) return;
-
-      // --- append 模式 ---
-      if (streamable.streamMode === "append") {
-        if (pending.appendStartLine === undefined) {
-          pending.appendStartLine = (pending.cachedTotalLineCount ?? 0) + 1;
-        }
-        return;
-      }
-
-      // --- replace 模式（单编辑或多编辑） ---
-      const editPairs: Array<{ oldText: string; oldComplete: boolean; idx: number }> = [];
-      for (const s of streamable.sections) {
-        const m = s.key.match(/^old_str(?:_(\d+))?$/);
-        if (m) {
-          const editIdx = m[1] !== undefined ? parseInt(m[1], 10) : 0;
-          editPairs.push({ oldText: s.text, oldComplete: s.complete, idx: editIdx });
-        }
-      }
-
-      if (!pending.editProbes) pending.editProbes = [];
-      const fc = pending.cachedFileContent;
-
-      for (const pair of editPairs) {
-        const probe: EditProbeState = pending.editProbes[pair.idx] ??= { resolved: false };
-        if (!pair.oldText) continue;
-
-        // 仅在 old_str 至少有一个换行（或已完整）时探测
-        if (!pair.oldText.includes("\n") && !pair.oldComplete) continue;
-
-        // 首次解析：查找唯一匹配
-        if (!probe.resolved) {
-          const idx = fc.indexOf(pair.oldText);
-          if (idx === -1) continue;
-          if (fc.indexOf(pair.oldText, idx + 1) !== -1) continue;
-
-          probe.resolved = true;
-          probe.matchOffset = idx;
-          probe.startLine = fc.substring(0, idx).split("\n").length;
-          probe.contextBefore = computeContextBefore(fc, idx, 3);
-        }
-
-        // old_str 完整时计算 contextAfter
-        if (pair.oldComplete && probe.resolved && !probe.contextAfter) {
-          const matchEnd = probe.matchOffset! + pair.oldText.length;
-          probe.contextAfter = computeContextAfter(fc, matchEnd, 3);
-        }
-      }
-    };
-
-    /** 从 pending 状态构建 FileModifyDisplayData，用于注入 metadata。 */
-    const buildFileModifyData = (
-      pending: PendingToolCallState,
-    ): FileModifyDisplayData | undefined => {
-      const filePath = pending.canonicalArgs?.path as string | undefined;
-      if (!filePath || !pending.streamMode) return undefined;
-
-      const totalLineCount = pending.cachedTotalLineCount ?? 0;
-
-      if (pending.streamMode === "write") {
-        const contentSection = pending.sections.find((s) => s.key === "content");
-        return buildWriteDisplayData(filePath, contentSection?.text ?? "", totalLineCount);
-      }
-
-      if (pending.streamMode === "append") {
-        const appendSection = pending.sections.find((s) => s.key === "append_str");
-        return buildAppendDisplayData(filePath, appendSection?.text ?? "", totalLineCount);
-      }
-
-      // Replace 模式：从 editProbes 构建 hunks
-      if (!pending.editProbes || pending.editProbes.length === 0) return undefined;
-
-      const hunks: DiffHunk[] = [];
-      for (let i = 0; i < pending.editProbes.length; i++) {
-        const probe = pending.editProbes[i];
-        if (!probe.resolved || probe.startLine === undefined) continue;
-
-        const oldKey = `old_str_${i}`;
-        const newKey = `new_str_${i}`;
-        const oldSection = pending.sections.find((s) => s.key === oldKey);
-        const newSection = pending.sections.find((s) => s.key === newKey);
-
-        hunks.push({
-          startLine: probe.startLine,
-          contextBefore: probe.contextBefore ?? [],
-          deletions: oldSection?.text ? splitDisplayLines(oldSection.text) : [],
-          additions: newSection?.text ? splitDisplayLines(newSection.text) : [],
-          contextAfter: probe.contextAfter ?? [],
-        });
-      }
-
-      if (hunks.length === 0) return undefined;
-
-      return {
-        filePath,
-        language: pending.streamLanguage,
-        mode: "replace",
-        totalLineCount,
-        hunks,
-      };
-    };
-
-    /**
      * 记录部分 tool call（参数仍在流式传输中）。
-     * 解析参数、构建 sections、探测编辑上下文、更新 TUI 可见性。
+     * 解析参数并更新 TUI 可见性。
      */
     const recordPartialToolCall = (
       callId: string,
@@ -592,7 +411,7 @@ export async function asyncRunToolLoop(
     ): void => {
       const pending = ensurePendingToolCall(callId, toolName);
       pending.rawArguments = rawArguments;
-      // 每个 chunk 都重建 sections/fileModifyData 是 O(n²)：1KB chunk 流
+      // 每个 chunk 都重建参数视图是 O(n²)：1KB chunk 流
       // 一个 256KB 参数会重复处理约 132 倍字节。大参数按 100ms 节流；
       // 小参数保持逐 chunk 更新（成本可忽略，交互更跟手）。
       // closeCommittedToolCall 会无条件做一次最终解析与同步。
@@ -606,14 +425,6 @@ export async function asyncRunToolLoop(
       }
       pending.lastPartialParseAt = now;
       pending.completeTopLevelArgs = extractCompleteFlatArgs(parsePartialFlatObject(rawArguments));
-      const streamable = buildStreamableToolCall(toolName, rawArguments);
-      if (streamable) {
-        pending.canonicalArgs = streamable.canonicalArgs;
-        pending.sections = streamable.sections;
-        if (streamable.language) pending.streamLanguage = streamable.language;
-        if (streamable.streamMode) pending.streamMode = streamable.streamMode;
-        probeEditContext(pending, streamable);
-      }
       if (pending.streamPhase !== "closed") {
         pending.tuiVisibility = resolvePendingToolVisibility(pending, false);
         pending.streamPhase = pending.tuiVisibility === "show" ? "visible_partial" : "hidden_partial";
@@ -769,18 +580,11 @@ export async function asyncRunToolLoop(
           pending.tuiVisibility = "show";
           syncToolCallEntry(callId);
         }
-        const preview = extractToolPreview(resolved.metadata);
-        // 自动预览：工具未设置显式 tui_preview 时，直接使用结果文本
-        let previewText = preview?.text;
-        let previewDim = preview?.dim;
-        if (!previewText && !isError) {
-          // 限制约 20 行以保持日志条目 display 字段合理
-          const lines = resultStr.split("\n");
-          previewText = lines.length > 20
-            ? lines.slice(0, 20).join("\n") + `\n... (${lines.length - 20} more lines)`
-            : resultStr;
-          previewDim = true;
-        }
+        const { text: previewText, dim: previewDim } = buildToolResultPreview(
+          resolved.metadata,
+          resultStr,
+          isError,
+        );
         const toolResultEntry = createToolResultEntry(
           allocId("tool_result"),
           turnIndex,
@@ -834,19 +638,6 @@ export async function asyncRunToolLoop(
         ...tc.arguments,
       };
       pending.closedCall = tc;
-
-      const closedStreamable = buildStreamableToolCall(
-        pending.name,
-        tc.rawArguments || JSON.stringify(tc.arguments ?? {}),
-      );
-      if (closedStreamable) {
-        pending.sections = closedStreamable.sections;
-        pending.canonicalArgs = closedStreamable.canonicalArgs;
-        // 当 provider 一次性发送完整参数时（无流式增量），在此回填流式元数据
-        if (closedStreamable.language) pending.streamLanguage = closedStreamable.language;
-        if (closedStreamable.streamMode) pending.streamMode = closedStreamable.streamMode;
-        probeEditContext(pending, closedStreamable);
-      }
       pending.tuiVisibility = resolvePendingToolVisibility(pending, true);
       pending.streamPhase = "closed";
       syncToolCallEntry(tc.id);

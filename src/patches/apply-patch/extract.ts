@@ -5,7 +5,11 @@
  * 不做语法校验（校验由 parser 完成）。容忍前后散文、可选代码围栏与 CRLF。
  */
 
-import { BEGIN_PATCH_MARKER, END_PATCH_MARKER } from "./markers.js";
+import {
+  BEGIN_PATCH_MARKER,
+  END_PATCH_MARKER,
+  normalizePatchLineEndings,
+} from "./markers.js";
 
 export interface PatchBlock {
   /** 0-based，包含 Begin 行 */
@@ -17,7 +21,7 @@ export interface PatchBlock {
 }
 
 export function findPatchBlocks(text: string): PatchBlock[] {
-  const lines = text.split(/\r?\n/);
+  const lines = normalizePatchLineEndings(text).split("\n");
   const blocks: PatchBlock[] = [];
 
   for (let index = 0; index < lines.length; index++) {
@@ -65,7 +69,7 @@ export function removePatchBlocks(
   blocks: readonly PatchBlock[],
 ): string {
   if (blocks.length === 0) return text;
-  const lines = text.split(/\r?\n/);
+  const lines = normalizePatchLineEndings(text).split("\n");
   const hidden = new Set<number>();
   const isFence = (line: string | undefined): boolean => {
     const trimmed = line?.trim() ?? "";

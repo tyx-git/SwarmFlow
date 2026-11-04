@@ -39,7 +39,7 @@ function buildToolCallChunks(argChunks: string[]): Array<Record<string, unknown>
           index: 0,
           id: "call_1",
           function: {
-            name: "write_file",
+            name: "edit",
             arguments: arg,
           },
         }
@@ -207,7 +207,7 @@ describe("OpenAIChatProvider streamed tool arguments", () => {
                   index: 0,
                   id: "call_1",
                   function: {
-                    name: "write_file",
+                    name: "edit",
                     arguments: "{\"path\":\"a.txt\",\"content\":\"one\"}",
                   },
                 }],
@@ -221,7 +221,7 @@ describe("OpenAIChatProvider streamed tool arguments", () => {
                   index: 1,
                   id: "call_2",
                   function: {
-                    name: "write_file",
+                    name: "edit",
                     arguments: "{\"path\":\"b.txt\",\"content\":\"two\"}",
                   },
                 }],
@@ -249,7 +249,7 @@ describe("OpenAIChatProvider streamed tool arguments", () => {
     );
 
     expect(events).toContain("close:call_1");
-    expect(events.indexOf("close:call_1")).toBeLessThan(events.indexOf("partial:call_2:write_file"));
+    expect(events.indexOf("close:call_1")).toBeLessThan(events.indexOf("partial:call_2:edit"));
   });
 
   it("closes a streamed tool call before switching back to text output", async () => {
@@ -266,7 +266,7 @@ describe("OpenAIChatProvider streamed tool arguments", () => {
                   index: 0,
                   id: "call_1",
                   function: {
-                    name: "write_file",
+                    name: "edit",
                     arguments: "{\"path\":\"a.txt\",\"content\":\"one\"}",
                   },
                 }],

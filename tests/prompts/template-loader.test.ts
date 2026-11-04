@@ -71,7 +71,6 @@ describe("template type validation", () => {
       "test-model",
     );
     const names = (role: string) => new Set((templates[role]?.tools ?? []).map((tool) => tool.name));
-    expect(names("queen")).not.toContain("write_file");
     expect(names("queen")).not.toContain("bash");
     for (const role of ["queen", "scout", "worker", "reviewer", "guard", "merger"]) {
       expect(names(role), role).toContain("web_search");
@@ -81,12 +80,8 @@ describe("template type validation", () => {
       expect(names(role), role).toContain("bash");
     }
     expect(names("worker")).toContain("edit");
-    expect(names("worker")).not.toContain("write_file");
-    expect(names("worker")).not.toContain("edit_file");
-    for (const role of ["scout", "merger", "reviewer", "guard"]) {
+    for (const role of ["queen", "scout", "merger", "reviewer", "guard"]) {
       expect(names(role), role).not.toContain("edit");
-      expect(names(role), role).not.toContain("write_file");
-      expect(names(role), role).not.toContain("edit_file");
     }
   });
 
@@ -168,6 +163,31 @@ describe("template type validation", () => {
       const err = validateTemplate(dir);
       expect(err).toMatch(/Invalid template type|无效的模板类型/);
       expect(err).toContain("agent");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects removed write tools with a migration hint", () => {
+    const dir = makeTempDir("swarmflow-template-removed-tool-");
+    try {
+      writeFileSync(
+        join(dir, "agent.yaml"),
+        [
+          "type: agent",
+          "name: legacy-template",
+          "system_prompt: hello",
+          "tools: [edit_file]",
+          "max_tool_rounds: 100",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
+
+      const err = validateTemplate(dir);
+      expect(err).toContain("已移除");
+      expect(err).toContain("edit");
+      expect(err).toContain("*** Begin Patch");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

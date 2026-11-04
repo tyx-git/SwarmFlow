@@ -55,6 +55,14 @@ export const TOOL_PACKS: Record<string, string[]> = {
   util: ["time", "web_search", "web_fetch"],
 };
 
+const REMOVED_TOOLS = new Set(["edit_file", "write_file"]);
+
+/** 旧写工具已删除：给出迁移方向，而不是模糊的“未知工具”。 */
+function removedToolMessage(name: string): string | null {
+  if (!REMOVED_TOOLS.has(name)) return null;
+  return `工具 '${name}' 已移除；请改用 'edit'，补丁写在 assistant 正文的 '*** Begin Patch' 块中。`;
+}
+
 // ------------------------------------------------------------------
 // 工具层级（swarmflow 风格）
 // ------------------------------------------------------------------
@@ -419,6 +427,8 @@ export function validateTemplate(templateDir: string): string | null {
       if (typeof entry !== "string") {
         return `无效的 tools 条目：期望字符串，得到 ${typeof entry}`;
       }
+      const removed = removedToolMessage(entry);
+      if (removed) return removed;
       if (!TOOL_PACKS[entry] && !BASIC_TOOLS_MAP[entry]) {
         return `未知的工具或包 '${entry}'。可用工具：${Object.keys(BASIC_TOOLS_MAP).join(", ")}；包：${Object.keys(TOOL_PACKS).join(", ")}`;
       }
@@ -567,6 +577,8 @@ function resolveTools(spec: Record<string, unknown>): ToolDef[] {
     const toolNames = expandToolSpecs(toolsSpec as string[]);
     const resolved: ToolDef[] = [];
     for (const name of toolNames) {
+      const removed = removedToolMessage(name);
+      if (removed) throw new Error(removed);
       const tool = BASIC_TOOLS_MAP[name];
       if (!tool) {
         throw new Error(

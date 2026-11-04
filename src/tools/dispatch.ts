@@ -4,12 +4,9 @@
  * `ExecuteToolContext` 携带工作区根、审批与运行时依赖，按调用注入。
  */
 
-import fs from "node:fs/promises";
 import { rmSync } from "node:fs";
 
 import path from "node:path";
-
-import { shell } from "../platform/index.js";
 
 import { ToolResult } from "../providers/response.js";
 import type { ToolExecutor } from "./executor-types.js";
@@ -41,8 +38,6 @@ import {
 import { scopedPath, toolRoot } from "./path-scoping.js";
 import { toolReadFile } from "./file-read.js";
 import { toolListDir } from "./file-list.js";
-import { toolEditFileAppend, toolEditFileMulti, editFileNotFoundMessage } from "./file-edit.js";
-import { toolWriteFile } from "./file-write.js";
 import { toolPatchEdit } from "./patch-edit.js";
 import {
   splitCompoundBash,
@@ -166,82 +161,6 @@ export function createDispatch(ctx?: ExecuteToolContext): Record<string, ToolExe
         return await toolPatchEdit(ctx.patchPayload, ctx);
       } catch (e) {
         return formatToolError("edit", e);
-      }
-    },
-    edit_file: (args) => {
-      try {
-        const a = expectArgsObject("edit_file", args);
-        const requestedPath = requiredPathArg("edit_file", a, "path", { nonEmpty: true });
-        const expectedMtimeMs = optionalIntegerArg("edit_file", a, "expected_mtime_ms");
-        const appendStr = optionalStringArg("edit_file", a, "append_str", "");
-        const editsRaw = a.edits;
-
-        // 校验 edits 数组
-        const edits: Array<{ old_str: string; new_str: string; replace_all?: boolean }> = [];
-        if (Array.isArray(editsRaw)) {
-          for (const item of editsRaw) {
-            if (!item || typeof item !== "object") {
-              return "ERROR: Each item in edits must be an object with old_str and new_str.";
-            }
-            const obj = item as Record<string, unknown>;
-            if (typeof obj.old_str !== "string" || !obj.old_str) {
-              return "ERROR: Each item in edits must have a non-empty old_str.";
-            }
-            if (typeof obj.new_str !== "string") {
-              return "ERROR: Each item in edits must have a new_str.";
-            }
-            edits.push({
-              old_str: obj.old_str,
-              new_str: obj.new_str,
-              replace_all: obj.replace_all === true,
-            });
-          }
-          if (edits.length === 0) {
-            return "ERROR: edits array must not be empty.";
-          }
-        }
-
-        if (edits.length === 0 && !appendStr) {
-          return "ERROR: edit_file requires edits array and/or append_str.";
-        }
-
-        const filePath = scopedPath(
-          requestedPath,
-          "write",
-          ctx,
-          { mustExist: true, expectFile: true },
-        );
-
-        // 仅追加（无替换）
-        if (edits.length === 0) {
-          return toolEditFileAppend(filePath, appendStr, expectedMtimeMs);
-        }
-
-        // 编辑（可与追加组合）
-        return toolEditFileMulti(filePath, edits, expectedMtimeMs, appendStr || undefined);
-      } catch (e) {
-        // 路径不存在时补一句怎么纠正，避免模型拿同一个路径反复重试。
-        if (e instanceof SafePathError && e.code === "PATH_NOT_FOUND") {
-          return editFileNotFoundMessage(e.details.requestedPath || e.details.resolvedPath);
-        }
-        return formatToolError("edit_file", e);
-      }
-    },
-    write_file: (args) => {
-      try {
-        const a = expectArgsObject("write_file", args);
-        const requestedPath = requiredPathArg("write_file", a, "path", { nonEmpty: true });
-        const content = requiredStringArg("write_file", a, "content");
-        const expectedMtimeMs = optionalIntegerArg("write_file", a, "expected_mtime_ms");
-        const filePath = scopedPath(
-          requestedPath,
-          "write",
-          ctx,
-          { allowCreate: true, expectFile: true },
-        );
-        return toolWriteFile(filePath, content, expectedMtimeMs);
-      } catch (e) {
-        return formatToolError("write_file", e);
       }
     },
     bash: async (args, rtCtx) => {

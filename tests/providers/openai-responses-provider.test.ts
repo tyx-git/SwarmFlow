@@ -290,7 +290,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
         {
           type: "function_call",
           call_id: "call_1",
-          name: "write_file",
+          name: "edit",
           arguments: "{\"path\":\"a.txt\",\"content\":\"hello\"}",
         },
       ],
@@ -311,7 +311,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
                 type: "function_call",
                 id: "fc_1",
                 call_id: "call_1",
-                name: "write_file",
+                name: "edit",
               },
             },
             {
@@ -325,7 +325,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
                 type: "function_call",
                 id: "fc_1",
                 call_id: "call_1",
-                name: "write_file",
+                name: "edit",
                 arguments: "{\"path\":\"a.txt\",\"content\":\"hello\"}",
               },
             },
@@ -349,9 +349,9 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
       },
     );
 
-    expect(events).toContain("partial:call_1:write_file:{\"path\":\"a.txt\",\"content\":\"hello\"}");
+    expect(events).toContain("partial:call_1:edit:{\"path\":\"a.txt\",\"content\":\"hello\"}");
     expect(events).toContain("close:call_1");
-    expect(events.indexOf("close:call_1")).toBeGreaterThan(events.indexOf("partial:call_1:write_file:{\"path\":\"a.txt\",\"content\":\"hello\"}"));
+    expect(events.indexOf("close:call_1")).toBeGreaterThan(events.indexOf("partial:call_1:edit:{\"path\":\"a.txt\",\"content\":\"hello\"}"));
     expect(closedCalls).toEqual([
       {
         id: "call_1",
@@ -481,7 +481,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
                 type: "function_call",
                 id: "fc_1",
                 call_id: "call_1",
-                name: "write_file",
+                name: "edit",
               },
             },
             {
@@ -491,7 +491,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
                 type: "function_call",
                 id: "fc_2",
                 call_id: "call_2",
-                name: "write_file",
+                name: "edit",
               },
             },
             {
@@ -542,7 +542,7 @@ describe("OpenAIResponsesProvider streamed tool-call lifecycle", () => {
       },
     );
 
-    const call1PartialIndex = events.indexOf("partial:call_1:write_file:{\"path\":\"a.txt\",\"content\":\"alpha\"}");
+    const call1PartialIndex = events.indexOf("partial:call_1:edit:{\"path\":\"a.txt\",\"content\":\"alpha\"}");
     const call1CloseIndex = events.indexOf("close:call_1");
     expect(call1PartialIndex).toBeGreaterThanOrEqual(0);
     expect(call1CloseIndex).toBeGreaterThan(call1PartialIndex);

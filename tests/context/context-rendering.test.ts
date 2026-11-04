@@ -113,7 +113,7 @@ describe("mergeConsecutiveSameRole", () => {
     // followed by the next non-summarized assistant with tool_calls.
     const messages = [
       { role: "assistant", content: "[Summary of 1,2,3]" },
-      { role: "assistant", content: "", tool_calls: [{ id: "tc1", name: "write_file", arguments: { path: "a.txt" } }] },
+      { role: "assistant", content: "", tool_calls: [{ id: "tc1", name: "edit", arguments: {} }] },
     ];
     const result = mergeConsecutiveSameRole(messages);
     expect(result).toHaveLength(1);

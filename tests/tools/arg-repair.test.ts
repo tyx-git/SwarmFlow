@@ -8,10 +8,6 @@ import {
   type ArgRepairKind,
 } from "../../src/tools/arg-repair.js";
 import { argRequiredStringArray, argOptionalPath } from "../../src/tools/arg-validation.js";
-import { executeTool } from "../../src/tools/dispatch.js";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 describe("repairToStringArray — the four shape repairs", () => {
   it("parses a stringified JSON array", () => {
@@ -138,28 +134,6 @@ describe("telemetry sink", () => {
       expect(seen).toEqual(["json_string_array", "bare_string_to_array"]);
     } finally {
       setArgRepairSink(null);
-    }
-  });
-});
-
-describe("write_file path autolink repair (end-to-end, content untouched)", () => {
-  it("creates the unwrapped filename, not the literal autolink", async () => {
-    const root = mkdtempSync(join(tmpdir(), "swarmflow-argrepair-"));
-    try {
-      const res = await executeTool(
-        "write_file",
-        {
-          path: `[${join(root, "out.md")}](http://${join(root, "out.md")})`,
-          // content that *looks* like a path autolink must NOT be rewritten
-          content: "see [x.md](http://x.md) for details",
-        },
-        { projectRoot: root },
-      );
-      expect(res.content).not.toContain("ERROR");
-      const written = readFileSync(join(root, "out.md"), "utf8");
-      expect(written).toBe("see [x.md](http://x.md) for details");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
     }
   });
 });

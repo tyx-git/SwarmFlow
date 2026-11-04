@@ -16,7 +16,7 @@ import { ClickablePath } from "./clickable-path.js";
 import { InlineResult } from "./inline-result.js";
 
 const EXPLORE_LABEL = "Explore";
-const PATH_TOOLS = new Set(["Read", "List", "Edit", "Write"]);
+const PATH_TOOLS = new Set(["Read", "List", "Edit"]);
 
 interface ToolGroupEntryProps {
   entry: PresentationEntry;

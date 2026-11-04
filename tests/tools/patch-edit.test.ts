@@ -134,6 +134,15 @@ describe("edit patch tool", () => {
     expect(result.metadata["patchFiles"]).toEqual([
       { kind: "M", path: "renamed/dir/name.txt", from: "old/name.txt" },
     ]);
+    expect(result.metadata["changedPaths"]).toEqual(expect.arrayContaining([
+      resolve(root, "old", "name.txt"),
+      resolve(root, "renamed", "dir", "name.txt"),
+    ]));
+    expect(result.metadata["fileModifyDataList"]).toMatchObject([{
+      filePath: resolve(root, "renamed", "dir", "name.txt"),
+      mode: "replace",
+      hunks: [{ additions: ["new content"] }],
+    }]);
   });
 
   it("keeps earlier files when a later hunk fails, and reports them", async () => {
@@ -155,6 +164,12 @@ describe("edit patch tool", () => {
     expect(result.content).toContain("Failed to read file to update");
     expect(result.content).toContain("Applied before the failure:");
     expect(result.content).toContain("created.txt");
+    expect(result.metadata["patchFiles"]).toEqual([
+      { kind: "A", path: "created.txt" },
+    ]);
+    expect(result.metadata["changedPaths"]).toEqual([
+      resolve(root, "created.txt"),
+    ]);
     expect(readFileSync(join(root, "created.txt"), "utf8")).toBe("hello\n");
   });
 
@@ -238,5 +253,17 @@ describe("edit patch tool", () => {
     });
     expect(typeof result).not.toBe("string");
     expect(touched).toEqual([resolve(root, "reload.txt")]);
+  });
+});
+
+describe("edit missing update target", () => {
+  it("reports the missing path for an Update File hunk", async () => {
+    const root = makeRoot();
+    const result = await runPatch(
+      root,
+      wrap("*** Update File: missing.txt\n@@\n-x\n+y"),
+    );
+    expect(result.content).toContain("Failed to read file to update");
+    expect(result.content).toContain("missing.txt");
   });
 });

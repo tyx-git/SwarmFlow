@@ -1,8 +1,5 @@
 /**
- * Regression coverage for the cross-platform audit fixes:
- *   - H-3: edit_file must match a multi-line, LF-only old_str against a
- *          CRLF file (read_file strips CR, so the model only ever sees
- *          LF) and preserve the file's CRLF line endings on write.
+ * Regression coverage for cross-platform command classification:
  *   - H-4: on case-insensitive filesystems (default macOS, Windows Git
  *          Bash) an uppercase danger command (RM, SUDO) must classify
  *          the same as its lowercase form, instead of slipping past the
@@ -12,78 +9,18 @@
  * The H-4 assertions are gated on osCapabilities.caseInsensitiveFilesystem
  * so the suite is correct regardless of which OS runs it.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { classifyToolAsync } from "../../src/permissions/index.js";
-import { executeTool } from "../../src/tools/dispatch.js";
 import { osCapabilities } from "../../src/platform/index.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
 }
-
-describe("H-3: edit_file handles CRLF files with LF old_str", () => {
-  it("matches a multi-line LF old_str against a CRLF file and keeps CRLF", async () => {
-    const root = makeTempDir("swarmflow-crlf-edit-");
-    try {
-      const file = join(root, "crlf.txt");
-      // Windows-authored file: CRLF line endings throughout.
-      writeFileSync(file, "line1\r\nline2\r\nline3\r\nline4\r\n", "utf-8");
-
-      // The model copies a snippet from read_file output, which is
-      // LF-only — so old_str spans two lines joined by a bare "\n".
-      const result = await executeTool(
-        "edit_file",
-        {
-          path: "crlf.txt",
-          edits: [{ old_str: "line2\nline3", new_str: "line2\nNEW3" }],
-        },
-        { projectRoot: root },
-      );
-
-      // Must succeed: no "old_str not found" / error.
-      expect(result.content).not.toContain("not found");
-      expect(result.content).not.toMatch(/^ERROR/);
-
-      // The replacement landed and the file is still CRLF (no lone-LF
-      // lines seeded into the edited region).
-      const after = readFileSync(file, "utf-8");
-      expect(after).toContain("NEW3");
-      expect(after).toContain("line2\r\nNEW3\r\nline4");
-      expect(after).not.toMatch(/[^\r]\n/); // every \n is preceded by \r
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("still edits a plain LF file unchanged (no regression)", async () => {
-    const root = makeTempDir("swarmflow-lf-edit-");
-    try {
-      const file = join(root, "lf.txt");
-      writeFileSync(file, "alpha\nbeta\ngamma\n", "utf-8");
-
-      const result = await executeTool(
-        "edit_file",
-        {
-          path: "lf.txt",
-          edits: [{ old_str: "beta\ngamma", new_str: "beta\nGAMMA" }],
-        },
-        { projectRoot: root },
-      );
-
-      expect(result.content).not.toContain("not found");
-      const after = readFileSync(file, "utf-8");
-      expect(after).toBe("alpha\nbeta\nGAMMA\n");
-      expect(after).not.toContain("\r");
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
 
 describe("H-4: danger-command classification respects filesystem case sensitivity", () => {
   const ci = osCapabilities.caseInsensitiveFilesystem;
@@ -126,50 +63,6 @@ describe("H-4: danger-command classification respects filesystem case sensitivit
       } else {
         expect(cls).not.toBe("write_danger");
       }
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("M-5: write_file preserves the file's existing line endings", () => {
-  it("keeps CRLF when overwriting a CRLF file with LF content", async () => {
-    const root = makeTempDir("swarmflow-write-crlf-");
-    try {
-      const file = join(root, "crlf.txt");
-      writeFileSync(file, "alpha\r\nbeta\r\ngamma\r\n", "utf-8");
-
-      // The model composes replacement content with LF (read_file only
-      // ever shows LF).
-      const result = await executeTool(
-        "write_file",
-        { path: "crlf.txt", content: "alpha\nBETA\ngamma\n" },
-        { projectRoot: root },
-      );
-      expect(result.content).not.toMatch(/^ERROR/);
-
-      const after = readFileSync(file, "utf-8");
-      // The edit landed AND the file is still CRLF throughout — no silent
-      // EOL rewrite of the untouched lines.
-      expect(after).toBe("alpha\r\nBETA\r\ngamma\r\n");
-      expect(after).not.toMatch(/[^\r]\n/);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("keeps LF for a new file authored with LF (no spurious CR)", async () => {
-    const root = makeTempDir("swarmflow-write-lf-");
-    try {
-      const result = await executeTool(
-        "write_file",
-        { path: "new.txt", content: "one\ntwo\n" },
-        { projectRoot: root },
-      );
-      expect(result.content).not.toMatch(/^ERROR/);
-      const after = readFileSync(join(root, "new.txt"), "utf-8");
-      expect(after).toBe("one\ntwo\n");
-      expect(after).not.toContain("\r");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -232,28 +125,4 @@ describe("H-4 (wrappers): uppercase process wrappers don't slip the gate", () =>
       }
     },
   );
-});
-
-describe("M-5 (append): edit_file append_str preserves the file's EOL", () => {
-  it("appends LF content to a CRLF file without seeding mixed endings", async () => {
-    const root = makeTempDir("swarmflow-append-crlf-");
-    try {
-      const file = join(root, "crlf.txt");
-      writeFileSync(file, "alpha\r\nbeta\r\n", "utf-8");
-
-      const result = await executeTool(
-        "edit_file",
-        { path: "crlf.txt", append_str: "gamma\ndelta\n" },
-        { projectRoot: root },
-      );
-      expect(result.content).not.toMatch(/^ERROR/);
-
-      const after = readFileSync(file, "utf-8");
-      // Appended text adopts the file's CRLF; no lone-LF lines.
-      expect(after).toBe("alpha\r\nbeta\r\ngamma\r\ndelta\r\n");
-      expect(after).not.toMatch(/[^\r]\n/);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
 });

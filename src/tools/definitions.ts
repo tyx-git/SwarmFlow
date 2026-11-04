@@ -1,9 +1,5 @@
 ﻿/** 内置工具的 ToolDef 定义：读取、编辑、shell、时间、搜索与网络工具；执行器分派见 dispatch.ts。 */
 
-import fs from "node:fs/promises";
-
-import path from "node:path";
-
 import { shell } from "../platform/index.js";
 
 import type { ToolDef } from "../providers/types.js";
@@ -113,80 +109,6 @@ export const LIST: ToolDef = {
     required: [],
   },
   summaryTemplate: "{agent} is listing {path}",
-  tuiPolicy: { partialReveal: { completeArgs: ["path"] } },
-};
-
-export const EDIT: ToolDef = {
-  name: "edit_file",
-  description:
-    "Apply a patch to an existing file. Each edit replaces an `old_str` with a `new_str`; " +
-    "`old_str` is matched byte-for-byte after newline normalization: copy it verbatim from read_file — same indentation, quotes, and backslash count, without re-escaping — and include the trailing newline only when you mean to replace it. " +
-    "If an edit reports `old_str not found`, re-read that exact range and rebuild the string instead of retrying it unchanged. " +
-    "By default `old_str` must appear exactly once in the file (or the call fails with the line numbers of all matches so you can disambiguate). " +
-    "Set `replace_all: true` on an edit to replace every occurrence —useful for renames. " +
-    "Multiple edits in one call are applied atomically and must not overlap. " +
-    "Use `append_str` to add content at the end of the file (can be combined with edits —appends run last). " +
-    "Refuses no-op edits where `old_str === new_str`.",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "File path to edit" },
-      edits: {
-        type: "array",
-        description: "One or more replacements applied in a single atomic write.",
-        items: {
-          type: "object",
-          properties: {
-            old_str: { type: "string", description: "Exact string to find (must be unique unless replace_all=true)." },
-            new_str: { type: "string", description: "Replacement string. Must differ from old_str." },
-            replace_all: {
-              type: "boolean",
-              description: "Replace every occurrence instead of requiring uniqueness. Default false.",
-            },
-          },
-          required: ["old_str", "new_str"],
-        },
-      },
-      append_str: {
-        type: "string",
-        description:
-          "Content to append to the end of the file. " +
-          "Can be used alone or combined with edits (append always executes last).",
-      },
-      expected_mtime_ms: {
-        type: "integer",
-        description:
-          "Optional optimistic concurrency guard. " +
-          "If provided, edit is rejected when the file mtime differs (milliseconds since epoch).",
-      },
-    },
-    required: ["path"],
-  },
-  summaryTemplate: "{agent} is editing {path}",
-  tuiPolicy: { partialReveal: { completeArgs: ["path"] } },
-};
-
-export const WRITE: ToolDef = {
-  name: "write_file",
-  description:
-    "Create or overwrite a file with the given content. Parent directories are created automatically. " +
-    "Prefer write_file over edit_file when you intend to replace the entire file —it is fewer tokens " +
-    "than echoing the full existing content into edit_file. Use edit_file for targeted modifications.",
-  parameters: {
-    type: "object",
-    properties: {
-      path: { type: "string", description: "File path to write" },
-      content: { type: "string", description: "Full file content" },
-      expected_mtime_ms: {
-        type: "integer",
-        description:
-          "Optional optimistic concurrency guard for overwrites. " +
-          "If provided, write is rejected when the existing file mtime differs (milliseconds since epoch).",
-      },
-    },
-    required: ["path", "content"],
-  },
-  summaryTemplate: "{agent} is writing to {path}",
   tuiPolicy: { partialReveal: { completeArgs: ["path"] } },
 };
 
@@ -643,16 +565,9 @@ export const BASIC_TOOLS: ToolDef[] = [
   WEB_FETCH,
 ];
 
-/**
- * 同版停用、下版删除的旧写工具。仍保留在 map 里，避免自定义 agent.yaml
- * 立即报“未知工具”；默认工具目录不再暴露给模型。
- */
-export const LEGACY_WRITE_TOOLS: ToolDef[] = [EDIT, WRITE];
-
-export const BASIC_TOOLS_MAP: Record<string, ToolDef> = {
-  ...Object.fromEntries(BASIC_TOOLS.map((t) => [t.name, t])),
-  ...Object.fromEntries(LEGACY_WRITE_TOOLS.map((t) => [t.name, t])),
-};
+export const BASIC_TOOLS_MAP: Record<string, ToolDef> = Object.fromEntries(
+  BASIC_TOOLS.map((tool) => [tool.name, tool]),
+);
 
 // ======================================================================
 // 工具执行器

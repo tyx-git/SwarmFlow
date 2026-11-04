@@ -3,7 +3,6 @@ import { extname } from "node:path";
 import { RGBA, type TextChunk } from "@opentui/core";
 import { highlightToChunks } from "./syntax-highlighter.js";
 
-import type { ConversationEntry } from "../../../src/ui/contracts.js";
 import { splitDisplayLines } from "../../../src/lib/line-window.js";
 import type { ConversationPalette } from "./conversation-types.js";
 import {
@@ -34,8 +33,6 @@ interface ToolResultArtifactOptions {
   toolMetadata?: ToolMetadata;
   wrapWidth?: number;
   colors: ConversationPalette;
-  /** When true, extract only the new file content from diff text and render as syntax-highlighted code. */
-  codePreviewOnly?: boolean;
 }
 
 function parseDiffPreviewKind(toolMetadata?: ToolMetadata): string | null {
@@ -190,68 +187,6 @@ function buildDiffLineArtifact(
   return wrapStandaloneChunks(chunks, wrapWidth);
 }
 
-/**
- * Extract new file content from diff text: keep addition (+) and context ( )
- * lines, skip deletions (-), headers, hunks, and fold markers.
- */
-function extractNewContentLines(text: string): string[] {
-  const codeLines: string[] = [];
-  for (const line of splitDisplayLines(text)) {
-    const { raw } = parsePreviewLine(line);
-    if (raw.startsWith("+++ ") || raw.startsWith("--- ")) continue;
-    if (raw.startsWith("@@")) continue;
-    if (raw.startsWith("...")) continue;
-    if (raw.startsWith("-")) continue;
-    if (raw.startsWith("+")) { codeLines.push(raw.slice(1)); continue; }
-    if (raw.startsWith(" ")) { codeLines.push(raw.slice(1)); continue; }
-  }
-  return codeLines;
-}
-
-function buildCodePreviewArtifacts(
-  { text, colors, toolMetadata, wrapWidth }: Pick<ToolResultArtifactOptions, "text" | "colors" | "toolMetadata" | "wrapWidth">,
-): ToolResultLineArtifact[] {
-  const language = inferDiffLanguage(toolMetadata);
-  const textFg = RGBA.fromHex(colors.text);
-
-  // Prefer full new content from backend; fall back to fileModifyData.writeLines,
-  // then to extracting from diff text.
-  const preview = toolMetadata?.["tui_preview"];
-  const previewNewContent = preview && typeof preview === "object"
-    ? (preview as Record<string, unknown>)["newContent"]
-    : undefined;
-  const fmd = toolMetadata?.["fileModifyData"];
-  const writeLines = fmd && typeof fmd === "object"
-    ? (fmd as Record<string, unknown>)["writeLines"]
-    : undefined;
-  const newContent = typeof previewNewContent === "string"
-    ? previewNewContent
-    : Array.isArray(writeLines) && writeLines.every((line) => typeof line === "string")
-      ? writeLines.join("\n")
-      : undefined;
-  const codeLines = typeof newContent === "string"
-    ? splitDisplayLines(newContent)
-    : extractNewContentLines(text);
-
-  if (codeLines.length === 0) {
-    return buildPlainToolResultArtifacts({ text, colors, wrapWidth });
-  }
-
-  return codeLines.flatMap((codeLine) => {
-    const highlighted = language ? highlightToChunks(codeLine, language) : null;
-    if (highlighted && highlighted.length > 0) {
-      return wrapStandaloneChunks(
-        cloneChunksWithBaseStyle(highlighted, { fallbackFg: textFg }),
-        wrapWidth,
-      );
-    }
-    return wrapStandaloneChunks(
-      [createChunk(codeLine || " ", { fg: textFg })],
-      wrapWidth,
-    );
-  });
-}
-
 function buildDiffToolResultArtifacts(
   { text, colors, toolMetadata, wrapWidth }: Pick<ToolResultArtifactOptions, "text" | "colors" | "toolMetadata" | "wrapWidth">,
 ): ToolResultLineArtifact[] {
@@ -269,29 +204,10 @@ export function buildToolResultArtifacts(
     return buildPlainToolResultArtifacts(options);
   }
 
-  if (options.codePreviewOnly) {
-    return buildCodePreviewArtifacts(options);
-  }
-
   const previewKind = parseDiffPreviewKind(options.toolMetadata);
   if (previewKind === "diff" || isLikelyDiffPreview(options.text)) {
     return buildDiffToolResultArtifacts(options);
   }
 
   return buildPlainToolResultArtifacts(options);
-}
-
-export function getToolResultMetadata(
-  entry: ConversationEntry,
-): ToolMetadata | undefined {
-  const metadata = entry.meta?.toolMetadata;
-  return metadata && typeof metadata === "object"
-    ? metadata as ToolMetadata
-    : undefined;
-}
-
-export function inferToolResultLanguage(
-  entry: ConversationEntry,
-): string | undefined {
-  return inferDiffLanguage(getToolResultMetadata(entry));
 }

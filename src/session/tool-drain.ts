@@ -23,6 +23,7 @@ import type { DrainPendingToolCallsResult } from "./turn-types.js";
 import type { SessionLog } from "./log.js";
 
 import type { ProgressReporter } from "../logging/progress.js";
+import { buildToolResultPreview } from "../agents/tool-loop/display.js";
 import { resolvePayloadFromToolCallLog } from "../tools/patch-payload.js";
 import { formatParseError, parsePatch, ParseError } from "../patches/apply-patch/index.js";
 
@@ -254,24 +255,11 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
       delete (executedEntry.content as { executionPayload?: string }).executionPayload;
     }
 
-    // 构造预览（与 tool-loop 的逻辑一致）
-    const previewSrc = toolMetadata["tui_preview"];
-    let previewText: string | undefined;
-    let previewDim: boolean | undefined;
-    if (previewSrc && typeof previewSrc === "object") {
-      const text = (previewSrc as Record<string, unknown>)["text"];
-      if (typeof text === "string" && text.trim()) {
-        previewText = text;
-        previewDim = (previewSrc as Record<string, unknown>)["dim"] === true ? true : undefined;
-      }
-    }
-    if (!previewText && !isError) {
-      const lines = resultContent.split("\n");
-      previewText = lines.length > 20
-        ? lines.slice(0, 20).join("\n") + `\n... (${lines.length - 20} more lines)`
-        : resultContent;
-      previewDim = true;
-    }
+    const { text: previewText, dim: previewDim } = buildToolResultPreview(
+      toolMetadata,
+      resultContent,
+      isError,
+    );
 
     host._appendEntry(createToolResultEntry(
       host._nextLogId("tool_result"),
@@ -411,7 +399,7 @@ export async function beforeToolExecute(
   //    在会话 artifacts/ 内操作无需审批（这是 agent 自己的草稿区）。
   //    Bash 除外——它的 cwd 跟踪是另一套闸门。
   const ARTIFACTS_BYPASS_TOOLS = new Set([
-    "read_file", "write_file", "edit_file", "edit", "list_dir", "glob", "grep",
+    "read_file", "edit", "list_dir", "glob", "grep",
   ]);
   const insideArtifacts = ctx.toolName === "edit"
     ? (ctx.patchPaths?.length ?? 0) > 0

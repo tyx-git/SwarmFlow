@@ -6,12 +6,12 @@ import { BASIC_TOOLS_MAP } from "../../src/tools/definitions.js";
 /**
  * 工具契约与角色文档的一致性：
  * - 数值分页参数在 schema 里就声明 >= 1（模型看得到，不用等运行时拒绝）；
- * - 描述与六份 tools.md 都写明“省略 tail_lines 从第 1 行读”和 old_str 的逐字节要求。
+ * - 描述与六份 tools.md 都写明“省略 tail_lines 从第 1 行读”；
+ * - `edit` 的零参数正文补丁契约与 worker tools.md 保持同步。
  */
 describe("tool schema guidance", () => {
   const readParams = BASIC_TOOLS_MAP["read_file"].parameters as any;
   const editDescription = BASIC_TOOLS_MAP["edit"].description ?? "";
-  const legacyEditDescription = BASIC_TOOLS_MAP["edit_file"].description ?? "";
   const readDescription = BASIC_TOOLS_MAP["read_file"].description ?? "";
 
   it("declares minimum 1 on every paging argument", () => {
@@ -33,11 +33,6 @@ describe("tool schema guidance", () => {
     expect(editDescription).toContain("Do not wrap the patch in JSON");
     expect((BASIC_TOOLS_MAP["edit"].parameters as any).properties).toEqual({});
     expect((BASIC_TOOLS_MAP["edit"].parameters as any).required).toEqual([]);
-  });
-
-  it("keeps the legacy edit_file description for compatibility", () => {
-    expect(legacyEditDescription).toContain("byte-for-byte");
-    expect(legacyEditDescription).toContain("re-read that exact range");
   });
 
   it("keeps the same read rules in the role prompts", () => {

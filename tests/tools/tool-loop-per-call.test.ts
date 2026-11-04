@@ -5,8 +5,20 @@ import { createEphemeralLogState } from "../../src/context/ephemeral-log.js";
 import type { LogEntry } from "../../src/context/entry/types.js";
 import { BaseProvider } from "../../src/providers/base.js";
 import { ProviderResponse, Usage } from "../../src/providers/response.js";
-import type { ToolCall } from "../../src/providers/types.js";
-import { BASIC_TOOLS_MAP } from "../../src/tools/definitions.js";
+import type { ToolCall, ToolDef } from "../../src/providers/types.js";
+
+const WRITE_PLAN_TOOL = {
+  name: "write_plan",
+  description: "test plan writer",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string" },
+      content: { type: "string" },
+      intent: { type: "string" },
+    },
+  },
+} as ToolDef;
 
 function createUpdateEntry(entries: LogEntry[]) {
   return (entryId: string, patch: {
@@ -50,13 +62,13 @@ describe("tool-loop per-call lifecycle", () => {
         this._calls += 1;
         if (this._calls === 1) {
           const partial = "{\"path\":\"demo.txt\",\"content\":\"hello";
-          options?.onToolCallPartial?.("write_1", "write_file", partial);
+          options?.onToolCallPartial?.("write_1", "write_plan", partial);
           options?.onToolCallClosed?.({
             id: "write_1",
-            name: "write_file",
+            name: "write_plan",
             rawArguments: partial,
             arguments: {},
-            parseError: "Failed to parse write_file stream tool arguments as JSON (37 chars).",
+            parseError: "Failed to parse write_plan stream tool arguments as JSON (37 chars).",
           });
           return new ProviderResponse({
             usage: new Usage(1, 1),
@@ -76,7 +88,7 @@ describe("tool-loop per-call lifecycle", () => {
       allocId: runtime.allocId,
       turnIndex: 0,
       toolExecutors: {
-        write_file: async (args) => {
+        write_plan: async (args) => {
           executedArgs.push(args);
           return "OK";
         },
@@ -160,95 +172,6 @@ describe("tool-loop per-call lifecycle", () => {
     expect(result.text).toBe("done");
   });
 
-  it("reveals write_file only after path is known and keeps later streamed updates", async () => {
-    const runtime = createEphemeralLogState([
-      { role: "system", content: "prompt" },
-      { role: "user", content: "hi" },
-    ]);
-    const snapshots: Array<Array<{ display: string; args: Record<string, unknown>; streamState?: unknown }>> = [];
-
-    const snapshotToolCalls = () => {
-      snapshots.push(
-        runtime.entries
-          .filter((entry) => entry.type === "tool_call" && entry.tuiVisible)
-          .map((entry) => ({
-            display: entry.display,
-            args: ((entry.content as { arguments?: Record<string, unknown> } | undefined)?.arguments) ?? {},
-            streamState: entry.meta.toolStreamState,
-          })),
-      );
-    };
-
-    class DeferredWriteProvider extends BaseProvider {
-      private _calls = 0;
-
-      async sendMessage(
-        _messages: any[],
-        _tools?: any[],
-        options?: {
-          onToolCallPartial?: (callId: string, name: string, rawArguments: string) => void;
-          onToolCallClosed?: (call: ToolCall) => void;
-        },
-      ): Promise<ProviderResponse> {
-        this._calls += 1;
-        if (this._calls === 1) {
-          options?.onToolCallPartial?.("write_1", "write_file", "");
-          snapshotToolCalls();
-          options?.onToolCallPartial?.("write_1", "write_file", "{\"path\":\"notes.txt\"");
-          snapshotToolCalls();
-          options?.onToolCallPartial?.("write_1", "write_file", "{\"path\":\"notes.txt\",\"content\":\"hello\"}");
-          snapshotToolCalls();
-          options?.onToolCallClosed?.({
-            id: "write_1",
-            name: "write_file",
-            rawArguments: "{\"path\":\"notes.txt\",\"content\":\"hello\"}",
-            arguments: { path: "notes.txt", content: "hello" },
-            parseError: null,
-          });
-          return new ProviderResponse({
-            usage: new Usage(1, 1),
-          });
-        }
-        return new ProviderResponse({
-          text: "done",
-          usage: new Usage(1, 1),
-        });
-      }
-    }
-
-    const result = await asyncRunToolLoop({
-      provider: new DeferredWriteProvider(),
-      getMessages: runtime.getMessages,
-      appendEntry: runtime.appendEntry,
-      allocId: runtime.allocId,
-      turnIndex: 0,
-      tools: [BASIC_TOOLS_MAP["write_file"]],
-      toolExecutors: {
-        write_file: async () => "OK",
-      },
-      maxRounds: 2,
-      onToolCallPartial: () => {},
-      updateEntry: createUpdateEntry(runtime.entries),
-    });
-
-    expect(snapshots[0]).toEqual([]);
-    expect(snapshots[1]).toEqual([
-      {
-        display: "write_file notes.txt",
-        args: { path: "notes.txt" },
-        streamState: "partial",
-      },
-    ]);
-    expect(snapshots[2]).toEqual([
-      {
-        display: "write_file notes.txt",
-        args: { path: "notes.txt", content: "hello" },
-        streamState: "partial",
-      },
-    ]);
-    expect(result.text).toBe("done");
-  });
-
   it("keeps hidden plan-style writes out of the TUI transcript", async () => {
     const runtime = createEphemeralLogState([
       { role: "system", content: "prompt" },
@@ -268,10 +191,10 @@ describe("tool-loop per-call lifecycle", () => {
       ): Promise<ProviderResponse> {
         this._calls += 1;
         if (this._calls === 1) {
-          options?.onToolCallPartial?.("write_1", "write_file", "{\"path\":\"/tmp/plan.md\",\"content\":\"- [ ] test\"}");
+          options?.onToolCallPartial?.("write_1", "write_plan", "{\"path\":\"/tmp/plan.md\",\"content\":\"- [ ] test\"}");
           options?.onToolCallClosed?.({
             id: "write_1",
-            name: "write_file",
+            name: "write_plan",
             rawArguments: "{\"path\":\"/tmp/plan.md\",\"content\":\"- [ ] test\"}",
             arguments: { path: "/tmp/plan.md", content: "- [ ] test" },
             parseError: null,
@@ -293,14 +216,14 @@ describe("tool-loop per-call lifecycle", () => {
       appendEntry: runtime.appendEntry,
       allocId: runtime.allocId,
       turnIndex: 0,
-      tools: [BASIC_TOOLS_MAP["write_file"]],
+      tools: [WRITE_PLAN_TOOL],
       toolExecutors: {
-        write_file: async () => "OK",
+        write_plan: async () => "OK",
       },
       maxRounds: 2,
       onToolCallPartial: () => {},
       resolveToolCallVisibility: ({ toolName, toolArgs, defaultDecision }) => {
-        if (toolName === "write_file" && toolArgs.path === "/tmp/plan.md") {
+        if (toolName === "write_plan" && toolArgs.path === "/tmp/plan.md") {
           return "hide";
         }
         return defaultDecision;
@@ -337,12 +260,12 @@ describe("tool-loop per-call lifecycle", () => {
         if (this._calls === 1) {
           options?.onToolCallPartial?.(
             "write_1",
-            "write_file",
+            "write_plan",
             "{\"path\":\"/tmp/spawn.yaml\",\"content\":\"agents: []\",\"intent\":\"spawn\"}",
           );
           options?.onToolCallClosed?.({
             id: "write_1",
-            name: "write_file",
+            name: "write_plan",
             rawArguments: "{\"path\":\"/tmp/spawn.yaml\",\"content\":\"agents: []\",\"intent\":\"spawn\"}",
             arguments: { path: "/tmp/spawn.yaml", content: "agents: []", intent: "spawn" },
             parseError: null,
@@ -364,14 +287,14 @@ describe("tool-loop per-call lifecycle", () => {
       appendEntry: runtime.appendEntry,
       allocId: runtime.allocId,
       turnIndex: 0,
-      tools: [BASIC_TOOLS_MAP["write_file"]],
+      tools: [WRITE_PLAN_TOOL],
       toolExecutors: {
-        write_file: async () => "OK",
+        write_plan: async () => "OK",
       },
       maxRounds: 2,
       onToolCallPartial: () => {},
       resolveToolCallVisibility: ({ toolName, toolArgs, defaultDecision }) => {
-        if (toolName === "write_file" && toolArgs.intent === "spawn") {
+        if (toolName === "write_plan" && toolArgs.intent === "spawn") {
           return "hide";
         }
         return defaultDecision;
@@ -406,10 +329,10 @@ describe("tool-loop per-call lifecycle", () => {
       ): Promise<ProviderResponse> {
         this._calls += 1;
         if (this._calls === 1) {
-          options?.onToolCallPartial?.("write_1", "write_file", "{\"path\":\"/tmp/plan.md\",\"content\":\"- [ ] fail\"}");
+          options?.onToolCallPartial?.("write_1", "write_plan", "{\"path\":\"/tmp/plan.md\",\"content\":\"- [ ] fail\"}");
           options?.onToolCallClosed?.({
             id: "write_1",
-            name: "write_file",
+            name: "write_plan",
             rawArguments: "{\"path\":\"/tmp/plan.md\",\"content\":\"- [ ] fail\"}",
             arguments: { path: "/tmp/plan.md", content: "- [ ] fail" },
             parseError: null,
@@ -431,14 +354,14 @@ describe("tool-loop per-call lifecycle", () => {
       appendEntry: runtime.appendEntry,
       allocId: runtime.allocId,
       turnIndex: 0,
-      tools: [BASIC_TOOLS_MAP["write_file"]],
+      tools: [WRITE_PLAN_TOOL],
       toolExecutors: {
-        write_file: async () => "ERROR: failed to update plan",
+        write_plan: async () => "ERROR: failed to update plan",
       },
       maxRounds: 2,
       onToolCallPartial: () => {},
       resolveToolCallVisibility: ({ toolName, toolArgs, defaultDecision }) => {
-        if (toolName === "write_file" && toolArgs.path === "/tmp/plan.md") {
+        if (toolName === "write_plan" && toolArgs.path === "/tmp/plan.md") {
           return "hide";
         }
         return defaultDecision;

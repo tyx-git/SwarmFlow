@@ -120,3 +120,11 @@ describe("redirect over compound commands keeps memoization", () => {
     }
   });
 });
+
+describe("edit tool classification", () => {
+  it("is reversible and not memoizable by tool name", async () => {
+    const result = await classifyToolAsync("edit", {}, process.cwd());
+    expect(result.permissionClass).toBe("write_reversible");
+    expect(result.canMemoize).toBe(false);
+  });
+});

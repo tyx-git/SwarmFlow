@@ -3,8 +3,8 @@
  *
  * 现状（src/config/archive.ts:42-50）：归档 payload 只有 {id, content}，
  * 内存里也只清 content。于是 display（assistant_text/reasoning 与 content
- * 是两份独立字符串）、reasoningState/thinkingArtifact、toolStreamSections、
- * fileModifyData.writeLines、toolMetadata（tui_preview / fileMutation /
+ * 是两份独立字符串）、reasoningState/thinkingArtifact、
+ * fileModifyDataList[].writeLines、toolMetadata（tui_preview / fileMutation /
  * _contentBlocks）在压缩后仍常驻。
  *
  * 目标契约（已与用户确认）：全量 meta 入归档。
@@ -77,43 +77,28 @@ function makeHeavyWindow(): LogEntry[] {
     "tc-1",
     1,
     0,
-    "write_file: /p/a.txt",
+    "edit: /p/a.txt",
     {
       id: "call-1",
-      name: "write_file",
-      arguments: { path: "/p/a.txt", content: writeContent },
-      rawArguments: JSON.stringify({ path: "/p/a.txt", content: writeContent }),
+      name: "edit",
+      arguments: {},
+      rawArguments: "{}",
     },
-    { toolCallId: "call-1", toolName: "write_file", agentName: "Primary", contextId: "ctx-1" },
+    { toolCallId: "call-1", toolName: "edit", agentName: "Primary", contextId: "ctx-1" },
   );
-  toolCall.meta["toolStreamSections"] = [{ key: "content", text: writeContent }];
-  toolCall.meta["fileModifyData"] = {
-    filePath: "/p/a.txt",
-    language: "text",
-    mode: "write",
-    totalLineCount: writeLines.length,
-    hunks: [],
-    writeLines,
-  };
+  toolCall.meta["heavyCallField"] = writeContent;
 
   const toolResult = createToolResult(
     "tr-1",
     1,
     0,
-    { toolCallId: "call-1", toolName: "write_file", content: "OK: wrote /p/a.txt", toolSummary: "wrote file" },
+    { toolCallId: "call-1", toolName: "edit", content: "OK: edited /p/a.txt", toolSummary: "edited file" },
     {
       isError: false,
       contextId: "ctx-1",
       toolMetadata: {
         tui_preview: { kind: "diff", text: `--- a\n+++ b\n${writeContent}`, truncated: false },
-        fileModifyData: {
-          filePath: "/p/a.txt",
-          language: "text",
-          mode: "write",
-          totalLineCount: writeLines.length,
-          hunks: [],
-          writeLines,
-        },
+        heavyResultField: writeContent,
         fileMutation: {
           path: "/p/a.txt",
           kind: "created",
@@ -197,8 +182,7 @@ describe("archiveWindow：display + meta 随内容一起归档", () => {
       for (const heavy of [
         "reasoningState",
         "thinkingArtifact",
-        "toolStreamSections",
-        "fileModifyData",
+        "heavyCallField",
         "toolMetadata",
       ]) {
         expect(entry.meta[heavy], `未清理的大字段: ${heavy}`).toBeUndefined();
