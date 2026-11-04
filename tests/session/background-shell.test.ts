@@ -475,12 +475,10 @@ describe("background shell tools", () => {
         { projectRoot: root, sessionArtifactsDir: artifacts },
       ) as ToolResult;
       const headLines = head.content.split("\n");
-      expect(headLines[0]).toMatch(/^\[Lines 1-1000 of 1500 \| mtime_ms=\d+ \| size_bytes=\d+\]$/);
-      expect(headLines.slice(1)).toEqual([
-        ...Array.from({ length: 1000 }, (_, index) => `big-${String(index + 1).padStart(4, "0")}`),
-        "",
-        "<--- This file has more than 1000 lines. Continue with `start_line=1001` if you need the following lines. --->",
-      ]);
+      expect(headLines[0]).toMatch(/^\[Lines 1-1500 of 1500 \| mtime_ms=\d+ \| size_bytes=\d+\]$/);
+      expect(headLines.slice(1)).toEqual(
+        Array.from({ length: 1500 }, (_, index) => `big-${String(index + 1).padStart(4, "0")}`),
+      );
     } finally {
       await killShellAndWait((session as any)._shellManager, ["big"]);
       await session.close();

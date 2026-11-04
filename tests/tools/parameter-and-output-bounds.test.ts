@@ -54,7 +54,7 @@ describe("read_file improvements", () => {
       const r = await executeTool("read_file", { path: "big.txt" }, { projectRoot: root });
       expect(r.content).toContain("line truncated at 5000 chars");
       expect(r.content).toContain("1 line exceeded 5000 chars");
-      expect(r.content).toContain("longest is 6000 chars");
+      expect(r.content).toContain("(longest 6000)");
       expect(r.content).toContain("max_line_chars=6000");
       expect(r.content).toContain("before");
       expect(r.content).toContain("after");
@@ -555,7 +555,7 @@ describe("read_file long-line escape hatch", () => {
   it("points at a shell escape hatch when a line exceeds the per-call char budget", async () => {
     const root = makeTempDir("swarmflow-fix-read-longline-hint-");
     try {
-      writeFileSync(join(root, "big.txt"), "before\n" + "x".repeat(90_000) + "\nafter\n", "utf-8");
+      writeFileSync(join(root, "big.txt"), "before\n" + "x".repeat(170_000) + "\nafter\n", "utf-8");
       const r = await executeTool("read_file", { path: "big.txt" }, { projectRoot: root });
       if (isPowerShell) {
         expect(r.content).toContain("@(Get-Content");
@@ -577,7 +577,7 @@ describe("read_file long-line escape hatch", () => {
       // Put the long-line file in a subdirectory so basename ≠ full path.
       mkdirSync(join(root, "deep", "nested"), { recursive: true });
       const filePath = join(root, "deep", "nested", "big.txt");
-      writeFileSync(filePath, "before\n" + "x".repeat(90_000) + "\nafter\n", "utf-8");
+      writeFileSync(filePath, "before\n" + "x".repeat(170_000) + "\nafter\n", "utf-8");
 
       const r = await executeTool(
         "read_file",

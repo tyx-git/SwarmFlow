@@ -18,16 +18,16 @@ export const READ: ToolDef = {
   name: "read_file",
   description:
     "Read the contents of a text file (max 50 MB). " +
-    "Returns up to 1000 lines / 80,000 characters per call; " +
+    "Returns up to 2000 lines / 160,000 characters per call; " +
     "individual lines longer than 5000 chars are truncated by default (raise max_line_chars when you need a long line in full). " +
     "PDF, DOCX, XLSX, and similar formats are returned as auto-extracted Markdown. " +
     "Legacy 97-2003 .doc/.xls/.ppt cannot be extracted; the call fails with a hint to convert them to the modern OOXML format first. " +
     "Image files are returned as visual content blocks when the model supports multimodal input. " +
     "Returns file metadata (including mtime_ms) for optional optimistic concurrency checks. " +
     "Use start_line+end_line (inclusive range) or offset+limit (offset = first line, limit = number of lines) to navigate large files across multiple calls. " +
-    "Each call returns at most 1000 lines; when the file is longer, the result ends with the start_line to use next. " +
+    "Each call returns at most 2000 lines; when the file is longer, the result ends with the start_line to use next. " +
     "Use tail_lines to read the end of a file when you do not know how many lines it has — logs especially. " +
-    "tail_lines is also capped at the latest 1000 lines. " +
+    "tail_lines is also capped at the latest 2000 lines. " +
     "If you know there are several files to read, prefer issuing multiple read_file calls in parallel.",
   parameters: {
     type: "object",
@@ -59,12 +59,12 @@ export const READ: ToolDef = {
         type: "integer",
         description:
           "Per-line character cap (default 5000). When output marks a line as truncated, " +
-          "re-read with a larger value to see it in full. The 80,000-character per-call budget still applies.",
+          "re-read with a larger value to see it in full. The 160,000-character per-call budget still applies.",
       },
       tail_lines: {
         type: "integer",
         description:
-          "Read only the last N lines (max 1000). For logs and other files whose length you do not know. " +
+          "Read only the last N lines (max 2000). For logs and other files whose length you do not know. " +
           "Overrides start_line/end_line/offset/limit.",
       },
     },

@@ -20,7 +20,7 @@ Jump to an exact declaration instead of scanning call sites. `kind` defaults to 
 
 ### `read_file`
 `read_file(path, start_line?, end_line?, offset?, limit?, max_line_chars?, tail_lines?)`
-Read text files or bounded ranges (max 50 MB; images max 20 MB). Each call returns at most 1000 lines and 80,000 characters, with lines over 5000 chars truncated unless you raise `max_line_chars`. Ranges are inclusive (`end_line: -1` reads to EOF). Use `tail_lines` for the end of a log whose length you do not know (capped at the latest 1000 lines). PDF/DOCX/XLSX-like files are returned as auto-extracted Markdown; legacy 97-2003 `.doc`/`.xls`/`.ppt` are refused with a convert-first hint. Read the producer, callers, tests, and configuration boundary in separate targeted calls rather than one whole-file read.
+Read text files or bounded ranges (max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters, with lines over 5000 chars truncated unless you raise `max_line_chars`. Ranges are inclusive (`end_line: -1` reads to EOF). Use `tail_lines` for the end of a log whose length you do not know (capped at the latest 2000 lines). PDF/DOCX/XLSX-like files are returned as auto-extracted Markdown; legacy 97-2003 `.doc`/`.xls`/`.ppt` are refused with a convert-first hint. Read the producer, callers, tests, and configuration boundary in separate targeted calls rather than one whole-file read.
 
 ### `list_dir`
 `list_dir(path?, max_depth?, max_entries?, include_hidden?)`

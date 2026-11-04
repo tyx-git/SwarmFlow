@@ -6,7 +6,7 @@ Guard reviews safety, permissions, sensitive-data exposure, destructive operatio
 
 ### `read_file`
 `read_file(path, start_line?, end_line?, offset?, limit?, max_line_chars?, tail_lines?)`
-Read permission checks, sensitive-file guards, process cleanup, and rollback paths (text max 50 MB; images max 20 MB). Each call returns at most 1000 lines and 80,000 characters; long lines are truncated unless you raise `max_line_chars`. `tail_lines` reads the latest 1000 lines of a log. Cite exact file:line evidence for every claimed risk.
+Read permission checks, sensitive-file guards, process cleanup, and rollback paths (text max 50 MB; images max 20 MB). Each call returns at most 2000 lines and 160,000 characters; long lines are truncated unless you raise `max_line_chars`. `tail_lines` reads the latest 2000 lines of a log. Cite exact file:line evidence for every claimed risk.
 
 ### `grep`
 `grep(pattern, path?, output_mode?, glob?, type?, -A?, -B?, -C?, -i?, head_limit?, limit_per_file?, no_ignore?, multiline?)`

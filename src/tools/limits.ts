@@ -29,9 +29,9 @@ export const FILE_CONTENT_MAX_BYTES = 50 * 1024 * 1024;
 
 // 单次读取熔断行数：普通读取与 tail_lines 共用。超过后截断，
 // 并在结果末尾给出继续读取的指引。
-export const READ_MAX_LINES = 1000;
+export const READ_MAX_LINES = 2000;
 
-export const READ_MAX_CHARS = 80_000;
+export const READ_MAX_CHARS = 160_000;
 
 export const READ_MAX_LINE_CHARS = 5000; // 默认单行上限（挡住压缩文件）；模型可用 max_line_chars 调高
 

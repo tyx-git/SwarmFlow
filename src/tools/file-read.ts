@@ -143,13 +143,6 @@ export async function toolReadFile(
   const start = window.start;
   let end = window.end;
   let selected = window.lines;
-  // 熔断提示统一在结果末尾追加，保证它始终是最后一段可操作指引。
-  let fuseNotice = "";
-  if (window.tailCapped) {
-    fuseNotice =
-      `<--- This file has more than ${READ_MAX_LINES} lines; showing the latest ${READ_MAX_LINES} lines. ` +
-      `Request a smaller \`tail_lines\`, or omit it and page with \`start_line\` if needed. --->`;
-  }
 
   // 对压缩成一行的超长行做逐行截断。上限可按调用覆盖，
   // 被截断的长行能在工具内重新读全，不必绕道 shell 管道。
@@ -181,42 +174,50 @@ export async function toolReadFile(
     }
   }
 
-  // 行熔断只对普通读取生效；tail_lines 的提示已在上面的分支生成。
-  if (window.lineCapApplied) {
-    fuseNotice =
-      `<--- This file has more than ${READ_MAX_LINES} lines. ` +
-      `Continue with \`start_line=${end + 1}\` if you need the following lines. --->`;
-  }
-
   let result =
     headerPrefix +
     `[Lines ${start}-${end} of ${total} | mtime_ms=${mtimeMs} | size_bytes=${sizeBytes}]\n` +
     selected.join("\n");
 
+  // 截断提示统一收进末尾的 [!] 块：长输出里也能一眼看到“被截断了、下一步怎么读”。
+  // 容量原因只报最具体的一条：字符预算截断优先于行数熔断，避免重复给出同一句下一步。
+  const notices: string[] = [];
   if (truncatedAtLine !== null) {
     // tail_lines 会覆盖 start_line，因此不能用同一句提示；需要明确让模型
     // 先去掉 tail_lines 再翻页。
     const continueHint = tailLines != null
-      ? `Request a smaller tail_lines, or omit tail_lines and use start_line=${end + 1}` +
+      ? `Omit tail_lines and continue with start_line=${end + 1}` +
         (isProjectedDocument ? " to read the extracted Markdown view" : "")
-      : `Use start_line=${end + 1} to continue reading` +
-        (isProjectedDocument ? " the extracted Markdown view of the same source path" : "");
-    result +=
-      `\n\n[WARNING: Reached ${READ_MAX_CHARS.toLocaleString()} character limit at line ` +
-      `${truncatedAtLine}. Showing lines ${start}-${end} ` +
-      `(${end - start + 1} complete lines). ${continueHint}.]`;
+      : `Continue with start_line=${end + 1}` +
+        (isProjectedDocument ? " to read the extracted Markdown view of the same source path" : "");
+    notices.push(
+      `READ TRUNCATED at the ${READ_MAX_CHARS.toLocaleString()}-character budget — ` +
+      `showing lines ${start}-${end} of ${total} (${end - start + 1} complete lines).`,
+      `${continueHint}.`,
+    );
+  } else if (window.tailCapped) {
+    notices.push(
+      `READ TRUNCATED — showing the latest ${end - start + 1} of ${total} lines.`,
+      `Re-request with a smaller tail_lines, or page with start_line.`,
+    );
+  } else if (window.lineCapApplied) {
+    const remaining = Math.max(0, total - end);
+    notices.push(
+      `READ TRUNCATED — showing lines ${start}-${end} of ${total} ` +
+      `(${remaining} line${remaining === 1 ? "" : "s"} not shown).`,
+      `Continue with start_line=${end + 1}.`,
+    );
   }
 
   if (lineTrimCount > 0) {
     const plural = lineTrimCount === 1 ? "" : "s";
-    const wasWere = lineTrimCount === 1 ? "was" : "were";
     if (longestLineChars <= READ_LINE_CHARS_CEILING) {
       // 工具内可恢复：用更大的上限重读即可看到整行。
-      result +=
-        `\n\n[Note: ${lineTrimCount} line${plural} exceeded ${lineCap} chars and ${wasWere} truncated ` +
-        `(longest is ${longestLineChars} chars). ` +
+      notices.push(
+        `LINE LENGTH TRUNCATED — ${lineTrimCount} line${plural} exceeded ${lineCap} chars (longest ${longestLineChars}).`,
         `Re-read with max_line_chars=${longestLineChars} to see ${lineTrimCount === 1 ? "it" : "them"} in full; ` +
-        `the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget still applies.]`;
+        `the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget still applies.`,
+      );
     } else {
       // 这种长度的行根本装不进单次调用的字符预算，只能把模型引到只读的
       // shell 逃生口。命令与引号写法取决于解析到的 shell——PowerShell 没有
@@ -239,15 +240,17 @@ export async function toolReadFile(
           `use bash: \`head -n LINE_NUM '${safePath}' | tail -n 1 | cut -c FROM-TO\` ` +
           `(head/tail/cut are pre-approved, no permission prompt).`;
       }
-      result +=
-        `\n\n[Note: ${lineTrimCount} line${plural} exceeded ${lineCap} chars and ${wasWere} truncated ` +
-        `(longest is ${longestLineChars} chars —too long for the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget). ` +
-        `To read a slice of a specific long line, ${escapeHatch}]`;
+      notices.push(
+        `LINE LENGTH TRUNCATED — ${lineTrimCount} line${plural} exceeded ${lineCap} chars ` +
+        `(longest ${longestLineChars}, beyond the ${READ_MAX_CHARS.toLocaleString()}-character per-call budget).`,
+        `To read a slice of a specific long line, ${escapeHatch}`,
+      );
     }
   }
 
-  // 熔断提示放在所有警告/行截断说明之后，确保它是最后一段可操作指引。
-  if (fuseNotice) result += `\n\n${fuseNotice}`;
+  if (notices.length > 0) {
+    result += `\n\n${notices.map((line) => `[!] ${line}`).join("\n")}`;
+  }
 
   return result;
 }
