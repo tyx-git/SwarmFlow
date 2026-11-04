@@ -16,7 +16,7 @@ export const PERSISTED_TOOL_OUTPUT_MAX_BYTES = 64 * 1024;
 export const TOOL_OUTPUT_TRUNCATION_MARKER =
   "\n... output truncated for persistence; read the full copy with read_file ...\n";
 
-/** 大工具结果的全文目录（相对会话目录）。 */
+/** 大工具结果的全文目录（相对会话目录）；写进日志的指针本身必须是拼好的绝对路径。 */
 export const PERSISTED_TOOL_OUTPUT_DIR = "artifacts/agent-outputs";
 
 /** 图片外置目录（相对会话目录）。 */
@@ -58,22 +58,22 @@ function truncateToolOutput(
   text: string,
   entryId: string,
   sessionDir: string,
-): { content: string; relativePath: string } | undefined {
+): { content: string; outputPath: string } | undefined {
   if (Buffer.byteLength(text, "utf8") <= PERSISTED_TOOL_OUTPUT_MAX_BYTES) return undefined;
 
-  const relativePath = `${PERSISTED_TOOL_OUTPUT_DIR}/${entryId}.txt`;
   const outputDir = join(sessionDir, PERSISTED_TOOL_OUTPUT_DIR);
+  const outputPath = join(outputDir, `${entryId}.txt`);
   try {
     mkdirSync(outputDir, { recursive: true });
-    writeFileSync(join(sessionDir, relativePath), text, "utf-8");
+    writeFileSync(outputPath, text, "utf-8");
   } catch {
     // 外置失败时保留全文，宁可多写也不能丢工具结果。
     return undefined;
   }
 
   const truncated = truncateUtf8(text, PERSISTED_TOOL_OUTPUT_MAX_BYTES);
-  const pointer = `\n\n[full output: ${relativePath}; continue with read_file]`;
-  return { content: `${truncated}${pointer}`, relativePath };
+  const pointer = `\n\n[full output: ${outputPath}; continue with read_file]`;
+  return { content: `${truncated}${pointer}`, outputPath };
 }
 
 /**
@@ -100,13 +100,13 @@ export function capPersistedEntry(entry: LogEntry, opts: CapPersistedEntryOption
     const truncated = truncateToolOutput(content.content, entry.id, opts.sessionDir);
     if (truncated) {
       cloned.content = { ...content, content: truncated.content };
-      meta["persistedOutputPath"] = truncated.relativePath;
+      meta["persistedOutputPath"] = truncated.outputPath;
     }
   } else if (typeof content === "string") {
     const truncated = truncateToolOutput(content, entry.id, opts.sessionDir);
     if (truncated) {
       cloned.content = truncated.content;
-      meta["persistedOutputPath"] = truncated.relativePath;
+      meta["persistedOutputPath"] = truncated.outputPath;
     }
   }
 

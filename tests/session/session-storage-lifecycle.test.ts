@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 import { countTokens as gptCountTokens, encode as gptEncode } from "gpt-tokenizer/model/gpt-5";
@@ -1320,7 +1320,13 @@ describe("session storage lifecycle", () => {
       expect(line).toBeGreaterThan(1);
       expect(rendered.content).toContain(`read_file(start_line=${line})`);
       expect(rendered.content).toContain("do not reread the portion already received");
-      expect(rendered.fullOutputPath).toBe("artifacts/agent-outputs/investigator.md");
+      // 指针是给模型看的，而模型按项目 cwd 解析：只有绝对路径才能被 read_file 打开，
+      // 且必须真的指向刚落盘的那份全文。
+      const outputPath = rendered.fullOutputPath!;
+      expect(isAbsolute(outputPath)).toBe(true);
+      expect(rendered.content).toContain(`Full output: ${outputPath}.`);
+      expect(existsSync(outputPath)).toBe(true);
+      expect(readFileSync(outputPath, "utf-8")).toBe(longText);
     } finally {
       rmSync(baseDir, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });

@@ -123,7 +123,7 @@ describe("Factory functions", () => {
       4200,
       "[Agent \"reviewer-1\" interrupted by the user]\n(no output)",
       "c-ar-1",
-      "artifacts/agent-outputs/reviewer-1.md",
+      "/tmp/swarmflow-session/artifacts/agent-outputs/reviewer-1.md",
     );
     expect(e.type).toBe("agent_result");
     expect(e.tuiVisible).toBe(true);
@@ -137,7 +137,8 @@ describe("Factory functions", () => {
     expect(e.meta.outcome).toBe("interrupted");
     expect(e.meta.cause).toBe("user_mass_interrupt");
     expect(e.meta.elapsedMs).toBe(4200);
-    expect(e.meta.fullOutputPath).toBe("artifacts/agent-outputs/reviewer-1.md");
+    // fullOutputPath 由产出方给出绝对路径，工厂只负责原样存进 meta。
+    expect(e.meta.fullOutputPath).toBe("/tmp/swarmflow-session/artifacts/agent-outputs/reviewer-1.md");
   });
 
   it("createAgentResult stores a preview derived from the delivered message", () => {

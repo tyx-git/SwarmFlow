@@ -654,7 +654,8 @@ export class ChildSessionManager {
     if (text.length > SUB_AGENT_OUTPUT_LIMIT) {
       const outputDir = join(this.deps.getArtifactsDir(), "agent-outputs");
       mkdirSync(outputDir, { recursive: true });
-      const relativePath = `artifacts/agent-outputs/${handle.id}.md`;
+      // 全文路径要与 bash spill / shell 日志一致地给模型绝对路径：
+      // 相对会话目录的路径模型只能按项目 cwd 去猜，结果必然 Path not found。
       const outputPath = join(outputDir, `${handle.id}.md`);
       writeFileSync(outputPath, text);
       const truncated = text.slice(0, SUB_AGENT_OUTPUT_LIMIT);
@@ -663,11 +664,11 @@ export class ChildSessionManager {
         content:
           `${header}\n` +
           `(Output truncated at ${SUB_AGENT_OUTPUT_LIMIT.toLocaleString()} chars ` +
-          `(line ${truncatedAtLine}). Full output: ${relativePath}. ` +
+          `(line ${truncatedAtLine}). Full output: ${outputPath}. ` +
           `Continue reading from line ${truncatedAtLine} with \`read_file(start_line=${truncatedAtLine})\`; ` +
           `do not reread the portion already received.)\n\n` +
           truncated + taskSuffix,
-        fullOutputPath: relativePath,
+        fullOutputPath: outputPath,
       };
     }
 

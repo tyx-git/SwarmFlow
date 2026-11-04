@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import {
   LOG_JSONL_BACKUP_SUFFIX,
@@ -123,13 +123,30 @@ describe("capPersistedEntry：64 KiB 工具输出", () => {
 
     const outputPath = capped.meta["persistedOutputPath"] as string;
     expect(typeof outputPath).toBe("string");
-    const absolute = join(sessionDir, outputPath);
-    expect(existsSync(absolute)).toBe(true);
-    expect(readFileSync(absolute, "utf-8")).toBe(content);
+    // 指针是给模型看的，而模型按项目 cwd 解析路径：只有绝对路径才能被 read_file 打开。
+    expect(isAbsolute(outputPath)).toBe(true);
+    expect(cappedContent).toContain(outputPath);
+    expect(existsSync(outputPath)).toBe(true);
+    expect(readFileSync(outputPath, "utf-8")).toBe(content);
 
     // 入参不被修改
     expect((entry.content as { content: string }).content).toBe(content);
     expect(entry.meta["persistedOutputPath"]).toBeUndefined();
+  });
+
+  it("超过 64 KiB：纯字符串正文同样给出可打开的绝对路径", () => {
+    const sessionDir = makeDir();
+    const content = `HEAD\n${"z".repeat(PERSISTED_TOOL_OUTPUT_MAX_BYTES)}\nTAIL-MARKER`;
+    const entry = createAssistantText("asst-1", 1, 0, content, content);
+    const capped = capPersistedEntry(entry, { sessionDir });
+
+    const cappedContent = capped.content as string;
+    expect(cappedContent).not.toContain("TAIL-MARKER");
+
+    const outputPath = capped.meta["persistedOutputPath"] as string;
+    expect(isAbsolute(outputPath)).toBe(true);
+    expect(cappedContent).toContain(outputPath);
+    expect(readFileSync(outputPath, "utf-8")).toBe(content);
   });
 
   it("多模态图片：_contentBlocks 改 image_ref，原 base64 不留在日志", () => {
