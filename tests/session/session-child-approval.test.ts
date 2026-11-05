@@ -89,6 +89,67 @@ async function makeBlockedChild(): Promise<ChildSetup & { holder: { ask: Approva
   return { ...setup, holder };
 }
 
+describe("full stop", () => {
+  /**
+   * 前提：`requestTurnInterrupt` 刻意不碰子会话（子代理与后台 shell 是独立
+   * 后台工作），所以子挂在审批上时单停主清不掉子 ask——全停入口必须自己级联。
+   */
+  /**
+   * 主会话运行态的唯一权威是轮次生命周期订阅，因此订阅必须只见主会话自己的轮次。
+   * _turnLifecycleListeners 是实例字段，子→父只转接了 subscribeAsk；若子的
+   * started/ended 漏进根，子挂起的审批就会把已中止的主轮次翻回 Asking。
+   */
+  it("child turns do not leak into the root turn lifecycle subscription", async () => {
+    const setup = makeParentWithChild([
+      { toolCalls: [{ id: "call-w1", name: "slow_tool", arguments: {} }] },
+      { text: "done after approval" },
+    ]);
+    const events: Array<{ phase: string; status?: string }> = [];
+    const unsubscribe = setup.h.session.subscribeTurnLifecycle((e) => events.push({ phase: e.phase, status: e.status }));
+    try {
+      (setup.handle.session as any)._toolExecutors["slow_tool"] = async () => "ok";
+      const holder = stageApprovalOnChild(setup.handle.session, "worker-1", "slow_tool");
+      await setup.h.internals._execSend({ to: "worker-1", content: "please run the slow tool" });
+      await waitFor(() => setup.handle.lifecycle === "blocked");
+
+      // 前提成立：子确实挂在审批上，并向根冒泡了询问。
+      expect(holder.ask).not.toBeNull();
+      expect(setup.h.session.getPendingAsk()?.owner.kind).toBe("child");
+      // 根订阅必须为空——子的挂起不得进根的 started/ended。
+      expect(events).toEqual([]);
+    } finally {
+      unsubscribe();
+      setup.h.dispose();
+    }
+  });
+
+  it("leaves a blocked child's approval pending when only the root turn is interrupted", async () => {
+    const { h } = await makeBlockedChild();
+    try {
+      h.session.requestTurnInterrupt();
+
+      expect(h.session.getPendingAsk()).not.toBeNull();
+    } finally {
+      h.dispose();
+    }
+  });
+
+  it("clears blocked child approvals and stops the root when the session is fully stopped", async () => {
+    const { h, handle } = await makeBlockedChild();
+    try {
+      expect(h.session.requestFullStop()).toEqual({ accepted: true });
+
+      await waitFor(() => !h.session.hasRunningChildAgents());
+      expect(h.session.getPendingAsk()).toBeNull();
+      expect(handle.lastOutcome).toBe("interrupted");
+      // 用户主动全停不得唤醒父会话：投递的是 deferred 消息，不会起新回合。
+      expect(h.internals._inbox.filter((msg: { wake?: boolean }) => msg.wake !== false)).toHaveLength(0);
+    } finally {
+      h.dispose();
+    }
+  });
+});
+
 describe("child approval routing", () => {
   it("bubbles child pending approval through root getPendingAsk", async () => {
     const { h, handle, holder } = await makeBlockedChild();
@@ -98,6 +159,8 @@ describe("child approval routing", () => {
         id: "approval-child",
         kind: "approval",
         source: { agentId: "worker-1" },
+        // 冒泡到根的归属必须是 child + 句柄 id：根据此只杀子、不中止自己的轮次。
+        owner: { kind: "child", agentId: "worker-1", agentName: "scout" },
       });
       expect(handle.phase).toBe("waiting");
     } finally {

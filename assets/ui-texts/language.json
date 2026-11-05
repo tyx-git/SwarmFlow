@@ -367,7 +367,9 @@
       },
       "interrupt": {
         "conversation": "会话已中断 - 告诉模型要做哪些不同的事情。出了什么问题？",
-        "child": "已中断 {agentId}"
+        "child": "已中断 {agentId}",
+        "pressAgainToStop": "已中断当前动作 · 再按一次 Esc 停止全部（含子代理）",
+        "allStopped": "已停止主回合与所有子代理"
       },
       "exit": {
         "pressAgain": "再按一次 Ctrl+C 退出"
@@ -813,7 +815,9 @@
       },
       "interrupt": {
         "conversation": "Conversation interrupted - tell the model what to do differently. Something went wrong?",
-        "child": "Interrupted {agentId}"
+        "child": "Interrupted {agentId}",
+        "pressAgainToStop": "Interrupted current action · press Esc again to stop everything (incl. sub-agents)",
+        "allStopped": "Stopped the main turn and all sub-agents"
       },
       "exit": {
         "pressAgain": "Press Ctrl+C again to exit"

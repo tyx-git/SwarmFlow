@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { AskPendingError } from "../../src/ask.js";
+import { AskPendingError, toPendingAskUi, type AgentQuestion } from "../../src/ask.js";
 import { createEphemeralLogState } from "../../src/context/ephemeral-log.js";
 import { Session } from "../../src/session.js";
 import { LogIdAllocator } from "../../src/context/entry/id-allocator.js";
@@ -52,6 +52,72 @@ function makeSessionLike(projectRoot: string): any {
   s._emitAskResolvedProgress = vi.fn();
   return s;
 }
+
+describe("ask owner", () => {
+  function makeQuestionAsk(id: string): AgentQuestion {
+    return {
+      id,
+      kind: "agent_question",
+      createdAt: new Date().toISOString(),
+      source: { agentId: "Primary" },
+      summary: `question ${id}`,
+      payload: {
+        questions: [{ question: `pick ${id}`, options: [{ label: "A", kind: "normal" }, { label: "B", kind: "normal" }] }],
+        toolCallId: `call-${id}`,
+      },
+      options: ["A", "B"],
+    };
+  }
+
+  /** 根冒泡子 ask 时必须把归属改写成 child，否则根分不清代子审批与中止自己的轮次。 */
+  function makeHostWithChild(childId: string, template: string): { host: any; root: string } {
+    const root = makeTempDir("swarmflow-ask-owner-");
+    const s = makeSessionLike(root);
+    // _childSessions 在 Session 上是只读访问器（转发给句柄表），
+    // 原型替身只能 defineProperty 覆盖。
+    Object.defineProperty(s, "_childSessions", {
+      configurable: true,
+      value: new Map([[childId, {
+        id: childId,
+        template,
+        session: { getPendingAsk: () => toPendingAskUi(makeQuestionAsk("child-ask")) },
+      }]]),
+    });
+    return { host: s, root };
+  }
+
+  it("stamps own asks with self owner", () => {
+    const own = toPendingAskUi(makeQuestionAsk("own-ask"));
+    expect(own?.owner).toEqual({ kind: "self" });
+  });
+
+  it("re-stamps bubbled child asks with child owner and handle id", () => {
+    const { host, root } = makeHostWithChild("worker-1", "scout");
+    try {
+      const bubbled = (Session.prototype as any).getPendingAsk.call(host);
+      expect(bubbled).toMatchObject({
+        id: "child-ask",
+        owner: { kind: "child", agentId: "worker-1", agentName: "scout" },
+      });
+      // 子会话自己看到的仍是 self：改写只发生在冒泡那一层。
+      const ownView = host._childSessions.get("worker-1").session.getPendingAsk();
+      expect(ownView.owner).toEqual({ kind: "self" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers own ask over a bubbled child ask when both are pending", () => {
+    const { host, root } = makeHostWithChild("worker-1", "scout");
+    try {
+      host._activeAsk = makeQuestionAsk("own-ask");
+      const shown = (Session.prototype as any).getPendingAsk.call(host);
+      expect(shown).toMatchObject({ id: "own-ask", owner: { kind: "self" } });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("P3 ask behavior", () => {
   it("creates agent_question asks and requires resolveAgentQuestionAsk", () => {

@@ -141,6 +141,21 @@ export function requestTurnInterrupt(host: TurnControlHost): { accepted: true } 
 }
 
 /**
+ * 全停：中止本会话正在跑的轮次，并级联停掉所有活跃子会话。
+ *
+ * 顺序不可颠倒。`requestTurnInterrupt` 刻意不碰子会话，而轮次被标成
+ * interrupted 时激活循环的 finally 要等所有子轮次收尾（见
+ * activation.ts 的 _waitForAllChildTurnsSettled）才发 ended 事件；先停子，
+ * 那个等待才会立即满足（兜底上限 3s），ended 才能当场落地、UI 才当场回落。
+ * 反过来先停主，最坏要等子自然结束才回落，看起来就像“中断不了”。
+ */
+export function requestFullStop(host: TurnControlHost): { accepted: true } {
+  host._cascadeKillRunningChildren("user_mass_interrupt");
+  host.requestTurnInterrupt();
+  return { accepted: true };
+}
+
+/**
  * 基于结构化日志（v2）处理中断。
  *
  * 规则：

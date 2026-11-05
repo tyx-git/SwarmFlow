@@ -11,7 +11,13 @@ import { ErrorMessage } from "../primitives/error-message.js";
 import { countWrappedDisplayLines } from "../utils/format.js";
 
 function formatAskSource(ask: AskPanelProps["ask"], t: UiText): string {
-  const sourceName = ask.source.agentName || ask.source.agentId || "Queen";
+  // 归属优先于 source：source 是 Agent 的自述，owner 才是这询问实际从哪一层
+  // 冒上来的。子会话的提问冒泡到主 tab 时，按 owner 标注才不会出现
+  // "主会话在问"的假象（否则用户会以为回答它就能中止主会话的轮次）。
+  const ownerName = ask.owner.kind === "child"
+    ? (ask.owner.agentName || ask.owner.agentId)
+    : null;
+  const sourceName = ownerName || ask.source.agentName || ask.source.agentId || "Queen";
   const lower = sourceName.toLowerCase();
   const isQueen = lower === "primary" || lower === "queen" || lower === "root";
   return isQueen

@@ -78,6 +78,7 @@ describe("Node 运行图里不允许 Bun 编译路径", () => {
     const allowed = new Set([
       "./forked/core/lib/diagnostic.js",
       "./forked/patch-ffi-bounds.js",
+      "./forked/patch-stdin-esc.js",
       "./forked/patch-windows-console.js",
     ]);
     for (const spec of specifiers) {

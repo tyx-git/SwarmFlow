@@ -995,7 +995,12 @@ export class StdinParser {
               continue
             // ESC ESC: stay in esc state. Terminals encode Alt+ESC and
             // similar sequences as ESC ESC [...], so we keep scanning.
+            // 例外：上一枚 ESC 已等满超时窗口 → 那是用户按键，迟到的上报序列
+            // 不得把它吞进自己的前缀（拆分后单元起点移到新的 ESC）。
             case ESC:
+              if (this.splitElapsedLoneEsc(bytes)) {
+                continue
+              }
               this.cursor += 1
               continue
             default:
@@ -1044,6 +1049,12 @@ export class StdinParser {
               return
             }
 
+            if (this.splitLoneEscFromTruncatedCsi(bytes, this.cursor)) {
+              this.state = { tag: "ground" }
+              this.consumePrefix(this.cursor)
+              continue
+            }
+
             this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.cursor)))
             this.state = { tag: "ground" }
             this.consumePrefix(this.cursor)
@@ -1075,6 +1086,12 @@ export class StdinParser {
               return
             }
 
+            if (this.splitLoneEscFromTruncatedCsi(bytes, this.cursor)) {
+              this.state = { tag: "ground" }
+              this.consumePrefix(this.cursor)
+              continue
+            }
+
             this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
             this.state = { tag: "ground" }
             this.consumePrefix(this.cursor)
@@ -1085,6 +1102,12 @@ export class StdinParser {
           // was interrupted. Flush everything before the new ESC as one
           // opaque response, then restart parsing at the new ESC.
           if (byte === ESC) {
+            if (this.splitLoneEscFromTruncatedCsi(bytes, this.cursor)) {
+              this.state = { tag: "ground" }
+              this.consumePrefix(this.cursor)
+              continue
+            }
+
             this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
             this.state = { tag: "ground" }
             this.consumePrefix(this.cursor)
@@ -1844,6 +1867,48 @@ export class StdinParser {
       protocol,
       sequence: decodeLatin1(rawBytes),
     })
+  }
+
+  // 把待冲刷的截断单元里属于用户按键的那枚裸 ESC 拆出来：单元形如 `ESC [` 时，
+  // 用户按的是 ESC 键，`[` 只是紧随其后迟到的上报/序列头。拆成 escape 键 +
+  // 丢弃方括号（方括号单独无法成为按键，仍按回复丢弃）。
+  //
+  // 只有长度为 2 的 `ESC [` 才拆：已进入参数阶段的截断 CSI 没有确定终点，
+  // 凭空产出 escape 键会把回复当成按键。返回是否完成了拆分，调用方据此
+  // 决定是走拆分收尾还是保留原有整段丢弃逻辑。
+  private splitLoneEscFromTruncatedCsi(bytes: Uint8Array, endExclusive: number): boolean {
+    if (
+      endExclusive - this.unitStart !== 2 ||
+      bytes[this.unitStart] !== ESC ||
+      bytes[this.unitStart + 1] !== 0x5b
+    ) {
+      return false
+    }
+
+    this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.unitStart + 1)))
+    this.justFlushedEsc = true
+    return true
+  }
+
+  // 上一枚 ESC 已经等满超时窗口 → 它是用户按键，不是某个迟序列的前缀，
+  // 必须拆出来，否则事件循环被刷屏阻塞、定时器回调还没跑到就有新字节进来时，
+  // 迟到的上报序列（焦点/鼠标/能力回复都以 ESC 开头）会把用户的 ESC 吞掉。
+  // 单元起点移到新的 ESC，合并行为对原子 Alt+序列（未等满窗口）保持不变。
+  private splitElapsedLoneEsc(bytes: Uint8Array): boolean {
+    if (this.pendingSinceMs === null || this.clock.now() - this.pendingSinceMs < this.timeoutMs) {
+      return false
+    }
+
+    if (this.cursor - this.unitStart !== 1 || bytes[this.unitStart] !== ESC) {
+      return false
+    }
+
+    this.emitKeyOrResponse("unknown", decodeUtf8(bytes.subarray(this.unitStart, this.unitStart + 1)))
+    this.justFlushedEsc = true
+    this.unitStart = this.cursor
+    this.cursor += 1
+    this.pendingSinceMs = this.clock.now()
+    return true
   }
 
   // Advances past a completed protocol unit. Resets cursor, unitStart,

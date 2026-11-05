@@ -21,6 +21,10 @@ import { ProgressReporter, type ProgressEvent } from "../../src/logging/progress
 import { getLocalizedCommandDescription } from "../../src/commands/registry.js";
 import { resolveTypedCommandEcho } from "../../src/commands/echo.js";
 import { scanCandidates } from "../../src/attachments/scanner.js";
+import {
+  decideInterrupt,
+  type InterruptScope,
+} from "./interrupt-flow.js";
 import { classifyPastedText, TurnPasteCounter } from "../../src/ui/input/paste.js";
 import { readClipboardImage } from "../../src/attachments/clipboard-image.js";
 import { processImage, type ProcessedImage } from "../../src/attachments/image-compress.js";
@@ -151,6 +155,8 @@ export interface OpenTuiAppProps {
 }
 const CTRL_C_EXIT_WINDOW_MS = 2000;
 const DOUBLE_ESC_WINDOW_MS = 500;
+/** 忙态两段式的窗口：第一下 deny/停主，窗口内第二下全停。与空闲双击相互隔离。 */
+const FULL_STOP_WINDOW_MS = 2000;
 const GOODBYE_MESSAGES = [
   "Bye!",
   "Goodbye!",
@@ -615,6 +621,10 @@ export function OpenTuiApp({
   const lastInputValueRef = useRef("");
   const lastCtrlCRef = useRef(0);
   const lastEscRef = useRef(0);
+  // 忙态两段式的布防时间戳。与空闲双击用的 lastEscRef 分开的两个原因：
+  // 窗口长度不同（2000 vs 500），且布防语义不同（全停 vs /rewind），
+  // 混用一个时间戳会让"再按一次 Esc"在两种语义间跳来跳去。
+  const busyEscStopRef = useRef(0);
   const closingRef = useRef(false);
   const closingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -841,10 +851,13 @@ export function OpenTuiApp({
     } finally {
       abortControllerRef.current = null;
       clearRetryStatus();
-      const suspended = Boolean(session.getPendingAsk?.());
-      if (suspended) {
+      // 运行态交给生命周期订阅；这里只做两件事：刷新待处理询问，以及为
+      // `started` 之前就被中止的红区兜底（引擎那时不会发 ended）。
+      const shownAsk = session.getPendingAsk?.() ?? null;
+      setPendingAsk(shownAsk);
+      if (shownAsk?.owner.kind === "self") {
         setPhase("Asking");
-      } else {
+      } else if (!session.currentTurnRunning) {
         setProcessing(false);
         setPhase("idle");
       }
@@ -1005,6 +1018,42 @@ export function OpenTuiApp({
       clearInterval(poller);
     };
   }, [selectedChildId, session, updateContextTokenState]);
+  // 主会话运行态的唯一权威：轮次生命周期订阅。
+  //
+  // 此前 phase 由回合包装器的 finally 与进度事件"推测"出来，推测有两处硬伤：
+  // 外部入口自起的轮次（inbox 自动续跑、批准后续跑）不经过任何回合包装器，
+  // UI 看不见它在跑；而进度事件由父子共用同一个 ProgressReporter，子代理的
+  // 流式输出会把主 phase 钉死在 Working、子挂起的 ask 又把已中止的主轮次翻回
+  // Asking。phase 与转录里的"会话已中断"因此会各说各话。
+  //
+  // 订阅只覆盖本会话自己的轮次：_turnLifecycleListeners 是实例字段，
+  // 子→父只转接了 subscribeAsk，没有任何一条链路把子的 started/ended 灌进根。
+  //
+  // phase 不变量：本会话有轮次在跑 → Working；本会话停在自己的 ask
+  //（ended 的 status=waiting）→ Asking；否则 → idle。
+  // 子会话的 ask 只决定是否显示审批面板，不参与主 phase。
+  useEffect(() => {
+    if (typeof session.subscribeTurnLifecycle !== "function") return;
+    const unsubscribe = session.subscribeTurnLifecycle((event) => {
+      if (closingRef.current) return;
+      if (event.phase === "started") {
+        busyEscStopRef.current = 0;
+        setProcessing(true);
+        setPhase("Working");
+        return;
+      }
+      if (event.status === "waiting") {
+        // 轮停在待处理的 ask 上：没有活着的轮次可中止，但仍在等用户，
+        // 所以保持"忙"，只把相位改成 Asking。
+        setPhase("Asking");
+        return;
+      }
+      busyEscStopRef.current = 0;
+      setProcessing(false);
+      setPhase("idle");
+    });
+    return unsubscribe;
+  }, [session]);
   useEffect(() => {
     if (!isOpenTuiDiagEnabled()) return;
     const assistantPEs = presentationEntries.filter((pe) => pe.kind === "assistant");
@@ -1037,13 +1086,14 @@ export function OpenTuiApp({
       case "retry_success":
       case "retry_exhausted":
         clearRetryStatus();
-        if (event.action === "retry_success") setPhase("Working");
         break;
+      // 这一组不写 phase：主 phase 只由轮次生命周期决定（见下方订阅）。
+      // 子 Session 复用父的同一个 ProgressReporter，此前这些写入会把子代理的
+      // 流式输出当成"主会话在干活"，把主 phase 钉死在 Working。
       case "reasoning_chunk":
       case "text_chunk":
       case "tool_call":
       case "tool_result":
-        setPhase("Working");
         break;
       case "agent_no_reply":
         session.appendStatusMessage?.("[No reply] The model chose not to reply.", "no_reply");
@@ -1052,9 +1102,10 @@ export function OpenTuiApp({
         updateContextTokenState(session.lastTotalTokens, session.lastCacheReadTokens ?? 0, session.lastInputTokens);
         break;
       case "ask_requested":
+        // 主 tab 要能替子会话审批，所以这里照记 pending；但 phase 不动：
+        // 本会话自己的 ask 由 ended(waiting) 落成 Asking，子 ask 不改变主会话运行态。
         setPendingAsk(session.getPendingAsk?.() ?? null);
         setAskError(null);
-        setPhase("Asking");
         break;
       case "ask_resolved":
         setPendingAsk(session.getPendingAsk?.() ?? null);
@@ -1778,10 +1829,13 @@ export function OpenTuiApp({
     } finally {
       abortControllerRef.current = null;
       clearRetryStatus();
-      const suspended = Boolean(session.getPendingAsk?.());
-      if (suspended) {
+      // 运行态交给生命周期订阅；这里只做两件事：刷新待处理询问，以及为
+      // `started` 之前就被中止的红区兜底（引擎那时不会发 ended）。
+      const shownAsk = session.getPendingAsk?.() ?? null;
+      setPendingAsk(shownAsk);
+      if (shownAsk?.owner.kind === "self") {
         setPhase("Asking");
-      } else {
+      } else if (!session.currentTurnRunning) {
         setProcessing(false);
         setPhase("idle");
       }
@@ -2030,10 +2084,13 @@ export function OpenTuiApp({
     } finally {
       abortControllerRef.current = null;
       clearRetryStatus();
-      const suspended = Boolean(session.getPendingAsk?.());
-      if (suspended) {
+      // 运行态交给生命周期订阅；这里只做两件事：刷新待处理询问，以及为
+      // `started` 之前就被中止的红区兜底（引擎那时不会发 ended）。
+      const shownAsk = session.getPendingAsk?.() ?? null;
+      setPendingAsk(shownAsk);
+      if (shownAsk?.owner.kind === "self") {
         setPhase("Asking");
-      } else {
+      } else if (!session.currentTurnRunning) {
         setProcessing(false);
         setPhase("idle");
       }
@@ -2450,7 +2507,7 @@ export function OpenTuiApp({
       return;
     }
     if (pendingAsk?.kind === "approval") {
-      // Esc / Ctrl+C: pass through to performInterrupt below (deny + abort)
+      // Esc / Ctrl+C: 下放到下方 performInterrupt（两段式：先 deny，窗口内第二下全停）
       if (event.name === "escape" || (event.name === "c" && event.ctrl)) {
         // fall through
       } else {
@@ -2489,8 +2546,8 @@ export function OpenTuiApp({
       }
     }
     if (pendingAsk?.kind === "agent_question") {
-      // Esc / Ctrl+C pass through to performInterrupt (deny + abort) ONLY when
-      // not in a sub-mode. Sub-modes handle Esc as "exit sub-mode" (not deny).
+      // Esc / Ctrl+C 下放到下方 performInterrupt（两段式：先 deny，窗口内第二下全停），
+      // 但仅在非子模式时。子模式里 Esc 的语义是"退出子模式"（不是 deny）。
       const inSubMode = reviewMode || customInputMode || noteInputMode;
       if (inSubMode || !(event.name === "escape" || (event.name === "c" && event.ctrl))) {
         const questions = (pendingAsk.payload["questions"] as AgentQuestionItem[]) ?? [];
@@ -2850,10 +2907,20 @@ export function OpenTuiApp({
       event.stopPropagation();
       return;
     }
-    // Esc / Ctrl+C on sub-pages: interrupt running agent OR close tab
+    // 子页上的两个键分工不同，与页脚提示一致：ESC 退回主会话，Ctrl+C 中断该子轮次。
+    // 此前两者都只中断子会话然后返回，既没有“退回”出口，也让主会话在任何子页上
+    // 都无法被中断。
     if ((event.name === "escape" || (event.name === "c" && event.ctrl)) && activeTabId !== "main") {
-      // If viewing a running child agent, interrupt it first
-      if (selectedChildId) {
+      // ESC：正在看某个子会话 → 退回主会话（不关页、不中断任何轮次）。
+      if (event.name === "escape" && selectedChildId) {
+        setActiveTabId("main");
+        setSelectedChildId(null);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      // Ctrl+C：若正在看运行中的子代理，先中断它
+      if (event.ctrl && selectedChildId) {
         const snapshot = childSessions.find((s) => s.id === selectedChildId);
         if (snapshot?.lifecycle === "running" || snapshot?.lifecycle === "blocked") {
           const decision = session.interruptChildSession?.(selectedChildId) ?? { accepted: false, reason: "unsupported" };
@@ -2882,40 +2949,52 @@ export function OpenTuiApp({
       event.stopPropagation();
       return;
     }
-    // Unified interrupt helper: deny pending ask (if any) + abort main turn.
-    const performInterrupt = (): boolean => {
-      if (pendingAsk) {
-        const decision = session.denyAndInterruptPendingAsk?.();
-        if (decision && !decision.accepted) {
-          showHint(t.get(["Error", "interruptFailed"], { reason: decision.reason ?? t.get(["Common", "unknown"]) }));
-          return false;
+    // 中断入口：这一按键该调用哪些引擎原次由 interrupt-flow 的纯函数决定，
+    // 这里只负责落地副作用。phase 一律交给生命周期订阅——本函数绝不写 phase：
+    // 此前这里根据 decision.turnFinished 猜"主会话还在跑"，于是 deny 子询问会把
+    // 主 phase 钉死在 Working，而没有任何东西负责把它解开。
+    const performInterrupt = (scope: InterruptScope): boolean => {
+      const decision = decideInterrupt({
+        scope,
+        pendingAskOwner: pendingAsk?.owner.kind ?? null,
+        turnRunning: session.currentTurnRunning === true,
+        processing: processingRef.current,
+        runningChildren: session.hasRunningChildAgents?.() === true,
+        hasFullStop: typeof session.requestFullStop === "function",
+      });
+      const interruptTurn = () => {
+        if (session.requestTurnInterrupt) {
+          session.requestTurnInterrupt();
+        } else {
+          session.cancelCurrentTurn?.();
         }
-        if (decision?.accepted) {
-          setPendingAsk(null);
-          if (decision.turnFinished) {
-            // Root turn was ended by the session; go idle immediately.
-            abortControllerRef.current?.abort();
-            setProcessing(false);
-            setPhase("idle");
-          } else {
-            // Only a child was killed; root turn resumes — stay in working state.
-            setPhase("Working");
+      };
+      for (const call of decision.calls) {
+        if (call === "denyAsk") {
+          const result = session.denyAndInterruptPendingAsk?.();
+          if (result && !result.accepted) {
+            showHint(t.get(["Error", "interruptFailed"], { reason: result.reason ?? t.get(["Common", "unknown"]) }));
+            return false;
           }
-          return true;
+          if (!result) {
+            // 会话不支持合并方法：退化成"拒绝询问 + 停轮次"，与旧路径一致。
+            session.denyPendingAsk?.();
+            interruptTurn();
+          }
+          setPendingAsk(session.getPendingAsk?.() ?? null);
+        } else if (call === "interruptTurn") {
+          interruptTurn();
+        } else if (call === "fullStop") {
+          session.requestFullStop?.();
+        } else {
+          session.interruptAllChildAgents?.();
         }
-        // Fallback: session doesn't support the combined method; deny the ask
-        // and fall through so the processing interrupt path handles the abort.
-        session.denyPendingAsk?.();
-        setPendingAsk(null);
       }
-      if (!processingRef.current && !pendingAsk) return false;
-      if (session.requestTurnInterrupt) {
-        session.requestTurnInterrupt();
-      } else {
-        session.cancelCurrentTurn?.();
-      }
-      abortControllerRef.current?.abort();
-      return true;
+      if (decision.abortOwnController) abortControllerRef.current?.abort();
+      busyEscStopRef.current = decision.armFullStop ? Date.now() : 0;
+      if (decision.hintKey) showHint(t.get(decision.hintKey));
+      // 有动作或已布防都算"这一按键被消费"，避免落到空闲分支。
+      return decision.calls.length > 0 || decision.armFullStop;
     };
     // Esc / Ctrl+C on main page: close overlays → deny+abort → idle double-tap
     if ((event.name === "escape" || (event.name === "c" && event.ctrl)) && activeTabId === "main") {
@@ -2931,22 +3010,41 @@ export function OpenTuiApp({
         setCommandOverlay(EMPTY_COMMAND_OVERLAY);
         return;
       }
-      // 2. Processing or pending ask → interrupt
-      if (processingRef.current || pendingAsk) {
+      // 2. 忙态（本会话有轮次在跑、有挂起询问、或只剩子代理在跑）→ 中断。
+      // 判算必须用引擎量：外部入口自起的轮次不经过任何回合包装器，
+      // 只看本地 processing 会把正在跑的轮次误判成空闲，从而落进空闲分支的
+      // 双击 /rewind（看起来就是“按了没反应，还弹出了回退”）。
+      if (
+        session.currentTurnRunning === true
+        || processingRef.current
+        || pendingAsk
+        || session.hasRunningChildAgents?.() === true
+      ) {
         if (event.name === "c" && event.ctrl) {
           const now = Date.now();
           if (now - lastCtrlCRef.current < CTRL_C_EXIT_WINDOW_MS) {
             lastCtrlCRef.current = 0;
+            busyEscStopRef.current = 0;
             beginClosing();
             return;
           }
           lastCtrlCRef.current = now;
-          if (performInterrupt()) {
+          if (performInterrupt("deny")) {
             showHint(t.get(["Views", "exit", "pressAgain"]));
           }
+          // 两段式的布防时间只属于 ESC：Ctrl+C 的第二下永远是"退出会话"，
+          // 不该留下一个可被 ESC 消费的布防，否则两个键的语义会串台。
+          busyEscStopRef.current = 0;
           return;
         }
-        performInterrupt();
+        // ESC 两段式：第一下 deny 当前可见询问（或停本会话的轮次），
+        // 窗口内第二下全停（先停子再停主）。布防时间戳与空闲双击隔离。
+        const now = Date.now();
+        if (now - busyEscStopRef.current < FULL_STOP_WINDOW_MS) {
+          performInterrupt("full");
+          return;
+        }
+        performInterrupt("deny");
         return;
       }
       // 3. Idle double-tap: Esc → /rewind, Ctrl+C → exit

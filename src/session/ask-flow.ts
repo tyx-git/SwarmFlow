@@ -211,7 +211,12 @@ export function getPendingAsk(host: AskHost): PendingAskUi | null {
   if (ownAsk) return ownAsk;
   for (const handle of host._childSessions.values()) {
     const childAsk = handle.session?.getPendingAsk();
-    if (childAsk) return childAsk;
+    if (childAsk) {
+      // 冒泡到根的是子会话的 ask：归属必须改成 child，根才能区分
+      // “代子审批”与“中止自己正在跑的轮次”。agentId 用句柄 id——它与子 tab 的
+      // selectedChildId 与子会话快照 id 同源。
+      return { ...childAsk, owner: { kind: "child", agentId: handle.id, agentName: handle.template } };
+    }
   }
   return null;
 }

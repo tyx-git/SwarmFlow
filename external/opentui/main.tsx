@@ -17,6 +17,7 @@ const TRANSPARENT = getUiCommonColors().transparent;
 // FFI 数字参数边界，否则 Yoga 给出 NaN/小数尺寸时会直接抛
 // ERR_INVALID_ARG_TYPE，整个 TUI 被 uncaughtException 终结。
 import { installFfiBoundsPatch } from "./forked/patch-ffi-bounds.js";
+import { installStdinEscapePatch } from "./forked/patch-stdin-esc.js";
 import { installConsoleCleanupHooks, restoreConsoleState } from "./forked/patch-windows-console.js";
 
 interface ParsedArgs {
@@ -171,6 +172,14 @@ export async function launchTui(): Promise<void> {
     backgroundColor: TRANSPARENT,
     useThread,
   });
+
+  // 裸 ESC 判定补齐：解析器实例由渲染器构造函数创建，所以必须在 createCliRenderer
+  // 之后装（与 installFfiBoundsPatch 的“创建之前”相反）。挂不上时必须记进诊断日志，
+  // 不允许静默失效 —— 否则 Esc 又变回“按了没反应”，而没人知道补丁没生效。
+  const escPatch = installStdinEscapePatch(renderer);
+  if (!escPatch.patched) {
+    writeOpenTuiDiag("patch.stdin_escape.failed", { reason: escPatch.reason ?? "unknown" });
+  }
 
   // Resolve effective theme mode BEFORE mounting React so the first frame
   // already uses the correct palette. With a transparent background, rendering

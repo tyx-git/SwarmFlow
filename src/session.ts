@@ -324,6 +324,7 @@ import {
   isTurnAbortError,
   recordTurnErrorEntry,
   recordTurnFailure,
+  requestFullStop,
   requestTurnInterrupt,
   waitForTurnComplete,
   withTurnLock,
@@ -1524,6 +1525,14 @@ export class Session implements SessionLike {
     if (this._childSessions.size > 0) {
       this._cascadeKillRunningChildren("user_mass_interrupt");
     }
+  }
+
+  /**
+   * 全停：先级联停掉活跃子会话，再中止本会话正在跑的轮次。
+   * 顺序与理由见 turn-control 的 requestFullStop。
+   */
+  requestFullStop(): { accepted: true } {
+    return requestFullStop(this);
   }
 
   hasRunningChildAgents(): boolean {
@@ -5270,9 +5279,16 @@ export class Session implements SessionLike {
     const ceilingMs = startMs + this._awaitEventCeilingMs;
     let exitReason: "event" | "nothing_left" | "ceiling" = "ceiling";
 
-    // 阻塞循环：只由「事件到达 / 无可等对象 / 用户中断 / 防卡死上限」退出。
+    // 阻塞循环：只由「用户中断 / 事件到达 / 无可等对象 / 防卡死上限」退出。
+    // 顺序定为中断优先：子代理持续投递消息不得掩盖用户的中断，否则 signal 已
+    // aborted 时本调用会以 exitReason="event" 正常返回，回合被当成还在跑。
     // 这里刻意没有 schedule timeout——按固定时长返回是历史故障的根因。
     for (;;) {
+      if (signal?.aborted) {
+        this._agentState = "working";
+        this._setSelfPhase("idle");
+        throw new DOMException("The operation was aborted.", "AbortError");
+      }
       if (this._hasInboxMessages()) {
         exitReason = "event";
         break;
@@ -5280,11 +5296,6 @@ export class Session implements SessionLike {
       if (!this._hasWaitables()) {
         exitReason = "nothing_left";
         break;
-      }
-      if (signal?.aborted) {
-        this._agentState = "working";
-        this._setSelfPhase("idle");
-        throw new DOMException("The operation was aborted.", "AbortError");
       }
       const now = Date.now();
       if (now >= ceilingMs) break;

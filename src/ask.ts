@@ -17,6 +17,19 @@
 /** 提问类型：Agent 问题（多选/自定义） 或 工具审批。 */
 export type AskKind = "agent_question" | "approval";
 
+/**
+ * 挂起 ask 的归属：`self` 是本会话自己的 ask；`child` 是子会话的 ask，
+ * 由本会话的 `getPendingAsk()` 冒泡上来代管（主 tab 要能替子审批）。
+ *
+ * `agentId` 用子会话句柄 id——它与子 tab 的 selectedChildId、子会话快照 id
+ * 同源；不要用 `source.agentId`（那是子会话内部的 agent 角色 id）。
+ * 归属决定代管动作的边界：deny 子 ask 只杀子，deny 自己的 ask 才会中止本会话
+ * 正在跑的轮次；缺归属就只能靠猜测，猜测会把本会话误判成挂起状态。
+ */
+export type AskOwner =
+  | { kind: "self" }
+  | { kind: "child"; agentId: string; agentName?: string };
+
 /** 提问的来源 Agent 信息。 */
 export interface AskSource {
   agentId: string;
@@ -133,6 +146,8 @@ export interface PendingAskUi {
   kind: AskKind;
   createdAt: string;
   summary: string;
+  /** 归属：本会话自己，还是代管子会话的。 */
+  owner: AskOwner;
   source: AskSource;
   payload: Record<string, unknown>;
   options: string[];
@@ -193,6 +208,8 @@ export function toPendingAskUi(ask: AskRequest | null): PendingAskUi | null {
     kind: ask.kind,
     createdAt: ask.createdAt,
     summary: ask.summary,
+    // 每个 Session 报告自己的 ask 都是 self；冒泡子 ask 由 getPendingAsk 重贴 child。
+    owner: { kind: "self" },
     source: ask.source,
     payload: ask.payload as Record<string, unknown>,
     options: [...ask.options],

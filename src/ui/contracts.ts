@@ -110,8 +110,16 @@ export interface Session extends SessionLike {
   turn(userInput: string, options?: { signal?: AbortSignal; inlineImages?: InlineImageInput[] }): Promise<string>;
   close(): Promise<void>;
   requestTurnInterrupt?(): { accepted: true };
+  /**
+   * 全停：先级联停掉活跃子会话，再中止本会话正在跑的轮次。
+   * 顺序不可颠倒，理由见 src/session/turn-control.ts 的 requestFullStop。
+   */
+  requestFullStop?(): { accepted: true };
   cancelCurrentTurn?(): void;
   hasRunningChildAgents?(): boolean;
+  interruptAllChildAgents?(): void;
+  /** 本会话是否有轮次正在跑（含外部入口自起的轮次）。运行态的唯一权威量。 */
+  currentTurnRunning: boolean;
   denyPendingAsk?(): boolean;
   denyAndInterruptPendingAsk?(): { accepted: boolean; reason?: string; turnFinished?: boolean };
   setProgressReporter?(reporter: ProgressReporter | undefined): void;
