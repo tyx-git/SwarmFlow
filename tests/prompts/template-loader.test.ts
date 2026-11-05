@@ -58,6 +58,10 @@ describe("template type validation", () => {
     expect(toolsPrompt).not.toContain("`summarize_context`");
     expect(toolsPrompt).toContain("Never claim you cannot search before trying the available web tools");
     expect(toolsPrompt).toContain("Never put user questions in Queen's own handoff");
+    // 便宜检查先行：Queen 的自查工具不得再被自我设限文案堵死。
+    expect(toolsPrompt).toContain("a dispatch is a full sub-agent run and must be earned");
+    expect(toolsPrompt).toContain("Do not inventory the whole repository in a single call");
+    expect(toolsPrompt).toContain("do not redo an investigation a child already completed with evidence");
   });
 
   it("keeps role tool boundaries aligned with the six built-in templates", () => {
@@ -110,6 +114,14 @@ describe("template type validation", () => {
     expect(templates.queen?.systemPrompt).toContain("broad external or web research");
     expect(templates.queen?.systemPrompt).toContain("Queen has `web_search` and `web_fetch`");
     expect(templates.queen?.systemPrompt).toContain("Try the available web tools before claiming you cannot search");
+    // 派遣纪律：一次有界只读调用能答的问题归 Queen，已报证据不重复检查。
+    expect(templates.queen?.systemPrompt).toContain("One bounded call that answers a question beats a sub-agent run");
+    expect(templates.queen?.systemPrompt).toContain("answers stay with Queen");
+    expect(templates.queen?.systemPrompt).toContain("Cheapest sufficient actor first");
+    expect(templates.queen?.systemPrompt).toContain("Do not re-run a settled check");
+    expect(templates.queen?.systemPrompt).toContain("so it must be earned");
+    expect(templates.queen?.systemPrompt).toContain("dispatch a child only for what those tools cannot reach");
+    expect(templates.queen?.systemPrompt).toContain("never let a required check disappear silently");
     expect(templates.queen?.systemPrompt).toContain("root Queen handoff omits `open_questions`");
     expect(templates.queen?.systemPrompt).toContain("the final handoff is not a question channel");
     expect(templates.scout?.systemPrompt).toContain("Run read-only inspection, reproduction, test, and verification commands");
