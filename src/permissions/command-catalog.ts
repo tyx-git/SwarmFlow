@@ -12,6 +12,8 @@ export const READ_TOOLS = new Set([
   "read_file", "list_dir", "glob", "grep", "find_symbol", "jq",
   "web_fetch", "web_search", "$web_search",
   "ask", "check_status", "await_event", "send",
+  // 计划确认门与 ask 同类：只渲染并等待用户选择，不触碰工作区。
+  "present_plan",
   "skill", "time",
   "kill_shell",
   // 任务清单是会话态，只读查看无副作用

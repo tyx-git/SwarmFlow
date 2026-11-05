@@ -6,7 +6,7 @@ import type {
 } from "./types.js";
 import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
 import { splitTaskHandoffForDisplay } from "../../../src/swarm/task-handoff.js";
-import { findPatchBlocks, removePatchBlocks } from "../../../src/patches/apply-patch/extract.js";
+import { findPayloadBlocks, removePayloadBlocks } from "../../../src/blocks/payload-blocks.js";
 import { getToolProfile } from "./tool-profiles.js";
 import { formatDuration } from "../display/utils/format.js";
 
@@ -36,9 +36,10 @@ function getToolName(entry: ReconciledConversationEntry): string {
 }
 
 /** assistant 正文里的补丁块只有在同一轮紧跟 edit 调用时才从展示中剥离。 */
-function hasFollowingEditToolCall(
+function hasFollowingPayloadToolCall(
   entries: readonly ReconciledConversationEntry[],
   index: number,
+  toolName: string,
 ): boolean {
   for (let cursor = index + 1; cursor < entries.length; cursor++) {
     const candidate = entries[cursor]!;
@@ -51,7 +52,7 @@ function hasFollowingEditToolCall(
     ) {
       return false;
     }
-    if (candidate.entry.kind === "tool_call" && getToolName(candidate) === "edit") {
+    if (candidate.entry.kind === "tool_call" && getToolName(candidate) === toolName) {
       return true;
     }
   }
@@ -605,10 +606,11 @@ export function presentationTransform(
         );
         const split = splitTaskHandoffForDisplay(entry.entry.text);
         let displayText = split.displayText;
-        if (hasFollowingEditToolCall(entries, i)) {
-          const blocks = findPatchBlocks(displayText).filter((block) => block.complete);
-          if (blocks.length > 0) displayText = removePatchBlocks(displayText, blocks);
-        }
+        // 裸块载荷只在专属界面里出现一次：补丁给卡片、计划给确认门面板。
+        // 一次性移除，避免逐个删除后行号错位。
+        const ownedBlocks = findPayloadBlocks(displayText).filter((block) => block.complete
+          && hasFollowingPayloadToolCall(entries, i, block.spec.tool));
+        if (ownedBlocks.length > 0) displayText = removePayloadBlocks(displayText, ownedBlocks);
         if (displayText.trim().length > 0) {
           // active log id 会随每个流式文本 chunk 更新；即使 React 的 processing
           // 状态晚一帧，也要保持该条目处于流式状态。

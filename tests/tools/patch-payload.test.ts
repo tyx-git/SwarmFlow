@@ -9,7 +9,7 @@ import type { LogEntry } from "../../src/context/entry/types.js";
 import {
   resolvePayloadFromToolCallLog,
   resolveRoundPayloads,
-} from "../../src/tools/patch-payload.js";
+} from "../../src/blocks/payload-blocks.js";
 
 const BLOCK_A = "*** Begin Patch\n*** Add File: a.txt\n+alpha\n*** End Patch";
 const BLOCK_B = "*** Begin Patch\n*** Add File: b.txt\n+beta\n*** End Patch";

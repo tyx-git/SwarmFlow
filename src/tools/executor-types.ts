@@ -24,10 +24,10 @@ export interface ToolExecutorContext {
    */
   signal?: AbortSignal;
   /**
-   * `edit` 的补丁正文。由 tool-loop 从同轮 assistant 文本解析后注入；
-   * 其他工具忽略。
+   * 裸块工具的正文载荷（`edit` 的补丁、`present_plan` 的计划）。
+   * 由 tool-loop 从同轮 assistant 文本按标记对解析后注入；其他工具忽略。
    */
-  patchPayload?: string;
+  toolPayload?: string;
 }
 
 /**

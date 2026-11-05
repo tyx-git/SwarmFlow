@@ -1,73 +1,21 @@
-/** 计划与评审的工作目录准备及初始文件写入。 */
+/** 计划与评审的工作目录准备：目录名与路径统一取自 `session/plan-artifact.ts`。 */
 
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, join } from "node:path";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { type CommandContext } from "../types.js";
+import { ensureSwarmflowSessionDir, sessionDirName } from "../../session/plan-artifact.js";
 
 export function getSessionId(ctx: CommandContext): string {
   const store = ctx.store;
   if (!store) {
     throw new Error("Session storage is unavailable; cannot resolve this session's id.");
   }
-  // 会话目录还没落盘时用预测目录：createSession() 会复用同一个路径，
-  // 避免退化成所有会话共享的 "current" 目录、把计划文件写两份。
-  return basename(store.sessionDir ?? store.predictNextSessionDir());
-}
-
-function ensureSwarmflowSessionDir(ctx: CommandContext, section: "plan" | "reviewer"): string {
-  const sessionId = getSessionId(ctx);
-  const dir = join(process.cwd(), ".swarmflow", sessionId, section);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-export function writeInitialPlanFiles(ctx: CommandContext, goal: string): string {
-  const dir = ensureSwarmflowSessionDir(ctx, "plan");
-  const planPath = join(dir, "plan.md");
-  const processPath = join(dir, "process.md");
-  const findingPath = join(dir, "finding.md");
-
-  if (!existsSync(planPath)) {
-    writeFileSync(planPath, [
-      "# Plan",
-      "",
-      "## Goal",
-      goal || "<session goal>",
-      "",
-      "## Constraints",
-      "- Preserve user-confirmed scope unless explicitly revised.",
-      "",
-      "## Done When",
-      "- <completion criterion>",
-      "",
-      "## Stage 1: Clarify and prepare",
-      "- [ ] Clarify ambiguous requirements.",
-      "- [ ] Confirm done conditions.",
-      "",
-      "## Stage 2: Execute",
-      "- [ ] Implement approved subtasks.",
-      "- [ ] Verify results.",
-      "",
-    ].join("\n"), "utf-8");
-  }
-
-  if (!existsSync(processPath)) {
-    writeFileSync(processPath, `# Process\n\n- Created plan files for session ${getSessionId(ctx)}.\n`, "utf-8");
-  } else {
-    appendFileSync(processPath, `- Re-entered plan mode. Goal: ${goal || "(not specified)"}.\n`, "utf-8");
-  }
-  writeFileSync(findingPath, "# Current Stage Findings\n\n", "utf-8");
-  return dir;
+  return sessionDirName(store);
 }
 
 export function writeReviewerScaffold(ctx: CommandContext, scope: string): string {
-  const dir = ensureSwarmflowSessionDir(ctx, "reviewer");
+  const dir = ensureSwarmflowSessionDir(process.cwd(), getSessionId(ctx), "reviewer");
   writeFileSync(join(dir, "report.md"), [
     "# Reviewer Report",
     "",

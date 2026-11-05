@@ -86,14 +86,14 @@ describe("path security integration", () => {
       ];
 
       for (const patchPayload of deniedPatches) {
-        const result = await executeTool("edit", {}, { projectRoot, patchPayload });
+        const result = await executeTool("edit", {}, { projectRoot, toolPayload: patchPayload });
         expect(result.content).toContain("project root boundary");
       }
 
       const allowedWrite = await executeTool("edit", {}, {
         projectRoot,
         externalPathAllowlist: [externalRoot],
-        patchPayload: wrap(`*** Add File: ${join(externalRoot, "new.txt")}\n+x`),
+        toolPayload: wrap(`*** Add File: ${join(externalRoot, "new.txt")}\n+x`),
       });
       expect(allowedWrite.content).toContain("Success. Updated the following files");
     } finally {

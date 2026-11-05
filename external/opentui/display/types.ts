@@ -5,6 +5,7 @@ import type { PromptChoice } from "../../../src/providers/credential-flow.js";
 import type { OAuthTokens } from "../../../src/auth/openai/token-store.js";
 import type { GitHubOAuthTokens } from "../../../src/auth/github-copilot-oauth.js";
 import type { InputAreaPickerConfig } from "../../../src/ui/picker.js";
+import type { UiText } from "../../../src/ui/text.js";
 
 export type OAuthProviderId = "codex" | "copilot";
 
@@ -69,6 +70,8 @@ export interface QuestionAnswerState {
 
 export interface AskPanelProps {
   ask: PendingAskUi;
+  /** ask 面板的面向人文案；缺失时回落到英文默认串。 */
+  uiText: UiText;
   error?: string | null;
   selectedIndex: number;
   currentQuestionIndex: number;

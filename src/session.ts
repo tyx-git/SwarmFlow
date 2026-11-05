@@ -81,6 +81,7 @@ import {
 import {
   ASK_DISCUSS_FURTHER_GUIDANCE,
   isAskPendingError,
+  type AgentQuestion,
   type AgentQuestionItem,
   type AgentQuestionDecision,
   type AskAuditRecord,
@@ -88,6 +89,7 @@ import {
   type PendingAskUi,
   type PendingTurnState,
 } from "./ask.js";
+import { writeApprovedPlan } from "./session/plan-artifact.js";
 import { LogIdAllocator } from "./context/entry/id-allocator.js";
 import type { LogEntry } from "./context/entry/types.js";
 import { createSystemPrompt, createStatus, createCommandEcho, createError as createErrorEntry } from "./context/entry/factories.js";
@@ -280,6 +282,7 @@ import {
   emitAskRequestedProgress,
   emitAskResolvedProgress,
   execAsk,
+  execPresentPlan,
   findChildWithPendingAsk,
   getPendingAsk,
   hasPendingTurnToResume,
@@ -494,6 +497,12 @@ export class Session implements SessionLike {
 
   /** 全局记忆 ~/.swarmflow/MEMORY.md 所在目录。 */
   private readonly _swarmflowHomeDir: string;
+
+  /**
+   * plan 模式状态：只由 /plan 置位，由 present_plan 的确认门清除。
+   * 不落盘——会话重启后回到非 plan 模式，由用户重新 /plan（不为此新增持久化文件）。
+   */
+  private _planMode: { goal?: string; sinceTurn: number } | null = null;
 
   // 缓存的 system prompt（重载之间保持不变，以稳定 prompt cache）
   private _cachedSystemPrompt: string | null = null;
@@ -3148,6 +3157,7 @@ export class Session implements SessionLike {
         check_status: (args) => this._execCheckStatus(args),
         await_event: () => this._execAwaitEvent(),
         ask: (args) => this._execAsk(args),
+        present_plan: (args, ctx) => this._execPresentPlan(args, ctx?.toolPayload),
         skill: (args) => this._execSkill(args),
         send: (args) => this._execSend(args),
         $web_search: (args) => toolBuiltinWebSearchPassthrough(args as Record<string, unknown>),
@@ -3488,8 +3498,31 @@ export class Session implements SessionLike {
     return getTaskState(this);
   }
 
+  // ==================================================================
+  // Plan 模式 —— 入口 /plan（commands/workflow/goal.ts），确认门 present_plan
+  // ==================================================================
+
+  /** 进入或再次进入 plan 模式；goal 覆盖旧值，状态保持 active。 */
+  enterPlanMode(goal?: string): void {
+    const trimmed = goal?.trim();
+    this._planMode = { goal: trimmed ? trimmed : undefined, sinceTurn: this._turnCount };
+  }
+
+  /** 退出 plan 模式：确认门的出路（批准或取消）都走这里，审计事实由 ask 结果与日志承载。 */
+  exitPlanMode(): void {
+    this._planMode = null;
+  }
+
+  isPlanModeActive(): boolean {
+    return this._planMode !== null;
+  }
+
+  getPlanModeGoal(): string | undefined {
+    return this._planMode?.goal;
+  }
+
   /**
-   * 每个请求末尾的 ephemeral 运行时快照：open tasks / active children / shells。
+   * 每个请求末尾的 ephemeral 运行时快照：plan mode / open tasks / active children / shells。
    * 不写日志、不进入缓存前缀；压缩上下文不再烘静态任务快照。
    */
   _buildRuntimeStateBlock(): string {
@@ -3501,13 +3534,24 @@ export class Session implements SessionLike {
     const shellLines = shellReport.startsWith("No shells tracked.")
       ? []
       : shellReport.split("\n").filter((line) => line.startsWith("- ") || line.startsWith("    ")).slice(0, 12);
+    const planGoal = this.isPlanModeActive() ? this.getPlanModeGoal() : undefined;
+    const planActive = this.isPlanModeActive();
 
-    if (tasks.length === 0 && agents.length === 0 && shellLines.length === 0) return "";
+    if (!planActive && tasks.length === 0 && agents.length === 0 && shellLines.length === 0) return "";
 
     const lines: string[] = [
       "[RUNTIME STATE]",
       "Read-only runtime snapshot; do not treat it as a new user request.",
     ];
+    if (planActive) {
+      lines.push(
+        "Plan mode: active.",
+        planGoal ? `  Goal: ${planGoal}` : "  Goal: not specified.",
+        "  Resolve every question that needs a user decision with `ask` before presenting anything.",
+        "  When the plan is ready, call `present_plan` with the plan body between '*** Begin Plan' and '*** End Plan'.",
+        "  Do not end the turn with a list of unresolved questions, and do not start executing before the gate answers.",
+      );
+    }
     if (tasks.length > 0) {
       const snapshot = formatTaskSnapshot(tasks).replace(/^\[Current Tasks\]\n/, "");
       lines.push("Open tasks:", snapshot);
@@ -4600,6 +4644,54 @@ export class Session implements SessionLike {
 
   _execAsk(args: Record<string, unknown>): ToolResult {
     return execAsk(this, args);
+  }
+
+  _execPresentPlan(args: Record<string, unknown>, toolPayload?: string): ToolResult {
+    return execPresentPlan(this, args, toolPayload);
+  }
+
+  /**
+   * 确认门结算。批准时把计划正文与当前进度快照落成唯一一份 plan.md 并退出 plan 模式；
+   * 取消只退出状态、不写任何文件；自定义输入视为要求修订，状态保持 active。
+   * 返回给模型的行保持英文稳定（面向模型，不本地化）。
+   */
+  _settlePlanMode(ask: AgentQuestion, decision: AgentQuestionDecision): string[] {
+    const question = ask.payload.questions[0];
+    if (!question?.planContent) {
+      return ["Plan decision: invalid — the confirmation carried no plan body."];
+    }
+    const answer = decision.answers[0];
+    const selected = answer ? question.options[answer.selectedOptionIndex] : undefined;
+
+    if (selected?.decisionId === "plan_confirm") {
+      const planPath = writeApprovedPlan({
+        cwd: this._projectRoot,
+        store: this._store,
+        goal: this.getPlanModeGoal(),
+        planContent: question.planContent,
+        progress: formatTaskSnapshot(getTaskState(this)),
+        approvedAt: new Date().toISOString(),
+      });
+      this.exitPlanMode();
+      return [
+        "Plan decision: approved.",
+        `Plan file: ${planPath}`,
+        "Create the root tasks for the approved stages now and dispatch Worker, listing that plan path as an allowed path; Worker maintains the file from here.",
+      ];
+    }
+
+    if (selected?.decisionId === "plan_cancel") {
+      this.exitPlanMode();
+      return [
+        "Plan decision: cancelled.",
+        "Do not execute this plan and do not write any plan file. Wait for the user's next instruction.",
+      ];
+    }
+
+    return [
+      `Plan decision: revision requested: ${answer?.answerText || "(empty)"}`,
+      "Stay in plan mode: revise the plan, resolve anything the note raises with `ask`, then call present_plan again.",
+    ];
   }
 
   _buildAgentQuestionToolResult(

@@ -16,6 +16,11 @@ export interface SessionCapabilities {
    */
   includeKillShellTool: boolean;
   includeAskTool: boolean;
+  /**
+   * 计划确认门（present_plan）：只有根会话可持有——子代理既不能 ask，
+   * 也不该把计划交给用户确认。
+   */
+  includePlanTool: boolean;
   includeSkillTools: boolean;
   /** 任务清单工具（task_create / task_list / task_get / task_update）：主、子会话都可持有。 */
   includeTaskTools: boolean;
@@ -30,6 +35,7 @@ export const ROOT_SESSION_CAPABILITIES: SessionCapabilities = {
   includeAwaitEventTool: true,
   includeKillShellTool: true,
   includeAskTool: true,
+  includePlanTool: true,
   includeSkillTools: true,
   includeTaskTools: true,
   includeTaskControl: true,
@@ -47,6 +53,7 @@ export const CHILD_SESSION_CAPABILITIES: SessionCapabilities = {
   // 只能读日志，无法清理后台进程。
   includeKillShellTool: true,
   includeAskTool: false,
+  includePlanTool: false,
   includeSkillTools: false,
   // 子代理自己也要拆分并记录任务（清单为纯内存，随子会话消亡）
   includeTaskTools: true,

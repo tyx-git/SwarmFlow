@@ -37,7 +37,7 @@ import { type ToolCallTuiVisibility, type ToolLoopOptions, type ToolLoopResult, 
 const COMPACT_ASK_DENY_MESSAGE =
   "ERROR: Tool approvals are unavailable during compaction; respond with the continuation prompt only.";
 import { createReasoning, createAssistantText, createToolCall, createToolResult as createToolResultEntry } from "../../context/entry/factories.js";
-import { resolveRoundPayloads } from "../../tools/patch-payload.js";
+import { PAYLOAD_BLOCK_SPECS, resolveRoundPayloads } from "../../blocks/payload-blocks.js";
 import type { ThinkingArtifact } from "../../thinking/artifact.js";
 import type { AskRequest } from "../../ask.js";
 
@@ -504,12 +504,12 @@ export async function asyncRunToolLoop(
           } else if (toolName in toolExecutors) {
             toolOutput = await toolExecutors[toolName](args, {
               signal,
-              patchPayload: pending.executionPayload,
+              toolPayload: pending.executionPayload,
             });
           } else if (builtinExecutor) {
             toolOutput = await builtinExecutor(toolName, args, {
               signal,
-              patchPayload: pending.executionPayload,
+              toolPayload: pending.executionPayload,
             });
           } else {
             toolOutput = new ToolResultClass({
@@ -840,17 +840,21 @@ export async function asyncRunToolLoop(
       ));
     }
 
-    // 零参数 edit：把正文里的补丁块按调用顺序绑定到 executionPayload。
+    // 零参数裸块工具（edit / present_plan）：把正文里的标记块按调用顺序绑定到 executionPayload。
     // 先给全部已闭合调用赋值，再执行，保证 ask 挂起后的孤儿调用也能直接取到。
-    const editCallIds = [...pendingToolCalls.entries()]
-      .filter(([, pending]) => Boolean(pending.closedCall) && pending.name === "edit")
+    const payloadCallIds = [...pendingToolCalls.entries()]
+      .filter(([, pending]) => Boolean(pending.closedCall)
+        && PAYLOAD_BLOCK_SPECS.some((spec) => spec.tool === pending.name))
       .map(([callId]) => callId);
-    if (editCallIds.length > 0) {
+    if (payloadCallIds.length > 0) {
       const payloads = resolveRoundPayloads(
-        editCallIds.map((callId) => ({ id: callId, name: "edit" })),
+        payloadCallIds.map((callId) => ({
+          id: callId,
+          name: pendingToolCalls.get(callId)!.name,
+        })),
         resp.text ?? "",
       );
-      for (const callId of editCallIds) {
+      for (const callId of payloadCallIds) {
         const pending = pendingToolCalls.get(callId);
         if (!pending) continue;
         pending.executionPayload = payloads.get(callId);

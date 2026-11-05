@@ -92,6 +92,12 @@ export interface SessionLike {
   getChildSessionSnapshots(): ChildSessionSnapshot[];
   killChildSession(childId: string): { accepted: boolean; reason?: string };
 
+  /* Plan 模式 */
+  enterPlanMode(goal?: string): void;
+  exitPlanMode(): void;
+  isPlanModeActive(): boolean;
+  getPlanModeGoal(): string | undefined;
+
   /* 生命周期 */
   resetForNewSession(newStore?: SessionStore): Promise<void>;
 }

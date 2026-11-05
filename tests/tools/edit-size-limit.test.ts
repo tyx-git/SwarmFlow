@@ -54,7 +54,7 @@ describe("edit 50MB guard", () => {
   it("rejects an Update File hunk on an existing file over 50MB", async () => {
     const result = text(await executeTool("edit", {}, {
       projectRoot: root,
-      patchPayload: wrap("*** Update File: oversized.txt\n@@\n-x\n+y"),
+      toolPayload: wrap("*** Update File: oversized.txt\n@@\n-x\n+y"),
     } as never));
     expect(result).toContain("File too large");
     expect(statSync(oversized).size).toBe(OVERSIZED_BYTES);
@@ -63,7 +63,7 @@ describe("edit 50MB guard", () => {
   it("rejects an Add File overwrite of an existing file over 50MB", async () => {
     const result = text(await executeTool("edit", {}, {
       projectRoot: root,
-      patchPayload: wrap("*** Add File: oversized.txt\n+should-not-be-written"),
+      toolPayload: wrap("*** Add File: oversized.txt\n+should-not-be-written"),
     } as never));
     expect(result).toContain("File too large");
     expect(statSync(oversized).size).toBe(OVERSIZED_BYTES);
@@ -79,7 +79,7 @@ describe("edit 50MB guard", () => {
   it("still creates a small new file", async () => {
     const result = text(await executeTool("edit", {}, {
       projectRoot: root,
-      patchPayload: wrap("*** Add File: new-small.txt\n+hello"),
+      toolPayload: wrap("*** Add File: new-small.txt\n+hello"),
     } as never));
     expect(result).toContain("Success. Updated the following files");
     expect(readFileSync(join(root, "new-small.txt"), "utf8")).toBe("hello\n");

@@ -1,10 +1,11 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { CommandContext } from "../../src/commands/types.js";
-import { getSessionId, writeInitialPlanFiles } from "../../src/commands/workflow/session-files.js";
+import { getSessionId } from "../../src/commands/workflow/session-files.js";
+import { writeApprovedPlan } from "../../src/session/plan-artifact.js";
 import { SessionStore } from "../../src/config/session-store.js";
 
 /**
@@ -38,19 +39,53 @@ describe("plan workflow session directory", () => {
     }
   });
 
-  it("writes plan files only under <session_id>/plan", () => {
+  it("确认门批准时才生成唯一一份 plan.md，路径落在 <session_id>/plan 下", () => {
     const { project, store, cleanup } = makeStore();
     const previousCwd = process.cwd();
     try {
       process.chdir(project);
       const sessionId = getSessionId({ store } as CommandContext);
-      const dir = writeInitialPlanFiles({ store } as CommandContext, "ship it");
 
-      expect(relative(project, dir)).toBe(join(".swarmflow", sessionId, "plan"));
-      expect(existsSync(join(dir, "plan.md"))).toBe(true);
+      const planPath = writeApprovedPlan({
+        cwd: project,
+        store,
+        goal: "ship it",
+        planContent: "# 计划\n- [ ] 阶段一",
+        progress: "[Current Tasks]\n#1 pending 阶段一",
+        approvedAt: "2026-11-05T00:00:00.000Z",
+      });
+
+      expect(relative(project, planPath)).toBe(join(".swarmflow", sessionId, "plan", "plan.md"));
+      expect(existsSync(planPath)).toBe(true);
+      const text = readFileSync(planPath, "utf-8");
+      expect(text).toContain("Goal: ship it");
+      expect(text).toContain("Approved at: 2026-11-05T00:00:00.000Z");
+      expect(text).toContain("- [ ] 阶段一");
+      expect(text).toContain("## Progress");
       expect(existsSync(join(project, ".swarmflow", "current"))).toBe(false);
     } finally {
       process.chdir(previousCwd);
+      cleanup();
+    }
+  });
+
+  it("不再产出 process.md 与 finding.md", () => {
+    const { project, store, cleanup } = makeStore();
+    try {
+      const planPath = writeApprovedPlan({
+        cwd: project,
+        store,
+        planContent: "# 计划",
+        approvedAt: "2026-11-05T00:00:00.000Z",
+      });
+      const dir = dirname(planPath);
+      expect(existsSync(join(dir, "process.md"))).toBe(false);
+      expect(existsSync(join(dir, "finding.md"))).toBe(false);
+      // 没有 goal/progress 时不写空小节
+      const text = readFileSync(planPath, "utf-8");
+      expect(text).toContain("Goal: (not specified)");
+      expect(text).not.toContain("## Progress");
+    } finally {
       cleanup();
     }
   });

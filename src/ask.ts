@@ -51,13 +51,17 @@ export interface AgentQuestionOption {
   kind: AgentQuestionOptionKind;
   /** 系统自动添加的选项（如"自定义输入"）。 */
   systemAdded?: boolean;
+  /**
+   * 计划确认门的稳定标识。决议一律按它判定——标签会被本地化，
+   * 按字符串比较标签在切语言后必然失效。
+   */
+  decisionId?: "plan_confirm" | "plan_cancel";
 }
 
-/** "自定义输入" 选项的标准标签。 */
-export const ASK_CUSTOM_OPTION_LABEL = "Enter custom answer";
-/** "继续讨论" 选项的标准标签。 */
-export const ASK_DISCUSS_OPTION_LABEL = "Discuss further";
-/** 继续讨论选项的指导文本——告诉 Agent 如何处理此类回答。 */
+/**
+ * "继续讨论" 选项的指导文本——告诉 Agent 如何处理此类回答。
+ * 面向模型，保持英文稳定；选项本身按 `kind` 识别，不按标签文本。
+ */
 export const ASK_DISCUSS_FURTHER_GUIDANCE =
   'One or more answers are "Discuss further". Treat those answers as requests to continue the discussion rather than final commitments. Use any other answers normally. Briefly address the discussion points, then return control to the user.';
 
@@ -65,6 +69,11 @@ export const ASK_DISCUSS_FURTHER_GUIDANCE =
 export interface AgentQuestionItem {
   question: string;
   options: AgentQuestionOption[];
+  /**
+   * 计划确认门的计划正文（present_plan 的裸块载荷）。
+   * 只供界面渲染计划视图，不进选项文本，也不回给模型。
+   */
+  planContent?: string;
 }
 
 /** 用户对某个问题的回答。 */
@@ -84,7 +93,12 @@ export interface AgentQuestionDecision {
 /** Agent 向用户提问的完整请求（agent_question 类型）。 */
 export interface AgentQuestion extends AskBase {
   kind: "agent_question";
-  payload: { questions: AgentQuestionItem[]; toolCallId: string };
+  payload: {
+    questions: AgentQuestionItem[];
+    toolCallId: string;
+    /** 产生本次提问的工具名；结果条目按它归属，默认 `ask`。 */
+    toolName?: string;
+  };
   options: string[];
 }
 

@@ -10,12 +10,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { applyHunks, createNodePatchIo } from "../../src/patches/apply-patch/apply.js";
 import {
-  extractCompletePatchBlocks,
-  findPatchBlocks,
-  removePatchBlocks,
-} from "../../src/patches/apply-patch/extract.js";
+  EDIT_PAYLOAD_SPEC,
+  extractCompletePayloadBlocks,
+  findPayloadBlocks,
+  removePayloadBlocks,
+  resolveRoundPayloads,
+} from "../../src/blocks/payload-blocks.js";
 import { parsePatch } from "../../src/patches/apply-patch/parser.js";
-import { resolveRoundPayloads } from "../../src/tools/patch-payload.js";
 
 const cleanup: string[] = [];
 
@@ -190,18 +191,18 @@ describe("apply-patch model variants", () => {
       "done",
     ].join("\r");
 
-    const blocks = findPatchBlocks(text);
+    const blocks = findPayloadBlocks(text);
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.complete).toBe(true);
     expect(blocks[0]!.text).not.toContain("\r");
-    expect(extractCompletePatchBlocks(text)).toEqual([blocks[0]!.text]);
+    expect(extractCompletePayloadBlocks(text, EDIT_PAYLOAD_SPEC)).toEqual([blocks[0]!.text]);
 
     const payloads = resolveRoundPayloads([{ id: "call-1", name: "edit" }], text);
     const payload = payloads.get("call-1");
     expect(payload).toBeDefined();
     await expect(apply(payload!)).resolves.toBeTypeOf("string");
 
-    const stripped = removePatchBlocks(text, blocks);
+    const stripped = removePayloadBlocks(text, blocks);
     expect(stripped).toContain("I will apply this:");
     expect(stripped).toContain("done");
     expect(stripped).not.toContain("*** Begin Patch");

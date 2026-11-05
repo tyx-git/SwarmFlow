@@ -418,6 +418,7 @@ export function OpenTuiScreen({
   const askPanelBlock = pendingAsk ? (
     <AskPanelView
       ask={pendingAsk}
+      uiText={uiText}
       error={askError}
       selectedIndex={askSelectionIndex}
       currentQuestionIndex={currentQuestionIndex}

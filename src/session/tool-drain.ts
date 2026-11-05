@@ -24,7 +24,7 @@ import type { SessionLog } from "./log.js";
 
 import type { ProgressReporter } from "../logging/progress.js";
 import { buildToolResultPreview } from "../agents/tool-loop/display.js";
-import { resolvePayloadFromToolCallLog } from "../tools/patch-payload.js";
+import { resolvePayloadFromToolCallLog } from "../blocks/payload-blocks.js";
 import { formatParseError, parsePatch, ParseError } from "../patches/apply-patch/index.js";
 
 /** 工具排空所需的会话侧成员（B 策略下由 Session 公开）。 */
@@ -83,7 +83,7 @@ export interface ToolDrainHost {
   _findEarliestPendingToolCallLogIndex(): number;
   _finalizeDrainInterruptedWork(fromLogIndex: number): void;
   _drainPendingToolCalls(signal?: AbortSignal): Promise<DrainPendingToolCallsResult>;
-  _findNextPendingToolCall(): { toolCallId: string; toolName: string; toolArgs: Record<string, unknown>; patchPayload?: string; turnIndex: number; roundIndex: number; agentName: string } | null;
+  _findNextPendingToolCall(): { toolCallId: string; toolName: string; toolArgs: Record<string, unknown>; toolPayload?: string; turnIndex: number; roundIndex: number; agentName: string } | null;
   _updateToolCallExecState(toolCallId: string, state: "not_started" | "running" | "completed" | "failed"): void;
   _isInsideArtifactsDir(rawPath: unknown): boolean;
 }
@@ -137,7 +137,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
       toolArgs: next.toolArgs,
       toolCallId: next.toolCallId,
       summary: `${next.agentName} is calling ${next.toolName}`,
-      toolPayload: next.patchPayload,
+      toolPayload: next.toolPayload,
     };
 
     let denyMessage: string | undefined;
@@ -222,7 +222,7 @@ export async function drainPendingToolCalls(host: ToolDrainHost, signal?: AbortS
         } else {
           const result = await executor(next.toolArgs, {
             signal,
-            patchPayload: next.patchPayload,
+            toolPayload: next.toolPayload,
           });
           // 这里保持 toolExecState 为 "running"——_completeMissingToolResultsFromLog
           // 靠它区分“跑了但被中断”（可能有部分副作用）和“从未执行”。
@@ -306,7 +306,7 @@ export function findNextPendingToolCall(host: ToolDrainHost): {
   toolCallId: string;
   toolName: string;
   toolArgs: Record<string, unknown>;
-  patchPayload?: string;
+  toolPayload?: string;
   turnIndex: number;
   roundIndex: number;
   agentName: string;
@@ -321,17 +321,18 @@ export function findNextPendingToolCall(host: ToolDrainHost): {
     executionPayload?: unknown;
   };
   const toolName = String(content.name ?? meta["toolName"] ?? "");
-  let patchPayload = typeof content.executionPayload === "string"
+  let toolPayload = typeof content.executionPayload === "string"
     ? content.executionPayload
     : undefined;
-  if (!patchPayload && toolName === "edit") {
-    patchPayload = resolvePayloadFromToolCallLog(host._log, entry) ?? undefined;
+  // 载荷没随条目带过来时（ask 挂起/drain/恢复），按工具名从同轮正文回取。
+  if (!toolPayload) {
+    toolPayload = resolvePayloadFromToolCallLog(host._log, entry) ?? undefined;
   }
   return {
     toolCallId: String(meta["toolCallId"] ?? ""),
     toolName,
     toolArgs: content.arguments ?? {},
-    ...(patchPayload !== undefined ? { patchPayload } : {}),
+    ...(toolPayload !== undefined ? { toolPayload } : {}),
     turnIndex: entry.turnIndex,
     roundIndex: entry.roundIndex ?? 0,
     agentName: String(meta["agentName"] ?? host.primaryAgent.name),

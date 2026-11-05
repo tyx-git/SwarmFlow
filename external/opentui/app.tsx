@@ -151,8 +151,6 @@ export interface OpenTuiAppProps {
 }
 const CTRL_C_EXIT_WINDOW_MS = 2000;
 const DOUBLE_ESC_WINDOW_MS = 500;
-const CUSTOM_EMPTY_HINT =
-  'Custom answer is empty. Please enter an answer first, or choose "Discuss further" instead.';
 const GOODBYE_MESSAGES = [
   "Bye!",
   "Goodbye!",
@@ -869,7 +867,7 @@ export function OpenTuiApp({
         setReviewMode(false);
         setCurrentQuestionIndex(index);
         setAskSelectionIndex(0);
-        setAskError("Please answer all questions before continuing.");
+        setAskError(uiText.get(["Views", "ask", "answerAllRequired"]));
         return;
       }
     }
@@ -2289,7 +2287,12 @@ export function OpenTuiApp({
     if (!customInputMode) return;
     const customText = value.trim();
     if (!customText) {
-      setAskError(CUSTOM_EMPTY_HINT);
+      // 确认门里没有"继续讨论"兜底项，提示语按场景分开。
+      setAskError(
+        questions[currentQuestionIndex]?.planContent
+          ? uiText.get(["Views", "ask", "emptyCustomHint"])
+          : uiText.get(["Views", "ask", "emptyCustomAnswerHint"]),
+      );
       return;
     }
     const updated = confirmCurrentQuestion(askSelectionIndex, { customText });
@@ -2531,6 +2534,20 @@ export function OpenTuiApp({
         if (!question) return;
         if (event.name === "tab" && askSelectionIndex < agentOptionCount) {
           beginAskNoteInput(askSelectionIndex);
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        // 光标停在"自定义输入"行时直接键入即可进入输入态（首字符不丢）。
+        if (
+          !customInputMode
+          && !noteInputMode
+          && question.options[askSelectionIndex]?.kind === "custom_input"
+          && event.name.length === 1
+          && !event.ctrl && !event.meta
+        ) {
+          beginAskCustomInput(askSelectionIndex);
+          setAskInputValue(event.name);
           event.preventDefault();
           event.stopPropagation();
           return;

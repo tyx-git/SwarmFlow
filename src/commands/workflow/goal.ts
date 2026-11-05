@@ -6,7 +6,7 @@ import { basename, join } from "node:path";
 import { launchDesignHelper } from "../../browser-preview/index.js";
 
 import { type CommandContext } from "../types.js";
-import { getSessionId, writeInitialPlanFiles } from "./session-files.js";
+import { getSessionId } from "./session-files.js";
 
 export async function cmdInit(ctx: CommandContext, _args: string): Promise<void> {
   const agentsPath = join(process.cwd(), "AGENTS.md");
@@ -49,7 +49,8 @@ export async function cmdPlan(ctx: CommandContext, args: string): Promise<void> 
     hookAdditionalContext = hookResult.additionalContext;
   }
 
-  const planDir = writeInitialPlanFiles(ctx, goal);
+  // 进入 plan 模式：只置状态，不在入口写计划文件（plan.md 由确认门批准后生成）。
+  ctx.session?.enterPlanMode?.(goal);
 
   // Hook 通过 additionalContext 触发浏览器设计助手
   if (hookAdditionalContext && ctx.promptCommandPicker) {
@@ -72,13 +73,13 @@ export async function cmdPlan(ctx: CommandContext, args: string): Promise<void> 
   }
 
   const prompt = [
-    "Enter SwarmFlow plan discussion mode.",
-    "Clarify ambiguous requirements with the user before making edits.",
-    "When ready, write plan.md, process.md, and finding.md under .swarmflow/<session_id>/plan/ using Stage N headings and checkbox subtasks.",
-    "Those files are the negotiation artifact for this planning discussion — track execution progress with task_create/task_update, not with the plan file.",
-    "Do not execute the plan until the user gives deterministic approval such as 执行, 开始, approve, 确认, or 按计划执行.",
-    `Plan files directory: ${planDir}.`,
-    goal ? `Initial plan goal: ${goal}` : "Ask the user for the stage goal or requirement.",
+    "Enter SwarmFlow plan mode.",
+    "Clarify ambiguous requirements with the user through `ask` before presenting anything.",
+    "When the plan is ready, call `present_plan` and put the plan body between '*** Begin Plan' and '*** End Plan'.",
+    "Never write the plan into tool arguments: `present_plan` takes no arguments.",
+    "Do not write plan files yourself — the system creates plan.md only when the user confirms the plan.",
+    "Do not start executing before the confirmation gate answers.",
+    goal ? `Initial plan goal: ${goal}` : "Ask the user for the plan goal or requirement.",
   ].join("\n");
   if (ctx.onInjectedTurnRequested) {
     ctx.onInjectedTurnRequested(goal ? `/plan ${goal}` : "/plan", prompt);

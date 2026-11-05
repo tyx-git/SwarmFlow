@@ -184,6 +184,13 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     },
     inlineResult: { maxLines: Number.POSITIVE_INFINITY },
   },
+  present_plan: {
+    category: "orchestrate",
+    displayName: "Present plan",
+    // 计划正文在确认门面板里渲染成带边框的视图，工具行不再重复一次。
+    text: () => "",
+    inlineResult: false,
+  },
   check_status: {
     category: "observe",
     displayName: "Status",

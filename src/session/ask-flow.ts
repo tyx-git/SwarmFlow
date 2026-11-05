@@ -8,19 +8,21 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  ASK_CUSTOM_OPTION_LABEL,
-  ASK_DISCUSS_OPTION_LABEL,
   AskPendingError,
   toPendingAskUi,
   type AgentQuestion,
   type AgentQuestionDecision,
   type AgentQuestionItem,
+  type AgentQuestionOption,
   type ApprovalRequest,
   type AskAuditRecord,
   type AskRequest,
   type PendingAskUi,
 } from "../ask.js";
 import { createAskResolution, createToolResult as createToolResultEntry } from "../context/entry/factories.js";
+import { payloadBlockBody } from "../blocks/payload-blocks.js";
+import { expectArgsObject } from "../tools/arg-validation.js";
+import { createUiText, getUiLanguage } from "../ui/text.js";
 import type { LogEntry } from "../context/entry/types.js";
 import type { ApprovalOffer, PermissionAdvisor, PermissionRule } from "../permissions/index.js";
 import { type ProgressLevel, type ProgressReporter } from "../logging/progress.js";
@@ -55,6 +57,10 @@ export interface AskHost {
   _finishChildTurn(handle: ChildSessionHandle, error?: unknown): void;
   _buildAgentQuestionToolResult(questions: AgentQuestionItem[], decision: AgentQuestionDecision): ToolResult;
   _buildAgentQuestionPreview(questions: AgentQuestionItem[], decision: AgentQuestionDecision): string;
+  // plan 模式：确认门的决议结算（落盘 plan.md / 退出状态），返回给模型的补充行
+  isPlanModeActive(): boolean;
+  getPlanModeGoal(): string | undefined;
+  _settlePlanMode(ask: AgentQuestion, decision: AgentQuestionDecision): string[];
   // 同簇方法：模块内按 host.X(...) 虚分派调用
   _notifyAskChanged(): void;
   _emitAskRequestedProgress(ask: AskRequest): void;
@@ -242,12 +248,37 @@ export function emitAskResolvedProgress(host: AskHost, askId: string, decision: 
   });
 }
 
+export interface AskOptionLabels {
+  custom: string;
+  discuss: string;
+  planQuestion: string;
+  planConfirm: string;
+  planCancel: string;
+}
+
+/**
+ * ask 面板的选项文案：面向人，跟随 `ui_language`。
+ * 这些字符串只用于显示与本地化，模型侧一律按 `kind` / `decisionId` 识别，
+ * 所以切语言不会改变任何协议判定。
+ */
+export function askOptionLabels(): AskOptionLabels {
+  const t = createUiText(getUiLanguage());
+  return {
+    custom: t.get(["Views", "ask", "customAnswer"]),
+    discuss: t.get(["Views", "ask", "discussFurther"]),
+    planQuestion: t.get(["Views", "ask", "planQuestion"]),
+    planConfirm: t.get(["Views", "ask", "planConfirm"]),
+    planCancel: t.get(["Views", "ask", "planCancel"]),
+  };
+}
+
 export function execAsk(host: AskHost, args: Record<string, unknown>): ToolResult {
   // 校验参数
   const questions = args["questions"];
   if (!Array.isArray(questions) || questions.length === 0 || questions.length > 4) {
     return ToolResult.error("Error: 'questions' must be an array of 1-4 items.");
   }
+  const labels = askOptionLabels();
   const parsedQuestions: AgentQuestionItem[] = [];
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i] as Record<string, unknown>;
@@ -271,12 +302,12 @@ export function execAsk(host: AskHost, args: Record<string, unknown>): ToolResul
       });
     }
     parsedOpts.push({
-      label: ASK_CUSTOM_OPTION_LABEL,
+      label: labels.custom,
       kind: "custom_input" as const,
       systemAdded: true,
     });
     parsedOpts.push({
-      label: ASK_DISCUSS_OPTION_LABEL,
+      label: labels.discuss,
       kind: "discuss_further" as const,
       systemAdded: true,
     });
@@ -297,8 +328,71 @@ export function execAsk(host: AskHost, args: Record<string, unknown>): ToolResul
     },
     roundIndex: undefined,
     summary: `Agent asking: ${parsedQuestions[0].question}${parsedQuestions.length > 1 ? ` (+${parsedQuestions.length - 1} more)` : ""}`,
-    payload: { questions: parsedQuestions, toolCallId: "" },
+    payload: { questions: parsedQuestions, toolCallId: "", toolName: "ask" },
     options: [], // 每个问题的选项放在 payload 里
+  };
+  throw new AskPendingError(ask);
+}
+
+/**
+ * 确认门：`present_plan` 的正文（裸块载荷）渲染成计划视图，选项全部由代码给出。
+ * 模型不写选项、也不写 plan.md；决议在 resolve 阶段结算。
+ */
+export function execPresentPlan(
+  host: AskHost,
+  args: Record<string, unknown>,
+  toolPayload: string | undefined,
+): ToolResult {
+  const a = expectArgsObject("present_plan", args);
+  if (Object.keys(a).length > 0) {
+    return ToolResult.error(
+      "ERROR: present_plan takes no arguments; put the plan in the assistant message body between '*** Begin Plan' and '*** End Plan'.",
+    );
+  }
+  if (!host.isPlanModeActive()) {
+    return ToolResult.error(
+      "ERROR: present_plan is only available while plan mode is active. Enter it with /plan.",
+    );
+  }
+  if (typeof toolPayload !== "string" || toolPayload.trim().length === 0) {
+    return ToolResult.error(
+      "ERROR: present_plan requires the plan body in the assistant message body ('*** Begin Plan' ... '*** End Plan') and no tool arguments.",
+    );
+  }
+
+  const planContent = payloadBlockBody(toolPayload);
+  if (planContent.length === 0) {
+    return ToolResult.error(
+      "ERROR: present_plan received an empty plan body. Write the plan between '*** Begin Plan' and '*** End Plan'.",
+    );
+  }
+
+  const labels = askOptionLabels();
+  const ask: AgentQuestion = {
+    id: randomUUID(),
+    kind: "agent_question",
+    createdAt: new Date().toISOString(),
+    source: {
+      agentId: host.primaryAgent.name,
+      agentName: host.primaryAgent.name,
+      toolName: "present_plan",
+    },
+    roundIndex: undefined,
+    summary: `Plan confirmation: ${labels.planQuestion}`,
+    payload: {
+      questions: [{
+        question: labels.planQuestion,
+        planContent,
+        options: [
+          { label: labels.planConfirm, kind: "normal" as const, systemAdded: true, decisionId: "plan_confirm" as const },
+          { label: labels.planCancel, kind: "normal" as const, systemAdded: true, decisionId: "plan_cancel" as const },
+          { label: labels.custom, kind: "custom_input" as const, systemAdded: true },
+        ],
+      }],
+      toolCallId: "",
+      toolName: "present_plan",
+    },
+    options: [],
   };
   throw new AskPendingError(ask);
 }
@@ -336,6 +430,13 @@ export function resolveOwnAgentQuestionAsk(host: AskHost, askId: string, decisio
     ask.payload.questions,
     decision,
   );
+  // 确认门结算：批准则此刻落盘 plan.md 并退出 plan 模式；给模型的行保持英文稳定。
+  const planLines = ask.payload.toolName === "present_plan"
+    ? host._settlePlanMode(ask, decision)
+    : [];
+  const settledResult = planLines.length > 0
+    ? new ToolResult({ content: `${toolResult.content}\n\n${planLines.join("\n")}` })
+    : toolResult;
   const previewText = host._buildAgentQuestionPreview(
     ask.payload.questions,
     decision,
@@ -349,8 +450,8 @@ export function resolveOwnAgentQuestionAsk(host: AskHost, askId: string, decisio
     anchor.roundIndex,
     {
       toolCallId,
-      toolName: "ask",
-      content: toolResult.content,
+      toolName: ask.payload.toolName ?? "ask",
+      content: settledResult.content,
       toolSummary: "ask resolved",
     },
     {

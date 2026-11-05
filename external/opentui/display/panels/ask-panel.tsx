@@ -3,21 +3,33 @@
 import React from "react";
 
 import type { AgentQuestionItem } from "../../../../src/ask.js";
+import type { UiText } from "../../../../src/ui/text.js";
 import type { DisplayTheme } from "../theme/index.js";
 import type { AskPanelProps } from "../types.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
 import { ErrorMessage } from "../primitives/error-message.js";
 import { countWrappedDisplayLines } from "../utils/format.js";
 
-function formatAskSource(ask: AskPanelProps["ask"]): string {
+function formatAskSource(ask: AskPanelProps["ask"], t: UiText): string {
   const sourceName = ask.source.agentName || ask.source.agentId || "Queen";
   const lower = sourceName.toLowerCase();
   const isQueen = lower === "primary" || lower === "queen" || lower === "root";
-  return isQueen ? "Source: Queen" : `Source: Sub-Agent ${sourceName}`;
+  return isQueen
+    ? t.get(["Views", "ask", "sourceQueen"])
+    : t.get(["Views", "ask", "sourceSubAgent"], { name: sourceName });
+}
+
+/** 计划视图的分层着色：一级标题最亮，二级次之，正文与勾选项最弱。 */
+function planLineColor(colors: DisplayTheme["colors"], line: string): string {
+  if (line.startsWith("# ")) return colors.accent;
+  if (line.startsWith("## ")) return colors.accent;
+  if (line.startsWith("- [")) return colors.text;
+  return colors.dim;
 }
 
 export function AskPanelView({
   ask,
+  uiText: t,
   error,
   selectedIndex,
   currentQuestionIndex,
@@ -56,7 +68,7 @@ export function AskPanelView({
         ) : (
           <text fg={theme.colors.accent} content={ask.summary} />
         )}
-        <text fg={theme.colors.dim} content={formatAskSource(ask)} />
+        <text fg={theme.colors.dim} content={formatAskSource(ask, t)} />
         <text content="" />
         {options.map((label, index) => {
           const isSelected = index === selectedIndex;
@@ -72,7 +84,7 @@ export function AskPanelView({
             </box>
           );
         })}
-        <text fg={theme.colors.dim} content="Use ↑/↓ to select, Enter to confirm." />
+        <text fg={theme.colors.dim} content={t.get(["Views", "ask", "approvalHint"])} />
         {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
       </PanelSurface>
     );
@@ -105,13 +117,13 @@ export function AskPanelView({
 
     return (
       <PanelSurface colors={theme.colors} spacing={theme.spacing} height={panelHeight}>
-        <text fg={theme.colors.green} content="Review your answers" />
-        <text fg={theme.colors.dim} content={formatAskSource(ask)} />
+        <text fg={theme.colors.green} content={t.get(["Views", "ask", "reviewTitle"])} />
+        <text fg={theme.colors.dim} content={formatAskSource(ask, t)} />
         {questions.map((question, index) => {
           const answer = questionAnswers.get(index);
           const selected = answer ? question.options[answer.optionIndex] : undefined;
           const answerDisplay = !answer
-            ? "(unanswered)"
+            ? t.get(["Views", "ask", "unanswered"])
             : selected?.kind === "custom_input"
               ? `✎ ${answer.customText ?? ""}`
               : selected?.label ?? "(unknown)";
@@ -121,11 +133,11 @@ export function AskPanelView({
             <box key={`ask-review-${index}`} flexDirection="column">
               <text content={`${index + 1}. ${question.question}`} />
               <text fg={!answer ? theme.colors.accent : selected?.kind === "discuss_further" ? theme.colors.accent : theme.colors.green} content={`   → ${answerDisplay}`} />
-              {note ? <text fg={theme.colors.accent} content={`     Note: ${note}`} /> : null}
+              {note ? <text fg={theme.colors.accent} content={`     ${t.get(["Views", "ask", "noteLabel"])}${note}`} /> : null}
             </box>
           );
         })}
-        <text fg={theme.colors.dim} content="Enter to submit. Esc to go back." />
+        <text fg={theme.colors.dim} content={t.get(["Views", "ask", "reviewSubmitHint"])} />
         {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
       </PanelSurface>
     );
@@ -142,22 +154,78 @@ export function AskPanelView({
 
   const existingAnswer = questionAnswers.get(currentQuestionIndex);
   const agentOptionCount = question.options.filter((option) => !option.systemAdded).length;
+  const planContent = typeof question.planContent === "string" ? question.planContent : "";
+  const planLines = planContent.length > 0 ? planContent.split("\n") : [];
+  // 计划视图限高，超出部分交给滚动区；面板整体仍受终端高度约束。
+  const planMaxLines = Math.max(1, Math.floor((terminalHeight - 12) * 0.45));
+  const planVisibleLines = Math.min(planLines.length, planMaxLines);
   const optionContentLines = question.options.reduce((total, option, index) => {
     const note = !option.systemAdded ? optionNotes.get(`${currentQuestionIndex}-${index}`) : undefined;
     return total + 1 + (option.description ? 1 : 0) + (note ? 1 : 0);
   }, 0);
-  const inlineLines = customInputMode || noteInputMode ? 3 : 0;
-  const panelContentLines = 2 + optionContentLines + inlineLines + 1 + (error ? 1 : 0);
+  const inlineLines = (customInputMode || noteInputMode) && !planContent ? 3 : 0;
+  const panelContentLines =
+    2 + (planContent ? planVisibleLines + 2 : 0) + optionContentLines + inlineLines + 1 + (error ? 1 : 0);
   const panelHeight = panelContentLines + 2;
 
   return (
     <PanelSurface colors={theme.colors} spacing={theme.spacing} height={panelHeight}>
-      <text fg={theme.colors.accent} content={`Question ${currentQuestionIndex + 1}/${totalQuestions}: ${question.question}`} />
-      <text fg={theme.colors.dim} content={formatAskSource(ask)} />
+      <text
+        fg={theme.colors.accent}
+        content={`${t.get(["Views", "ask", "questionProgress"], {
+          index: currentQuestionIndex + 1,
+          total: totalQuestions,
+        })}${question.question}`}
+      />
+      <text fg={theme.colors.dim} content={formatAskSource(ask, t)} />
+      {planContent ? (
+        <box flexDirection="column" border paddingLeft={1} paddingRight={1}>
+          {planLines.length > planMaxLines ? (
+            <scrollbox maxHeight={planMaxLines} scrollY={true} fitContent={true}>
+              {planLines.map((line, index) => (
+                <text key={`plan-line-${index}`} fg={planLineColor(theme.colors, line)} content={line} />
+              ))}
+            </scrollbox>
+          ) : (
+            planLines.map((line, index) => (
+              <text key={`plan-line-${index}`} fg={planLineColor(theme.colors, line)} content={line} />
+            ))
+          )}
+        </box>
+      ) : null}
       {question.options.map((option, index) => {
         const isSelected = index === selectedIndex;
         const isAnswered = existingAnswer?.optionIndex === index;
         const note = !option.systemAdded ? optionNotes.get(`${currentQuestionIndex}-${index}`) : undefined;
+        // 确认门的第三行就是输入行本身：不显示标签，未进入输入态时先给出背景字。
+        if (planContent && option.kind === "custom_input") {
+          if (isSelected && customInputMode) {
+            return (
+              <input
+                key={`ask-option-${index}`}
+                ref={(node) => {
+                  inputRef.current = node;
+                }}
+                value={inlineValue}
+                focused={true}
+                placeholder={t.get(["Views", "ask", "planAdjustHint"])}
+                textColor={theme.colors.text}
+                focusedTextColor={theme.colors.text}
+                placeholderColor={theme.colors.dim}
+                onInput={onInput}
+                onChange={onInput}
+                onSubmit={onSubmit as any}
+              />
+            );
+          }
+          return (
+            <text
+              key={`ask-option-${index}`}
+              fg={isSelected ? theme.colors.accent : theme.colors.dim}
+              content={`${isSelected ? "> " : "  "}${t.get(["Views", "ask", "planAdjustHint"])}`}
+            />
+          );
+        }
         return (
           <box key={`ask-option-${index}`} flexDirection="column">
             <text
@@ -165,20 +233,25 @@ export function AskPanelView({
               content={`${isSelected ? "> " : isAnswered ? "✓ " : "  "}${option.label}`}
             />
             {option.description ? <text fg={theme.colors.dim} content={`   ${option.description}`} /> : null}
-            {note ? <text fg={theme.colors.accent} content={`   Note: ${note}${isSelected ? " (Tab to edit)" : ""}`} /> : null}
+            {note ? <text fg={theme.colors.accent} content={`   ${t.get(["Views", "ask", "noteLabel"])}${note}`} /> : null}
           </box>
         );
       })}
-      {customInputMode || noteInputMode ? (
+      {inlineLines > 0 ? (
         <box flexDirection="column">
-          <text fg={customInputMode ? theme.colors.accent : theme.colors.accent} content={customInputMode ? "Your answer:" : "Note:"} />
+          <text
+            fg={theme.colors.accent}
+            content={customInputMode ? t.get(["Views", "ask", "yourAnswer"]) : t.get(["Views", "ask", "noteLabel"])}
+          />
           <input
             ref={(node) => {
               inputRef.current = node;
             }}
             value={inlineValue}
             focused={customInputMode || noteInputMode}
-            placeholder={customInputMode ? "Type a custom answer" : "Add a note"}
+            placeholder={customInputMode
+              ? t.get(["Views", "ask", "customPlaceholder"])
+              : t.get(["Views", "ask", "notePlaceholder"])}
             textColor={theme.colors.text}
             focusedTextColor={theme.colors.text}
             placeholderColor={theme.colors.dim}
@@ -188,13 +261,17 @@ export function AskPanelView({
           />
           <text
             fg={theme.colors.dim}
-            content={customInputMode ? "Enter to confirm. Esc to cancel." : "Enter to save note. Esc to cancel."}
+            content={customInputMode
+              ? t.get(["Views", "ask", "inlineConfirmHint"])
+              : t.get(["Views", "ask", "inlineNoteConfirmHint"])}
           />
         </box>
       ) : null}
       <text
         fg={theme.colors.dim}
-        content={`Use ↑/↓ to select, ←/→ to navigate questions, Enter to confirm.${agentOptionCount > 0 && selectedIndex < agentOptionCount ? " Tab to add note." : ""}`}
+        content={`${t.get(["Views", "ask", "selectHint"])}${
+          agentOptionCount > 0 && selectedIndex < agentOptionCount ? t.get(["Views", "ask", "noteHint"]) : ""
+        }`}
       />
       {error ? <ErrorMessage text={error} colors={theme.colors} /> : null}
     </PanelSurface>

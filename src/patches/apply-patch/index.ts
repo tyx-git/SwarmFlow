@@ -11,4 +11,3 @@ export * from "./seek-sequence.js";
 export * from "./text-file.js";
 export * from "./file-update.js";
 export * from "./apply.js";
-export * from "./extract.js";

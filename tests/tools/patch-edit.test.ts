@@ -36,7 +36,7 @@ async function runPatch(
   patch: string,
   args: Record<string, unknown> = {},
 ) {
-  return executeTool("edit", args, { projectRoot: root, patchPayload: patch });
+  return executeTool("edit", args, { projectRoot: root, toolPayload: patch });
 }
 
 describe("edit patch tool", () => {
@@ -249,7 +249,7 @@ describe("edit patch tool", () => {
     });
 
     const result = await executors["edit"]!({}, {
-      patchPayload: wrap("*** Add File: reload.txt\n+hello"),
+      toolPayload: wrap("*** Add File: reload.txt\n+hello"),
     });
     expect(typeof result).not.toBe("string");
     expect(touched).toEqual([resolve(root, "reload.txt")]);

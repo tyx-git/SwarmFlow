@@ -12,9 +12,9 @@ export const ENVIRONMENT_ID_MARKER = "*** Environment ID:";
 
 /**
  * 模型返回的补丁可能带 CRLF、孤立 CR 或重复 CR。统一成 LF 后再按行解析；
- * 重复 CR（`\r\r\n`）只算一个换行。
+ * 重复 CR（`\r\r\n`）只算一个换行。裸块层与补丁解析共用这一份实现。
  */
-export function normalizePatchLineEndings(text: string): string {
+export function normalizeBlockLineEndings(text: string): string {
   return text.replace(/\r+\n/g, "\n").replace(/\r/g, "\n");
 }
 
@@ -22,5 +22,5 @@ export function normalizePatchLineEndings(text: string): string {
 export function splitPatchLines(text: string): string[] {
   const trimmed = text.trim();
   if (trimmed === "") return [];
-  return normalizePatchLineEndings(trimmed).split("\n");
+  return normalizeBlockLineEndings(trimmed).split("\n");
 }

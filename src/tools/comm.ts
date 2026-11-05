@@ -77,7 +77,8 @@ export const ASK_TOOL: ToolDef = {
     "suggestions rather than a closed set. Use it to unblock an assumption you cannot resolve from the codebase " +
     "—for example which of two APIs to target, or whether to keep a legacy path. " +
     "Do NOT use it for open-ended exploration, for questions the repository already answers, or to confirm a " +
-    "plan the user already stated: ask in plain conversation instead.",
+    "plan the user already stated: ask in plain conversation instead. Confirming a finished plan is not a " +
+    "question —call `present_plan` for that.",
   parameters: {
     type: "object",
     properties: {
@@ -107,6 +108,23 @@ export const ASK_TOOL: ToolDef = {
   },
   summaryTemplate: "{agent} is asking the user a question",
   tuiPolicy: { partialReveal: "closed" },
+};
+
+export const PRESENT_PLAN_TOOL: ToolDef = {
+  name: "present_plan",
+  description:
+    "Present the finished plan for confirmation. Call this tool with **no arguments** and put the plan body in " +
+    "your normal assistant message text, between '*** Begin Plan' and '*** End Plan'. Do not put the plan in tool " +
+    "arguments and do not wrap it in JSON. " +
+    "The plan body is the whole plan the user must be able to read without scrolling back: goal, constraints, " +
+    "ordered stages with the checks that close each stage, and the risks you are accepting. " +
+    "The tool renders that body as the plan view and shows the confirmation options itself — do not repeat the " +
+    "plan in plain text afterwards and do not list unresolved questions in the body. Any question that needs a " +
+    "user decision must already be resolved with `ask`. " +
+    "Use it only while plan mode is active; it is available to the root session alone.",
+  parameters: { type: "object", properties: {}, required: [] },
+  summaryTemplate: "{agent} is presenting the plan for confirmation",
+  tuiPolicy: { partialReveal: "immediate" },
 };
 
 export const CHECK_STATUS_TOOL: ToolDef = {
