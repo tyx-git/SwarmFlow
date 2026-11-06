@@ -92,6 +92,22 @@ export function displayWidthWithNewlines(text: string): number {
   return width;
 }
 
+/**
+ * 行首斜杠命令令牌的显示宽度区间，供输入行着色使用。
+ *
+ * 只把调用方判定为"已注册命令"的令牌算数：拼错的 `/pall` 保持普通文字色，
+ * 避免出现"看着像可用命令"的误导。令牌以第一个空白（含换行）截断。
+ */
+export function getSlashCommandTokenRange(
+  text: string,
+  isRegistered: (token: string) => boolean,
+): { start: number; end: number } | null {
+  if (!text.startsWith("/")) return null;
+  const token = /^([^\s]+)/.exec(text)?.[1];
+  if (!token || !isRegistered(token)) return null;
+  return { start: 0, end: displayWidthWithNewlines(token) };
+}
+
 export function getTextDiffRange(before: string, after: string): TextDiffRange | null {
   if (before === after) return null;
 

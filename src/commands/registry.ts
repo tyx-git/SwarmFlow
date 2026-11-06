@@ -62,6 +62,20 @@ export class CommandRegistry {
     return this._commands.get(name);
   }
 
+  /**
+   * 名称或别名是否对应一个真实命令。
+   *
+   * `lookup` 只认主名；输入行的命令着色要连别名一起判，否则 `/c` 这类别名
+   * 会显示成普通文本，看起来像"不是命令"。
+   */
+  has(name: string): boolean {
+    if (this._commands.has(name)) return true;
+    for (const command of this._commands.values()) {
+      if (command.aliases?.includes(name)) return true;
+    }
+    return false;
+  }
+
   /* 返回按名称字母顺序排序的所有注册命令。 */
   getAll(): SlashCommand[] {
     return Array.from(this._commands.values()).sort((a, b) =>

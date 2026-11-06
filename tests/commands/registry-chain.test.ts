@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildDefaultRegistry } from "../../src/commands/registration.js";
-import { getLocalizedCommandDescription } from "../../src/commands/registry.js";
+import { CommandRegistry, getLocalizedCommandDescription } from "../../src/commands/registry.js";
 import type { CommandContext } from "../../src/commands/types.js";
 import { createUiText, hasUiText } from "../../src/ui/text.js";
 
@@ -162,4 +162,30 @@ describe("slash command chain", () => {
     expect(ctx.showMessage as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
+});
+
+describe("命令名与别名判定", () => {
+  // 输入行的命令着色靠 has()：只认主名会把 `/c` 这类别名显示成普通文本。
+  it("has() 认主名与别名，lookup() 仍只认主名", () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      name: "/plan",
+      description: "plan",
+      handler: async () => {},
+      aliases: ["/p"],
+    });
+
+    expect(registry.has("/plan")).toBe(true);
+    expect(registry.has("/p")).toBe(true);
+    expect(registry.has("/pall")).toBe(false);
+    expect(registry.has("plan")).toBe(false);
+    expect(registry.lookup("/p")).toBeUndefined();
+  });
+
+  it("内置命令的 /plan 与 /compact 都被判定为已注册", () => {
+    const registry = buildDefaultRegistry();
+    expect(registry.has("/plan")).toBe(true);
+    expect(registry.has("/compact")).toBe(true);
+    expect(registry.has("/definitely-not-a-command")).toBe(false);
+  });
 });

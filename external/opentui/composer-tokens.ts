@@ -5,6 +5,7 @@ import {
   findFileReferenceQuery,
   getDisplaySpanEndingAtOffset,
   getDisplaySpanStartingAtOffset,
+  getSlashCommandTokenRange,
   getTextDiffRange,
   serializeVisibleTextWithTokens,
   sliceTextByOffset,
@@ -19,15 +20,18 @@ export interface ComposerTokenVisuals {
   fileStyleId: number;
   pasteStyleId: number;
   imageStyleId: number;
+  slashStyleId: number;
 }
 
 const COMPOSER_TOKEN_TYPE = "composer-token";
+const SLASH_COMMAND_TYPE = "slash-command";
 const COMPOSER_EXTMARK_PATCHED = Symbol("swarmflow.composer-extmarks-patched");
 
 export function createComposerTokenVisuals(colors: {
   accent: ColorInput;
   cyan: ColorInput;
   yellow: ColorInput;
+  slashCommand: ColorInput;
 }): ComposerTokenVisuals {
   const syntaxStyle = SyntaxStyle.create();
   const fileStyleId = syntaxStyle.registerStyle("composer.token.file", {
@@ -42,11 +46,16 @@ export function createComposerTokenVisuals(colors: {
     fg: parseColor(colors.accent),
     bold: true,
   });
+  const slashStyleId = syntaxStyle.registerStyle("composer.token.slash", {
+    fg: parseColor(colors.slashCommand),
+    bold: true,
+  });
   return {
     syntaxStyle,
     fileStyleId,
     pasteStyleId,
     imageStyleId,
+    slashStyleId,
   };
 }
 
@@ -54,6 +63,59 @@ export function ensureComposerTokenType(composer: TextareaRenderable): number {
   const existing = composer.extmarks.getTypeId(COMPOSER_TOKEN_TYPE);
   if (existing !== null) return existing;
   return composer.extmarks.registerType(COMPOSER_TOKEN_TYPE);
+}
+
+export function ensureSlashCommandType(composer: TextareaRenderable): number {
+  const existing = composer.extmarks.getTypeId(SLASH_COMMAND_TYPE);
+  if (existing !== null) return existing;
+  return composer.extmarks.registerType(SLASH_COMMAND_TYPE);
+}
+
+/**
+ * 重算行首命令令牌的高亮区间。
+ *
+ * 每次按键先比对现有 extmark，区间没变就整段跳过（不做无谓的原生重挂）；变了
+ * 才先删后建。用独立 typeId 与 `virtual: false`：虚拟标记会让退格把整段当成原子
+ * token 一次删掉，而序列化提交文本时也不能把命令标记当成 composer token。
+ *
+ * 建/删之后必须重新赋值 `syntaxStyle` 才会重绘：@opentui/core 0.4.1 只在
+ * setter 里把高亮同步进原生缓冲，`extmarks.create()` 自身不触发重绘，否则着色
+ * 会慢一拍（下一个字符才染上、删掉开头的 `/` 后旧紫色还赖在屏上）。
+ */
+export function refreshSlashCommandHighlight(
+  composer: TextareaRenderable | null | undefined,
+  visuals: ComposerTokenVisuals,
+  isRegistered: (token: string) => boolean,
+): void {
+  if (!composer || composer.isDestroyed) return;
+
+  const typeId = ensureSlashCommandType(composer);
+  const marks = composer.extmarks.getAllForTypeId(typeId);
+  const range = getSlashCommandTokenRange(composer.plainText, isRegistered);
+  const only = marks.length === 1 ? marks[0] : undefined;
+  const unchanged =
+    (range === null && marks.length === 0) ||
+    (range !== null &&
+      only !== undefined &&
+      only.start === range.start &&
+      only.end === range.end &&
+      only.styleId === visuals.slashStyleId);
+  if (unchanged) return;
+
+  for (const mark of marks) composer.extmarks.delete(mark.id);
+  if (!range) {
+    composer.syntaxStyle = visuals.syntaxStyle;
+    return;
+  }
+
+  composer.extmarks.create({
+    start: range.start,
+    end: range.end,
+    virtual: false,
+    styleId: visuals.slashStyleId,
+    typeId,
+  });
+  composer.syntaxStyle = visuals.syntaxStyle;
 }
 
 export function patchComposerExtmarksForDisplayWidth(composer: TextareaRenderable): void {
@@ -240,6 +302,7 @@ export {
   buildFileReferenceLabel,
   displayWidthWithNewlines,
   findFileReferenceQuery,
+  getSlashCommandTokenRange,
   getTextDiffRange,
   sliceTextByOffset,
 };

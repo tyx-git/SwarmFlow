@@ -6,6 +6,7 @@ import {
   findFileReferenceQuery,
   getDisplaySpanEndingAtOffset,
   getDisplaySpanStartingAtOffset,
+  getSlashCommandTokenRange,
   getTextDiffRange,
   serializeVisibleTextWithTokens,
   sliceTextByOffset,
@@ -16,6 +17,21 @@ describe("opentui composer tokens", () => {
     expect(displayWidthWithNewlines("abc")).toBe(3);
     expect(displayWidthWithNewlines("前a\n后")).toBe(6);
     expect(displayWidthWithNewlines("🙂é\t👨‍👩‍👧‍👦")).toBe(7);
+  });
+
+  it("只把行首已注册命令算成着色令牌", () => {
+    const known = (token: string) => token === "/plan" || token === "/compact";
+    expect(getSlashCommandTokenRange("/plan add a rule", known)).toEqual({ start: 0, end: 5 });
+    expect(getSlashCommandTokenRange("/compact", known)).toEqual({ start: 0, end: 8 });
+    // 令牌截在第一个空白或换行之前
+    expect(getSlashCommandTokenRange("/plan\n正文", known)).toEqual({ start: 0, end: 5 });
+    // 未注册、不在行首、光秃秃的斜杠都不算
+    expect(getSlashCommandTokenRange("/pall add a rule", known)).toBeNull();
+    expect(getSlashCommandTokenRange("say /plan now", known)).toBeNull();
+    expect(getSlashCommandTokenRange("/ plan", known)).toBeNull();
+    expect(getSlashCommandTokenRange("hello", known)).toBeNull();
+    // 区间按显示宽度算，中文命令名也不会错位
+    expect(getSlashCommandTokenRange("/计划 参数", (token) => token === "/计划")).toEqual({ start: 0, end: 5 });
   });
 
   it("detects the inserted paste range", () => {

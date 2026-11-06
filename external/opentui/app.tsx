@@ -98,6 +98,7 @@ import {
   getComposerTokenSnapshots,
   getTextDiffRange,
   patchComposerExtmarksForDisplayWidth,
+  refreshSlashCommandHighlight,
   replaceRangeWithComposerToken,
   serializeComposerText,
   type ComposerTokenVisuals,
@@ -651,6 +652,14 @@ export function OpenTuiApp({
     composerTokenVisualsRef.current = createComposerTokenVisuals(colors);
   }
   const composerTokenVisuals = composerTokenVisualsRef.current;
+  // 主题切换会重建 styleId，已有 extmark 还指向旧样式；按当前文本立刻重算一次。
+  useEffect(() => {
+    refreshSlashCommandHighlight(
+      inputRef.current,
+      composerTokenVisuals,
+      (token) => commandRegistry.has(token),
+    );
+  }, [composerTokenVisuals, commandRegistry]);
   useEffect(() => {
     setShikiTheme(theme.mode);
     setSyntaxHighlightTheme(theme.mode);
@@ -1503,6 +1512,11 @@ export function OpenTuiApp({
     return true;
   }, [buildCommandOptions, commandRegistry, commandListMaxVisible]);
   const updateInputOverlay = useCallback((value: string, cursorOffset: number) => {
+    // 行首命令令牌着色必须早于下面的选择器早退：那几个分支正好覆盖"正在输入命令"的场景。
+    const visuals = composerTokenVisualsRef.current;
+    if (visuals) {
+      refreshSlashCommandHighlight(inputRef.current, visuals, (token) => commandRegistry.has(token));
+    }
     if (commandPicker || promptSelect || promptSecret) return;
     const livePrefix = inputRef.current ? inputRef.current.getTextRange(0, cursorOffset) : value;
     if (isCommandOverlayEligible(livePrefix)) {

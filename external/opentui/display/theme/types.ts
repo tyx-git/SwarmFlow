@@ -85,6 +85,8 @@ export interface DisplayThemeColorTokens {
   dangerChipFg: string;
   /** 输入框文本光标颜色。 */
   cursor: string;
+  /** 输入行里已注册斜杠命令令牌（`/plan`、`/compact`）的前景色。 */
+  slashCommand: string;
 }
 
 export interface DisplayThemeSpacingTokens {

@@ -182,6 +182,9 @@ describe("theme modes", () => {
       expect(theme.markdown.syntax.headingPrimary).toMatch(/^#[0-9a-f]{6,8}$/i);
       expect(theme.markdown.syntax.raw).toMatch(/^#[0-9a-f]{6,8}$/i);
       expect(theme.markdown.syntax.raw.toLowerCase()).not.toBe(theme.colors.text.toLowerCase());
+      // 输入行命令着色：三套主题都要有紫色，且不能与正文同色（同色等于没着色）。
+      expect(theme.colors.slashCommand).toMatch(/^#[0-9a-f]{6,8}$/i);
+      expect(theme.colors.slashCommand.toLowerCase()).not.toBe(theme.colors.text.toLowerCase());
     }
   });
   it("only exposes brief / dark / light", () => {

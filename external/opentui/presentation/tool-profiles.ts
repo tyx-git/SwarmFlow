@@ -191,6 +191,14 @@ export const TOOL_PROFILES: Record<string, ToolDisplayProfile> = {
     text: () => "",
     inlineResult: false,
   },
+  memory: {
+    category: "orchestrate",
+    displayName: "Global memory",
+    // 正文是要落盘的整份 MEMORY.md，展示层按裸块规则隐藏；结果同样不回显，
+    // 否则一次改写就把 40 行规则刷进聊天区。
+    text: () => "",
+    inlineResult: false,
+  },
   check_status: {
     category: "observe",
     displayName: "Status",
