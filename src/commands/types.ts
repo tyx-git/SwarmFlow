@@ -126,6 +126,21 @@ export interface CommandOption {
   detail?: string;
   /* 详细文本中主要图标的语义颜色。 */
   detailColor?: SemanticColor;
+  /**
+   * 行尾状态灯：`text` 由命令侧本地化，`tone` 决定符号与颜色。
+   * `live` = 当前会话正在使用，`ok` = 已就绪，`off` = 未就绪。
+   */
+  status?: { text: string; tone: "live" | "ok" | "off" };
+  /**
+   * 行首 1 格色标的解析键（通常是 provider id）。TUI 用主题的
+   * `presentation.modelProviderColors` 解析，未命中时退化为 muted。
+   */
+  spine?: string;
+  /**
+   * 分组节标题行，仅占位渲染组名与计数。必须与 `disabled: true` 同时出现，
+   * 选择器状态机靠 disabled 跳过它，因此标题不会进入选中与提交路径。
+   */
+  section?: boolean;
   /* 用于标题或通知的不可提交行。 */
   disabled?: boolean;
   /* 分层选择的子选项（例如，提供者→模型）。 */

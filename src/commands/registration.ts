@@ -70,7 +70,7 @@ export function buildDefaultRegistry(): CommandRegistry {
   // 处理且需要回合边界的（/provider、/skills、/mcp）排到回合结束后执行。
   // /model 无参数时依赖 UI 选择器入口，排队路径直接调 handler 会失去选择器，
   // 因此保持阻塞，不做排队。
-  registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { title: "Providers", inputArea: true }, executionMode: "queued", selfEcho: true, category: "Provider and Model" });
+  registerBuiltin(registry, { name: "/provider", handler: cmdProvider, options: providerOptions, picker: { inputArea: true }, executionMode: "queued", selfEcho: true, category: "Provider and Model" });
   registerBuiltin(registry, { name: "/model", handler: cmdModel, options: modelOptions, picker: { inputArea: true, mode: "single" }, category: "Provider and Model" });
   registerBuiltin(registry, { name: "/agents", handler: cmdAgents, options: subagentRoleOptions, picker: { inputArea: true, mode: "single" }, pickerFlow: "handler", executionMode: "whenBusy", category: "Provider and Model" });
   registerBuiltin(registry, { name: "/permission", handler: cmdPermission, options: permissionOptions, picker: { inputArea: true }, executionMode: "whenBusy", selfEcho: true, category: "Provider and Model" });

@@ -29,6 +29,31 @@ describe("command picker", () => {
     expect(moved.stack[0]?.selected).toBe(2);
   });
 
+  it("分组节标题行不参与初选、移动与提交", () => {
+    const options: Parameters<typeof createCommandPicker>[1] = [
+      { label: "MiniMax", value: "", disabled: true, section: true, detail: "2 家" },
+      { label: "MiniMax-Global", value: "minimax", status: { text: "未配置", tone: "off" } },
+      { label: "MiniMax-China", value: "minimax-cn", status: { text: "使用中", tone: "live" } },
+      { label: "Moonshot (Kimi)", value: "", disabled: true, section: true, detail: "3 家" },
+      { label: "Kimi-Code", value: "kimi-code" },
+    ];
+    const picker = createCommandPicker("/provider", options, 5, undefined, false, true);
+
+    expect(picker.stack[0]?.selected).toBe(1);
+    let moved = picker;
+    for (let step = 0; step < options.length + 1; step += 1) {
+      moved = moveCommandPickerSelection(moved, 1);
+      expect(moved.stack[0]!.options[moved.stack[0]!.selected].section).toBeUndefined();
+    }
+
+    const onHeading = setCommandPickerSelection(picker, 3);
+    expect(onHeading.stack[0]?.selected, "点击节标题不应改变选中").toBe(1);
+    expect(acceptCommandPickerSelection(onHeading)).toEqual({
+      kind: "submit",
+      command: "/provider minimax",
+    });
+  });
+
   it("custom-input options enter input mode once and submit on re-accept", () => {
     const picker = createCommandPicker("/provider", [
       { label: "On", value: "on" },

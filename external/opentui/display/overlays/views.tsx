@@ -20,6 +20,7 @@ import type {
   PromptSelectState,
 } from "../types.js";
 import { stringWidth } from "../../forked/core/platform/runtime.js";
+import { resolveSpineColor } from "../utils/model.js";
 import { truncateToWidth } from "../utils/format.js";
 import { PanelSurface } from "../primitives/panel-surface.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
@@ -58,6 +59,16 @@ interface OverlayOptionRowProps {
   labelParts?: Array<{ text: string; color?: SemanticColor }>;
   detail?: string;
   detailColor?: SemanticColor;
+  /** 行首色标的解析键（provider id 或品牌家族 id）。 */
+  spine?: string;
+  /** 行尾状态灯：文本来自命令侧，tone 决定符号与颜色。 */
+  status?: PickerStatus;
+  /** 状态灯列宽（跨行对齐）。 */
+  statusColumnWidth?: number;
+  /** 分组节标题行：不可选中，只承担组名与计数。 */
+  section?: boolean;
+  /** 命令选择器专用：即使没有色标/状态也走线路牌排版。 */
+  rail?: boolean;
   /** Fixed column width for detail text (for cross-row alignment). */
   detailColumnWidth?: number;
   /** Fixed column width for an optional left label prefix. */
@@ -67,6 +78,17 @@ interface OverlayOptionRowProps {
   width: number;
   onPress?: () => void;
 }
+
+type PickerStatus = { text: string; tone: "live" | "ok" | "off" };
+
+const STATUS_TONE: Record<PickerStatus["tone"], { glyph: string; color: (t: DisplayTheme) => string }> = {
+  live: { glyph: "●", color: (t) => t.colors.green },
+  ok: { glyph: "✓", color: (t) => t.colors.accentDim },
+  off: { glyph: "—", color: (t) => t.colors.muted },
+};
+
+/** 线路牌行首色标占的列数：1 格色标 + 1 格间隔。 */
+const SPINE_WIDTH = 2;
 
 const SEMANTIC_COLOR_MAP: Record<string, (t: DisplayTheme) => string> = {
   success: (t) => t.colors.green,
@@ -81,6 +103,11 @@ function OverlayOptionRow({
   labelParts,
   detail,
   detailColor,
+  spine,
+  status,
+  statusColumnWidth,
+  section,
+  rail,
   detailColumnWidth,
   labelPrefixColumnWidth,
   selected,
@@ -91,6 +118,78 @@ function OverlayOptionRow({
   const isSelected = selected && !disabled;
   const fg = disabled ? theme.colors.muted : isSelected ? theme.colors.accent : theme.colors.dim;
   const prefix = isSelected ? "❯ " : "  ";
+
+  // 线路牌行：色标列 + 标记 + 名称 + detail/状态灯列；节标题行用品牌色 + 点线。
+  if (rail || section || spine !== undefined || status !== undefined) {
+    const spineColor = resolveSpineColor(theme, spine);
+    const statusWidth = status
+      ? Math.max(statusColumnWidth ?? 0, stringWidth(status.text) + 3)
+      : (statusColumnWidth ?? 0);
+    const detailWidth = detail !== undefined
+      ? Math.max(detailColumnWidth ?? 0, stringWidth(detail))
+      : (detailColumnWidth ?? 0);
+    const detailFg = detailColor
+      ? SEMANTIC_COLOR_MAP[detailColor]?.(theme) ?? theme.colors.muted
+      : theme.colors.muted;
+    if (section) {
+      const titleWidth = Math.min(Math.max(4, stringWidth(label)), Math.max(4, width - SPINE_WIDTH - detailWidth - statusWidth - 2));
+      const leaderWidth = Math.max(1, width - SPINE_WIDTH - titleWidth - detailWidth - statusWidth - 1);
+      return (
+        <box flexDirection="row" width="100%">
+          <text fg={spineColor} content={"▐ "} flexShrink={0} wrapMode="none" />
+          <text
+            fg={spineColor}
+            content={truncateToWidth(label, titleWidth)}
+            width={titleWidth}
+            flexShrink={0}
+            wrapMode="none"
+            truncate
+          />
+          <text fg={theme.colors.muted} content={` ${"·".repeat(leaderWidth - 1)}`} width={leaderWidth} flexShrink={0} wrapMode="none" />
+          {detailWidth > 0 ? (
+            <text fg={theme.colors.muted} content={truncateToWidth(detail ?? "", detailWidth)} width={detailWidth} flexShrink={0} wrapMode="none" truncate />
+          ) : null}
+          {statusWidth > 0 ? <text fg={theme.colors.muted} content={" ".repeat(statusWidth)} width={statusWidth} flexShrink={0} wrapMode="none" /> : null}
+        </box>
+      );
+    }
+    const leadWidth = SPINE_WIDTH + 2;
+    const labelWidth = Math.max(4, width - leadWidth - detailWidth - statusWidth);
+    const tone = status ? STATUS_TONE[status.tone] : undefined;
+    return (
+      <SelectableRow
+        hoverBackgroundColor={theme.colors.border}
+        onPress={disabled ? undefined : onPress}
+      >
+        <box flexDirection="row" width="100%">
+          <text fg={isSelected ? theme.colors.accent : spineColor} content={"▐ "} flexShrink={0} wrapMode="none" />
+          <text fg={theme.colors.accent} content={isSelected ? "❯ " : "  "} width={2} flexShrink={0} wrapMode="none" />
+          <text
+            fg={isSelected ? theme.colors.text : theme.colors.dim}
+            content={truncateToWidth(label, labelWidth)}
+            width={labelWidth}
+            flexGrow={1}
+            flexShrink={1}
+            wrapMode="none"
+            truncate
+          />
+          {detailWidth > 0 ? (
+            <text fg={detailFg} content={truncateToWidth(detail ?? "", detailWidth)} width={detailWidth} flexShrink={0} wrapMode="none" truncate />
+          ) : null}
+          {statusWidth > 0 ? (
+            <text
+              fg={status && tone ? tone.color(theme) : theme.colors.muted}
+              content={status && tone ? truncateToWidth(` ${tone.glyph} ${status.text}`, statusWidth) : " ".repeat(statusWidth)}
+              width={statusWidth}
+              flexShrink={0}
+              wrapMode="none"
+              truncate
+            />
+          ) : null}
+        </box>
+      </SelectableRow>
+    );
+  }
 
   // Three-column rows (used by the skills picker): name on the left, a
   // flexible description in the middle, and the enable state on the right.
@@ -303,7 +402,7 @@ export function CommandPickerView(
   const { start, end } = getCommandPickerVisibleRange(picker);
   const visibleOptions = level.options.slice(start, end);
   const inlineInputLines = (picker.noteEditing || picker.customInputMode) ? 2 : 0;
-  const hintLine = picker.inputArea ? 0 : 1;
+  const hintLine = 1;
   const titleLine = 1;
   const pickerHeight = titleLine + visibleOptions.length + inlineInputLines + hintLine;
   const rootTitle = picker.title ?? picker.commandName;
@@ -315,7 +414,9 @@ export function CommandPickerView(
     Array.isArray(option.children) && option.children.length > 0,
   );
   const pickerText = createUiText(language);
-  const inlineTitle = picker.commandName === "/model"
+  const inlineTitle = picker.commandName === "/provider"
+    ? pickerText.get(["Commands", "/provider", "title"])
+    : picker.commandName === "/model"
     ? pickerText.get(["Views", "commandPicker", modelPickerHasBranches ? "selectProvider" : "selectModel"])
     : picker.commandName === "/agents"
       ? pickerText.get(["Views", "commandPicker", "selectRole"])
@@ -326,16 +427,32 @@ export function CommandPickerView(
           : picker.inputArea && !title
             ? pickerText.get(["Views", "commandPicker", "select"])
             : title;
+  // 面包屑挂在标题右侧，已含路径的标题不重复。
+  const crumb = path.length > 0 ? path.join(" › ") : "";
+  const heading = crumb && !inlineTitle.includes(crumb) ? `${inlineTitle} › ${crumb}` : inlineTitle;
 
   // Compute max detail width for column alignment
   const hasAnyDetail = level.options.some(o => o.detail !== undefined);
   const detailColumnWidth = hasAnyDetail
     ? Math.max(...level.options.map(o => stringWidth(o.detail ?? "")))
     : 0;
+  const hasAnyStatus = level.options.some(o => o.status !== undefined);
+  const statusColumnWidth = hasAnyStatus
+    ? Math.max(...level.options.map(o => (o.status ? stringWidth(o.status.text) + 3 : 0)))
+    : 0;
   const hasAnyLabelPrefix = level.options.some(o => o.labelPrefix !== undefined);
   const labelPrefixColumnWidth = hasAnyLabelPrefix
     ? Math.max(...level.options.map(o => stringWidth(o.labelPrefix ?? "") + 2))
     : 0;
+  // 三列技能行保留原排版；其余选择器统一走线路牌排版。
+  const rail = !hasAnyLabelPrefix;
+
+  const selectableTotal = level.options.filter((option) => !option.disabled).length;
+  const selectableRank = level.options
+    .slice(0, Math.min(level.selected + 1, level.options.length))
+    .filter((option) => !option.disabled).length;
+  const headingCount = `${pickerText.get(["Views", "commandPicker", "optionCount"], { count: selectableTotal })}`
+    + (selectableTotal > 0 ? `  ${selectableRank}/${selectableTotal}` : "");
 
   const isOnCustomInputOption = isCommandPickerCustomInputOption(picker);
   const showTabHint = picker.allowNote && !isOnCustomInputOption;
@@ -347,7 +464,18 @@ export function CommandPickerView(
 
   return (
     <OverlayFrame theme={theme} height={pickerHeight}>
-      <text fg={theme.colors.accent} content={truncateToWidth(picker.inputArea ? inlineTitle : title, contentWidth)} />
+      <box flexDirection="row" width="100%">
+        <text fg={theme.colors.accent} content={"▌ "} flexShrink={0} wrapMode="none" />
+        <text
+          fg={theme.colors.accent}
+          content={truncateToWidth(heading, Math.max(4, contentWidth - stringWidth(headingCount) - 4))}
+          flexGrow={1}
+          flexShrink={1}
+          wrapMode="none"
+          truncate
+        />
+        <text fg={theme.colors.muted} content={headingCount} flexShrink={0} wrapMode="none" />
+      </box>
       {visibleOptions.map((item, index) => {
         const actualIndex = start + index;
         return (
@@ -359,6 +487,11 @@ export function CommandPickerView(
             labelParts={item.labelParts}
             detail={item.detail}
             detailColor={item.detailColor}
+            spine={item.spine}
+            status={item.status}
+            statusColumnWidth={statusColumnWidth}
+            section={item.section}
+            rail={rail}
             detailColumnWidth={detailColumnWidth}
             labelPrefixColumnWidth={labelPrefixColumnWidth}
             selected={actualIndex === level.selected}
@@ -391,7 +524,7 @@ export function CommandPickerView(
           />
         </box>
       )}
-      {!picker.inputArea ? <text fg={theme.colors.dim} content={truncateToWidth(hintText, contentWidth)} /> : null}
+      <text fg={theme.colors.dim} content={truncateToWidth(hintText, contentWidth)} />
     </OverlayFrame>
   );
 }
