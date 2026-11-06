@@ -8,7 +8,7 @@ import { TASK_UPDATE_TOOL } from "../../src/tools/tasks.js";
 /**
  * 工具契约与角色文档的一致性：
  * - 数值分页参数在 schema 里就声明 >= 1（模型看得到，不用等运行时拒绝）；
- * - 描述与六份 tools.md 都写明“省略 tail_lines 从第 1 行读”；
+ * - 描述与四份 tools.md 都写明“省略 tail_lines 从第 1 行读”；
  * - `edit` 的零参数正文补丁契约与 worker tools.md 保持同步；
  * - `memory` 同样零参数，且只在根会话的角色文档里出现；
  * - 任务状态文案是条件式的，单步任务不需要先建任务。
@@ -40,7 +40,7 @@ describe("tool schema guidance", () => {
   });
 
   it("keeps the same read rules in the role prompts", () => {
-    for (const role of ["guard", "merger", "queen", "reviewer", "scout", "worker"]) {
+    for (const role of ["queen", "reviewer", "scout", "worker"]) {
       const text = readFileSync(`prompts/templates/${role}/tools.md`, "utf8");
       expect(text, role).toContain("omit it to read from line 1");
       expect(text, role).toContain("all paging values must be >= 1");
@@ -74,7 +74,7 @@ describe("tool schema guidance", () => {
     expect(queen).toContain("- git提交信息需单行中文，无空格，精简概括");
 
     // 子角色没有这个工具，文档里也不许出现（文档 ⊆ 授权之外的正向约束）。
-    for (const role of ["worker", "scout", "reviewer", "guard", "merger"]) {
+    for (const role of ["worker", "scout", "reviewer"]) {
       const text = readFileSync(`prompts/templates/${role}/tools.md`, "utf8");
       expect(text, role).not.toContain("### `memory`");
     }

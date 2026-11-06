@@ -16,7 +16,7 @@ import type { LogSessionMeta } from "../../config/session-meta.js";
 import type { ProgressLevel } from "../../logging/progress.js";
 import { ToolResult } from "../../providers/response.js";
 import type { Session } from "../../session.js";
-import { getAgentRoleLabel } from "../../swarm/types.js";
+import { getAgentRoleLabel } from "../subagent-settings.js";
 import {
   migrateMessageEnvelope,
   type ArchivedChildRecord,

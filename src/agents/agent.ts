@@ -27,7 +27,7 @@ import type { ToolExecutor } from "../tools/executor-types.js";
 // 输出前缀检测
 // ------------------------------------------------------------------
 
-/** 某些 provider 发出的"无可见回复"标记（用于 SwarmCoordinator 协调信号）。 */
+/** 某些 provider 发出的"无可见回复"标记（用于抑制空回复渲染与注入）。 */
 export const NO_REPLY_MARKER = "<NO_REPLY>";
 
 /** 判断助手输出是否为无回复哨兵。 */

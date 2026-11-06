@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { Config } from "../../src/config/loader.js";
 import { loadTemplate, loadTemplates, validateTemplate } from "../../src/prompts/templates.js";
-import { AGENT_ROLE_LABELS, AgentRole } from "../../src/swarm/types.js";
+import { AGENT_ROLE_LABELS, AgentRole } from "../../src/session/subagent-settings.js";
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -23,7 +23,7 @@ function makeConfig(): Config {
 }
 
 describe("template type validation", () => {
-  it("uses only the six canonical built-in role IDs", () => {
+  it("uses only the four canonical built-in role IDs", () => {
     const root = join(process.cwd(), "prompts", "templates");
     const names = readdirSync(root)
       .filter((name) => {
@@ -34,7 +34,7 @@ describe("template type validation", () => {
         }
       })
       .sort();
-    expect(names).toEqual(["guard", "merger", "queen", "reviewer", "scout", "worker"]);
+    expect(names).toEqual(["queen", "reviewer", "scout", "worker"]);
     for (const name of names) {
       expect(validateTemplate(join(root, name))).toBeNull();
     }
@@ -43,8 +43,6 @@ describe("template type validation", () => {
       [AgentRole.Scout]: "Scout",
       [AgentRole.Worker]: "Worker",
       [AgentRole.Reviewer]: "Reviewer",
-      [AgentRole.Guard]: "Guard",
-      [AgentRole.Merger]: "Merger",
     });
   });
 
@@ -64,7 +62,7 @@ describe("template type validation", () => {
     expect(toolsPrompt).toContain("do not redo an investigation a child already completed with evidence");
   });
 
-  it("keeps role tool boundaries aligned with the six built-in templates", () => {
+  it("keeps role tool boundaries aligned with the four built-in templates", () => {
     const templates = loadTemplates(
       join(process.cwd(), "prompts", "templates"),
       makeConfig(),
@@ -76,20 +74,20 @@ describe("template type validation", () => {
     );
     const names = (role: string) => new Set((templates[role]?.tools ?? []).map((tool) => tool.name));
     expect(names("queen")).not.toContain("bash");
-    for (const role of ["queen", "scout", "worker", "reviewer", "guard", "merger"]) {
+    for (const role of ["queen", "scout", "worker", "reviewer"]) {
       expect(names(role), role).toContain("web_search");
       expect(names(role), role).toContain("web_fetch");
     }
-    for (const role of ["scout", "worker", "reviewer", "guard", "merger"]) {
+    for (const role of ["scout", "worker", "reviewer"]) {
       expect(names(role), role).toContain("bash");
     }
     expect(names("worker")).toContain("edit");
-    for (const role of ["queen", "scout", "merger", "reviewer", "guard"]) {
+    for (const role of ["queen", "scout", "reviewer"]) {
       expect(names(role), role).not.toContain("edit");
     }
   });
 
-  it("keeps the six role prompts explicit about ownership and bounded handoffs", () => {
+  it("keeps the four role prompts explicit about ownership and bounded handoffs", () => {
     const templates = loadTemplates(
       join(process.cwd(), "prompts", "templates"),
       makeConfig(),
@@ -104,9 +102,14 @@ describe("template type validation", () => {
     expect(templates.queen?.systemPrompt).toContain("Do not edit workspace files");
     expect(templates.scout?.systemPrompt).toContain("read-only investigation agent");
     expect(templates.worker?.systemPrompt).toContain("Never spawn, delegate to, or create another agent");
-    expect(templates.reviewer?.systemPrompt).toContain("independent quality reviewer");
-    expect(templates.guard?.systemPrompt).toContain("independent safety and recovery reviewer");
-    expect(templates.merger?.systemPrompt).toContain("read-only synthesizer");
+    expect(templates.reviewer?.systemPrompt).toContain("independent quality and safety reviewer");
+    // Guard 与 Merger 已删除：安全面并入 Reviewer，汇总留在 Queen。
+    expect(templates.reviewer?.systemPrompt).toContain("Check the safety surface");
+    expect(templates.reviewer?.systemPrompt).toContain("A stray backup file is not a rollback strategy");
+    expect(templates.reviewer?.systemPrompt).toContain("branch synthesis and the acceptance decision belong to Queen");
+    expect(templates.queen?.systemPrompt).not.toContain("Use Merger");
+    expect(templates.queen?.systemPrompt).not.toContain("Use Guard");
+    expect(templates.queen?.systemPrompt).toContain("There is no synthesis node");
 
     // Queen 无 shell，必须把命令式验证派给 Scout，而不是直接停下。
     expect(templates.queen?.systemPrompt).toContain("A missing tool is a delegation trigger");
@@ -129,9 +132,9 @@ describe("template type validation", () => {
     expect(templates.worker?.systemPrompt).toContain('"open_questions"');
     expect(templates.scout?.systemPrompt).toContain("For web research");
     expect(templates.worker?.systemPrompt).toContain("`web_search` / `web_fetch`");
-    expect(templates.merger?.systemPrompt).toContain("focused, non-destructive verification command");
+    expect(templates.reviewer?.systemPrompt).toContain("Safety verdict");
 
-    for (const role of ["queen", "scout", "reviewer", "guard", "merger"]) {
+    for (const role of ["queen", "scout", "reviewer", "worker"]) {
       expect(templates[role]?.systemPrompt).toContain("Context Boundary");
       expect(templates[role]?.systemPrompt).toContain("swarmflow-handoff");
     }

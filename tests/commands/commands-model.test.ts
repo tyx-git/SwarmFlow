@@ -89,7 +89,7 @@ describe("/model command", () => {
     expect(registry.lookup("/agents")?.picker?.mode).toBe("single");
   });
 
-  it.each(["queen", "scout", "worker", "reviewer", "guard", "merger"])(
+  it.each(["queen", "scout", "worker", "reviewer"])(
     "saves /agents model and thinking depth for the %s role",
     async (role) => {
       process.env["OPENAI_API_KEY"] = "sk-openai";
@@ -156,13 +156,13 @@ describe("/model command", () => {
     };
     const options = cmd!.options!({ session });
     expect(options.map((option) => option.value)).toEqual([
-      "queen", "scout", "worker", "reviewer", "guard", "merger",
+      "queen", "scout", "worker", "reviewer",
     ]);
     expect(options.find((option) => option.value === "scout")?.label).toMatch(/(?:继承 Queen 当前模型|Inherit Queen current model) \(openai\/gpt-5\.4 off\)/);
 
     const saves = vi.fn();
     const picker = vi.fn()
-      .mockResolvedValueOnce({ value: "guard" })
+      .mockResolvedValueOnce({ value: "reviewer" })
       .mockResolvedValueOnce({ value: "my-openai" })
       .mockResolvedValueOnce({ value: "high" });
     const configuredSession: any = {
@@ -185,7 +185,7 @@ describe("/model command", () => {
     expect(pickerTitles[2]).toMatch(/思考深度|Thinking depth/);
     expect(saves).toHaveBeenCalledWith(expect.objectContaining({
       version: 1,
-      roles: { guard: expect.objectContaining({ model_id: "gpt-5.4", thinking_level: "high" }) },
+      roles: { reviewer: expect.objectContaining({ model_id: "gpt-5.4", thinking_level: "high" }) },
     }));
   });
 

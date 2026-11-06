@@ -3,14 +3,15 @@
 import { join } from "node:path";
 
 import { createUiText, getUiLanguage, type UiText } from "../../ui/text.js";
-import type { SubagentRoleSettings, SubagentSettings } from "../../session/subagent-settings.js";
-import { resolveRoleModel, type ResolvedRoleModel } from "../../session/role-model-resolver.js";
 import {
   AGENT_ROLE_IDS,
   AGENT_ROLE_LABELS,
   isAgentRoleId,
+  type SubagentRoleSettings,
+  type SubagentSettings,
   type AgentRole,
-} from "../../swarm/types.js";
+} from "../../session/subagent-settings.js";
+import { resolveRoleModel, type ResolvedRoleModel } from "../../session/role-model-resolver.js";
 import { persistRuntimeModelConfig, promptThinkingLevel } from "./persistence.js";
 import { pickResolvedModelSelection } from "./selection-flow.js";
 import { type CommandContext, type CommandOption, type CommandOptionsContext } from "../types.js";

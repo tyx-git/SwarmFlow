@@ -5,7 +5,7 @@ import type {
   InlineResultData,
 } from "./types.js";
 import type { FileModifyDisplayData } from "../../../src/patches/hunk.js";
-import { splitTaskHandoffForDisplay } from "../../../src/swarm/task-handoff.js";
+import { splitTaskHandoffForDisplay } from "./handoff-blocks.js";
 import { findPayloadBlocks, removePayloadBlocks } from "../../../src/blocks/payload-blocks.js";
 import { getToolProfile } from "./tool-profiles.js";
 import { formatDuration } from "../display/utils/format.js";

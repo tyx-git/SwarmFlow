@@ -49,7 +49,7 @@ export { mergeConsecutiveSameRole } from "./context/message-merging.js";
 // -- Agent ---------------------------------------------------------------
 /**
  * Agent 核心执行单元。
- * isNoReply / NO_REPLY_MARKER 用于检测蜂群协调信号。
+ * isNoReply / NO_REPLY_MARKER 用于识别 provider 的"无可见回复"哨兵。
  */
 export { Agent, type AgentResult, isNoReply, NO_REPLY_MARKER } from "./agents/agent.js";
 
@@ -188,50 +188,6 @@ export type {
   ConversationEntryKind,
   LaunchOptions,
 } from "./ui/contracts.js";
-
-// -- Swarm（蜂群编排） -------------------------------------------------
-/**
- * 蜂群编排核心类型和函数。
- * SwarmCoordinator：编排多个 Agent 的执行；
- * AgentPool：管理并发 Agent 池；
- * MessageBus：Agent 间消息传递；
- * TaskDecomposer：将任务分解为 DAG；
- * BUILTIN_PATTERNS：五种内置编排模式（扇出/扇入、流水线等）。
- */
-export {
-  SwarmCoordinator,
-  SwarmExecutor,
-  AgentPool,
-  MessageBus,
-  ContextBridge,
-  TaskDecomposer,
-  SwarmScheduler,
-  AgentRole,
-  SwarmTopology,
-  AgentLifecycle,
-  RecoveryStrategy,
-  DecompositionStrategy,
-  BUILTIN_PATTERNS,
-  getPattern,
-  listPatterns,
-  createDAG,
-  validateDAG,
-  serializeDAG,
-  mergeResults,
-  attemptRecovery,
-} from "./swarm/index.js";
-
-export type {
-  SwarmAgentHandle,
-  TaskResult,
-  ExecutionResult,
-  TaskDAG,
-  ExecutionPlan,
-  SwarmPattern,
-  SwarmMessage,
-  SwarmSnapshot,
-  TaskNode,
-} from "./swarm/index.js";
 
 // -- 版本 --------------------------------------------------------------
 /** 当前 SwarmFlow 版本号。 */

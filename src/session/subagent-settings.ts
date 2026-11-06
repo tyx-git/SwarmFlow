@@ -1,8 +1,47 @@
+/**
+ * 内置角色名册与按角色保存的模型配置。
+ *
+ * 名册就是 `prompts/templates/` 下的四个内置模板：Queen 统筹并自己汇总分支结果，
+ * Scout 用 bash 取证但不写，Worker 是唯一有写权限的角色，Reviewer 用全新上下文
+ * 对一份改动做对抗复核兼安全面裁决。曾经还有 Guard（与 Reviewer 同一份工具面、
+ * 检查项已被 Reviewer 覆盖）与 Merger（无独立能力，输入靠未接线的 DAG 层注入），
+ * 两者已删除。这里同时是配置读写方，所以角色校验与配置文件共用一份权威名册。
+ */
+
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 
-import { isAgentRoleId, type AgentRole } from "../swarm/types.js";
+/** 内置 Agent 角色。 */
+export enum AgentRole {
+  /** 编排者 — 持有用户目标、根任务图与验收权。仅一个活动实例。 */
+  Queen = "queen",
+  /** 只读取证者 — 有 bash（命令与联网取证），无写权限。 */
+  Scout = "scout",
+  /** 实现者 — 唯一持有 `edit`，并跑自己这次的验证。 */
+  Worker = "worker",
+  /** 独立复核者 — 全新上下文复核一份改动，兼管安全面。 */
+  Reviewer = "reviewer",
+}
+
+export const AGENT_ROLE_IDS: readonly AgentRole[] = Object.values(AgentRole) as AgentRole[];
+
+export function isAgentRoleId(value: string): value is AgentRole {
+  return AGENT_ROLE_IDS.includes(value as AgentRole);
+}
+
+/** 每个角色的人类可读标签。 */
+export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
+  [AgentRole.Queen]: "Queen",
+  [AgentRole.Scout]: "Scout",
+  [AgentRole.Worker]: "Worker",
+  [AgentRole.Reviewer]: "Reviewer",
+};
+
+/** 将角色 ID转换为界面显示名称；自定义模板保持原名。 */
+export function getAgentRoleLabel(role: string): string {
+  return AGENT_ROLE_LABELS[role as AgentRole] ?? role;
+}
 
 /** 单个角色的模型与思考深度配置。 */
 export interface SubagentRoleSettings {

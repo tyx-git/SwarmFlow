@@ -6,9 +6,9 @@
 
 截至 2026-10，Claude Code 已有子代理、自动压缩与 checkpoint 回退，OpenCode 支持 75+ Provider，Codex CLI 锁定 OpenAI 端点；Agent-Manager、Pane 这类编排器管理的是多个互相独立的会话。SwarmFlow 走的是另一条路——用模型分工把成本压下来，用工程规则把质量锁住：
 
-- **按角色配模型，成本自己定**：Queen 与 Reviewer 这类需要判断力的角色用强模型，Scout/Worker/Merger 的执行类工作派给便宜的弱模型；每个角色独立设置模型与思考深度（`/agents`），未设置的角色自动回落到 Queen 当前模型。大头 token 花在便宜模型上，强模型只花在决策与把关上。
-- **工程规则内置，不靠模型自觉**：六角色互锁（独立审查、安全检查、结构化 JSON 交接）；压缩失败保留原历史重试、审批挂起在压缩期被降级、回合级 `/rewind` 连文件副作用一起回退。
-- **进程内多智能体编排**：Queen 把任务拆成 DAG，同一运行时内调度并行子代理，Merger 合并结果——不是拉起多个独立 CLI 会话，也没有外部编排器。
+- **按角色配模型，成本自己定**：Queen 与 Reviewer 这类需要判断力的角色用强模型，Scout/Worker 的执行类工作派给便宜的弱模型；每个角色独立设置模型与思考深度（`/agents`），未设置的角色自动回落到 Queen 当前模型。大头 token 花在便宜模型上，强模型只花在决策与把关上。
+- **工程规则内置，不靠模型自觉**：四角色互锁（独立复核兼安全面检查、结构化 JSON 交接）；压缩失败保留原历史重试、审批挂起在压缩期被降级、回合级 `/rewind` 连文件副作用一起回退。
+- **进程内多智能体**：Queen 在同一个 Node 进程里派生子代理会话，用根任务板维护依赖边与阻塞关系，`await_event` 等结果，不拉起多个独立 CLI 会话，也没有外部编排器。
 - **端点与账号自由**：Anthropic / OpenAI / Gemini 三类端点形态，另有 DeepSeek、Kimi、GLM、Qwen、MiniMax、小米、OpenRouter、GitHub Copilot 适配；`base_url` 官方端点或中转站任配；OpenAI（ChatGPT 账号）与 GitHub Copilot 支持 OAuth 登录，其余用 API key。
 
 单代理场景下它也是一个普通 CLI：MCP、skills（兼容 Codex / Claude Code）、后台 shell、中途结构化提问都有。
@@ -24,14 +24,12 @@ swarmflow        # 启动会话
 
 | 角色 | 职责 |
 |------|------|
-| Queen | 把请求分解为 DAG |
-| Scout | 只读代码库探索 |
+| Queen | 理解需求、拆任务、派发、自己汇总并验收 |
+| Scout | 只读代码库探索与命令取证（有 shell，无写权限） |
 | Worker | 文件与 shell 全权限实施 |
-| Reviewer | 独立代码审查与验证 |
-| Guard | 安全与恢复检查 |
-| Merger | 合并多个代理的结果 |
+| Reviewer | 用全新上下文独立复核改动与安全面 |
 
-内置五种编排模式：扇出/扇入、流水线、集成、辩论、探索。也可以让 Queen 自己按任务拆分。
+Queen 用根任务板（`task_create` / `task_update`）连依赖边并按需派发，不是固定的编排模板。
 
 ## Provider 兼容性
 
@@ -67,16 +65,15 @@ DeepSeek 的 Anthropic 兼容端点会自动启用 prefix cache，无需手动�
 ```
 ┌────────────────────────────────────────────────────────┐
 │  用户输入                                              │
-│      │                                                 │
+│                                                        │
 │      ▼                                                 │
-│  TaskDecomposer  →  TaskDAG  →  SwarmScheduler         │
-│                                            │           │
-│                                            ▼           │
-│  SwarmCoordinator  →  AgentPool  →  并行 Agent         │
-│       │                    ▲                           │
-│       │                    └── MessageBus + Recovery   │
-│       ▼                                                 │
-│  ResultMerger → 最终输出                                │
+│  Queen 会话  →  根任务板（依赖边、阻塞关系、结果回填） │
+│                                                        │
+│      ▼                                                 │
+│  spawn 子代理：Scout / Worker / Reviewer（同进程并行） │
+│                                                        │
+│      ▼                                                 │
+│  await_event 收结果  →  Queen 汇总、验收、向用户交付   │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -153,7 +150,7 @@ gui/
 ├── shared/rpc.ts     # 渲染器 ↔ 子进程共享 RPC 类型
 └── styles/           # Tailwind v4 + 明暗主题 token
 
-prompts/              # Agent 角色模板（queen/scout/worker/reviewer/guard/merger）
+prompts/              # Agent 角色模板（queen/scout/worker/reviewer）
 skills/               # 可插拔 Agent Skills（兼容 Codex / Claude Code）
 tests/                # vitest 测试
 scripts/              # 构建与安装脚本（SEA 打包、install.sh/ps1）

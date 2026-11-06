@@ -1,6 +1,6 @@
 import type { ModelConfig } from "../config/types.js";
 import { resolvePersistedModelSelection, type PersistedModelSelection } from "../models/selection.js";
-import { isAgentRoleId, type AgentRole } from "../swarm/types.js";
+import { isAgentRoleId, type AgentRole } from "./subagent-settings.js";
 import type { SessionLike } from "./contract.js";
 import type { SubagentSettings } from "./subagent-settings.js";
 

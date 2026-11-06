@@ -22,7 +22,7 @@ import { ensureTaskTools } from "../tools/runtime.js";
 import { argOptionalString, argRequiredString } from "../tools/arg-validation.js";
 import { readResumeHint } from "../tasks/resume.js";
 import { buildContinuationPrompt } from "./prompts.js";
-import { isAgentRoleId } from "../swarm/types.js";
+import { isAgentRoleId } from "./subagent-settings.js";
 
 /** 任务清单存储所需的会话侧成员（B 策略下由 Session 公开）。 */
 export interface TaskListHost {
@@ -181,7 +181,7 @@ export function execTaskCreate(host: TaskListHost, args: Record<string, unknown>
   const role = argOptionalString("task_create", args, "role");
   if (role instanceof ToolResult) return role;
   if (role && !isAgentRoleId(role.trim())) {
-    return ToolResult.error("Error: 'role' must be queen, scout, worker, reviewer, guard, or merger.");
+    return ToolResult.error("Error: 'role' must be queen, scout, worker, or reviewer.");
   }
   const metadata = argTaskMetadata(args["metadata"]);
   if (metadata instanceof ToolResult) return metadata;
@@ -332,7 +332,7 @@ export function execTaskUpdate(host: TaskListHost, args: Record<string, unknown>
     if (value !== undefined) fields[field] = value;
   }
   if (fields.role && !isAgentRoleId(fields.role.trim())) {
-    return ToolResult.error("Error: 'role' must be queen, scout, worker, reviewer, guard, or merger.");
+    return ToolResult.error("Error: 'role' must be queen, scout, worker, or reviewer.");
   }
   if (fields.role) fields.role = fields.role.trim();
 

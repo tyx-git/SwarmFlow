@@ -55,6 +55,12 @@ Terminate tracked background shells (whole process group, default TERM). The log
 `await_event()`
 Block until a tracked background shell exits or a message arrives; returns immediately when nothing is waitable. Prefer it over repeatedly checking shell output.
 
+## Safety surface
+
+Check the four things a functional review misses: secret and private-data exposure (source, generated artifacts, quoted evidence, and anything sent to an external service), permission and sensitive-path boundaries, destructive or irreversible operations including newly added dependencies and widened privileges, and the recovery path — what state exists after an interruption or partial write, and whether a real rollback is available rather than a stray backup file.
+
+Tie every finding to a reachable trigger and a concrete impact; label a plausible risk as plausible and an absent check as missing evidence. State the mitigation for Queen to assign — do not change permissions, delete files, or apply fixes yourself.
+
 ## Review coverage
 
 `task_create(subject, description, active_form?, metadata?)` · `task_list()` · `task_get(task_id)` · `task_update(task_id, status?, owner?, metadata?, add_blocks?, add_blocked_by?, …)`

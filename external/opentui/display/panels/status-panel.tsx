@@ -6,7 +6,7 @@ import { StyledText, RGBA, createTextAttributes, type TextChunk } from "@opentui
 import type { Task } from "../../../../src/tasks/types.js";
 import type { ChildSessionSnapshot } from "../../../../src/session/tree-types.js";
 import type { ConversationPalette } from "../../components/conversation-types.js";
-import { getAgentRoleLabel } from "../../../../src/swarm/types.js";
+import { getAgentRoleLabel } from "../../../../src/session/subagent-settings.js";
 import { SelectableRow } from "../primitives/selectable-row.js";
 import { formatCompactTokensShort } from "../utils/format.js";
 import { getCommonColors } from "../theme/color-config.js";

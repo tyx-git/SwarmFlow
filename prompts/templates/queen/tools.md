@@ -46,8 +46,8 @@ Register one DAG node: `subject`, `description`, planned `role`, and optional `a
 Create several tasks by calling this tool once per task in the same response. This is the session task list — `spawn`'s `task` argument is a one-off work packet, not a task-list entry.
 
 Queen owns this root list and all cross-role dependency edges. Set each node's `role` to its planned role, create root tasks before dispatch, then connect them with
-`task_update`. For the default coding DAG, Worker is blocked by Scout; Reviewer and Guard are both blocked by Worker;
-Merger is blocked by Worker, Reviewer, and Guard. Dispatch a task only after its blockers are complete.
+`task_update`. For the default coding DAG, Worker is blocked by Scout; Reviewer is blocked by Worker. Queen closes the graph and
+synthesizes the branch results itself — register no synthesis node. Dispatch a task only after its blockers are complete.
 
 ### `task_list`
 List every task with status, owner, unfinished blockers, and restart-interruption markers. Use `task_get` for the full description and dependency edges. After a session restart, a task may still read `in_progress` even though no previous executor is alive; treat that row as interrupted and follow its `resumeHint`, not as proof of live work.
@@ -93,7 +93,7 @@ Start a child agent. Two modes:
 - **`oneshot`** — runs one task and ends. The default for DAG work.
 - **`persistent`** — stays resident across turns and can receive later messages with `send`. Use it for work that needs steering after it starts, not as a default.
 
-Pass a predefined `template` (`scout`, `worker`, `reviewer`, `guard`, `merger`) or a user-managed `template_path` under the session artifacts directory. Give each child a complete task packet: objective, repository and working directory, authority, the absolute paths its work concerns, each labeled `create` (not yet existing) or `modify`, acceptance checks, expected concise handoff, and stop/escalation conditions. Refer to files and let the child inspect them; do not paste the conversation, unrelated reports, raw tool logs, large source excerpts, or full web pages. Keep the packet proportionate — the child reads the code itself. Scout may run non-destructive verification commands and web research; Worker runs the checks that are part of implementation and may consult official documentation. If a claim needs a command or external source you cannot access, dispatch Scout rather than stopping. If a tool above can answer it, answer it yourself before spawning.
+Pass a predefined `template` (`scout`, `worker`, `reviewer`) or a user-managed `template_path` under the session artifacts directory. Give each child a complete task packet: objective, repository and working directory, authority, the absolute paths its work concerns, each labeled `create` (not yet existing) or `modify`, acceptance checks, expected concise handoff, and stop/escalation conditions. Refer to files and let the child inspect them; do not paste the conversation, unrelated reports, raw tool logs, large source excerpts, or full web pages. Keep the packet proportionate — the child reads the code itself. Scout may run non-destructive verification commands and web research; Worker runs the checks that are part of implementation and may consult official documentation. If a claim needs a command or external source you cannot access, dispatch Scout rather than stopping. If a tool above can answer it, answer it yourself before spawning.
 
 Bind each root task to its chosen child ID with `task_update` before calling `spawn`. Keep Worker ownership exclusive. Workers cannot spawn or delegate.
 

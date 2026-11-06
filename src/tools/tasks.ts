@@ -34,7 +34,7 @@ export const TASK_CREATE_TOOL: ToolDef = {
     "- **subject**: brief actionable title in imperative form (e.g. \"Fix the login redirect\")\n" +
     "- **description**: what must be done, including context and acceptance criteria — enough for\n" +
     "  another agent to pick it up\n" +
-    "- **role** (optional): the planned role ID for this DAG node (`queen`, `scout`, `worker`, `reviewer`, `guard`, or `merger`)\n" +
+    "- **role** (optional): the planned role ID for this DAG node (`queen`, `scout`, `worker`, or `reviewer`)\n" +
     "- **active_form** (optional): present-continuous wording shown while the task is in progress\n" +
     "  (e.g. \"Fixing the login redirect\"); falls back to the subject\n\n" +
     "New tasks start as `pending`. Queen should create root work items first and use `task_update` to wire `add_blocks` / `add_blocked_by` before dispatch. A child may wire dependencies only among its own local tasks. Each Session has a separate list; child-local IDs are not root task IDs.",
@@ -51,7 +51,7 @@ export const TASK_CREATE_TOOL: ToolDef = {
       },
       role: {
         type: "string",
-        enum: ["queen", "scout", "worker", "reviewer", "guard", "merger"],
+        enum: ["queen", "scout", "worker", "reviewer"],
         description: "Planned role ID for this DAG node.",
       },
       active_form: {
@@ -184,7 +184,7 @@ export const TASK_UPDATE_TOOL: ToolDef = {
       },
       role: {
         type: "string",
-        enum: ["queen", "scout", "worker", "reviewer", "guard", "merger"],
+        enum: ["queen", "scout", "worker", "reviewer"],
         description: "New planned role ID for the task.",
       },
       active_form: {
