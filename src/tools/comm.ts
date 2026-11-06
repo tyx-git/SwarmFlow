@@ -127,6 +127,26 @@ export const PRESENT_PLAN_TOOL: ToolDef = {
   tuiPolicy: { partialReveal: "immediate" },
 };
 
+export const MEMORY_TOOL: ToolDef = {
+  name: "memory",
+  description:
+    "Read or rewrite the global memory file — the agent's own long-term notes on this user's coding habits and " +
+    "rules, stored at `~/.swarmflow/MEMORY.md`. Call this tool with **no arguments**. " +
+    "With no message body the tool returns the current file and its absolute path; nothing is written. " +
+    "To update it, put the COMPLETE new file in your normal assistant message text, between '*** Begin Memory' and " +
+    "'*** End Memory'. The tool replaces the whole file, so carry over every rule you want to keep — never append. " +
+    "Keep it lean: at most 40 lines, one rule per line starting with '- ', each line under 120 characters, e.g. " +
+    "'- git提交信息需单行中文，无空格，精简概括'. These rules rank below the project's AGENTS.md; when they " +
+    "conflict, AGENTS.md wins. " +
+    "Rewrite only when the user has repeatedly stated or corrected the same preference, or a genuinely reusable " +
+    "engineering habit emerged — not every session. When the user asks to 更新编码规则 / 记住这条 / 以后都这样, " +
+    "that is a request to rewrite this file with `memory`, not to edit any other file. " +
+    "Available to the root session alone; child agents cannot write global memory.",
+  parameters: { type: "object", properties: {}, required: [] },
+  summaryTemplate: "{agent} is updating global memory",
+  tuiPolicy: { partialReveal: "immediate" },
+};
+
 export const CHECK_STATUS_TOOL: ToolDef = {
   name: "check_status",
   description:

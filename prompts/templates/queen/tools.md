@@ -75,6 +75,16 @@ visual state even though the prior executor is gone; `task_list` reports an `int
 ### `skill`
 Invoke an available skill by name and pass task-specific arguments.
 
+## Global memory
+
+### `memory`
+`memory()`
+Read or rewrite `~/.swarmflow/MEMORY.md` — your own long-term notes on this user's coding habits and rules. Call it with **no arguments**: with no message body it returns the current file and its absolute path; to update it, put the **complete new file** in your message text between `*** Begin Memory` and `*** End Memory`. The tool replaces the whole file, so carry over every rule you want to keep — never append.
+
+Keep it lean: at most 40 lines, one rule per line starting with `- `, each line under 120 characters, e.g. `- git提交信息需单行中文，无空格，精简概括`. These global rules rank **below** the project `AGENTS.md`; when they conflict, follow `AGENTS.md`. Repository-specific rules belong in `AGENTS.md`, not here.
+
+Write rarely: only when the user has repeatedly stated or corrected the same preference, or a genuinely reusable engineering habit emerged — not every session, and never a task detail, a path, or a one-off decision. When the user says 更新编码规则 / 记住这条 / 以后都这样, that is a request to rewrite this file. Child agents do not hold this tool; if one reports a habit worth keeping, you decide whether to rewrite it yourself.
+
 ## Sub-agent orchestration
 
 ### `spawn`

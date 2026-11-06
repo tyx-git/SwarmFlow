@@ -1,8 +1,8 @@
 /**
  * 工具裸块载荷：把 assistant 正文里的标记块按顺序绑定给零参数工具调用。
  *
- * 通用逻辑（抽块、按工具分组顺序绑定、展示隐藏、日志回取）集中在这里，`edit` 与
- * `present_plan` 共用；再接长文本工具只需往 `PAYLOAD_BLOCK_SPECS` 加一条 spec。
+ * 通用逻辑（抽块、按工具分组顺序绑定、展示隐藏、日志回取）集中在这里，`edit`、
+ * `present_plan` 与 `memory` 共用；再接长文本工具只需往 `PAYLOAD_BLOCK_SPECS` 加一条 spec。
  * 补丁标记常量与行尾归一沿用 `patches/apply-patch/markers.js` 那一份唯一实现
  * （该模块无入站依赖，不会形成环），本文件不复制第二份。
  */
@@ -18,6 +18,10 @@ import {
 export const BEGIN_PLAN_MARKER = "*** Begin Plan";
 export const END_PLAN_MARKER = "*** End Plan";
 
+/** `memory` 的全局记忆块标记：正文是整份 MEMORY.md，不是补丁。 */
+export const BEGIN_MEMORY_MARKER = "*** Begin Memory";
+export const END_MEMORY_MARKER = "*** End Memory";
+
 /** 一个裸块工具：工具名 + 它的标记对。 */
 export interface PayloadBlockSpec {
   tool: string;
@@ -25,7 +29,7 @@ export interface PayloadBlockSpec {
   end: string;
 }
 
-/** `edit` 与 `present_plan` 各自的 spec；注册表由它们组成。 */
+/** 各裸块工具的 spec；注册表由它们组成，顺序只影响遍历起点，绑定按工具各自计数。 */
 export const EDIT_PAYLOAD_SPEC: PayloadBlockSpec = {
   tool: "edit",
   begin: BEGIN_PATCH_MARKER,
@@ -38,9 +42,16 @@ export const PLAN_PAYLOAD_SPEC: PayloadBlockSpec = {
   end: END_PLAN_MARKER,
 };
 
+export const MEMORY_PAYLOAD_SPEC: PayloadBlockSpec = {
+  tool: "memory",
+  begin: BEGIN_MEMORY_MARKER,
+  end: END_MEMORY_MARKER,
+};
+
 export const PAYLOAD_BLOCK_SPECS: readonly PayloadBlockSpec[] = [
   EDIT_PAYLOAD_SPEC,
   PLAN_PAYLOAD_SPEC,
+  MEMORY_PAYLOAD_SPEC,
 ];
 
 /** 按工具名取 spec；不是裸块工具时返回 null。 */

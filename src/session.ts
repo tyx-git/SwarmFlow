@@ -295,6 +295,7 @@ import {
   subscribeAsk,
   withAskRouting,
 } from "./session/ask-flow.js";
+import { execMemory } from "./session/memory-flow.js";
 import {
   buildCompactCheck,
   discardCompactAttemptEntries,
@@ -3167,6 +3168,7 @@ export class Session implements SessionLike {
         await_event: () => this._execAwaitEvent(),
         ask: (args) => this._execAsk(args),
         present_plan: (args, ctx) => this._execPresentPlan(args, ctx?.toolPayload),
+        memory: (args, ctx) => this._execMemory(args, ctx?.toolPayload),
         skill: (args) => this._execSkill(args),
         send: (args) => this._execSend(args),
         $web_search: (args) => toolBuiltinWebSearchPassthrough(args as Record<string, unknown>),
@@ -4657,6 +4659,11 @@ export class Session implements SessionLike {
 
   _execPresentPlan(args: Record<string, unknown>, toolPayload?: string): ToolResult {
     return execPresentPlan(this, args, toolPayload);
+  }
+
+  /** 全局记忆：无正文读 `~/.swarmflow/MEMORY.md`，有正文整体复写（路径是常量）。 */
+  _execMemory(args: Record<string, unknown>, toolPayload?: string): Promise<ToolResult> {
+    return execMemory(args, toolPayload, this._swarmflowHomeDir);
   }
 
   /**

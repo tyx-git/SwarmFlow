@@ -23,6 +23,7 @@ import {
   AWAIT_EVENT_TOOL,
   ASK_TOOL,
   PRESENT_PLAN_TOOL,
+  MEMORY_TOOL,
 } from "../tools/comm.js";
 import { executeTool } from "../tools/dispatch.js";
 import { ToolResult } from "../providers/response.js";
@@ -110,6 +111,7 @@ export function ensureCommTools(
   if (capabilities.includeKillShellTool) wanted.push(KILL_SHELL_TOOL);
   if (capabilities.includeAskTool) wanted.push(ASK_TOOL);
   if (capabilities.includePlanTool) wanted.push(PRESENT_PLAN_TOOL);
+  if (capabilities.includeMemoryTool) wanted.push(MEMORY_TOOL);
   // 注意：没有 reload 分支。重新加载是用户显式命令（/reload），
   // 模型链路已被移除；reloadConfigurationFromCommand() 不经过此处。
   for (const toolDef of wanted) {

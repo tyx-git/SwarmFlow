@@ -25,7 +25,7 @@ import type { PersistedRoleModelSelection, ResolvedRoleModel } from "./role-mode
  */
 const COMM_TOOL_NAMES = new Set([
   "spawn", "kill_agent", "check_status", "ask", "skill",
-  "bash_background", "send", "present_plan",
+  "bash_background", "send", "present_plan", "memory",
 ]);
 
 export interface SubAgentFactoryDeps {

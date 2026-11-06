@@ -267,12 +267,15 @@ export function assembleFullSystemPrompt(opts: AssembleOptions): string {
   if (globalContent) {
     prompt = prompt.trimEnd() +
       "\n\n---\n\n# Global Memory (MEMORY.md)\n\n" +
+      "Agent-managed long-term rules, rewritten only through the `memory` tool. They rank below the project " +
+      "AGENTS.md that follows: when the two conflict, AGENTS.md wins.\n\n" +
       globalContent;
   }
 
   if (projectContent) {
     prompt = prompt.trimEnd() +
       "\n\n---\n\n# Persistent Memory (AGENTS.md)\n\n" +
+      "Project rules. They outrank the global MEMORY.md above.\n\n" +
       projectContent;
   }
 

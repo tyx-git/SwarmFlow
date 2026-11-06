@@ -21,6 +21,11 @@ export interface SessionCapabilities {
    * 也不该把计划交给用户确认。
    */
   includePlanTool: boolean;
+  /**
+   * 全局记忆（memory）：只有根会话可持有。用户的编码习惯是在主会话里
+   * 反复表达的，子代理寿命短、不能问用户，写入只会灌入噪声。
+   */
+  includeMemoryTool: boolean;
   includeSkillTools: boolean;
   /** 任务清单工具（task_create / task_list / task_get / task_update）：主、子会话都可持有。 */
   includeTaskTools: boolean;
@@ -36,6 +41,7 @@ export const ROOT_SESSION_CAPABILITIES: SessionCapabilities = {
   includeKillShellTool: true,
   includeAskTool: true,
   includePlanTool: true,
+  includeMemoryTool: true,
   includeSkillTools: true,
   includeTaskTools: true,
   includeTaskControl: true,
@@ -54,6 +60,7 @@ export const CHILD_SESSION_CAPABILITIES: SessionCapabilities = {
   includeKillShellTool: true,
   includeAskTool: false,
   includePlanTool: false,
+  includeMemoryTool: false,
   includeSkillTools: false,
   // 子代理自己也要拆分并记录任务（清单为纯内存，随子会话消亡）
   includeTaskTools: true,

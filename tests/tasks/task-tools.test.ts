@@ -6,6 +6,7 @@ import {
   AWAIT_EVENT_TOOL,
   CHECK_STATUS_TOOL,
   KILL_AGENT_TOOL,
+  MEMORY_TOOL,
   SEND_TOOL,
   SPAWN_TOOL,
 } from "../../src/tools/comm.js";
@@ -26,6 +27,7 @@ describe("task tool definitions", () => {
       CHECK_STATUS_TOOL.name,
       AWAIT_EVENT_TOOL.name,
       SEND_TOOL.name,
+      MEMORY_TOOL.name,
       // reload 已从模型工具集移除，但 /reload 仍是用户命令名，
       // task_* 若占用该名会与命令撞名，故保留在防重名集合中。
       "reload",
@@ -144,6 +146,17 @@ describe("comm tool capabilities", () => {
     expect(names).toContain(KILL_SHELL_TOOL.name);
     expect(names).not.toContain("bash_output");
     expect(names).not.toContain("bash_background");
+  });
+
+  it("gives global memory to the root session only, appended last", () => {
+    const rootTools: ToolDef[] = [];
+    ensureCommTools(rootTools, ROOT_SESSION_CAPABILITIES);
+    expect(rootTools.at(-1)?.name).toBe(MEMORY_TOOL.name);
+
+    const childTools: ToolDef[] = [];
+    ensureCommTools(childTools, CHILD_SESSION_CAPABILITIES);
+    expect(childTools.map((t) => t.name)).not.toContain(MEMORY_TOOL.name);
+    expect(CHILD_SESSION_CAPABILITIES.includeMemoryTool).toBe(false);
   });
 });
 

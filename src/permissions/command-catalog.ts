@@ -25,6 +25,9 @@ export const WRITE_REVERSIBLE_TOOLS = new Set([
   "edit",
   // 任务清单写入仅改会话态，可逆且不触碰工作区文件
   "task_create", "task_update", "task_resume",
+  // memory 只写 ~/.swarmflow/MEMORY.md 这一个常量路径，落盘前留一代 .bak；
+  // 同目录的 settings.json / permissions.json 本来就是无人值守写入。
+  "memory",
 ]);
 
 /** 派生工具集合 */

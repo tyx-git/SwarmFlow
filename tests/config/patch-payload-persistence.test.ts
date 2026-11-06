@@ -39,4 +39,29 @@ describe("edit executionPayload persistence", () => {
     expect((capped.content as Record<string, unknown>)["executionPayload"]).toBeUndefined();
     expect((entry.content as Record<string, unknown>)["executionPayload"]).toBe(patch);
   });
+
+  it("strips a memory body the same way (剥离按载荷字段判定，不认工具名)", () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), "swarmflow-payload-persist-"));
+    cleanup.push(sessionDir);
+    const body = "*** Begin Memory\n- git提交信息需单行中文，无空格，精简概括\n*** End Memory";
+    const entry = createToolCall(
+      "tc-memory",
+      1,
+      0,
+      "memory",
+      {
+        id: "call_memory",
+        name: "memory",
+        arguments: {},
+        executionPayload: body,
+      } as never,
+      { toolCallId: "call_memory", toolName: "memory", agentName: "Primary", contextId: "ctx" },
+      "assistant",
+    );
+
+    const capped = capPersistedEntry(entry, { sessionDir });
+
+    expect((capped.content as Record<string, unknown>)["executionPayload"]).toBeUndefined();
+    expect((entry.content as Record<string, unknown>)["executionPayload"]).toBe(body);
+  });
 });

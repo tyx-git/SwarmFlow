@@ -49,6 +49,12 @@ describe("system prompt snapshot", () => {
       expect(skillsIdx).toBeGreaterThan(projectIdx);
       expect(prompt.indexOf("- alpha: first")).toBeLessThan(prompt.indexOf("- zeta: last"));
       expect(prompt).not.toContain("hidden");
+
+      // 优先级要写在注入的标题里，不能只靠出现顺序暗示；且声明必须落在各自正文之前。
+      expect(prompt.indexOf("AGENTS.md wins")).toBeGreaterThan(globalIdx);
+      expect(prompt.indexOf("AGENTS.md wins")).toBeLessThan(prompt.indexOf("GLOBAL-RULE"));
+      expect(prompt.indexOf("They outrank the global MEMORY.md above")).toBeGreaterThan(projectIdx);
+      expect(prompt.indexOf("They outrank the global MEMORY.md above")).toBeLessThan(prompt.indexOf("PROJECT-RULE"));
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(home, { recursive: true, force: true });

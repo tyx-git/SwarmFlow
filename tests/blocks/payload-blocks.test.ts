@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   EDIT_PAYLOAD_SPEC,
+  MEMORY_PAYLOAD_SPEC,
   PLAN_PAYLOAD_SPEC,
   extractCompletePayloadBlocks,
   findPayloadBlocks,
@@ -24,6 +25,7 @@ import type { LogEntry } from "../../src/context/entry/types.js";
 const PATCH_A = "*** Begin Patch\n*** Add File: a.txt\n+alpha\n*** End Patch";
 const PATCH_B = "*** Begin Patch\n*** Add File: b.txt\n+beta\n*** End Patch";
 const PLAN_1 = "*** Begin Plan\n# 计划\n- [ ] 步骤\n*** End Plan";
+const MEMORY_1 = "*** Begin Memory\n- git提交信息需单行中文，无空格，精简概括\n*** End Memory";
 
 function toolCall(id: string, callId: string, name: string, roundIndex = 0): LogEntry {
   return createToolCall(
@@ -41,8 +43,62 @@ describe("findPayloadSpec", () => {
   it("只认注册过的裸块工具", () => {
     expect(findPayloadSpec("edit")).toBe(EDIT_PAYLOAD_SPEC);
     expect(findPayloadSpec("present_plan")).toBe(PLAN_PAYLOAD_SPEC);
+    expect(findPayloadSpec("memory")).toBe(MEMORY_PAYLOAD_SPEC);
     expect(findPayloadSpec("read_file")).toBeNull();
     expect(findPayloadSpec(undefined)).toBeNull();
+  });
+});
+
+describe("memory 块", () => {
+  it("记忆块里的补丁标记只算正文，不会漏给同轮的 edit 调用", () => {
+    const text = [
+      "先记下规则：",
+      "*** Begin Memory",
+      "- 补丁示例长这样：",
+      PATCH_A,
+      "*** End Memory",
+    ].join("\n");
+
+    const payloads = resolveRoundPayloads(
+      [
+        { id: "memory-1", name: "memory" },
+        { id: "edit-1", name: "edit" },
+      ],
+      text,
+    );
+
+    expect(payloads.get("memory-1")).toContain("*** Begin Patch");
+    expect(payloads.has("edit-1")).toBe(false);
+  });
+
+  it("三种裸块在同一轮里各自按发射顺序绑定", () => {
+    const text = [PLAN_1, MEMORY_1, PATCH_A].join("\n");
+    const payloads = resolveRoundPayloads(
+      [
+        { id: "plan-1", name: "present_plan" },
+        { id: "memory-1", name: "memory" },
+        { id: "edit-1", name: "edit" },
+      ],
+      text,
+    );
+
+    expect(payloads.get("plan-1")).toBe(PLAN_1);
+    expect(payloads.get("memory-1")).toBe(MEMORY_1);
+    expect(payloads.get("edit-1")).toBe(PATCH_A);
+  });
+
+  it("展示层抽走记忆块并连带去掉包裹它的代码围栏", () => {
+    const text = ["前", "```", MEMORY_1, "```", "后"].join("\n");
+    const blocks = findPayloadBlocks(text, [MEMORY_PAYLOAD_SPEC]);
+
+    expect(blocks).toHaveLength(1);
+    expect(removePayloadBlocks(text, blocks)).toBe("前\n后");
+  });
+
+  it("未闭合的记忆块不参与绑定（流式正文还不可信）", () => {
+    const text = "*** Begin Memory\n- 还没写完";
+    expect(resolveRoundPayloads([{ id: "memory-1", name: "memory" }], text).size).toBe(0);
+    expect(extractCompletePayloadBlocks(text, MEMORY_PAYLOAD_SPEC)).toEqual([]);
   });
 });
 

@@ -265,3 +265,39 @@ describe("auto-approve policy: scope and modes", () => {
     }
   });
 });
+
+describe("auto-approve policy: memory 工具", () => {
+  // memory 只写 ~/.swarmflow/MEMORY.md 这一个常量路径，落盘前留一代 .bak，
+  // 归类同 settings.json / permissions.json 的无人值守写入。
+  it("reversible 档自动允许查阅与复写", async () => {
+    const fixture = makeFixture();
+    try {
+      const read = await decide(fixture.advisor, "memory", {});
+      const rewrite = await decide(fixture.advisor, "memory", {});
+      expect(read.kind).toBe("allow");
+      expect(rewrite.kind).toBe("allow");
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  it("read_only 档仍然询问", async () => {
+    const fixture = makeFixture("read_only");
+    try {
+      const decision = await decide(fixture.advisor, "memory", {});
+      expect(decision.kind).toBe("ask");
+    } finally {
+      cleanup(fixture);
+    }
+  });
+
+  it("yolo 档允许", async () => {
+    const fixture = makeFixture("yolo");
+    try {
+      const decision = await decide(fixture.advisor, "memory", {});
+      expect(decision.kind).toBe("allow");
+    } finally {
+      cleanup(fixture);
+    }
+  });
+});

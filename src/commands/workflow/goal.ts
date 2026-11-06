@@ -17,7 +17,7 @@ export async function cmdInit(ctx: CommandContext, _args: string): Promise<void>
   const prompt = [
     "Run initial project exploration for this repository.",
     "Draft a project-level AGENTS.md at the repository root with coding habits, architecture notes, commands, and constraints.",
-    "Do not create a global MEMORY.md; global memory is maintained by the user.",
+    "Do not create or edit the global MEMORY.md; it lives in the user's home directory and the root agent maintains it through the memory tool. Project rules belong in AGENTS.md.",
   ].join("\n");
   if (ctx.onInjectedTurnRequested) {
     ctx.onInjectedTurnRequested("/init", prompt);
