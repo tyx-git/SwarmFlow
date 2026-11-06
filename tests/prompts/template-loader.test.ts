@@ -138,6 +138,32 @@ describe("template type validation", () => {
     expect(templates.worker?.systemPrompt).toContain("swarmflow-handoff");
   });
 
+  it("starts Worker from the packet instead of rediscovering it", () => {
+    const templates = loadTemplates(
+      join(process.cwd(), "prompts", "templates"),
+      makeConfig(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "test-model",
+    );
+    const worker = templates.worker?.systemPrompt ?? "";
+    expect(worker).toContain("Start from the packet");
+    expect(worker).toContain("Never search for a file or symbol the packet tells you to create");
+    expect(worker).toContain("If two read-only calls in a row opened no packet path");
+    expect(worker).toContain("`git status --short` once before your first edit");
+    expect(worker).toContain("report the gap in `open_questions`");
+    const workerTools = readFileSync(join(process.cwd(), "prompts", "templates", "worker", "tools.md"), "utf-8");
+    expect(workerTools).toContain("For a path the packet labels `create`, do not read it first");
+    expect(workerTools).toContain("a single-file change with one check is one step");
+    const queen = templates.queen?.systemPrompt ?? "";
+    expect(queen).toContain("never send a child to search for a file that does not exist yet");
+    expect(queen).toContain("Every path in the packet is absolute and labeled");
+    const queenTools = readFileSync(join(process.cwd(), "prompts", "templates", "queen", "tools.md"), "utf-8");
+    expect(queenTools).toContain("each labeled `create` (not yet existing) or `modify`");
+  });
+
   it("rejects templates without type: agent", () => {
     const dir = makeTempDir("swarmflow-template-type-missing-");
     try {

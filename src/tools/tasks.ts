@@ -142,8 +142,8 @@ export const TASK_UPDATE_TOOL: ToolDef = {
     "Update a task: status, text fields, owner, metadata, or dependency edges.\n\n" +
     "## Status workflow\n" +
     "`pending` → `in_progress` → `completed`. Use `deleted` to remove a task permanently.\n\n" +
-    "**Before starting work:** mark the task `in_progress` first — do not begin while it still reads\n" +
-    "`pending`. **After finishing:** mark it `completed`. Queen chooses the next root task; a child may continue only within its assigned work packet.\n\n" +
+    "**Before starting work:** if you track this step as a task, mark it `in_progress` before starting — do not leave\n" +
+    "tracked work `pending` while you work on it. **After finishing:** mark it `completed`. Queen chooses the next root task; a child may continue only within its assigned work packet.\n\n" +
     "Only mark a task `completed` when it is fully done and verified. If tests fail, the change is\n" +
     "partial, or an error is unresolved: keep the task open and record the exact remaining work. A child must include its unfinished local tasks in its handoff so Queen can decide whether to re-dispatch.\n\n" +
     "## Fields\n" +
